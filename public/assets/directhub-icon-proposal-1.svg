@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Premium Drop Shadow for the H Symbol -->
+    <filter id="h-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#050A12" flood-opacity="0.6" />
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#050A12" flood-opacity="0.4" />
+    </filter>
+
+    <!-- App Icon Gloss Overlay -->
+    <linearGradient id="bg-gloss" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.25" />
+    </linearGradient>
+    
+    <!-- Inner Border Highlight for 3D Edge Feel -->
+    <linearGradient id="border-highlight" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.4" />
+    </linearGradient>
+  </defs>
+
+  <!-- Deep Navy Blue Solid Background -->
+  <rect width="512" height="512" rx="80" fill="#0F1C2E" />
+
+  <!-- Atmospheric Background Rings (Symbolizing industrial network/connection) -->
+  <g stroke="#FFFFFF" fill="none" pointer-events="none">
+    <circle cx="256" cy="256" r="144" stroke-opacity="0.02" stroke-width="1" />
+    <circle cx="256" cy="256" r="224" stroke-opacity="0.015" stroke-width="1" />
+    <circle cx="256" cy="256" r="304" stroke-opacity="0.01" stroke-width="1" />
+  </g>
+
+  <!-- 
+    Main H Symbol
+    Geometric Precision Breakdown:
+    - Canvas Center: 256, 256
+    - Pillar Width: 112px (Ultra-thick)
+    - Crossbar Height: 128px (Slightly thicker than pillars)
+    - Negative Space (Top/Bottom gaps): Perfect 96x96 squares
+  -->
+  <path d="M 96 96 
+           H 208 
+           V 192 
+           H 304 
+           V 96 
+           H 416 
+           V 416 
+           H 304 
+           V 320 
+           H 208 
+           V 416 
+           H 96 
+           Z" 
+        fill="#FFFFFF" 
+        filter="url(#h-shadow)" />
+
+  <!-- 
+    Subtle Gold Accent Line
+    Exactly 14px weight as requested, running flush along the bottom edge of the crossbar (Y=320)
+  -->
+  <rect x="208" y="306" width="96" height="14" fill="#C9A84C" />
+
+  <!-- App Icon Overlays (Gloss and Border) -->
+  <rect width="512" height="512" rx="80" fill="url(#bg-gloss)" pointer-events="none" />
+  <rect x="1" y="1" width="510" height="510" rx="79" fill="none" stroke="url(#border-highlight)" stroke-width="2" pointer-events="none" />
+</svg>

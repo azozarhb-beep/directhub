@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Glow for Premium Feel -->
+    <radialGradient id="bg-glow" cx="30%" cy="20%" r="80%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Premium White Material for Letterforms -->
+    <linearGradient id="white-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#F3F4F6" />
+    </linearGradient>
+
+    <!-- Rich Gold Gradient for Accents -->
+    <linearGradient id="gold-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE08B" />
+      <stop offset="50%" stop-color="#D4A843" />
+      <stop offset="100%" stop-color="#B38622" />
+    </linearGradient>
+
+    <!-- Drop Shadow for Monogram (Using dark orange for natural blending) -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#9A3412" flood-opacity="0.4" />
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#9A3412" flood-opacity="0.6" />
+    </filter>
+
+    <!-- Subtle Drop Shadow for Gold Accents -->
+    <filter id="gold-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#9A3412" flood-opacity="0.5" />
+    </filter>
+
+    <!-- Mask to create the perfect curved cutout in the H -->
+    <mask id="h-mask">
+      <rect x="0" y="0" width="512" height="512" fill="white" />
+      <!-- Cuts out a 128px radius circle to perfectly cradle the D (120px) and Gold Divider (124px) -->
+      <circle cx="186" cy="256" r="128" fill="black" />
+    </mask>
+  </defs>
+
+  <!-- Base Icon Background: DirectHub Orange -->
+  <rect width="512" height="512" rx="112" fill="#F97316" />
+  
+  <!-- Subtle Lighting Overlay -->
+  <rect width="512" height="512" rx="112" fill="url(#bg-glow)" />
+
+  <!-- Atmospheric "Gateway/Hub" Concentric Rings -->
+  <g stroke="#FFFFFF" stroke-opacity="0.04" stroke-width="1.5" fill="none">
+    <circle cx="256" cy="256" r="160" />
+    <circle cx="256" cy="256" r="220" />
+    <circle cx="256" cy="256" r="280" />
+  </g>
+
+  <!-- Main Monogram Group -->
+  <g filter="url(#shadow)">
+    <!-- 
+      Letter D:
+      Bold left vertical bar with a large semicircle arc.
+      Outer radius: 120, Inner radius: 70. Uniform 50px thickness.
+    -->
+    <path d="
+      M 86 136 
+      H 186 
+      A 120 120 0 0 1 186 376 
+      H 86 
+      Z 
+      M 136 186 
+      V 326 
+      H 186 
+      A 70 70 0 0 0 186 186 
+      Z" 
+      fill="url(#white-grad)" 
+      fill-rule="nonzero" 
+    />
+
+    <!-- 
+      Letter H:
+      Two verticals with a crossbar.
+      Masked to create a concave cutout that perfectly fuses with the D's convex arc.
+    -->
+    <path d="
+      M 266 136 
+      H 316 
+      V 231 
+      H 376 
+      V 136 
+      H 426 
+      V 376 
+      H 376 
+      V 281 
+      H 316 
+      V 376 
+      H 266 
+      Z" 
+      fill="url(#white-grad)" 
+      mask="url(#h-mask)" 
+    />
+  </g>
+
+  <!-- Gold Accents Group -->
+  <g filter="url(#gold-shadow)" fill="none" stroke="url(#gold-grad)" stroke-width="4" stroke-linecap="round">
+    <!-- 
+      Thin Gold Divider:
+      Perfectly centered in the 8px gap between the D (radius 120) and H cutout (radius 128).
+      Radius 124 arc spanning the exact intersection height.
+    -->
+    <path d="M 266 161.258 A 124 124 0 0 1 266 350.742" />
+
+    <!-- Gold Accent on H Crossbar Top Edge (Inset slightly for premium inlay look) -->
+    <path d="M 322 235 L 370 235" />
+
+    <!-- Subtle Gold Bottom Accent Line on H Right Vertical -->
+    <path d="M 382 372 L 420 372" />
+  </g>
+
+  <!-- Premium Inner Border -->
+  <rect x="1" y="1" width="510" height="510" rx="111" fill="none" stroke="#FFFFFF" stroke-opacity="0.15" stroke-width="2" />
+</svg>

@@ -1,0 +1,474 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #FFFFFF;
+  --foreground: #1A1F1C;
+  --primary: #C8611A;
+  --primary-foreground: #FFFFFF;
+  --secondary: #2E5E3E;
+  --secondary-foreground: #FFFFFF;
+  --accent: #2E5E3E;
+  --accent-foreground: #FFFFFF;
+  --muted: #E8E4DE;
+  --muted-foreground: #8A8680;
+  --card: #FFFFFF;
+  --card-foreground: #1A1F1C;
+  --border: #D4CFC8;
+  --input: #E8E4DE;
+  --ring: #C8611A;
+  --radius: 0.5rem;
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+@layer base {
+  *, ::before, ::after {
+    box-sizing: border-box;
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  h1, h2, h3, h4, h5, h6, p {
+    margin: 0;
+  }
+}
+
+@layer utilities {
+  /* Cinematic Hero Animation — stable, no scale shake */
+  @keyframes cinematicEntrance {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  .animate-cinematic {
+    animation: cinematicEntrance 0.8s ease forwards;
+  }
+
+  /* Hero Slideshow Fade */
+  @keyframes heroFade {
+    0%, 22% { opacity: 1; }
+    25%, 97% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  .hero-slide {
+    opacity: 0;
+    animation: heroFade 20s ease-in-out infinite;
+    will-change: opacity;
+  }
+  .hero-slide:nth-child(1) { animation-delay: 0s; }
+  .hero-slide:nth-child(2) { animation-delay: 5s; }
+  .hero-slide:nth-child(3) { animation-delay: 10s; }
+  .hero-slide:nth-child(4) { animation-delay: 15s; }
+
+  /* Slide Up Fade — stable, no translateY jump */
+  @keyframes slideUpFade {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  .animate-slide-up {
+    animation: slideUpFade 0.4s ease forwards;
+  }
+
+  /* Scroll reveal — stable, no translateY jump */
+  @keyframes revealIn {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  .reveal-animate {
+    animation: revealIn 0.4s ease forwards;
+  }
+
+  /* Shimmer — disabled on mobile via media query */
+  @keyframes shimmerMove {
+    0% { transform: translateX(-150%) skewX(-20deg); }
+    100% { transform: translateX(200%) skewX(-20deg); }
+  }
+  .shimmer-effect {
+    animation: shimmerMove 2.5s ease-in-out infinite;
+    animation-delay: 1.5s;
+  }
+  @media (max-width: 768px) {
+    .shimmer-effect { animation: none; }
+  }
+
+  /* Count Up pulse */
+  @keyframes countPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.04); }
+  }
+  .animate-count-pulse {
+    animation: countPulse 2s ease-in-out infinite;
+  }
+
+  /* Grain texture overlay — hidden on mobile for perf */
+  .grain-overlay::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.035;
+  }
+  @media (max-width: 768px) {
+    .grain-overlay::after { display: none; }
+  }
+
+  /* Verified badge glow */
+  .verified-glow {
+    box-shadow: 0 0 0 2px rgba(46, 94, 62, 0.2);
+  }
+
+  /* Product card hover — no transform on mobile */
+  .product-card-hover {
+    transition: box-shadow 0.15s ease;
+  }
+  @media (min-width: 769px) {
+    .product-card-hover {
+      transition: transform 0.15s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .product-card-hover:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 40px -12px rgba(26, 31, 28, 0.15);
+    }
+  }
+
+  /* Bottom nav safe area */
+  .pb-safe {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  /* Bottom nav page padding — ensures content isn't hidden behind mobile nav */
+  .page-bottom-nav-padding {
+    padding-bottom: calc(4rem + max(0.5rem, env(safe-area-inset-bottom)));
+  }
+
+  /* Mobile safe bottom — for scroll containers on pages/forms with bottom nav */
+  /* Ensures save buttons and action buttons are never clipped by the bottom navigation bar */
+  .mobile-safe-bottom {
+    padding-bottom: max(7rem, calc(7rem + env(safe-area-inset-bottom)));
+  }
+
+  @media (min-width: 768px) {
+    .mobile-safe-bottom {
+      padding-bottom: 2rem;
+    }
+  }
+
+  /* Smooth scroll for all scrollable containers */
+  .overflow-y-auto,
+  .overflow-y-scroll {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+
+  /* Search expand */
+  .search-expand {
+    transition: width 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* Text clamp utilities */
+  .text-hero-display {
+    font-size: clamp(2.5rem, 8vw, 7rem);
+    line-height: 0.88;
+    letter-spacing: -0.03em;
+  }
+
+  .text-section-title {
+    font-size: clamp(1.75rem, 4vw, 3.5rem);
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+  }
+
+  /* Hide scrollbar */
+  .hide-scrollbar::-webkit-scrollbar { display: none; }
+  .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Stagger delays — reduced for mobile */
+  .stagger-1 { animation-delay: 0.03s; }
+  .stagger-2 { animation-delay: 0.06s; }
+  .stagger-3 { animation-delay: 0.09s; }
+  .stagger-4 { animation-delay: 0.12s; }
+  .stagger-5 { animation-delay: 0.15s; }
+  .stagger-6 { animation-delay: 0.18s; }
+
+  /* RTL support */
+  [dir="rtl"] .rtl-flip {
+    transform: scaleX(-1);
+  }
+
+  /* Reduce motion for accessibility & low-power devices */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-cinematic,
+    .animate-slide-up,
+    .reveal-animate,
+    .shimmer-effect,
+    .animate-count-pulse,
+    .hero-slide {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+
+  /* Welcome ticker animation */
+  @keyframes ticker-scroll {
+    0%   { transform: translateX(-50%); }
+    100% { transform: translateX(0); }
+  }
+
+  .welcome-ticker-track {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    animation: ticker-scroll 55s linear infinite;
+    will-change: transform;
+  }
+
+  .welcome-ticker-track:hover {
+    animation-play-state: paused;
+  }
+}
+
+/* ─── Admin Control Room — Premium Dark Theme ─────────────────────────────── */
+.admin-panel {
+  --background: #0d1117;
+  --foreground: #e6edf3;
+  --primary: #E8722A;
+  --primary-foreground: #ffffff;
+  --secondary: #1c2a3a;
+  --secondary-foreground: #e6edf3;
+  --accent: #1c2a3a;
+  --accent-foreground: #e6edf3;
+  --muted: #1a2332;
+  --muted-foreground: #8b949e;
+  --card: #161b22;
+  --card-foreground: #e6edf3;
+  --border: #30363d;
+  --input: #1a2332;
+  --ring: #E8722A;
+  background-color: #0d1117;
+  color: #e6edf3;
+}
+
+.admin-panel .bg-background { background-color: #0d1117 !important; }
+.admin-panel .bg-card { background-color: #161b22 !important; }
+.admin-panel .bg-muted { background-color: #1a2332 !important; }
+.admin-panel .border-border { border-color: #30363d !important; }
+.admin-panel .text-foreground { color: #e6edf3 !important; }
+.admin-panel .text-muted-foreground { color: #8b949e !important; }
+
+/* Table headers: the muted token (#8b949e on #1a2332 ≈ 5.6:1) is too dim at the
+   10–12px uppercase sizes used for column labels, so headers get the full
+   foreground colour (≈13.5:1). Scoped to .admin-panel and to thead so that
+   tables on light backgrounds (/management, /operations, manufacturer) and
+   ordinary secondary body text are left alone. */
+.admin-panel thead th,
+.admin-panel thead th.text-muted-foreground { color: #e6edf3 !important; }
+
+/* Status badge overrides for dark bg */
+.admin-panel .bg-amber-50 { background-color: rgba(245, 158, 11, 0.12) !important; }
+.admin-panel .bg-blue-50 { background-color: rgba(59, 130, 246, 0.12) !important; }
+.admin-panel .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.12) !important; }
+.admin-panel .bg-red-50 { background-color: rgba(239, 68, 68, 0.12) !important; }
+.admin-panel .bg-purple-50 { background-color: rgba(168, 85, 247, 0.12) !important; }
+.admin-panel .bg-violet-50 { background-color: rgba(139, 92, 246, 0.12) !important; }
+.admin-panel .bg-indigo-50 { background-color: rgba(99, 102, 241, 0.12) !important; }
+.admin-panel .bg-sky-50 { background-color: rgba(14, 165, 233, 0.12) !important; }
+.admin-panel .bg-teal-50 { background-color: rgba(20, 184, 166, 0.12) !important; }
+.admin-panel .bg-orange-50 { background-color: rgba(249, 115, 22, 0.12) !important; }
+.admin-panel .bg-green-50 { background-color: rgba(34, 197, 94, 0.12) !important; }
+.admin-panel .bg-lime-50 { background-color: rgba(132, 204, 22, 0.12) !important; }
+.admin-panel .bg-rose-50 { background-color: rgba(244, 63, 94, 0.12) !important; }
+.admin-panel .bg-yellow-50 { background-color: rgba(234, 179, 8, 0.12) !important; }
+.admin-panel .bg-fuchsia-50 { background-color: rgba(217, 70, 239, 0.12) !important; }
+.admin-panel .bg-cyan-50 { background-color: rgba(6, 182, 212, 0.12) !important; }
+.admin-panel .bg-slate-50 { background-color: rgba(100, 116, 139, 0.12) !important; }
+.admin-panel .bg-gray-50 { background-color: rgba(156, 163, 175, 0.08) !important; }
+.admin-panel .bg-gray-100 { background-color: rgba(156, 163, 175, 0.1) !important; }
+.admin-panel .bg-white { background-color: #1e2530 !important; }
+.admin-panel .bg-white\/10 { background-color: rgba(255,255,255,0.06) !important; }
+.admin-panel .bg-white\/5 { background-color: rgba(255,255,255,0.04) !important; }
+.admin-panel .bg-amber-100 { background-color: rgba(245, 158, 11, 0.18) !important; }
+.admin-panel .bg-blue-100 { background-color: rgba(59, 130, 246, 0.18) !important; }
+.admin-panel .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.18) !important; }
+.admin-panel .bg-red-100 { background-color: rgba(239, 68, 68, 0.18) !important; }
+.admin-panel .bg-purple-100 { background-color: rgba(168, 85, 247, 0.18) !important; }
+.admin-panel .bg-violet-100 { background-color: rgba(139, 92, 246, 0.18) !important; }
+.admin-panel .bg-indigo-100 { background-color: rgba(99, 102, 241, 0.18) !important; }
+.admin-panel .bg-teal-100 { background-color: rgba(20, 184, 166, 0.18) !important; }
+.admin-panel .bg-orange-100 { background-color: rgba(249, 115, 22, 0.18) !important; }
+.admin-panel .bg-green-100 { background-color: rgba(34, 197, 94, 0.18) !important; }
+.admin-panel .bg-sky-100 { background-color: rgba(14, 165, 233, 0.18) !important; }
+.admin-panel .bg-yellow-100 { background-color: rgba(234, 179, 8, 0.18) !important; }
+.admin-panel .bg-slate-100 { background-color: rgba(100, 116, 139, 0.18) !important; }
+
+/* Border overrides */
+.admin-panel .border-amber-200 { border-color: rgba(245, 158, 11, 0.3) !important; }
+.admin-panel .border-blue-200 { border-color: rgba(59, 130, 246, 0.3) !important; }
+.admin-panel .border-emerald-200 { border-color: rgba(16, 185, 129, 0.3) !important; }
+.admin-panel .border-red-200 { border-color: rgba(239, 68, 68, 0.3) !important; }
+.admin-panel .border-purple-200 { border-color: rgba(168, 85, 247, 0.3) !important; }
+.admin-panel .border-violet-200 { border-color: rgba(139, 92, 246, 0.3) !important; }
+.admin-panel .border-violet-300 { border-color: rgba(139, 92, 246, 0.4) !important; }
+.admin-panel .border-indigo-200 { border-color: rgba(99, 102, 241, 0.3) !important; }
+.admin-panel .border-sky-200 { border-color: rgba(14, 165, 233, 0.3) !important; }
+.admin-panel .border-teal-200 { border-color: rgba(20, 184, 166, 0.3) !important; }
+.admin-panel .border-orange-200 { border-color: rgba(249, 115, 22, 0.3) !important; }
+.admin-panel .border-green-200 { border-color: rgba(34, 197, 94, 0.3) !important; }
+.admin-panel .border-amber-100 { border-color: rgba(245, 158, 11, 0.18) !important; }
+.admin-panel .border-blue-100 { border-color: rgba(59, 130, 246, 0.18) !important; }
+.admin-panel .border-red-100 { border-color: rgba(239, 68, 68, 0.18) !important; }
+.admin-panel .border-slate-100 { border-color: rgba(100, 116, 139, 0.18) !important; }
+.admin-panel .border-slate-200 { border-color: rgba(100, 116, 139, 0.25) !important; }
+.admin-panel .border-slate-300 { border-color: rgba(100, 116, 139, 0.35) !important; }
+.admin-panel .border-white\/20 { border-color: rgba(255,255,255,0.1) !important; }
+.admin-panel .border-white\/10 { border-color: rgba(255,255,255,0.06) !important; }
+.admin-panel .border-gray-200 { border-color: rgba(156, 163, 175, 0.25) !important; }
+.admin-panel .border-yellow-300 { border-color: rgba(234, 179, 8, 0.35) !important; }
+.admin-panel .border-lime-200 { border-color: rgba(132, 204, 22, 0.3) !important; }
+.admin-panel .border-rose-200 { border-color: rgba(244, 63, 94, 0.3) !important; }
+.admin-panel .border-fuchsia-200 { border-color: rgba(217, 70, 239, 0.3) !important; }
+.admin-panel .border-cyan-200 { border-color: rgba(6, 182, 212, 0.3) !important; }
+
+/* Text color overrides for dark bg */
+.admin-panel .text-amber-700 { color: #fbbf24 !important; }
+.admin-panel .text-amber-800 { color: #f59e0b !important; }
+.admin-panel .text-amber-900 { color: #fcd34d !important; }
+.admin-panel .text-blue-700 { color: #60a5fa !important; }
+.admin-panel .text-blue-800 { color: #3b82f6 !important; }
+.admin-panel .text-emerald-700 { color: #34d399 !important; }
+.admin-panel .text-emerald-800 { color: #10b981 !important; }
+.admin-panel .text-red-700 { color: #f87171 !important; }
+.admin-panel .text-red-800 { color: #ef4444 !important; }
+.admin-panel .text-purple-700 { color: #c084fc !important; }
+.admin-panel .text-violet-700 { color: #a78bfa !important; }
+.admin-panel .text-violet-800 { color: #8b5cf6 !important; }
+.admin-panel .text-indigo-700 { color: #818cf8 !important; }
+.admin-panel .text-indigo-800 { color: #6366f1 !important; }
+.admin-panel .text-sky-700 { color: #38bdf8 !important; }
+.admin-panel .text-teal-700 { color: #2dd4bf !important; }
+.admin-panel .text-orange-700 { color: #fb923c !important; }
+.admin-panel .text-green-700 { color: #4ade80 !important; }
+.admin-panel .text-lime-700 { color: #a3e635 !important; }
+.admin-panel .text-rose-700 { color: #fb7185 !important; }
+.admin-panel .text-yellow-700 { color: #facc15 !important; }
+.admin-panel .text-fuchsia-700 { color: #e879f9 !important; }
+.admin-panel .text-cyan-700 { color: #22d3ee !important; }
+.admin-panel .text-slate-700 { color: #94a3b8 !important; }
+.admin-panel .text-slate-800 { color: #cbd5e1 !important; }
+.admin-panel .text-gray-500 { color: #6b7280 !important; }
+.admin-panel .text-blue-600 { color: #60a5fa !important; }
+.admin-panel .text-emerald-600 { color: #34d399 !important; }
+.admin-panel .text-red-600 { color: #f87171 !important; }
+.admin-panel .text-amber-600 { color: #fbbf24 !important; }
+.admin-panel .text-purple-600 { color: #c084fc !important; }
+.admin-panel .text-violet-600 { color: #a78bfa !important; }
+.admin-panel .text-indigo-600 { color: #818cf8 !important; }
+.admin-panel .text-sky-600 { color: #38bdf8 !important; }
+.admin-panel .text-teal-600 { color: #2dd4bf !important; }
+.admin-panel .text-orange-600 { color: #fb923c !important; }
+.admin-panel .text-green-600 { color: #4ade80 !important; }
+.admin-panel .text-lime-600 { color: #a3e635 !important; }
+.admin-panel .text-rose-600 { color: #fb7185 !important; }
+.admin-panel .text-yellow-600 { color: #facc15 !important; }
+.admin-panel .text-fuchsia-600 { color: #e879f9 !important; }
+.admin-panel .text-cyan-600 { color: #22d3ee !important; }
+.admin-panel .text-slate-600 { color: #94a3b8 !important; }
+.admin-panel .text-emerald-500 { color: #10b981 !important; }
+.admin-panel .text-emerald-300 { color: #6ee7b7 !important; }
+.admin-panel .text-amber-500 { color: #f59e0b !important; }
+.admin-panel .text-red-500 { color: #ef4444 !important; }
+.admin-panel .text-blue-500 { color: #3b82f6 !important; }
+.admin-panel .text-violet-500 { color: #8b5cf6 !important; }
+.admin-panel .text-orange-500 { color: #f97316 !important; }
+.admin-panel .text-teal-500 { color: #14b8a6 !important; }
+.admin-panel .text-teal-600 { color: #2dd4bf !important; }
+.admin-panel .text-indigo-500 { color: #6366f1 !important; }
+.admin-panel .text-primary { color: #E8722A !important; }
+
+/* Input/select dark overrides */
+.admin-panel input,
+.admin-panel select,
+.admin-panel textarea {
+  background-color: #1a2332 !important;
+  border-color: #30363d !important;
+  color: #e6edf3 !important;
+}
+.admin-panel input::placeholder,
+.admin-panel textarea::placeholder {
+  color: #8b949e !important;
+}
+.admin-panel select option {
+  background-color: #1a2332;
+  color: #e6edf3;
+}
+
+/* Hover states */
+.admin-panel .hover\:bg-muted:hover { background-color: #1e2a3a !important; }
+.admin-panel .hover\:bg-muted\/80:hover { background-color: #1e2a3a !important; }
+.admin-panel .bg-muted\/30 { background-color: rgba(26, 35, 50, 0.5) !important; }
+.admin-panel .bg-muted\/40 { background-color: rgba(26, 35, 50, 0.65) !important; }
+.admin-panel .bg-muted\/20 { background-color: rgba(26, 35, 50, 0.35) !important; }
+.admin-panel .hover\:bg-amber-100:hover { background-color: rgba(245, 158, 11, 0.2) !important; }
+.admin-panel .hover\:bg-blue-100:hover { background-color: rgba(59, 130, 246, 0.2) !important; }
+.admin-panel .hover\:bg-emerald-100:hover { background-color: rgba(16, 185, 129, 0.2) !important; }
+.admin-panel .hover\:bg-red-50:hover { background-color: rgba(239, 68, 68, 0.12) !important; }
+.admin-panel .hover\:bg-violet-100:hover { background-color: rgba(139, 92, 246, 0.2) !important; }
+.admin-panel .hover\:bg-indigo-100:hover { background-color: rgba(99, 102, 241, 0.2) !important; }
+
+/* Dividers */
+.admin-panel .divide-border > * + * { border-color: #30363d !important; }
+
+/* Gradient backgrounds for amber/orange sections */
+.admin-panel .from-amber-50 { --tw-gradient-from: rgba(245, 158, 11, 0.1) !important; }
+.admin-panel .to-orange-50 { --tw-gradient-to: rgba(249, 115, 22, 0.06) !important; }
+
+/* Card hover states */
+.admin-panel .hover\:border-primary:hover { border-color: #E8722A !important; }
+.admin-panel .hover\:border-primary\/30:hover { border-color: rgba(232, 114, 42, 0.3) !important; }
+
+/* Table rows */
+.admin-panel .hover\:bg-muted\/20:hover { background-color: rgba(26, 35, 50, 0.4) !important; }
+
+/* Scrollbar styling for dark theme */
+.admin-panel ::-webkit-scrollbar { width: 6px; height: 6px; }
+.admin-panel ::-webkit-scrollbar-track { background: #0d1117; }
+.admin-panel ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+.admin-panel ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+/* Card title font weight boost */
+.admin-panel h2, .admin-panel h3 { font-weight: 700; }
+.admin-panel .font-bold { font-weight: 700; }
+.admin-panel .font-semibold { font-weight: 600; }
+
+/* Ensure white text on gradient headers stays white */
+.admin-panel [class*="bg-gradient"] .text-white { color: #ffffff !important; }
+.admin-panel [class*="bg-gradient"] .text-white\/80 { color: rgba(255,255,255,0.8) !important; }
+.admin-panel [class*="bg-gradient"] .text-white\/70 { color: rgba(255,255,255,0.7) !important; }
+.admin-panel [class*="bg-gradient"] .text-white\/60 { color: rgba(255,255,255,0.6) !important; }
+
+/* Ensure action buttons have solid fills */
+.admin-panel .bg-emerald-600 { background-color: #059669 !important; }
+.admin-panel .bg-blue-600 { background-color: #2563eb !important; }
+.admin-panel .bg-red-600 { background-color: #dc2626 !important; }
+.admin-panel .bg-amber-600 { background-color: #d97706 !important; }
+.admin-panel .bg-violet-600 { background-color: #7c3aed !important; }
+.admin-panel .bg-indigo-600 { background-color: #4f46e5 !important; }
+.admin-panel .bg-teal-600 { background-color: #0d9488 !important; }
+.admin-panel .bg-orange-500 { background-color: #f97316 !important; }
+.admin-panel .bg-primary { background-color: #E8722A !important; }
+
+/* Fix for bg-card in modals/overlays */
+.admin-panel .bg-card { background-color: #161b22 !important; }

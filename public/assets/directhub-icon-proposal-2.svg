@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Clip Path for App Icon Rounded Corners -->
+    <clipPath id="appIconClip">
+      <rect width="512" height="512" rx="80" />
+    </clipPath>
+
+    <!-- Background Gradient -->
+    <radialGradient id="bgGradient" cx="30%" cy="20%" r="100%">
+      <stop offset="0%" stop-color="#2A2A4A" />
+      <stop offset="100%" stop-color="#0F0F1A" />
+    </radialGradient>
+
+    <!-- Vignette Overlay -->
+    <radialGradient id="vignette" cx="50%" cy="50%" r="75%">
+      <stop offset="60%" stop-color="#000000" stop-opacity="0" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.6" />
+    </radialGradient>
+
+    <!-- Electric Blue Hexagon Gradient (Outer Node) -->
+    <linearGradient id="blueHex" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60A5FA" />
+      <stop offset="30%" stop-color="#3B82F6" />
+      <stop offset="70%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#1E3A8A" />
+    </linearGradient>
+
+    <!-- Dark Socket Gradient (Inner Node) -->
+    <linearGradient id="darkSocket" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#020617" />
+      <stop offset="100%" stop-color="#1E293B" />
+    </linearGradient>
+
+    <!-- White Core Gradient (The 'H' Shape) -->
+    <linearGradient id="whiteCore" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#E2E8F0" />
+    </linearGradient>
+
+    <!-- Filters -->
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#000000" flood-opacity="0.7" />
+    </filter>
+
+    <filter id="coreShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="6" flood-color="#020617" flood-opacity="0.6" />
+    </filter>
+
+    <filter id="cyanGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur1" />
+      <feGaussianBlur stdDeviation="8" result="blur2" />
+      <feMerge>
+        <feMergeNode in="blur2" />
+        <feMergeNode in="blur1" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <!-- Dot Grid Pattern for Industrial Atmosphere -->
+    <pattern id="dotGrid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="16" cy="16" r="1.5" fill="#475569" opacity="0.15" />
+    </pattern>
+  </defs>
+
+  <g clip-path="url(#appIconClip)">
+    <!-- Base Background -->
+    <rect width="512" height="512" fill="url(#bgGradient)" />
+    <rect width="512" height="512" fill="url(#dotGrid)" />
+
+    <!-- Atmospheric Background Elements -->
+    <circle cx="256" cy="256" r="220" fill="none" stroke="#2563EB" stroke-width="1" opacity="0.08" />
+    <circle cx="256" cy="256" r="160" fill="none" stroke="#38BDF8" stroke-width="1" opacity="0.05" />
+    <path d="M 256 36 L 446.5 146 L 446.5 366 L 256 476 L 65.5 366 L 65.5 146 Z" fill="none" stroke="#2563EB" stroke-width="2" opacity="0.03" />
+
+    <!-- ================= LEFT NODE ================= -->
+    <g id="leftNode">
+      <!-- Outer Hexagon Shadow -->
+      <polygon points="124,146 219.26,201 219.26,311 124,366 28.74,311 28.74,201" fill="#000000" opacity="0.5" transform="translate(0, 16)" filter="blur(8px)" />
+      <!-- Outer Hexagon 3D Base -->
+      <polygon points="124,146 219.26,201 219.26,311 124,366 28.74,311 28.74,201" fill="#0F172A" transform="translate(0, 8)" />
+      <!-- Outer Hexagon Main -->
+      <polygon points="124,146 219.26,201 219.26,311 124,366 28.74,311 28.74,201" fill="url(#blueHex)" />
+      <!-- Outer Hexagon Inner Highlight -->
+      <polygon points="124,148 217.5,202 217.5,310 124,364 30.5,310 30.5,202" fill="none" stroke="#93C5FD" stroke-width="1.5" opacity="0.4" />
+
+      <!-- Inner Dark Socket Base -->
+      <polygon points="124,176 193.28,216 193.28,296 124,336 54.72,296 54.72,216" fill="url(#darkSocket)" />
+      <!-- Inner Dark Socket Depth Stroke -->
+      <polygon points="124,176 193.28,216 193.28,296 124,336 54.72,296 54.72,216" fill="none" stroke="#020617" stroke-width="4" opacity="0.8" />
+      
+      <!-- Socket Rivets -->
+      <circle cx="124" cy="188" r="3" fill="#1E293B" stroke="#334155" stroke-width="1" />
+      <circle cx="182.89" cy="222" r="3" fill="#1E293B" stroke="#334155" stroke-width="1" />
+      <circle cx="182.89" cy="290" r="3" fill="#1E293B" stroke="#334155" stroke-width="1" />
+      <circle cx="124" cy="324" r="3" fill="#1E293B" stroke="#334155" stroke-width="1" />
+      <circle cx="65.11" cy="290" r="3" fill="#1E293B" stroke="#334155" stroke-width="1" />
+      <circle cx="65.11" cy="222" r="3" fill="#1E293B" stroke="#334155" stroke-width="1" />
+    </g>
+
+    <!-- ================= RIGHT NODE ================= -->
+    <g id="rightNode">
+      <!-- Outer Hexagon Shadow -->
+      <polygon points="388,146 483.26,201 483.26,311 388,366 292.74,311 292.74,201" fill="#000000" opacity="0.5" transform="translate(0, 16)" filter="blur(8px)" />
+      <!-- Outer Hexagon 3D Base -->
+      <polygon points="388,146 483.26,201 483.26,311 388,366 292.74,311 292.74,201" fill="#0F172A" transform="translate(0, 8)" />
+      <!-- Outer Hexagon Main -->
+      <polygon points="388,146 483.26,201 483.26,311 388,366 292.74,311 292.74,201" fill="url(#blueHex)" />
+      <!-- Outer Hexagon Inner Highlight -->
+      <polygon points="388,148 481.5,202 481.5,310 388,364 294.5,310 294.5,202" fill="none" stroke="#93C5FD" stroke-width="1.5" opacity="0.4" />
+
+      <!-- Inner Dark Socket Base -->
+      <polygon points="388,176 457.28,216 457.28,296 388,336 318.72,296 318.72,216" fill="url(#darkSocket)" />
+      <!-- Inner Dark Socket Depth Stroke -->
+      <polygon points="388,176 457.28,216 457.28,296 388,336 318.72,296 318.72,216" fill="none" stroke="#020617" stroke-width="4" opacity="0.8" />
+      
+      <!-- Socket Rivets -->
+      <circle cx="388" cy="188" r="3" fill="#1E293B" stroke="#334155" stroke-width="1" />
+      <circle cx="446.89" cy="222" r="3" fill="#1E293B" stroke="#334155" stroke-width="1" />
+      <circle cx="446.89" cy="290" r="3" fill="#1E293B" stroke="#334155" stroke-width="1" />
+      <circle cx="388" cy="324" r="3" fill="#1E293B" stroke="#334155" stroke-width="1" />
+      <circle cx="329.11" cy="290" r="3" fill="#1E293B" stroke="#334155" stroke-width="1" />
+      <circle cx="329.11" cy="222" r="3" fill="#1E293B" stroke="#334155" stroke-width="1" />
+    </g>
+
+    <!-- ================= UNIFIED WHITE CORE (THE 'H') ================= -->
+    <g id="whiteCoreGroup" filter="url(#coreShadow)">
+      <!-- 3D Thickness Base -->
+      <path d="M 124 200 L 172.5 228 L 339.5 228 L 388 200 L 436.5 228 L 436.5 284 L 388 312 L 339.5 284 L 172.5 284 L 124 312 L 75.5 284 L 75.5 228 Z" fill="#94A3B8" transform="translate(0, 8)" />
+      
+      <!-- Main White Surface -->
+      <path d="M 124 200 L 172.5 228 L 339.5 228 L 388 200 L 436.5 228 L 436.5 284 L 388 312 L 339.5 284 L 172.5 284 L 124 312 L 75.5 284 L 75.5 228 Z" fill="url(#whiteCore)" />
+      
+      <!-- Crisp Edge Highlight -->
+      <path d="M 124 200 L 172.5 228 L 339.5 228 L 388 200 L 436.5 228 L 436.5 284 L 388 312 L 339.5 284 L 172.5 284 L 124 312 L 75.5 284 L 75.5 228 Z" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round" />
+    </g>
+
+    <!-- ================= CENTRAL DATA LINK ================= -->
+    <g id="dataLink">
+      <!-- Recessed Groove -->
+      <path d="M 100 256 L 412 256" stroke="#94A3B8" stroke-width="6" stroke-linecap="round" />
+      <!-- Glowing Cyan Energy Line -->
+      <path d="M 100 256 L 412 256" stroke="#38BDF8" stroke-width="2" stroke-linecap="round" filter="url(#cyanGlow)" />
+      
+      <!-- Center Connection Node -->
+      <circle cx="256" cy="256" r="10" fill="#0F172A" stroke="#38BDF8" stroke-width="2.5" filter="url(#cyanGlow)" />
+      <circle cx="256" cy="256" r="4" fill="#FFFFFF" />
+      
+      <!-- Secondary Data Nodes -->
+      <circle cx="124" cy="256" r="4" fill="#0F172A" stroke="#38BDF8" stroke-width="1.5" />
+      <circle cx="124" cy="256" r="1.5" fill="#FFFFFF" />
+      
+      <circle cx="388" cy="256" r="4" fill="#0F172A" stroke="#38BDF8" stroke-width="1.5" />
+      <circle cx="388" cy="256" r="1.5" fill="#FFFFFF" />
+    </g>
+
+    <!-- Vignette Overlay for Depth -->
+    <rect width="512" height="512" fill="url(#vignette)" pointer-events="none" />
+  </g>
+</svg>
