@@ -541,7 +541,8 @@ const Header: React.FC = () => {
                 </Link>
               ) : (
                 <Link
-                  href="/rfq-board"
+                  href="/rfq/create"
+
                   className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-lg active:opacity-80 transition-opacity"
                 >
                   {t.nav.postRFQ}
