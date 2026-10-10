@@ -176,7 +176,8 @@ const HeroSection: React.FC = () => {
             {t.hero.browseCategories}
           </Link>
           <Link
-            href="/rfq-board"
+            href="/rfq/create"
+
             className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm rounded-xl transition-colors">
             
             <Icon name="DocumentTextIcon" size={16} />
