@@ -283,7 +283,7 @@ export default function HomePage() {
       <div className="space-y-3">
         <h4 className="text-xs font-bold text-white uppercase tracking-wider">حلول الأعمال</h4>
         <ul className="space-y-2 text-sm">
-          <li><a href="/rfq-board" className="hover:text-white transition-colors">سوق طلبات الأسعار (RFQ)</a></li>
+          <li><a href="/rfq/create" className="hover:text-white transition-colors">سوق طلبات الأسعار (RFQ)</a></li>
           <li><a href="/suppliers" className="hover:text-white transition-colors">دليل المصانع</a></li>
           <li><a href="/logistics" className="hover:text-white transition-colors">الخدمات اللوجستية</a></li>
         </ul>
