@@ -279,6 +279,7 @@ export default function CreateRFQPage() {
         sector: 'general',
       };
 
+      // ── Critical path: DB insert only ──────────────────────────────────────
       const { data, error: insertError } = await supabase
         .from('rfq_requests')
         .insert(payload)
@@ -287,7 +288,7 @@ export default function CreateRFQPage() {
 
       if (insertError) throw insertError;
 
-      // Notification (fire-and-forget)
+      // ── Fire-and-forget: notification insert (never blocks redirect) ────────
       supabase
         .from('notifications')
         .insert({
@@ -299,14 +300,37 @@ export default function CreateRFQPage() {
           metadata: { rfq_id: data.id, product_name: form.product_name.trim() },
         })
         .then(() => {})
-        .catch(() => {});
+        .catch((notifErr: any) => {
+          console.warn('[RFQ] Notification insert failed (non-critical):', notifErr?.message);
+        });
 
+      // ── Fire-and-forget: email notification (never blocks redirect) ─────────
+      supabase.functions
+        .invoke('send-email', {
+          body: {
+            type: 'admin_notification',
+            to: process.env.NEXT_PUBLIC_SITE_URL ? 'admin@direct-hub.net' : 'admin@direct-hub.net',
+            data: {
+              subject: `طلب عرض سعر جديد: ${form.product_name.trim()}`,
+              body: `تم تقديم طلب عرض سعر جديد\n\nالمنتج: ${form.product_name.trim()}\nالكمية: ${form.quantity} ${form.unit}\nالمشتري: ${user.email || user.id}`,
+              rfq_id: data.id,
+              product_name: form.product_name.trim(),
+            },
+          },
+        })
+        .then(() => {})
+        .catch((emailErr: any) => {
+          console.warn('[RFQ] Email notification failed (non-critical):', emailErr?.message);
+        });
+
+      // ── Success: show toast and redirect immediately ─────────────────────────
       setToast({ message: '✅ تم إرسال طلب عرض السعر بنجاح!', type: 'success' });
 
       setTimeout(() => {
         router.push('/rfq-management');
       }, 1500);
     } catch (err: any) {
+      console.error('[RFQ] Submit error:', err?.message);
       setError(err.message || 'حدث خطأ أثناء الإرسال. يرجى المحاولة مرة أخرى.');
       setToast({ message: 'فشل إرسال الطلب. يرجى المحاولة مرة أخرى.', type: 'error' });
     } finally {
