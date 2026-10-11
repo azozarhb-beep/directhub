@@ -452,11 +452,7 @@ const Header: React.FC = () => {
                       <Icon name="ClipboardDocumentListIcon" size={16} /> {t.nav.orderFulfillment}
                     </Link>
                   )}
-                  {userRole === 'admin' && (
-                    <Link href="/operations" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors">
-                      <Icon name="CpuChipIcon" size={16} /> {menuLabels.operations}
-                    </Link>
-                  )}
+                  {/* operations link removed */}
                   {userRole === 'admin' && (
                     <Link href="/analytics" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors">
                       <Icon name="ChartBarIcon" size={16} /> {menuLabels.performanceAnalytics}

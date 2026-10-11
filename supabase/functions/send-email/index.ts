@@ -1181,38 +1181,57 @@ serve(async (req) => {
         throw new Error(`Unknown email type: ${type}`);
     }
 
-    const resendResponse = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: FROM_EMAIL,
-        to: [to],
-        ...(["rfq_response", "admin_payout_review", "order_confirmation"].includes(type) && {
-          reply_to: SALES_RFQ_EMAIL,
-          bcc: [SALES_RFQ_EMAIL],
-        }),
-        subject: emailContent.subject,
-        html: emailContent.html,
+    // ── Independent try/catch for Resend API call ──────────────────────────
+    // Email delivery failures must never crash the parent request.
+    let emailSent = false;
+    let emailError: string | null = null;
+
+    try {
+      const resendResponse = await fetch("https://api.resend.com/emails", {
+        method: "POST",
         headers: {
-          "X-Entity-Ref-ID": type,
+          "Authorization": `Bearer ${RESEND_API_KEY}`,
+          "Content-Type": "application/json",
         },
-        tags: [{ name: "type", value: type }],
-        click_tracking: false,
-        open_tracking: false,
-      }),
-    });
+        body: JSON.stringify({
+          from: FROM_EMAIL,
+          to: [to],
+          ...(["rfq_response", "admin_payout_review", "order_confirmation"].includes(type) && {
+            reply_to: SALES_RFQ_EMAIL,
+            bcc: [SALES_RFQ_EMAIL],
+          }),
+          subject: emailContent.subject,
+          html: emailContent.html,
+          headers: {
+            "X-Entity-Ref-ID": type,
+          },
+          tags: [{ name: "type", value: type }],
+          click_tracking: false,
+          open_tracking: false,
+        }),
+      });
 
-    const resendData = await resendResponse.json();
+      const resendData = await resendResponse.json();
 
-    if (!resendResponse.ok) {
-      throw new Error(resendData.message || "Failed to send email via Resend");
+      if (!resendResponse.ok) {
+        emailError = resendData.message || "Failed to send email via Resend";
+        console.error(`[send-email] Resend API error for type=${type}:`, emailError);
+      } else {
+        emailSent = true;
+      }
+    } catch (resendErr: any) {
+      emailError = resendErr.message || "Resend network error";
+      console.error(`[send-email] Resend fetch failed for type=${type}:`, emailError);
     }
 
+    // Always return 200 — email delivery is best-effort and must not block callers
     return new Response(
-      JSON.stringify({ success: true, id: resendData.id, type }),
+      JSON.stringify({
+        success: true,
+        email_sent: emailSent,
+        type,
+        ...(emailError && { email_warning: emailError }),
+      }),
       {
         headers: {
           "Content-Type": "application/json",
