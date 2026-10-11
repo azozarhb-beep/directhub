@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="orangeBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FB923C"/>
+      <stop offset="100%" style="stop-color:#EA6C00"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFD700"/>
+      <stop offset="100%" style="stop-color:#D4A843"/>
+    </linearGradient>
+    <filter id="softShadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#00000033"/>
+    </filter>
+  </defs>
+
+  <!-- Orange background with rounded corners -->
+  <rect width="512" height="512" rx="96" ry="96" fill="url(#orangeBg)"/>
+
+  <!-- Subtle inner highlight at top -->
+  <rect width="512" height="200" rx="96" ry="96" fill="#ffffff" opacity="0.06"/>
+
+  <!-- D left vertical bar -->
+  <rect x="110" y="140" width="26" height="232" rx="6" fill="#FFFFFF" filter="url(#softShadow)"/>
+  <!-- D arc -->
+  <path d="M 136 140 Q 290 140 290 256 Q 290 372 136 372"
+        stroke="#FFFFFF" stroke-width="26" fill="none"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Gold divider -->
+  <rect x="308" y="165" width="4" height="182" rx="2" fill="url(#gold)" opacity="0.9"/>
+
+  <!-- H left vertical -->
+  <rect x="326" y="140" width="26" height="232" rx="6" fill="#FFFFFF" filter="url(#softShadow)"/>
+  <!-- H right vertical -->
+  <rect x="400" y="140" width="26" height="232" rx="6" fill="#FFFFFF" filter="url(#softShadow)"/>
+  <!-- H crossbar -->
+  <rect x="326" y="243" width="100" height="26" rx="6" fill="#FFFFFF"/>
+  <!-- Gold accent on crossbar top edge -->
+  <rect x="326" y="243" width="100" height="5" rx="2.5" fill="url(#gold)"/>
+
+  <!-- Gold dot accents at H crossbar joints -->
+  <circle cx="326" cy="256" r="6" fill="url(#gold)"/>
+  <circle cx="426" cy="256" r="6" fill="url(#gold)"/>
+
+  <!-- Bottom gold accent line -->
+  <rect x="110" y="400" width="292" height="5" rx="2.5" fill="url(#gold)" opacity="0.75"/>
+</svg>
