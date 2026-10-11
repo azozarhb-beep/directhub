@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import { sendOtpEmail, sendOrderConfirmationEmail } from '@/lib/email';
+import { sendDualNotification } from '@/lib/notificationService';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
@@ -1259,6 +1260,16 @@ export default function CheckoutPage() {
         payment_method: paymentMethodLabel,
         escrow_pin: otpCode
       });
+
+      // ── Dual notification: in-app bell + email confirmation ──────────────
+      sendDualNotification({
+        userId: user.id,
+        title: 'تم تقديم طلبك بنجاح ✅',
+        message: `رقم الطلب: ${order.order_number} — بانتظار اعتماد الدفع. يمكنك متابعة حالة طلبك من حسابك.`,
+        type: 'order_placed',
+        userEmail: user.email ?? undefined,
+        link: '/my-account',
+      }).catch(() => {});
 
       if (cartItems.length > 0) await clearCart();
 

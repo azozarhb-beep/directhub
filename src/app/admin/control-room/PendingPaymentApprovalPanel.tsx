@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { sendDualNotification } from '@/lib/notificationService';
 import Icon from '@/components/ui/AppIcon';
 
 interface PendingPaymentOrder {
   id: string;
+  user_id: string;
   order_number: string;
   status: string;
   escrow_status: string;
@@ -74,7 +76,7 @@ export default function PendingPaymentApprovalPanel({ adminUserId }: { adminUser
       const { data, error } = await supabase
         .from('orders')
         .select(`
-          id, order_number, status, escrow_status, payment_method,
+          id, order_number, user_id, status, escrow_status, payment_method,
           payment_reference, receipt_url, payment_proof_url,
           total, subtotal, created_at, notes, payment_verified,
           user_profiles!orders_user_id_fkey(full_name, email, company_name, phone)
@@ -143,6 +145,21 @@ export default function PendingPaymentApprovalPanel({ adminUserId }: { adminUser
         note: `✅ تم اعتماد الدفع يدوياً — الحالة الجديدة: ${newStatus === 'escrow_secured' ? 'escrow_secured' : 'processing'}`,
       });
 
+      // ── Dual notification: in-app + email to buyer ────────────────────────
+      const order = orders.find(o => o.id === orderId);
+      if (order) {
+        const buyerEmail = order.user_profiles?.email ?? undefined;
+        const statusLabel = newStatus === 'escrow_secured' ? 'تم تأمين الأموال في الضمان (Escrow)' : 'جارٍ المعالجة';
+        sendDualNotification({
+          userId: order.user_id ?? orderId,
+          title: '✅ تم اعتماد دفعتك',
+          message: `رقم الطلب: ${orderNumber} — الحالة الجديدة: ${statusLabel}. يمكنك متابعة تفاصيل طلبك من حسابك.`,
+          type: 'payment_confirmed',
+          userEmail: buyerEmail,
+          link: '/my-account',
+        }).catch(() => {});
+      }
+
       setSuccessMsg(`✅ تم اعتماد الدفع للطلب ${orderNumber}`);
       setTimeout(() => setSuccessMsg(''), 4000);
       fetchPendingOrders();
@@ -173,6 +190,20 @@ export default function PendingPaymentApprovalPanel({ adminUserId }: { adminUser
         status: 'pending',
         note: `❌ تم رفض الدفع — يرجى إعادة الإرسال مع مرجع صحيح`,
       });
+
+      // ── Dual notification: in-app + email to buyer ────────────────────────
+      const order = orders.find(o => o.id === orderId);
+      if (order) {
+        const buyerEmail = order.user_profiles?.email ?? undefined;
+        sendDualNotification({
+          userId: order.user_id ?? orderId,
+          title: '⚠️ تم رفض الدفع — يرجى المراجعة',
+          message: `رقم الطلب: ${orderNumber} — لم يتم قبول سند الدفع. يرجى إعادة الإرسال مع رقم مرجع صحيح وصورة واضحة.`,
+          type: 'payment_submitted',
+          userEmail: buyerEmail,
+          link: '/my-account',
+        }).catch(() => {});
+      }
 
       setSuccessMsg(`❌ تم رفض الدفع للطلب ${orderNumber}`);
       setTimeout(() => setSuccessMsg(''), 4000);
