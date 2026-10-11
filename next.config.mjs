@@ -10,6 +10,20 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  async redirects() {
+    return [
+      {
+        source: '/suppliers/:id',
+        destination: '/store/:id',
+        permanent: true,
+      },
+      {
+        source: '/storefront/:id',
+        destination: '/store/:id',
+        permanent: true,
+      },
+    ];
+  },
   images: {
     remotePatterns: imageHosts,
     minimumCacheTTL: 86400,
