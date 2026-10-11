@@ -70,7 +70,16 @@ export const metadata: Metadata = {
     creator: '@DirectHub',
   },
   icons: {
-    icon: [{ url: '/favicon.ico', type: 'image/x-icon' }],
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', type: 'image/x-icon' },
+      { url: '/api/icons/192', sizes: '192x192', type: 'image/png' },
+      { url: '/api/icons/512', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/api/icons/192', sizes: '192x192', type: 'image/png' },
+    ],
+    shortcut: '/favicon.svg',
   },
   manifest: '/api/manifest',
   alternates: {
