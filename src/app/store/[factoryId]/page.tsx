@@ -40,6 +40,12 @@ interface Product {
   inventory_status: string;
   origin_country: string;
   is_active: boolean;
+  /** Retail / quick-buy unit price (B2C) */
+  price: number | null;
+  /** Minimum order quantity for industrial / B2B orders */
+  moq: number | null;
+  /** Whether the product is ready to ship immediately */
+  is_ready_to_ship: boolean | null;
 }
 
 type SalesMode = 'b2b' | 'b2c';
@@ -119,7 +125,7 @@ export default function FactoryStorePage() {
 
       const { data: productsData } = await supabase
         .from('products')
-        .select('id, name, name_ar, category, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, is_active')
+        .select('id, name, name_ar, category, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, is_active, price, moq, is_ready_to_ship')
         .eq('supplier_id', regData.user_id)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
@@ -352,10 +358,24 @@ export default function FactoryStorePage() {
               const displayPrice = salesMode === 'b2c' ? b2cPrice : b2bPrice;
               const isOutOfStock = product.inventory_status === 'out_of_stock';
 
+              // Hybrid B2B/B2C logic
+              const effectivePrice = product.price ?? product.unit_price;
+              const effectiveMoq = product.moq ?? product.minimum_order_qty ?? 1;
+              const isReadyToShip = product.is_ready_to_ship ?? (product.inventory_status === 'in_stock');
+
+              const showBuyButton = isReadyToShip && effectivePrice > 0;
+              const showRfqButton = effectiveMoq > 1 || salesMode === 'b2b';
+
               return (
                 <div key={product.id} className={`bg-white border rounded-xl overflow-hidden hover:shadow-md transition-all ${salesMode === 'b2b' ? 'hover:border-indigo-300' : 'hover:border-rose-300'} ${isOutOfStock ? 'opacity-60' : ''}`}>
-                  <div className="bg-slate-100 h-36 flex items-center justify-center">
+                  <div className="bg-slate-100 h-36 flex items-center justify-center relative">
                     <Icon name="Package" size={40} className="text-slate-300" />
+                    {isReadyToShip && (
+                      <span className="absolute top-2 right-2 flex items-center gap-0.5 bg-emerald-500 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
+                        <Icon name="Zap" size={9} />
+                        جاهز للشحن
+                      </span>
+                    )}
                   </div>
                   <div className="p-3">
                     <p className="font-semibold text-slate-900 text-sm line-clamp-2">{language === 'ar' && product.name_ar ? product.name_ar : product.name}</p>
@@ -367,29 +387,43 @@ export default function FactoryStorePage() {
                       </div>
                       <div className="text-right">
                         <p className="text-slate-500 text-xs">الحد الأدنى</p>
-                        <p className="text-slate-700 text-xs font-medium">{product.minimum_order_qty} {product.unit}</p>
+                        <p className="text-slate-700 text-xs font-medium">{effectiveMoq} {product.unit}</p>
                       </div>
                     </div>
 
-                    {salesMode === 'b2b' ? (
-                      <button
-                        onClick={() => { setSelectedProduct(product); setShowRFQModal(true); }}
-                        disabled={isOutOfStock}
-                        className="w-full mt-3 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Icon name="FileQuestion" size={12} />
-                        طلب عرض سعر (RFQ)
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleAddToCart(product)}
-                        disabled={isOutOfStock}
-                        className={`w-full mt-3 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-white text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${addedToCart === product.id ? 'bg-emerald-600' : 'bg-rose-600 hover:bg-rose-700'}`}
-                      >
-                        <Icon name={addedToCart === product.id ? 'Check' : 'ShoppingCart'} size={12} />
-                        {addedToCart === product.id ? 'تمت الإضافة!' : isOutOfStock ? 'نفد المخزون' : 'أضف للسلة'}
-                      </button>
-                    )}
+                    {/* Hybrid action buttons */}
+                    <div className="mt-3 flex flex-col gap-1.5">
+                      {showBuyButton && (
+                        <button
+                          onClick={() => handleAddToCart(product)}
+                          disabled={isOutOfStock}
+                          className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-white text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${addedToCart === product.id ? 'bg-emerald-600' : 'bg-rose-600 hover:bg-rose-700'}`}
+                        >
+                          <Icon name={addedToCart === product.id ? 'Check' : 'ShoppingCart'} size={12} />
+                          {addedToCart === product.id ? 'تمت الإضافة!' : isOutOfStock ? 'نفد المخزون' : '🛒 إضافة للسلة / شراء فوري'}
+                        </button>
+                      )}
+                      {showRfqButton && (
+                        <button
+                          onClick={() => { setSelectedProduct(product); setShowRFQModal(true); }}
+                          disabled={isOutOfStock}
+                          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Icon name="FileQuestion" size={12} />
+                          📋 طلب تسعير (RFQ)
+                        </button>
+                      )}
+                      {!showBuyButton && !showRfqButton && (
+                        <button
+                          onClick={() => handleAddToCart(product)}
+                          disabled={isOutOfStock}
+                          className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-white text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${addedToCart === product.id ? 'bg-emerald-600' : 'bg-rose-600 hover:bg-rose-700'}`}
+                        >
+                          <Icon name={addedToCart === product.id ? 'Check' : 'ShoppingCart'} size={12} />
+                          {addedToCart === product.id ? 'تمت الإضافة!' : isOutOfStock ? 'نفد المخزون' : '🛒 إضافة للسلة'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
