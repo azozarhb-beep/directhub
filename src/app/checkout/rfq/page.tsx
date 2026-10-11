@@ -230,6 +230,7 @@ function RFQCheckoutContent() {
   const [paymentNotes, setPaymentNotes] = useState('');
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [transactionRef, setTransactionRef] = useState('');
 
   // Terms
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -290,6 +291,7 @@ function RFQCheckoutContent() {
   const handlePaymentNext = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPayment) { setError(L.selectPayment); return; }
+    if (!transactionRef.trim()) { setError('رقم مرجع الحوالة / رقم العملية مطلوب'); return; }
     setError('');
     setStep('review');
   };
@@ -307,6 +309,7 @@ function RFQCheckoutContent() {
 
   const handleSubmitOrder = async () => {
     if (!agreedToTerms) { setError(L.agreeTerms); return; }
+    if (!transactionRef.trim()) { setError('رقم مرجع الحوالة / رقم العملية مطلوب'); return; }
     if (!user) return;
     setLoading(true);
     setError('');
@@ -314,13 +317,14 @@ function RFQCheckoutContent() {
       const orderRef = rfqRef || `RFQ-${Date.now()}`;
       const finalShipping = sameAsBilling ? billing : shipping;
 
-      // Insert RFQ checkout order
+      // Insert RFQ checkout order with pending_verification escrow status
       const { data: order, error: orderErr } = await supabase
         .from('orders')
         .insert({
           user_id: user.id,
           order_number: orderRef,
           status: 'pending',
+          escrow_status: 'pending_verification',
           items: [{ name: productName, supplier: supplierName, quantity, unit, targetPrice, currency }],
           shipping_address: finalShipping,
           billing_address: billing,
@@ -332,13 +336,14 @@ function RFQCheckoutContent() {
           order_category: 'wholesale',
           platform_commission: 0,
           commission_rate_label: 'TBD',
+          payment_reference: transactionRef.trim(),
         })
         .select('id, order_number')
         .single();
 
       if (orderErr) throw orderErr;
 
-      // Upload receipt if provided
+      // Upload receipt/proof if provided
       if (receiptFile && order) {
         const ext = receiptFile.name.split('.').pop();
         const filePath = `receipts/${user.id}/${order.id}.${ext}`;
@@ -347,7 +352,10 @@ function RFQCheckoutContent() {
           .upload(filePath, receiptFile, { upsert: true });
         if (!uploadErr) {
           const { data: urlData } = supabase.storage.from('order-receipts').getPublicUrl(filePath);
-          await supabase.from('orders').update({ receipt_url: urlData?.publicUrl }).eq('id', order.id);
+          await supabase.from('orders').update({
+            receipt_url: urlData?.publicUrl,
+            payment_proof_url: urlData?.publicUrl,
+          }).eq('id', order.id);
         }
       }
 
@@ -355,7 +363,7 @@ function RFQCheckoutContent() {
       await supabase.from('order_status_history').insert({
         order_id: order.id,
         status: 'pending',
-        note: L.submitNote.replace('{method}', selectedPayment),
+        note: `طلب RFQ — وسيلة الدفع: ${selectedPayment} — رقم الحوالة: ${transactionRef} — بانتظار اعتماد الدفع`,
       });
 
       setConfirmedRef(order.order_number);
@@ -634,6 +642,84 @@ function RFQCheckoutContent() {
                     </div>
                   </div>
                 )}
+
+                {/* ── Transaction Reference (Mandatory) ── */}
+                <div className="bg-card rounded-2xl border-2 border-indigo-300 p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
+                      <Icon name="LinkIcon" size={16} className="text-indigo-600" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-indigo-900">
+                        رقم مرجع الحوالة / رقم العملية
+                        <span className="mr-1 text-red-500">*</span>
+                      </h4>
+                      <p className="text-xs text-indigo-600">Transaction Reference / ID — إلزامي</p>
+                    </div>
+                    <span className="mr-auto text-[10px] font-bold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">إلزامي</span>
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={transactionRef}
+                    onChange={(e) => setTransactionRef(e.target.value)}
+                    placeholder="أدخل رقم مرجع التحويل أو رقم العملية..."
+                    dir={dir}
+                    className="w-full h-11 px-3 rounded-lg border-2 border-indigo-300 bg-white text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-300 transition-colors font-mono"
+                  />
+                  <div className="flex items-start gap-1.5 mt-2">
+                    <Icon name="ShieldCheckIcon" size={12} className="text-indigo-500 shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-indigo-700 leading-relaxed">
+                      هذا الرقم يُستخدم للتحقق من صحة التحويل ومطابقته مع سجلات المنصة
+                    </p>
+                  </div>
+                </div>
+
+                {/* ── Proof of Payment Upload (Optional) ── */}
+                <div className="bg-card rounded-2xl border border-border p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                      <Icon name="PhotoIcon" size={16} className="text-amber-600" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-foreground">
+                        صورة سند التحويل
+                        <span className="mr-1 text-xs text-muted-foreground font-normal">(اختياري)</span>
+                      </h4>
+                      <p className="text-xs text-muted-foreground">ارفع صورة إيصال التحويل لتسريع عملية التحقق</p>
+                    </div>
+                  </div>
+                  {receiptPreview ? (
+                    <div className="relative rounded-xl border-2 border-primary/30 overflow-hidden bg-muted/30">
+                      {receiptFile?.type.startsWith('image/') ? (
+                        <img src={receiptPreview} alt="صورة سند التحويل" className="w-full max-h-40 object-contain" />
+                      ) : (
+                        <div className="flex items-center gap-3 p-4">
+                          <Icon name="DocumentTextIcon" size={28} className="text-primary" />
+                          <p className="text-sm font-medium text-foreground">{receiptFile?.name}</p>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => { setReceiptFile(null); setReceiptPreview(null); }}
+                        className="absolute top-2 left-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center"
+                      >
+                        <Icon name="XMarkIcon" size={13} />
+                      </button>
+                      <div className="px-4 pb-3 flex items-center gap-1.5">
+                        <Icon name="CheckCircleIcon" size={13} className="text-green-600" />
+                        <span className="text-xs text-green-700 font-medium">تم رفع الملف بنجاح</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="flex flex-col items-center justify-center gap-2 h-28 rounded-xl border-2 border-dashed border-border hover:border-primary/50 bg-muted/20 cursor-pointer transition-colors group">
+                      <Icon name="ArrowUpTrayIcon" size={22} className="text-muted-foreground group-hover:text-primary transition-colors" />
+                      <span className="text-sm text-muted-foreground">{L.clickUploadReceipt}</span>
+                      <span className="text-xs text-muted-foreground">{L.maxFileSize}</span>
+                      <input type="file" accept="image/*,.pdf" onChange={handleReceiptChange} className="sr-only" />
+                    </label>
+                  )}
+                </div>
 
                 {/* Payment notes */}
                 <div className="bg-card rounded-2xl border border-border p-5">

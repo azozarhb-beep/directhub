@@ -39,6 +39,7 @@ import LogisticsDashboardPanel from './LogisticsDashboardPanel';
 import ProductApprovalTogglePanel from './ProductApprovalTogglePanel';
 import FastTrackApprovalPanel from './FastTrackApprovalPanel';
 import FactoryOnboardingModePanel from './FactoryOnboardingModePanel';
+import PendingPaymentApprovalPanel from './PendingPaymentApprovalPanel';
 
 
 
@@ -211,7 +212,7 @@ interface BankAccount {
   user_profiles?: { full_name: string; email: string; company_name: string };
 }
 
-type ActiveTab = 'overview' | 'verification' | 'users' | 'factories' | 'amal' | 'escrow' | 'messages' | 'direct_orders' | 'admin_messaging' | 'platform_settings' | 'field_agents' | 'page_directory' | 'payments' | 'accounts' | 'logistics' | 'logistics_dashboard' | 'live_infra' | 'phased_escrow' | 'iban_verification' | 'ocr_verification' | 'customs_validator' | 'manual_review_queue' | 'rfq_management' | 'system_health' | 'platform_diagnostics' | 'amal_logs' | 'buyer_seller_chat' | 'smart_rfq_routing' | 'ai_auditor' | 'changelog' | 'supplier_alerts' | 'executive_radar' | 'issue_cards' | 'whatsapp_automation' | 'idea_generator' | 'db_explorer' | 'treasury' | 'role_simulation' | 'broadcast_center' | 'sitemap_hub' | 'international_factories' | 'supplier_dashboard' | 'push_scheduler' | 'abandoned_cart';
+type ActiveTab = 'overview' | 'verification' | 'users' | 'factories' | 'amal' | 'escrow' | 'messages' | 'direct_orders' | 'admin_messaging' | 'platform_settings' | 'field_agents' | 'page_directory' | 'payments' | 'pending_payment_approval' | 'accounts' | 'logistics' | 'logistics_dashboard' | 'live_infra' | 'phased_escrow' | 'iban_verification' | 'ocr_verification' | 'customs_validator' | 'manual_review_queue' | 'rfq_management' | 'system_health' | 'platform_diagnostics' | 'amal_logs' | 'buyer_seller_chat' | 'smart_rfq_routing' | 'ai_auditor' | 'changelog' | 'supplier_alerts' | 'executive_radar' | 'issue_cards' | 'whatsapp_automation' | 'idea_generator' | 'db_explorer' | 'treasury' | 'role_simulation' | 'broadcast_center' | 'sitemap_hub' | 'international_factories' | 'supplier_dashboard' | 'push_scheduler' | 'abandoned_cart';
 
 // ─── Drill-Down Modal ─────────────────────────────────────────────────────────
 function DrillDownModal({
@@ -4381,6 +4382,7 @@ export default function AdminControlRoomPage() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {[
                 { key: 'payments', label: ui.tabs.payments, icon: 'CreditCardIcon', gradient: 'linear-gradient(135deg,#16A34A,#15803D)' },
+                { key: 'pending_payment_approval', label: 'اعتماد المدفوعات', icon: 'ClockIcon', gradient: 'linear-gradient(135deg,#D97706,#B45309)' },
                 { key: 'accounts', label: ui.tabs.accounts, icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#65A30D,#4D7C0F)' },
                 { key: 'phased_escrow', label: ui.tabs.phased_escrow, icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#C026D3,#A21CAF)' },
                 { key: 'iban_verification', label: ui.tabs.iban_verification, icon: 'ShieldCheckIcon', gradient: 'linear-gradient(135deg,#2563EB,#1D4ED8)' },
@@ -7518,6 +7520,13 @@ export default function AdminControlRoomPage() {
               )}
             </div>
           </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════════════════
+            TAB: PENDING PAYMENT APPROVAL — Manual Payment Verification
+        ══════════════════════════════════════════════════════════════════════ */}
+        {activeTab === 'pending_payment_approval' && (
+          <PendingPaymentApprovalPanel adminUserId={user?.id || ''} />
         )}
 
         {/* ══════════════════════════════════════════════════════════════════════

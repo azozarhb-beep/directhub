@@ -1192,7 +1192,7 @@ export default function CheckoutPage() {
           user_id: user.id,
           order_number: orderNumber,
           status: 'pending',
-          escrow_status: isCashUpfrontEscrow ? 'pending_verification' : 'pending_payment',
+          escrow_status: 'pending_verification',
           escrow_payment_type: isCashUpfrontEscrow ? 'cash_upfront_escrow' : 'standard',
           cfo_approval_status: isCashUpfrontEscrow ? 'pending_cfo_approval' : null,
           items: displayItems,
