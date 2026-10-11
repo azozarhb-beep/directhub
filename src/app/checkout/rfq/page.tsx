@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
+import { sendDualNotification } from '@/lib/notificationService';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
@@ -367,6 +368,16 @@ function RFQCheckoutContent() {
       });
 
       setConfirmedRef(order.order_number);
+
+      // ── Dual notification: in-app bell + email confirmation ──────────────
+      sendDualNotification({
+        userId: user.id,
+        title: 'تم إرسال طلب عرض السعر (RFQ) ✅',
+        message: `رقم الطلب: ${order.order_number} — وسيلة الدفع: ${selectedPayment} — بانتظار اعتماد الدفع من الفريق.`,
+        type: 'rfq_submitted',
+        link: '/my-account',
+      }).catch(() => {});
+
       setStep('confirmed');
     } catch (err: any) {
       setError(err.message || L.submitFailed);

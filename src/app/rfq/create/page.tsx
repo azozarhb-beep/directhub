@@ -9,6 +9,7 @@ import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
+import { sendDualNotification } from '@/lib/notificationService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -288,40 +289,16 @@ export default function CreateRFQPage() {
 
       if (insertError) throw insertError;
 
-      // ── Fire-and-forget: notification insert (never blocks redirect) ────────
-      supabase
-        .from('notifications')
-        .insert({
-          user_id: user.id,
-          type: 'rfq_submitted',
-          title: 'تم إرسال طلب عرض السعر',
-          body: `تم إرسال طلب عرض السعر للمنتج: ${form.product_name.trim()}`,
-          link: '/rfq-management',
-          metadata: { rfq_id: data.id, product_name: form.product_name.trim() },
-        })
-        .then(() => {})
-        .catch((notifErr: any) => {
-          console.warn('[RFQ] Notification insert failed (non-critical):', notifErr?.message);
-        });
-
-      // ── Fire-and-forget: email notification (never blocks redirect) ─────────
-      supabase.functions
-        .invoke('send-email', {
-          body: {
-            type: 'admin_notification',
-            to: process.env.NEXT_PUBLIC_SITE_URL ? 'admin@direct-hub.net' : 'admin@direct-hub.net',
-            data: {
-              subject: `طلب عرض سعر جديد: ${form.product_name.trim()}`,
-              body: `تم تقديم طلب عرض سعر جديد\n\nالمنتج: ${form.product_name.trim()}\nالكمية: ${form.quantity} ${form.unit}\nالمشتري: ${user.email || user.id}`,
-              rfq_id: data.id,
-              product_name: form.product_name.trim(),
-            },
-          },
-        })
-        .then(() => {})
-        .catch((emailErr: any) => {
-          console.warn('[RFQ] Email notification failed (non-critical):', emailErr?.message);
-        });
+      // ── Fire-and-forget: dual notification (in-app + email, never blocks redirect) ──
+      sendDualNotification({
+        userId: user.id,
+        title: 'تم إرسال طلب عرض السعر',
+        message: `تم إرسال طلب عرض السعر للمنتج: ${form.product_name.trim()}`,
+        type: 'rfq_submitted',
+        link: '/rfq-management',
+      }).catch((notifErr: any) => {
+        console.warn('[RFQ] Dual notification failed (non-critical):', notifErr?.message);
+      });
 
       // ── Success: show toast and redirect immediately ─────────────────────────
       setToast({ message: '✅ تم إرسال طلب عرض السعر بنجاح!', type: 'success' });
