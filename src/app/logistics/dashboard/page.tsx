@@ -195,11 +195,11 @@ function StatusBanner({ status, adminNote }: { status: string; adminNote: string
   if (!isPending && !isUnderReview && !isRejected && !isSuspended) return null;
 
   const config = {
-    pending:      { bg: 'bg-amber-50 border-amber-200',  icon: 'ClockIcon',                iconColor: 'text-amber-500',  title: 'Application Under Review',       body: 'Your logistics partner application has been submitted and is awaiting admin review. You will be notified once approved.' },
-    under_review: { bg: 'bg-blue-50 border-blue-200',    icon: 'MagnifyingGlassIcon',      iconColor: 'text-blue-500',   title: 'Application Being Reviewed',     body: 'Our team is currently reviewing your application. This usually takes 1–3 business days.' },
-    rejected:     { bg: 'bg-red-50 border-red-200',      icon: 'XCircleIcon',              iconColor: 'text-red-500',    title: 'Application Not Approved',       body: 'Your application was not approved at this time.' },
-    suspended:    { bg: 'bg-orange-50 border-orange-200',icon: 'ExclamationTriangleIcon',  iconColor: 'text-orange-500', title: 'Account Suspended',              body: 'Your partner account has been suspended. Please contact support.' },
-  }[status] ?? { bg: 'bg-gray-50 border-gray-200', icon: 'InformationCircleIcon', iconColor: 'text-gray-500', title: 'Status Unknown', body: '' };
+    pending:      { bg: 'bg-amber-50 border-amber-200',  icon: 'ClockIcon',                iconColor: 'text-amber-500',  title: 'طلب الانضمام قيد المراجعة',       body: 'تم استلام طلب الشراكة اللوجستية وهو بانتظار مراجعة الإدارة. سيتم إشعارك فور الاعتماد.' },
+    under_review: { bg: 'bg-blue-50 border-blue-200',    icon: 'MagnifyingGlassIcon',      iconColor: 'text-blue-500',   title: 'طلب الانضمام قيد المراجعة',     body: 'فريقنا يراجع طلبك حالياً. عادةً ما يستغرق ذلك من 1 إلى 3 أيام عمل.' },
+    rejected:     { bg: 'bg-red-50 border-red-200',      icon: 'XCircleIcon',              iconColor: 'text-red-500',    title: 'لم يتم قبول الطلب',       body: 'لم يتم قبول طلبك في الوقت الحالي.' },
+    suspended:    { bg: 'bg-orange-50 border-orange-200',icon: 'ExclamationTriangleIcon',  iconColor: 'text-orange-500', title: 'الحساب موقوف',              body: 'تم إيقاف حساب شريكك. يرجى التواصل مع الدعم.' },
+  }[status] ?? { bg: 'bg-gray-50 border-gray-200', icon: 'InformationCircleIcon', iconColor: 'text-gray-500', title: 'حالة غير معروفة', body: '' };
 
   return (
     <div className={`rounded-xl border p-4 mb-6 flex gap-3 items-start ${config.bg}`}>
@@ -1443,10 +1443,10 @@ function OrdersTab({ partnerId }: { partnerId: string }) {
 
   // KPI counts
   const kpis = [
-    { label: 'Total Assigned', count: orders.length, icon: 'ClipboardDocumentListIcon', color: 'text-gray-600', bg: 'bg-gray-50 border-gray-200' },
-    { label: 'In Transit', count: orders.filter(o => o.status === 'in_transit' || o.status === 'shipped').length, icon: 'TruckIcon', color: 'text-sky-600', bg: 'bg-sky-50 border-sky-200' },
-    { label: 'Pending PIN', count: orders.filter(o => o.status === 'out_for_delivery' && !o.shipping_fees_released).length, icon: 'KeyIcon', color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200' },
-    { label: 'Delivered', count: orders.filter(o => o.status === 'delivered').length, icon: 'CheckBadgeIcon', color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200' },
+    { label: 'إجمالي الشحنات المسندة', count: orders.length, icon: 'ClipboardDocumentListIcon', color: 'text-gray-600', bg: 'bg-gray-50 border-gray-200' },
+    { label: 'شحنات قيد النقل', count: orders.filter(o => o.status === 'in_transit' || o.status === 'shipped').length, icon: 'TruckIcon', color: 'text-sky-600', bg: 'bg-sky-50 border-sky-200' },
+    { label: 'بانتظار كود التسليم (PIN)', count: orders.filter(o => o.status === 'out_for_delivery' && !o.shipping_fees_released).length, icon: 'KeyIcon', color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200' },
+    { label: 'تم التسليم', count: orders.filter(o => o.status === 'delivered').length, icon: 'CheckBadgeIcon', color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200' },
   ];
 
   return (
@@ -1471,7 +1471,7 @@ function OrdersTab({ partnerId }: { partnerId: string }) {
           <input
             value={searchQ}
             onChange={e => setSearchQ(e.target.value)}
-            placeholder="Search by order # or buyer name…"
+            placeholder="بحث برقم الشحنة، رقم الطلب، أو اسم العميل..."
             className="w-full h-9 pl-9 pr-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
           />
         </div>
@@ -1480,7 +1480,7 @@ function OrdersTab({ partnerId }: { partnerId: string }) {
           onChange={e => setStatusFilter(e.target.value)}
           className="h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
         >
-          <option value="">All Statuses</option>
+          <option value="">جميع الحالات</option>
           {ORDER_STATUS_OPTIONS.map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
@@ -1490,7 +1490,7 @@ function OrdersTab({ partnerId }: { partnerId: string }) {
           className="h-9 px-3 rounded-xl border border-border bg-background text-muted-foreground hover:text-foreground text-sm transition-colors flex items-center gap-1.5"
         >
           <Icon name="ArrowPathIcon" size={14} />
-          Refresh
+تحديث
         </button>
       </div>
 
@@ -1503,8 +1503,8 @@ function OrdersTab({ partnerId }: { partnerId: string }) {
           <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
             <Icon name="TruckIcon" size={28} className="text-muted-foreground/40" />
           </div>
-          <p className="font-semibold text-foreground">No orders assigned yet</p>
-          <p className="text-sm text-muted-foreground">Orders assigned to your logistics account will appear here.</p>
+<p className="font-semibold text-foreground">لا توجد شحنات مسندة حالياً</p>
+          <p className="text-sm text-muted-foreground">ستظهر الشحنات الموكلة إليك هنا فور إسنادها لحسابك.</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -2022,7 +2022,7 @@ export default function LogisticsDashboardPage() {
               <Link href="/logistics" className="text-muted-foreground hover:text-foreground transition-colors">
                 <Icon name="ArrowLeftIcon" size={16} />
               </Link>
-              <h1 className="text-2xl font-bold text-foreground">Logistics Partner Portal</h1>
+              <h1 className="text-2xl font-bold text-foreground">بوابة الشريك اللوجستي</h1>
             </div>
             <p className="text-sm text-muted-foreground">
               {partner.company_name}
@@ -2040,7 +2040,7 @@ export default function LogisticsDashboardPage() {
                 name={partner.status === 'approved' ? 'CheckBadgeIcon' : partner.status === 'under_review' ? 'MagnifyingGlassIcon' : 'ClockIcon'}
                 size={13}
               />
-              {partner.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              {partner.status === 'pending' ? 'قيد المراجعة والاعتماد' : partner.status === 'approved' ? 'معتمد' : partner.status === 'under_review' ? 'قيد المراجعة' : partner.status === 'rejected' ? 'مرفوض' : partner.status === 'suspended' ? 'موقوف' : partner.status}
             </span>
           </div>
         </div>
