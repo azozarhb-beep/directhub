@@ -41,6 +41,30 @@ interface Product {
 
 const PAGE_SIZE = 12;
 
+// ─── B2B-only slugs & categories (industrial raw materials, bulk tonnage) ─────
+const B2B_ONLY_SLUGS = new Set([
+  'metals-steel',
+  'plastics-rubber',
+  'raw-materials-chemicals',
+  'industrial-machinery',
+  'energy-power',
+  'construction-building-materials',
+  'packaging-printing',
+]);
+
+const B2B_ONLY_CATEGORY_STRINGS = new Set([
+  'metals',
+  'plastics',
+  'building',
+  'construction',
+  'machinery',
+  'energy',
+  'packaging',
+  'raw-materials-chemicals',
+  'raw_materials',
+  'pharmaceuticals',
+]);
+
 // ─── Mock fallback categories ─────────────────────────────────────────────────
 const MOCK_CATEGORIES: Category[] = [
   { id: 'mc1', slug: 'electronics-mobile-phones', name_en: 'Electronics', name_ar: 'إلكترونيات', parent_id: null, depth: 0, icon: null, image_url: CATEGORY_IMAGES['electronics-mobile-phones'], sort_order: 1, product_count: 1240, is_active: true },
@@ -161,6 +185,19 @@ const CategoriesBrowser: React.FC = () => {
   const filteredProducts = useMemo(() => {
     let list = allProducts;
 
+    // B2B/B2C filtering: restrict industrial/bulk products to B2B only
+    if (buyerMode === 'b2c') {
+      list = list.filter((p) => {
+        const cat = allCategories.find((c) => c.id === p.category_id);
+        const catSlug = cat?.slug || '';
+        const isB2BOnly =
+          B2B_ONLY_SLUGS.has(catSlug) ||
+          B2B_ONLY_CATEGORY_STRINGS.has(p.category || '') ||
+          (p.minimum_order_qty !== null && p.minimum_order_qty >= 500);
+        return !isB2BOnly;
+      });
+    }
+
     if (selectedCategory !== 'all') {
       const cat = allCategories.find((c) => c.id === selectedCategory);
       if (cat) {
@@ -185,7 +222,7 @@ const CategoriesBrowser: React.FC = () => {
     }
 
     return list;
-  }, [allProducts, selectedCategory, searchQuery, allCategories]);
+  }, [allProducts, selectedCategory, searchQuery, allCategories, buyerMode]);
 
   const visibleProducts = useMemo(() => filteredProducts.slice(0, visibleCount), [filteredProducts, visibleCount]);
   const hasMore = visibleCount < filteredProducts.length;
@@ -234,7 +271,7 @@ const CategoriesBrowser: React.FC = () => {
   }, [selectedCategory, allCategories, language]);
 
   return (
-    <div className="pb-24 md:pb-8 min-h-screen bg-background" dir={dir}>
+    <div className="pb-32 md:pb-12 min-h-screen bg-background" dir={dir}>
 
       {/* ── Page Header ── */}
       <div className="bg-foreground py-6 md:py-10 border-b border-border/20 relative overflow-hidden">
@@ -283,15 +320,15 @@ const CategoriesBrowser: React.FC = () => {
           <div className="flex items-center border border-border rounded-xl overflow-hidden shrink-0">
             <button
               onClick={() => setBuyerMode('b2c')}
-              className={`h-9 px-3 text-xs font-bold transition-colors ${buyerMode === 'b2c' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+              className={`h-9 px-3 text-xs font-bold transition-colors whitespace-nowrap ${buyerMode === 'b2c' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
             >
-              B2C
+              تجزئة وأفراد (B2C)
             </button>
             <button
               onClick={() => setBuyerMode('b2b')}
-              className={`h-9 px-3 text-xs font-bold transition-colors ${buyerMode === 'b2b' ? 'bg-foreground text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+              className={`h-9 px-3 text-xs font-bold transition-colors whitespace-nowrap ${buyerMode === 'b2b' ? 'bg-foreground text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
             >
-              B2B
+              جملة وشركات (B2B)
             </button>
           </div>
         </div>
