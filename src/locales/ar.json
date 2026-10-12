@@ -4197,6 +4197,16 @@
         "title": "إدارة طلبات الأسعار",
         "subtitle": "تتبع وإدارة طلبات عروض الأسعار",
         "negotiationTimeline": "سجل التفاوض",
+        "centerBadge": "مركز إدارة طلبات الأسعار",
+        "pageTitle": {
+            "manufacturer": "طلبات الأسعار الواردة",
+            "buyer": "طلباتي للأسعار"
+        },
+        "pageSubtitle": {
+            "manufacturer": "راجع طلبات المشترين وقدّم عروض أسعار احترافية تنافسية للفوز بالطلبات.",
+            "buyer": "تتبع طلبات الأسعار المقدمة، راجع العروض من المصنّعين، واقبل أفضل عرض."
+        },
+        "newRfq": "طلب سعر جديد",
         "status": {
             "pending": "معلق",
             "responded": "تم الرد",
@@ -4204,10 +4214,136 @@
             "rejected": "مرفوض",
             "expired": "منتهي"
         },
+        "urgency": {
+            "standard": "عادي",
+            "urgent": "عاجل",
+            "critical": "حرج"
+        },
+        "stats": {
+            "total": "إجمالي الطلبات",
+            "pending": "معلق",
+            "responded": "تم الرد",
+            "accepted": "مقبول"
+        },
+        "tabs": {
+            "all": "جميع الطلبات",
+            "pending": "معلق",
+            "responded": "تم الرد",
+            "accepted": "مقبول"
+        },
+        "card": {
+            "buyer": "المشتري",
+            "supplier": "المورد",
+            "quantity": "الكمية",
+            "targetPrice": "السعر المستهدف",
+            "open": "مفتوح",
+            "destination": "الوجهة",
+            "expires": "ينتهي",
+            "today": "اليوم",
+            "daysLeft": "يوم متبقٍ",
+            "viewDetails": "عرض التفاصيل",
+            "quotes": "عرض",
+            "anonymous": "مجهول"
+        },
+        "modal": {
+            "tabs": {
+                "details": "التفاصيل",
+                "quotes": "العروض",
+                "timeline": "الجدول الزمني"
+            },
+            "expiresLabel": "ينتهي اليوم",
+            "daysLeft": "يوم متبقٍ",
+            "details": {
+                "quantity": "الكمية",
+                "targetPrice": "السعر المستهدف",
+                "open": "مفتوح",
+                "destination": "الوجهة",
+                "incoterms": "شروط التسليم",
+                "payment": "الدفع",
+                "submitted": "تاريخ الإرسال"
+            },
+            "buyerInfo": "معلومات المشتري",
+            "company": "الشركة",
+            "contact": "جهة الاتصال",
+            "country": "الدولة",
+            "email": "البريد الإلكتروني",
+            "specifications": "المواصفات والتخصيص",
+            "certifications": "الشهادات المطلوبة",
+            "additionalNotes": "ملاحظات إضافية",
+            "receivedQuotes": "العروض المستلمة",
+            "awaitingQuotes": "في انتظار العروض",
+            "awaitingQuotesDesc": "سيرد المصنّعون على طلبك قريباً",
+            "acceptedQuote": "العرض المقبول",
+            "unitPrice": "وحدة",
+            "total": "الإجمالي",
+            "minOrder": "الحد الأدنى للطلب",
+            "units": "وحدات",
+            "leadTime": "مدة التسليم",
+            "days": "يوم",
+            "validFor": "صالح لمدة",
+            "payment": "الدفع",
+            "sampleAvailable": "عينة متاحة",
+            "warranty": "ضمان",
+            "months": "شهر",
+            "acceptQuote": "✓ قبول هذا العرض",
+            "proceedOrder": "المتابعة للطلب",
+            "placeEscrow": "تقديم طلب بالضمان",
+            "rejectAll": "رفض الكل",
+            "submitQuote": "تقديم عرض سعر",
+            "close": "إغلاق"
+        },
+        "submitQuote": {
+            "title": "تقديم عرض سعر احترافي",
+            "unitPrice": "سعر الوحدة *",
+            "currency": "العملة",
+            "estimatedTotal": "الإجمالي التقديري",
+            "minOrderQty": "الحد الأدنى للطلب",
+            "leadTimeDays": "مدة التسليم (أيام)",
+            "paymentTerms": "شروط الدفع",
+            "deliveryTerms": "شروط التسليم",
+            "validDays": "صلاحية العرض (أيام)",
+            "warrantyMonths": "الضمان (أشهر)",
+            "notes": "ملاحظات / الشروط والأحكام",
+            "notesPlaceholder": "تفاصيل التعبئة، معلومات الشحن، شروط خاصة...",
+            "sampleAvailable": "عينة متاحة",
+            "sampleDesc": "يمكن للمشتري طلب عينة قبل الطلب بالجملة",
+            "cancel": "إلغاء",
+            "submit": "إرسال العرض",
+            "submitting": "جارٍ الإرسال...",
+            "errPrice": "يرجى إدخال سعر وحدة صحيح."
+        },
+        "timeline": {
+            "rfqSubmitted": "تم إرسال الطلب",
+            "rfqSubmittedSub": "أرسل المشتري طلب السعر إلى السوق",
+            "quoteReceived": "تم استلام عرض",
+            "quoteAccepted": "تم قبول العرض",
+            "quoteAcceptedSub": "قبل المشتري أفضل عرض",
+            "proceedEscrow": "المتابعة لطلب الضمان",
+            "proceedEscrowSub": "جاهز لتقديم طلب محمي بالضمان",
+            "awaitingQuotes": "في انتظار عروض المصانع",
+            "awaitingQuotesSub": "المصنّعون يراجعون طلبك",
+            "reviewQuotes": "مراجعة وقبول أفضل عرض",
+            "reviewQuotesSub": "قارن العروض وتفاوض",
+            "placeOrder": "تقديم طلب بالضمان",
+            "placeOrderSub": "دفع آمن عبر الضمان",
+            "placeEscrowOrder": "تقديم طلب بالضمان",
+            "stepsOf": "خطوات مكتملة",
+            "awaitingDecision": "في انتظار قرار المشتري",
+            "thisQuoteAccepted": "تم قبول هذا العرض"
+        },
         "noRfqs": "لا توجد طلبات بعد",
+        "noRfqsTab": "لا توجد طلبات في هذه الفئة",
+        "noRfqsDesc": {
+            "manufacturer": "لا توجد طلبات أسعار متاحة حالياً. تحقق لاحقاً.",
+            "buyer": "ابدأ بتصفح المنتجات وإرسال أول طلب سعر."
+        },
+        "browseProducts": "تصفح المنتجات",
         "createRfq": "إنشاء طلب سعر",
         "viewDetails": "عرض التفاصيل",
-        "filterAll": "الكل"
+        "filterAll": "الكل",
+        "successQuoteSubmitted": "تم إرسال عرض السعر بنجاح! سيتم إخطار المشتري.",
+        "successQuoteAccepted": "تم قبول العرض! يمكنك الآن المتابعة إلى الدفع.",
+        "progressSteps": "خطوات"
     },
     "createRfq": {
         "title": "نشر طلب سعر جديد",
