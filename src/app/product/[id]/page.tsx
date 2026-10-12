@@ -280,6 +280,95 @@ const productDatabase: Record<string, ProductDetail> = {
   }
 };
 
+// ── Arabic country name map ────────────────────────────────────────────────────
+const COUNTRY_AR: Record<string, string> = {
+  'China': 'الصين',
+  'Turkey': 'تركيا',
+  'India': 'الهند',
+  'Saudi Arabia': 'المملكة العربية السعودية',
+  'UAE': 'الإمارات',
+  'United Arab Emirates': 'الإمارات العربية المتحدة',
+  'Germany': 'ألمانيا',
+  'USA': 'الولايات المتحدة',
+  'United States': 'الولايات المتحدة',
+  'Japan': 'اليابان',
+  'South Korea': 'كوريا الجنوبية',
+  'Italy': 'إيطاليا',
+  'France': 'فرنسا',
+  'Brazil': 'البرازيل',
+  'Pakistan': 'باكستان',
+  'Bangladesh': 'بنغلاديش',
+  'Vietnam': 'فيتنام',
+  'Indonesia': 'إندونيسيا',
+  'Malaysia': 'ماليزيا',
+  'Thailand': 'تايلاند',
+  'Egypt': 'مصر',
+  'Jordan': 'الأردن',
+  'Kuwait': 'الكويت',
+  'Qatar': 'قطر',
+  'Bahrain': 'البحرين',
+  'Oman': 'عُمان',
+  'Iraq': 'العراق',
+  'Yemen': 'اليمن',
+  'Global': 'عالمي'
+};
+
+// ── Arabic category name map ───────────────────────────────────────────────────
+const CATEGORY_AR: Record<string, string> = {
+  'Machinery': 'الآلات الصناعية',
+  'Textiles': 'المنسوجات والملابس',
+  'Electronics': 'الإلكترونيات',
+  'Building Materials': 'مواد البناء',
+  'Metals': 'المعادن والصلب',
+  'metals': 'المعادن والصلب',
+  'Plastics': 'البلاستيك والبوليمرات',
+  'plastics': 'البلاستيك والبوليمرات',
+  'Chemicals': 'المواد الكيميائية',
+  'Food': 'الغذاء والزراعة',
+  'Packaging': 'التغليف والطباعة',
+  'Energy': 'الطاقة والكهرباء',
+  'Medical': 'الطب والرعاية الصحية',
+  'Automotive': 'السيارات والمركبات',
+  'Furniture': 'الأثاث والديكور',
+  'Agriculture': 'الزراعة',
+  'General': 'عام'
+};
+
+// ── Helper: extract unit label from a price tier string ───────────────────────
+// e.g. "$420/unit" → "unit", "$5.80/m" → "م", "$72/m" → "م"
+function extractUnitFromPrice(priceStr: string): string {
+  const match = priceStr.match(/\/(.+)$/);
+  return match ? match[1].trim() : 'unit';
+}
+
+// ── Helper: get Arabic unit label from product moq or price tier unit ─────────
+function getArabicUnit(unitStr: string): string {
+  const u = unitStr.toLowerCase().trim();
+  if (u === 'ton' || u === 'tons' || u === 't') return 'طن';
+  if (u === 'kg' || u === 'kgs' || u === 'kilogram') return 'كجم';
+  if (u === 'm' || u === 'meter' || u === 'meters') return 'متر';
+  if (u === 'pc' || u === 'pcs' || u === 'piece' || u === 'pieces') return 'قطعة';
+  if (u === 'bag' || u === 'bags') return 'كيس';
+  if (u === 'roll' || u === 'rolls') return 'لفة';
+  if (u === 'unit' || u === 'units') return 'وحدة';
+  if (u === 'set' || u === 'sets') return 'طقم';
+  if (u === 'box' || u === 'boxes') return 'صندوق';
+  return unitStr;
+}
+
+// ── Helper: format price tier display correctly (fix reversed RTL display) ────
+// Input: "$420/unit" → Arabic: "$420 / وحدة" | English: "$420/unit"
+function formatTierPrice(priceStr: string, isArabic: boolean): string {
+  const slashIdx = priceStr.lastIndexOf('/');
+  if (slashIdx === -1) return priceStr;
+  const amount = priceStr.substring(0, slashIdx).trim();
+  const unit = priceStr.substring(slashIdx + 1).trim();
+  if (isArabic) {
+    return `${amount} / ${getArabicUnit(unit)}`;
+  }
+  return `${amount} / ${unit}`;
+}
+
 const fallbackProduct: ProductDetail = {
   id: 'unknown', name: 'Product Details', nameAr: 'تفاصيل المنتج',
   images: [{ src: "https://img.rocket.new/generatedImages/rocket_gen_img_1eac6163f-1764681674678.png", alt: 'Product image' }],
@@ -312,6 +401,8 @@ export default function ProductDetailPage() {
   const isArabic = language === 'ar';
   const displayName = (p: ProductDetail) => isArabic && p.nameAr ? p.nameAr : p.name;
   const displayDescription = (p: ProductDetail) => isArabic && p.descriptionAr ? p.descriptionAr : p.description;
+  const displayCategory = (category: string) => isArabic ? CATEGORY_AR[category] || category : category;
+  const displayCountry = (country: string) => isArabic ? COUNTRY_AR[country] || country : country;
   const params = useParams();
   const id = typeof params?.id === 'string' ? params.id : '';
   const { addItem, isInCart } = useCart();
@@ -639,9 +730,9 @@ export default function ProductDetailPage() {
             {pp.home}
           </Link>
           <Icon name="ChevronRightIcon" size={11} className="shrink-0 text-border" />
-          <Link href="/categories" className="hover:text-foreground transition-colors whitespace-nowrap">{product.category}</Link>
+          <Link href="/categories" className="hover:text-foreground transition-colors whitespace-nowrap">{displayCategory(product.category)}</Link>
           <Icon name="ChevronRightIcon" size={11} className="shrink-0 text-border" />
-          <span className="text-foreground font-semibold truncate max-w-[200px]">{product.name}</span>
+          <span className="text-foreground font-semibold truncate max-w-[200px]">{displayName(product)}</span>
         </div>
       </div>
 
@@ -829,13 +920,16 @@ export default function ProductDetailPage() {
                   const basePrice = parseFloat(product.priceTiers![0].price.replace(/[^0-9.]/g, ''));
                   const thisPrice = parseFloat(tier.price.replace(/[^0-9.]/g, ''));
                   const savingPct = basePrice > 0 && i > 0 ? Math.round((1 - thisPrice / basePrice) * 100) : 0;
+                  // Determine unit label from price tier string
+                  const tierUnit = extractUnitFromPrice(tier.price);
+                  const unitLabel = isArabic ? getArabicUnit(tierUnit) : tierUnit;
                   return (
                     <div key={i} className={`flex items-center justify-between px-4 py-3.5 ${tierColors[i] || 'bg-muted/10'} transition-colors`}>
                       <div className="flex items-center gap-3">
                         <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dotColors[i] || 'bg-muted-foreground'}`} />
                         <div>
                           <p className="text-xs font-bold text-foreground">
-                            {tier.maxQty === '+' ? `≥ ${tier.minQty} ${isArabic ? 'وحدة' : 'units'}` : `${tier.minQty} – ${tier.maxQty} ${isArabic ? 'وحدة' : 'units'}`}
+                            {tier.maxQty === '+' ? `≥ ${tier.minQty} ${unitLabel}` : `${tier.minQty} – ${tier.maxQty} ${unitLabel}`}
                           </p>
                           <p className="text-[10px] text-muted-foreground mt-0.5">{tierLabels[i] || ''}</p>
                         </div>
@@ -846,45 +940,22 @@ export default function ProductDetailPage() {
                             -{savingPct}%
                           </span>
                         }
-                        <span className={`text-sm font-extrabold ${i === product.priceTiers!.length - 1 ? 'text-accent' : 'text-foreground'}`}>
-                          {tier.price}
+                        <span className={`text-sm font-extrabold ${i === product.priceTiers!.length - 1 ? 'text-accent' : 'text-foreground'}`} dir="ltr">
+                          {formatTierPrice(tier.price, isArabic)}
                         </span>
                       </div>
                     </div>);
 
                 })}
               </div>
-              {/* Note: no duplicate RFQ shortcut here — primary CTA is below */}
+              {/* Note: no duplicate RFQ shortcut here — primary CTA is in sidebar and sticky bar */}
             </div>
             }
 
             {/* ── PRIMARY CTA BLOCK — conditional on B2B vs B2C ── */}
             {isB2B ? (
-            /* B2B: One prominent "Request Custom RFQ" CTA */
-            <div className="rounded-2xl border-2 border-primary/40 bg-gradient-to-br from-primary/6 to-accent/4 p-4">
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/12 flex items-center justify-center shrink-0">
-                    <Icon name="DocumentMagnifyingGlassIcon" size={20} className="text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-extrabold text-foreground">
-                      {isArabic ? 'طلب تسعير كميات / Request Custom RFQ' : 'Request Custom RFQ / طلب تسعير كميات'}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                      {isArabic ?
-                    'احصل على سعر مخصص للمواصفات الخاصة بك، الكميات الكبيرة، أو متطلبات التصنيع المخصص.' : 'Get a custom quote for your specific specs, large volumes, or custom manufacturing requirements.'}
-                    </p>
-                  </div>
-                </div>
-                {/* Primary RFQ button */}
-                <Link
-                href={`/rfq/create?productId=${product.id}`}
-                className="w-full flex items-center justify-center gap-2.5 py-3.5 px-5 bg-primary text-primary-foreground text-sm font-extrabold rounded-xl shadow-md shadow-primary/20 hover:bg-primary/90 active:scale-[0.98] transition-all mb-2.5">
-                  <Icon name="DocumentTextIcon" size={16} variant="solid" />
-                  <span>{isArabic ? 'طلب تسعير كميات' : 'Request Custom RFQ'}</span>
-                  <Icon name="ArrowRightIcon" size={14} />
-                </Link>
-                {/* Secondary B2B actions */}
+            /* B2B: secondary actions only (Chat + Sample/Cart) — RFQ is in sidebar & sticky bar */
+            <div className="rounded-2xl border border-border bg-muted/20 p-4">
                 <div className="grid grid-cols-2 gap-2">
                   <Link
                   href={`/chat/${product.id}`}
@@ -1022,7 +1093,7 @@ export default function ProductDetailPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-foreground truncate">{product.supplier}</p>
-                  <p className="text-xs text-muted-foreground">{product.supplierCountry}</p>
+                  <p className="text-xs text-muted-foreground">{displayCountry(product.supplierCountry)}</p>
                   {product.factoryArea &&
                   <p className="text-[10px] text-muted-foreground mt-0.5">{pp.factory}: {product.factoryArea}</p>
                   }
@@ -1398,28 +1469,32 @@ export default function ProductDetailPage() {
                       <p className="text-sm font-bold text-foreground">{pp.volumePricing}</p>
                     </div>
                     <div className="divide-y divide-border">
-                      {product.priceTiers.map((tier, i) =>
-                  <div key={i} className={`flex items-center justify-between px-5 py-4 ${i === product.priceTiers!.length - 1 ? 'bg-accent/5' : 'hover:bg-muted/30'} transition-colors`}>
+                      {product.priceTiers.map((tier, i) => {
+                    const tierUnit = extractUnitFromPrice(tier.price);
+                    const unitLabel = isArabic ? getArabicUnit(tierUnit) : tierUnit;
+                    return (
+                      <div key={i} className={`flex items-center justify-between px-5 py-4 ${i === product.priceTiers!.length - 1 ? 'bg-accent/5' : 'hover:bg-muted/30'} transition-colors`}>
                           <div>
                             <p className="text-sm font-bold text-foreground">
-                              {tier.maxQty === '+' ? `${tier.minQty}+ ${pp.units}` : `${tier.minQty} – ${tier.maxQty} ${pp.units}`}
+                              {tier.maxQty === '+' ? `${tier.minQty}+ ${unitLabel}` : `${tier.minQty} – ${tier.maxQty} ${unitLabel}`}
                             </p>
                             <p className="text-xs text-muted-foreground mt-0.5">
                               {i === 0 ? pp.standardOrder : i === 1 ? pp.bulkDiscount : pp.bestPrice}
                             </p>
                           </div>
                           <div className="text-right">
-                            <p className={`text-lg font-extrabold ${i === product.priceTiers!.length - 1 ? 'text-accent' : 'text-foreground'}`}>
-                              {tier.price}
+                            <p className={`text-lg font-extrabold ${i === product.priceTiers!.length - 1 ? 'text-accent' : 'text-foreground'}`} dir="ltr">
+                              {formatTierPrice(tier.price, isArabic)}
                             </p>
                             {i > 0 &&
-                      <p className="text-xs text-accent font-semibold">
+                          <p className="text-xs text-accent font-semibold">
                                 {pp.save} {Math.round((1 - parseFloat(tier.price.replace(/[^0-9.]/g, '')) / parseFloat(product.priceTiers![0].price.replace(/[^0-9.]/g, ''))) * 100)}%
                               </p>
-                      }
+                          }
                           </div>
-                        </div>
-                  )}
+                        </div>);
+
+                  })}
                     </div>
                   </div> :
 

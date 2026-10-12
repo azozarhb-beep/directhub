@@ -37,6 +37,53 @@ interface MarketplaceProductCardProps {
   showChat?: boolean;
 }
 
+// ─── Category label translator ────────────────────────────────────────────────
+const CATEGORY_AR_LABELS: Record<string, string> = {
+  metals: 'معادن وصلب',
+  'metals-steel': 'معادن وصلب',
+  plastics: 'بلاستيك وبوليمرات',
+  'plastics-rubber': 'بلاستيك وبوليمرات',
+  electronics: 'إلكترونيات',
+  automotive: 'سيارات',
+  construction: 'بناء',
+  building: 'بناء',
+  medical: 'طبي',
+  furniture: 'أثاث',
+  energy: 'طاقة',
+  food: 'غذاء',
+  textiles: 'منسوجات',
+  machinery: 'آلات',
+  packaging: 'تغليف',
+  beauty: 'تجميل',
+  pharmaceuticals: 'أدوية',
+  auto: 'سيارات',
+};
+
+// ─── Unit translator ──────────────────────────────────────────────────────────
+const UNIT_AR_LABELS: Record<string, string> = {
+  ton: 'لكل طن',
+  tons: 'لكل طن',
+  kg: 'لكل كجم',
+  kgs: 'لكل كجم',
+  pcs: 'قطعة',
+  units: 'وحدة',
+  unit: 'وحدة',
+  meters: 'متر',
+  liters: 'لتر',
+  sheets: 'صفيحة',
+  rolls: 'لفة',
+  sets: 'طقم',
+  sqm: 'م²',
+};
+
+function translateUnit(unit: string): string {
+  return UNIT_AR_LABELS[unit.toLowerCase()] || unit;
+}
+
+function translateCategory(category: string): string {
+  return CATEGORY_AR_LABELS[category.toLowerCase()] || category.replace(/_/g, ' ');
+}
+
 // ─── Star Rating ──────────────────────────────────────────────────────────────
 const StarRating: React.FC<{ rating: number; size?: number }> = ({ rating, size = 11 }) => (
   <div className="flex items-center gap-0.5">
@@ -65,7 +112,7 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
   showChat = true,
 }) => {
   const imageUrl = product.image_url || '/assets/images/no_image.png';
-  const supplierName = product.company_name || 'Verified Supplier';
+  const supplierName = product.company_name || 'مورّد موثّق';
   const rating = product.rating || 4.2;
   const reviewCount = product.review_count ?? ((index * 37 + 42) % 200 + 20);
   const txVolume = product.transaction_volume ?? ((index * 53 + 50) % 500 + 50);
@@ -79,6 +126,8 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
 
   const displayNameAr = product.name_ar || product.name;
   const displayNameEn = product.name;
+
+  const unitLabel = translateUnit(product.unit);
 
   return (
     <div className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 hover:shadow-lg transition-all duration-200 flex flex-col">
@@ -101,7 +150,7 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
               <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
-              مورد موثق
+              مورّد موثّق
             </span>
           )}
           {isReadyToShip && (
@@ -114,11 +163,11 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
           )}
         </div>
 
-        {/* Category badge top-right */}
+        {/* Category badge top-right — translated to Arabic */}
         {product.category && (
           <div className="absolute top-2 right-2">
-            <span className="px-2 py-0.5 bg-black/50 backdrop-blur-sm text-white text-[9px] font-semibold rounded-full capitalize">
-              {product.category.replace(/_/g, ' ')}
+            <span className="px-2 py-0.5 bg-black/50 backdrop-blur-sm text-white text-[9px] font-semibold rounded-full">
+              {translateCategory(product.category)}
             </span>
           </div>
         )}
@@ -134,7 +183,7 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
       </Link>
 
       {/* ── Content ── */}
-      <div className="p-2.5 flex flex-col flex-1 gap-1.5">
+      <div className="p-2.5 flex flex-col flex-1 gap-1.5 pb-3">
         {/* Product Title */}
         <Link href={`/product/${product.id}`} className="block">
           <h3 className="text-xs font-bold text-foreground line-clamp-2 leading-snug group-hover:text-primary transition-colors" dir="rtl">
@@ -149,22 +198,23 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
         <div className="bg-muted/40 rounded-lg px-2 py-1.5">
           {buyerMode === 'b2b' ? (
             <>
-              <div className="flex items-baseline gap-1">
+              <div className="flex items-baseline gap-1" dir="ltr">
                 <span className="text-sm font-extrabold text-primary">${b2bPriceMin}</span>
                 <span className="text-xs text-muted-foreground">-</span>
                 <span className="text-sm font-extrabold text-primary">${b2bPriceMax}</span>
+                <span className="text-[10px] text-muted-foreground mr-1">{unitLabel}</span>
               </div>
               <div className="flex items-center gap-1 mt-0.5">
                 <Icon name="CubeIcon" size={10} className="text-amber-600" />
                 <span className="text-[10px] text-amber-700 font-semibold" dir="rtl">
-                  الحد الأدنى: {product.minimum_order_qty.toLocaleString()} {product.unit}
+                  الحد الأدنى: {product.minimum_order_qty.toLocaleString()} {unitLabel}
                 </span>
               </div>
             </>
           ) : (
-            <div className="flex items-baseline gap-1">
+            <div className="flex items-baseline gap-1" dir="ltr">
               <span className="text-sm font-extrabold text-primary">${b2cPrice}</span>
-              <span className="text-[10px] text-muted-foreground">/ {product.unit}</span>
+              <span className="text-[10px] text-muted-foreground">{unitLabel}</span>
             </div>
           )}
         </div>
