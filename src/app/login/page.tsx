@@ -163,8 +163,11 @@ function LoginPageInner() {
     setLoading(true);
     try {
       const roleConfig = getRoleConfig(accountRole);
+      // For business roles, the entered name is the business/company name
+      const isBusinessRole = accountRole !== 'buyer';
       const signUpData = await signUp(regEmail, regPassword, {
-        fullName: regFullName.trim(),
+        fullName: isBusinessRole ? '' : regFullName.trim(),
+        company_name: isBusinessRole ? regFullName.trim() : '',
         role: roleConfig.role,
         account_role: accountRole,
         dashboard_path: roleConfig.dashboardPath,
@@ -474,13 +477,19 @@ function LoginPageInner() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t.login.fullName} *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    {accountRole !== 'buyer' ? (isRTL ?'اسم المنشأة / الشركة *' : 'Business / Company Name *')
+                      : `${t.login.fullName} *`}
+                  </label>
                   <input
                     type="text"
                     required
                     value={regFullName}
                     onChange={(e) => setRegFullName(e.target.value)}
-                    placeholder={lx.fullNamePlaceholder}
+                    placeholder={
+                      accountRole !== 'buyer' ? (isRTL ?'مثال: مؤسسة النور للتوريد والتوزيع' : 'e.g. Al-Noor Trading & Distribution Co.')
+                        : lx.fullNamePlaceholder
+                    }
                     className="w-full h-11 px-4 rounded-lg border border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-colors"
                   />
                 </div>

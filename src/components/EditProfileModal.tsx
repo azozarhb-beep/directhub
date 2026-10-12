@@ -61,6 +61,7 @@ export interface EditProfileData {
   avatar_url: string | null;
   cover_url: string | null;
   email?: string;
+  account_role?: string | null;
 }
 
 interface EditProfileModalProps {
@@ -74,6 +75,47 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, userEmail,
   const { t, dir, isRTL } = useLanguage();
   const ui = t.editProfile;
   const supabase = createClient();
+
+  // Determine role-specific labels
+  const accountRole = (profile.account_role || '').toLowerCase().trim();
+  const isCommercialSupplier = accountRole === 'commercial_supplier';
+  const isManufacturer = accountRole === 'local_manufacturer' || accountRole === 'international_manufacturer';
+  const isBusinessRole = isCommercialSupplier || isManufacturer;
+
+  const roleTitle = isCommercialSupplier
+    ? 'ملف المورّد التجاري — تحديث بيانات منشأتك والشعار والغلاف'
+    : isManufacturer
+    ? 'ملف المصنع — تحديث بيانات مصنعك والشعار والغلاف'
+    : ui.title;
+
+  const roleSubtitle = isCommercialSupplier
+    ? 'تحديث بيانات منشأتك والشعار والغلاف'
+    : isManufacturer
+    ? 'تحديث بيانات مصنعك والشعار والغلاف'
+    : ui.subtitle;
+
+  const logoLabel = isCommercialSupplier
+    ? 'شعار المنشأة / المورّد'
+    : isManufacturer
+    ? 'شعار المصنع'
+    : ui.changeCover;
+
+  const companyNameLabel = isCommercialSupplier
+    ? 'اسم المؤسسة / الشركة التجارية *'
+    : isManufacturer
+    ? 'اسم المصنع / الشركة *'
+    : ui.companyName;
+
+  const companyPlaceholder = isCommercialSupplier
+    ? 'مثال: مؤسسة النور للتوريد والتوزيع'
+    : isManufacturer
+    ? 'مثال: مصنع الخليج للصناعات الثقيلة'
+    : ui.companyPlaceholder;
+
+  const bioPlaceholder = isCommercialSupplier
+    ? 'نبذة عن نشاطك التجاري، منتجاتك ومناطق التوزيع...'
+    : isManufacturer
+    ? 'نبذة عن مصنعك، خطوط الإنتاج والطاقة التشغيلية...' :'';
 
   const initialDialCode = getDialCode(profile.country || '');
   const storedPhone = profile.phone || '';
@@ -276,10 +318,10 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, userEmail,
           </button>
           <div>
             <h2 className="text-base font-extrabold text-foreground leading-tight">
-              {ui.title}
+              {roleTitle}
             </h2>
             <p className="text-[11px] text-muted-foreground">
-              {ui.subtitle}
+              {roleSubtitle}
             </p>
           </div>
         </div>
@@ -312,7 +354,7 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, userEmail,
             className="absolute bottom-3 end-3 flex items-center gap-1.5 px-3 py-1.5 bg-black/50 hover:bg-black/70 text-white text-xs font-bold rounded-xl transition-colors backdrop-blur-sm"
           >
             <Icon name="CameraIcon" size={13} />
-            {uploadingCover ? ui.uploading : ui.changeCover}
+            {uploadingCover ? ui.uploading : (isBusinessRole ? logoLabel : ui.changeCover)}
           </button>
           <input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => handleImageSelect(e, 'cover')} />
         </div>
@@ -410,16 +452,28 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, userEmail,
             <div className="bg-card border border-border rounded-2xl overflow-hidden">
               <div className="px-4 py-3">
                 <label className="block text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wide">
-                  {ui.companyName}
+                  {companyNameLabel}
                 </label>
                 <input
                   type="text"
                   value={form.company_name}
                   onChange={(e) => setForm((p) => ({ ...p, company_name: e.target.value }))}
                   className="w-full text-sm font-semibold text-foreground bg-transparent focus:outline-none placeholder:text-muted-foreground/50"
-                  placeholder={ui.companyPlaceholder}
+                  placeholder={companyPlaceholder}
                 />
               </div>
+              {isBusinessRole && bioPlaceholder && (
+                <div className="px-4 py-3 border-t border-border">
+                  <label className="block text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wide">
+                    نبذة تعريفية
+                  </label>
+                  <textarea
+                    rows={3}
+                    className="w-full text-sm font-semibold text-foreground bg-transparent focus:outline-none placeholder:text-muted-foreground/50 resize-none"
+                    placeholder={bioPlaceholder}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
@@ -517,7 +571,7 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, userEmail,
                       <input
                         type="text"
                         value={form.city}
-                        onChange={(e) => { setForm((p) => ({ ...p, city: e.target.value })); setCitySearch(e.target.value); setShowCityDropdown(true); }}
+                        onChange={(e) => { setForm((p) => ({ ...p, city })); setCitySearch(e.target.value); setShowCityDropdown(true); }}
                         onFocus={() => { setShowCityDropdown(true); setCitySearch(''); }}
                         onBlur={() => setTimeout(() => setShowCityDropdown(false), 200)}
                         className="flex-1 text-sm font-semibold text-foreground bg-transparent focus:outline-none placeholder:text-muted-foreground/50"
