@@ -2,10 +2,64 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import EditProfileModal, { EditProfileData } from '@/components/EditProfileModal';
 import { fetchUserProfileRow } from '@/lib/fetchUserProfile';
+import Icon from '@/components/ui/AppIcon';
+
+interface DashboardCardConfig {
+  title: string;
+  description: string;
+  href: string;
+  icon: string;
+}
+
+function getDashboardCard(accountRole: string): DashboardCardConfig | null {
+  const role = (accountRole || '').toLowerCase().trim();
+  if (role === 'commercial_supplier') {
+    return {
+      title: 'غرفة تحكم المورد التجاري',
+      description: 'إدارة منتجاتك ومخزونك وطلبات الجملة والتجزئة',
+      href: '/supplier/local-dashboard',
+      icon: 'BuildingStorefrontIcon',
+    };
+  }
+  if (role === 'local_manufacturer') {
+    return {
+      title: 'لوحة تحكم المصنع',
+      description: 'إدارة خطوط الإنتاج والقدرة التشغيلية والمنتجات',
+      href: '/factory/local-dashboard',
+      icon: 'BuildingOffice2Icon',
+    };
+  }
+  if (role === 'international_manufacturer') {
+    return {
+      title: 'لوحة تحكم المصنع الدولي',
+      description: 'إدارة منتجاتك وعروضك للأسواق الدولية',
+      href: '/manufacturer/international-dashboard',
+      icon: 'GlobeAltIcon',
+    };
+  }
+  if (role === 'logistics_partner') {
+    return {
+      title: 'لوحة تحكم اللوجستيات',
+      description: 'إدارة الشحنات والتوصيل والشراكات اللوجستية',
+      href: '/logistics/dashboard',
+      icon: 'TruckIcon',
+    };
+  }
+  if (role === 'field_agent') {
+    return {
+      title: 'لوحة تحكم المندوب الميداني',
+      description: 'إدارة العمولات والعملاء والمهام الميدانية',
+      href: '/agent/dashboard',
+      icon: 'UserGroupIcon',
+    };
+  }
+  return null;
+}
 
 export default function EditProfilePage() {
   const router = useRouter();
@@ -26,7 +80,7 @@ export default function EditProfilePage() {
       const { data, error } = await fetchUserProfileRow(
         supabase,
         user.id,
-        'id, full_name, company_name, country, city, phone, avatar_url, cover_url, cover_photo_url'
+        'id, full_name, company_name, country, city, phone, avatar_url, cover_url, cover_photo_url, account_role'
       );
       if (error) {
         console.error('edit profile fetch:', error.message);
@@ -42,6 +96,7 @@ export default function EditProfilePage() {
           phone: data.phone ?? null,
           avatar_url: data.avatar_url ?? null,
           cover_url: data.cover_url || data.cover_photo_url || null,
+          account_role: data.account_role ?? (user.user_metadata?.account_role ?? null),
         });
       }
       setLoading(false);
@@ -81,8 +136,27 @@ export default function EditProfilePage() {
     );
   }
 
+  const dashboardCard = getDashboardCard(profile.account_role || '');
+
   return (
     <div className="min-h-screen bg-background">
+      {dashboardCard && (
+        <div className="px-4 pt-4 max-w-2xl mx-auto">
+          <Link
+            href={dashboardCard.href}
+            className="flex items-center gap-3 px-4 py-3 bg-primary/10 border border-primary/20 rounded-2xl hover:bg-primary/15 transition-colors group"
+          >
+            <div className="w-9 h-9 rounded-xl bg-primary/20 flex items-center justify-center shrink-0">
+              <Icon name={dashboardCard.icon as any} size={18} className="text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-extrabold text-primary leading-tight">{dashboardCard.title}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{dashboardCard.description}</p>
+            </div>
+            <Icon name="ArrowLeftIcon" size={15} className="text-primary shrink-0 group-hover:-translate-x-0.5 transition-transform" />
+          </Link>
+        </div>
+      )}
       <EditProfileModal
         profile={profile}
         userEmail={user?.email}
