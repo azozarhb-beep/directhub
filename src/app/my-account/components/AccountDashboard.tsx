@@ -234,45 +234,91 @@ const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnTyp
   );
 };
 
-/* ─── Smart Add Product Listing Button ─── */
-const AddProductListingButton: React.FC<{ user: any; label: string; sublabel: string; checkingLabel: string }> = ({ user, label, sublabel, checkingLabel }) => {
+/* ─── Role-Based Add Product Button ─── */
+const RoleBasedAddProductButton: React.FC<{
+  profile: UserProfile | null;
+  label: string;
+  sublabel: string;
+}> = ({ profile, label, sublabel }) => {
   const router = useRouter();
-  const [checking, setChecking] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
-  const handleClick = async () => {
-    if (checking) return;
-    if (!user) { router.push('/factory/register'); return; }
-    setChecking(true);
-    try {
-      const supabase = createClient();
-      const { data } = await supabase.from('factory_registrations').select('id').eq('user_id', user.id).maybeSingle();
-      router.push(data ? '/manufacturer/dashboard' : '/factory/register');
-    } catch {
-      router.push('/factory/register');
-    } finally {
-      setChecking(false);
+  const workspaceRole = getUserWorkspaceRole(profile);
+  const accountRole = (profile?.account_role || '').toLowerCase().trim();
+  const isBuyerRole = workspaceRole === 'buyer' || workspaceRole === 'unknown';
+
+  const getAddProductDestination = (): string => {
+    if (accountRole === 'commercial_supplier') return '/supplier/local-dashboard';
+    if (accountRole === 'local_manufacturer') return '/factory/local-dashboard';
+    if (accountRole === 'international_manufacturer') return '/manufacturer/international-dashboard';
+    if (workspaceRole === 'manufacturer') return '/factory/local-dashboard';
+    return '/factory/local-dashboard';
+  };
+
+  const handleClick = () => {
+    if (isBuyerRole) {
+      setShowUpgradeModal(true);
+    } else {
+      router.push(getAddProductDestination());
     }
   };
 
   return (
-    <button
-      onClick={handleClick}
-      disabled={checking}
-      className="flex flex-col items-center gap-3 p-4 bg-card border border-border rounded-2xl hover:shadow-md hover:border-orange-300 transition-all text-center group w-full disabled:opacity-70"
-    >
-      <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center group-hover:bg-orange-200 transition-colors shrink-0">
-        {checking
-          ? <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
-          : <Icon name="PlusCircleIcon" size={22} className="text-orange-600" />
-        }
-      </div>
-      <div className="min-w-0">
-        <span className="text-xs font-bold text-foreground group-hover:text-orange-600 transition-colors block leading-tight">
-          {checking ? checkingLabel : label}
-        </span>
-        <span className="text-[11px] text-muted-foreground mt-0.5 block">{sublabel}</span>
-      </div>
-    </button>
+    <>
+      <button
+        onClick={handleClick}
+        className="flex flex-col items-center gap-3 p-4 bg-card border border-border rounded-2xl hover:shadow-md hover:border-orange-300 transition-all text-center group w-full"
+      >
+        <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center group-hover:bg-orange-200 transition-colors shrink-0">
+          <Icon name="PlusCircleIcon" size={22} className="text-orange-600" />
+        </div>
+        <div className="min-w-0">
+          <span className="text-xs font-bold text-foreground group-hover:text-orange-600 transition-colors block leading-tight">
+            {label}
+          </span>
+          <span className="text-[11px] text-muted-foreground mt-0.5 block">{sublabel}</span>
+        </div>
+      </button>
+
+      {/* Upgrade Prompt Modal — shown only for buyers */}
+      {showUpgradeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowUpgradeModal(false)}>
+          <div
+            className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+            dir="rtl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                <Icon name="ArrowUpCircleIcon" size={24} className="text-amber-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-foreground">ترقية الحساب مطلوبة</h3>
+                <p className="text-xs text-muted-foreground">حسابك الحالي مسجل كمشتري</p>
+              </div>
+            </div>
+            <p className="text-sm text-foreground leading-relaxed mb-5">
+              حسابك الحالي مسجل كمشتري. هل ترغب في ترقية حسابك إلى مورّد أو مصنع لتتمكن من إضافة المنتجات والبيع؟
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => { setShowUpgradeModal(false); router.push('/factory/register'); }}
+                className="w-full px-4 py-3 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+              >
+                <Icon name="ArrowUpCircleIcon" size={16} />
+                ترقية الحساب الآن
+              </button>
+              <button
+                onClick={() => setShowUpgradeModal(false)}
+                className="w-full px-4 py-2.5 bg-muted text-muted-foreground text-sm font-medium rounded-xl hover:bg-muted/80 transition-colors"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 
@@ -1573,13 +1619,12 @@ const AccountDashboard: React.FC = () => {
                     </div>
                     <span className="text-xs font-bold text-foreground group-hover:text-green-600 transition-colors leading-tight">{t.myAccount.actionFinancial}</span>
                   </Link>
-                  {/* Add Product */}
-                  {!isBuyer && <AddProductListingButton
-                    user={user}
+                  {/* Add Product — role-aware: suppliers/manufacturers go to dashboard, buyers see upgrade prompt */}
+                  <RoleBasedAddProductButton
+                    profile={profile}
                     label={t.myAccount.actionAddProduct}
                     sublabel={t.myAccount.actionAddProductSub}
-                    checkingLabel={t.myAccount.checkingVerification}
-                  />}
+                  />
                   {/* Upgrade — buyer only */}
                   {isBuyer && (
                     <Link href="/account/upgrade" className="flex flex-col items-center gap-3 p-4 bg-card border border-amber-200 rounded-2xl hover:shadow-md hover:border-amber-400 transition-all text-center group">

@@ -12,7 +12,7 @@
  */
 
 export type PlatformRole =
-  | 'buyer' |'manufacturer' |'agent' |'logistics' |'admin' |'unknown';
+  | 'buyer' | 'manufacturer' | 'commercial_supplier' | 'agent' | 'logistics' | 'admin' | 'unknown';
 
 export interface RoleProfileHints {
   role?: string | null;
@@ -26,6 +26,7 @@ export interface RoleProfileHints {
 export const ROLE_HOME_PATH: Record<Exclude<PlatformRole, 'unknown'>, string> = {
   buyer: '/buyer-dashboard',
   manufacturer: '/manufacturer/dashboard',
+  commercial_supplier: '/supplier/local-dashboard',
   agent: '/agent/dashboard',
   logistics: '/logistics/dashboard',
   admin: '/admin/control-room',
@@ -45,7 +46,9 @@ export const EXCLUSIVE_ROOM_PREFIXES: { prefix: string; roles: PlatformRole[] }[
   { prefix: '/manufacturer/international-dashboard', roles: ['manufacturer'] },
   { prefix: '/manufacturer/b2b', roles: ['manufacturer'] },
   { prefix: '/manufacturer/b2c', roles: ['manufacturer'] },
-  { prefix: '/supplier/local-dashboard', roles: ['manufacturer'] },
+  // Strict isolation: supplier dashboard is ONLY for commercial_supplier
+  { prefix: '/supplier/local-dashboard', roles: ['commercial_supplier'] },
+  // Strict isolation: factory dashboard is ONLY for manufacturer (local/international factory)
   { prefix: '/factory/local-dashboard', roles: ['manufacturer'] },
   { prefix: '/agent/dashboard', roles: ['agent'] },
   { prefix: '/agent/upload-license', roles: ['agent'] },
@@ -117,13 +120,19 @@ export function resolvePlatformRole(hints: RoleProfileHints): PlatformRole {
     ) {
       return 'logistics';
     }
+    // Commercial supplier — must be checked BEFORE generic manufacturer/supplier
+    if (
+      c === 'commercial_supplier' ||
+      c === 'supplier' ||
+      c === 'local_supplier'
+    ) {
+      return 'commercial_supplier';
+    }
     if (
       c === 'manufacturer' ||
       c === 'factory' ||
-      c === 'supplier' ||
       c === 'seller' ||
-      c === 'vendor' ||
-      c === 'local_supplier'
+      c === 'vendor'
     ) {
       return 'manufacturer';
     }
@@ -131,10 +140,12 @@ export function resolvePlatformRole(hints: RoleProfileHints): PlatformRole {
   }
 
   const seller = (hints.seller_category || '').toLowerCase();
+  if (seller === 'local_supplier' || seller === 'commercial_supplier') {
+    return 'commercial_supplier';
+  }
   if (
     seller === 'local_factory' ||
-    seller === 'international_factory' ||
-    seller === 'local_supplier'
+    seller === 'international_factory'
   ) {
     return 'manufacturer';
   }
