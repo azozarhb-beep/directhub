@@ -14,6 +14,22 @@ import { sendWelcomeEmail } from '@/lib/email';
 type UserType = 'buyer' | 'supplier';
 type Mode = 'login' | 'register';
 
+type AccountRole =
+  | 'buyer' |'local_manufacturer' |'international_manufacturer' |'commercial_supplier' |'logistics_partner' |'field_agent';
+
+const ACCOUNT_ROLES: { value: AccountRole; labelAr: string; labelEn: string; dashboardPath: string; role: string }[] = [
+  { value: 'buyer', labelAr: 'مشتري / عميل', labelEn: 'Buyer / Customer', dashboardPath: '/buyer-dashboard', role: 'buyer' },
+  { value: 'local_manufacturer', labelAr: 'مصنع محلي', labelEn: 'Local Manufacturer', dashboardPath: '/factory/local-dashboard', role: 'manufacturer' },
+  { value: 'international_manufacturer', labelAr: 'مصنع دولي', labelEn: 'International Manufacturer', dashboardPath: '/manufacturer/international-dashboard', role: 'manufacturer' },
+  { value: 'commercial_supplier', labelAr: 'مورّد تجاري', labelEn: 'Commercial Supplier', dashboardPath: '/supplier/local-dashboard', role: 'manufacturer' },
+  { value: 'logistics_partner', labelAr: 'مندوب لوجستي', labelEn: 'Logistics Agent', dashboardPath: '/logistics/dashboard', role: 'logistics_partner' },
+  { value: 'field_agent', labelAr: 'مندوب ميداني', labelEn: 'Field Agent', dashboardPath: '/agent/dashboard', role: 'field_agent' },
+];
+
+function getRoleConfig(accountRole: AccountRole) {
+  return ACCOUNT_ROLES.find(r => r.value === accountRole) || ACCOUNT_ROLES[0];
+}
+
 function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -55,6 +71,7 @@ function LoginPageInner() {
   const [regConfirmPw, setRegConfirmPw] = useState('');
   const [showRegPw, setShowRegPw] = useState(false);
   const [showRegConfirmPw, setShowRegConfirmPw] = useState(false);
+  const [accountRole, setAccountRole] = useState<AccountRole>('buyer');
 
   // Use AuthContext session state instead of calling getSession() directly.
   // Calling getSession() here concurrently with AuthContext's onAuthStateChange
@@ -62,8 +79,14 @@ function LoginPageInner() {
   useEffect(() => {
     if (authLoading) return; // Wait for AuthContext to resolve session
     if (user) {
-      const userRole = user.user_metadata?.role ?? user.app_metadata?.role;
       const redirect = searchParams?.get('redirect');
+      // Try to get dashboard_path from user metadata first
+      const dashboardPath = user.user_metadata?.dashboard_path;
+      if (dashboardPath) {
+        router.replace(redirect || dashboardPath);
+        return;
+      }
+      const userRole = user.user_metadata?.role ?? user.app_metadata?.role;
       if (userRole === 'manufacturer') {
         router.replace(redirect || '/manufacturer/dashboard');
       } else if (userRole === 'admin') {
@@ -104,8 +127,14 @@ function LoginPageInner() {
     setLoading(true);
     try {
       const data = await signIn(loginEmail, loginPassword);
-      const userRole = data?.user?.user_metadata?.role ?? data?.user?.app_metadata?.role;
       const redirect = searchParams?.get('redirect');
+      // Prefer dashboard_path from user metadata
+      const dashboardPath = data?.user?.user_metadata?.dashboard_path;
+      if (dashboardPath) {
+        router.push(redirect || dashboardPath);
+        return;
+      }
+      const userRole = data?.user?.user_metadata?.role ?? data?.user?.app_metadata?.role;
       if (userRole === 'manufacturer') {
         router.push(redirect || '/manufacturer/dashboard');
       } else if (userRole === 'admin') {
@@ -133,9 +162,12 @@ function LoginPageInner() {
     if (regPassword.length < 8) { setError(t.login.passwordMinLength); return; }
     setLoading(true);
     try {
+      const roleConfig = getRoleConfig(accountRole);
       const signUpData = await signUp(regEmail, regPassword, {
         fullName: regFullName.trim(),
-        role: userType === 'supplier' ? 'manufacturer' : 'buyer',
+        role: roleConfig.role,
+        account_role: accountRole,
+        dashboard_path: roleConfig.dashboardPath,
       });
       // Send welcome email automatically after successful registration
       sendWelcomeEmail(regEmail, regFullName.trim(), signUpData?.user?.id).catch(() => {
@@ -410,6 +442,35 @@ function LoginPageInner() {
                   <div className="flex-1 h-px bg-gray-200" />
                   <span className="text-xs text-gray-400">{lx.orWithEmail}</span>
                   <div className="flex-1 h-px bg-gray-200" />
+                </div>
+
+                {/* Account Role Selector */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    {isRTL ? 'صفة الحساب *' : 'Account Type *'}
+                  </label>
+                  <div className="grid grid-cols-1 gap-2">
+                    {ACCOUNT_ROLES.map((roleOption) => (
+                      <button
+                        key={roleOption.value}
+                        type="button"
+                        onClick={() => setAccountRole(roleOption.value)}
+                        className={`w-full h-10 px-4 rounded-lg border text-sm font-medium transition-all text-start flex items-center gap-2 ${
+                          accountRole === roleOption.value
+                            ? 'border-primary bg-primary/5 text-primary' :'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+                          accountRole === roleOption.value ? 'border-primary' : 'border-gray-300'
+                        }`}>
+                          {accountRole === roleOption.value && (
+                            <span className="w-2 h-2 rounded-full bg-primary" />
+                          )}
+                        </span>
+                        <span>{isRTL ? roleOption.labelAr : roleOption.labelEn}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>

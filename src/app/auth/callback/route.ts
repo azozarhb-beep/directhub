@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
       if (data?.user) {
         const { data: profile } = await supabase
           .from('user_profiles')
-          .select('role_selected, role, account_type, seller_category')
+          .select('role_selected, role, account_type, seller_category, dashboard_path')
           .eq('id', data.user.id)
           .single();
 
@@ -96,6 +96,25 @@ export async function GET(request: NextRequest) {
             newUserResponse.cookies.set(name, value);
           });
           return clearNextCookie(newUserResponse);
+        }
+
+        // Use dashboard_path from profile if available (set during registration)
+        const profileDashboardPath = profile?.dashboard_path;
+        if (profileDashboardPath) {
+          const preferred = nextCookie || nextParam;
+          const destination = preferred && canUseReturnPath(preferred, resolvePlatformRole({
+            role: profile?.role,
+            account_type: profile?.account_type,
+            seller_category: profile?.seller_category,
+            metadataRole: data.user.user_metadata?.role || data.user.app_metadata?.role || null,
+          }))
+            ? `${siteUrl}${preferred}`
+            : `${siteUrl}${profileDashboardPath}`;
+          const roleResponse = NextResponse.redirect(destination);
+          response.cookies.getAll().forEach(({ name, value }) => {
+            roleResponse.cookies.set(name, value);
+          });
+          return clearNextCookie(roleResponse);
         }
 
         const platformRole = resolvePlatformRole({
