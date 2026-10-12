@@ -52,17 +52,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       (meta.seller_category as string | undefined) ||
       (app.seller_category as string | undefined) ||
       null;
+    let accountRole =
+      (meta.account_role as string | undefined) ||
+      (app.account_role as string | undefined) ||
+      null;
 
     try {
       const { data: profile } = await supabase
         .from('user_profiles')
-        .select('role, account_type, seller_category')
+        .select('role, account_type, seller_category, account_role')
         .eq('id', authUser.id)
         .maybeSingle();
       if (profile) {
         role = profile.role || role;
         accountType = profile.account_type || accountType;
         sellerCategory = profile.seller_category || sellerCategory;
+        accountRole = (profile as any).account_role || accountRole;
       }
     } catch {
       // Profile fetch failed — still sync whatever JWT metadata we have
@@ -72,6 +77,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       role,
       account_type: accountType,
       seller_category: sellerCategory,
+      account_role: accountRole,
     });
   }, [supabase]);
 

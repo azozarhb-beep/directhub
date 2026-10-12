@@ -232,6 +232,10 @@ export async function middleware(request: NextRequest) {
       decodeCookie(request.cookies.get('dh_seller_category')?.value) ||
       decodeCookie(request.cookies.get('seller_category')?.value) ||
       null;
+    const cookieAccountRole =
+      decodeCookie(request.cookies.get('dh_account_role')?.value) ||
+      decodeCookie(request.cookies.get('account_role')?.value) ||
+      null;
 
     const platformRole = resolvePlatformRole({
       role:
@@ -250,10 +254,13 @@ export async function middleware(request: NextRequest) {
         cookieSellerCategory ||
         null,
       metadataRole:
+        (meta.account_role as string | undefined) ||
+        (app.account_role as string | undefined) ||
         (meta.user_role as string | undefined) ||
         (app.user_role as string | undefined) ||
         (meta.role as string | undefined) ||
         (app.role as string | undefined) ||
+        cookieAccountRole ||
         cookieRole ||
         null,
     });

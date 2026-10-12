@@ -9,6 +9,7 @@ export const ROLE_COOKIE_NAMES = {
   role: 'dh_role',
   accountType: 'dh_account_type',
   sellerCategory: 'dh_seller_category',
+  accountRole: 'dh_account_role',
 } as const;
 
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
@@ -28,9 +29,10 @@ export type RoleCookieHints = {
   role?: string | null;
   account_type?: string | null;
   seller_category?: string | null;
+  account_role?: string | null;
 };
 
-/** Persist role / account_type / seller_category for middleware room isolation. */
+/** Persist role / account_type / seller_category / account_role for middleware room isolation. */
 export function syncRoleCookies(hints: RoleCookieHints): void {
   if (hints.role) setCookie(ROLE_COOKIE_NAMES.role, hints.role);
   else clearCookie(ROLE_COOKIE_NAMES.role);
@@ -40,6 +42,9 @@ export function syncRoleCookies(hints: RoleCookieHints): void {
 
   if (hints.seller_category) setCookie(ROLE_COOKIE_NAMES.sellerCategory, hints.seller_category);
   else clearCookie(ROLE_COOKIE_NAMES.sellerCategory);
+
+  if (hints.account_role) setCookie(ROLE_COOKIE_NAMES.accountRole, hints.account_role);
+  else clearCookie(ROLE_COOKIE_NAMES.accountRole);
 }
 
 /** Clear role cookies on sign-out. */
@@ -47,4 +52,5 @@ export function clearRoleCookies(): void {
   clearCookie(ROLE_COOKIE_NAMES.role);
   clearCookie(ROLE_COOKIE_NAMES.accountType);
   clearCookie(ROLE_COOKIE_NAMES.sellerCategory);
+  clearCookie(ROLE_COOKIE_NAMES.accountRole);
 }
