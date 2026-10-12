@@ -49,6 +49,8 @@ interface UserProfile {
   transaction_pin_set_at?: string | null;
   phone?: string | null;
   account_type?: string;
+  account_role?: string;
+  dashboard_path?: string;
   notif_new_inquiries?: boolean;
   notif_order_updates?: boolean;
   notif_weekly_digest?: boolean;
@@ -162,16 +164,53 @@ function formatNumber(n: number): string {
 /* ─── Workspace Banner ─── */
 const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnType<typeof useRouter> }> = ({ profile, router }) => {
   const workspaceRole = getUserWorkspaceRole(profile);
-  const { t } = useLanguage();
-  const ma = t.myAccount;
   if (workspaceRole === 'buyer' || workspaceRole === 'unknown') return null;
-  const home = getHomeRoomForRole(workspaceRole);
-  const title =
-    workspaceRole === 'manufacturer' ?'Manufacturer Workspace'
-      : workspaceRole === 'logistics' ?'Logistics Workspace'
-        : workspaceRole === 'agent' ?'Agent Workspace' :'Admin Workspace';
-  const subtitle =
-    workspaceRole === 'manufacturer' ?'Manage your products, orders and factory profile' :'Access your workspace dashboard';
+
+  const accountRole = (profile?.account_role || '').toLowerCase().trim();
+
+  // Determine title, description, and destination based on account_role
+  let title = '';
+  let description = '';
+  let destination = profile?.dashboard_path || getHomeRoomForRole(workspaceRole);
+
+  if (accountRole === 'commercial_supplier') {
+    title = 'غرفة تحكم المورّد التجاري';
+    description = 'إدارة منتجاتك ومخزونك وطلبات الجملة والتجزئة';
+    destination = '/supplier/local-dashboard';
+  } else if (accountRole === 'local_manufacturer') {
+    title = 'غرفة تحكم المصنع المحلي';
+    description = 'إدارة خطوط الإنتاج والقدرة التشغيلية والمنتجات';
+    destination = '/factory/local-dashboard';
+  } else if (accountRole === 'international_manufacturer') {
+    title = 'غرفة تحكم المصنع الدولي';
+    description = 'إدارة منتجاتك وعروضك للأسواق الدولية';
+    destination = '/manufacturer/international-dashboard';
+  } else if (accountRole === 'logistics_partner') {
+    title = 'غرفة تحكم المندوب اللوجستي';
+    description = 'إدارة الشحنات والتوصيلات وتتبع الطلبات';
+    destination = '/logistics/dashboard';
+  } else if (accountRole === 'field_agent') {
+    title = 'غرفة تحكم المندوب الميداني';
+    description = 'إدارة مهامك الميدانية وتسجيل المصانع والعمولات';
+    destination = '/agent/dashboard';
+  } else if (workspaceRole === 'manufacturer') {
+    title = 'مساحة عمل المصنّع';
+    description = 'إدارة منتجاتك وطلباتك وملف المصنع';
+    destination = getHomeRoomForRole(workspaceRole);
+  } else if (workspaceRole === 'logistics') {
+    title = 'غرفة تحكم اللوجستيات';
+    description = 'إدارة الشحنات والتوصيلات';
+    destination = '/logistics/dashboard';
+  } else if (workspaceRole === 'agent') {
+    title = 'غرفة تحكم المندوب الميداني';
+    description = 'إدارة مهامك الميدانية والعمولات';
+    destination = '/agent/dashboard';
+  } else {
+    title = 'مساحة العمل';
+    description = 'الوصول إلى لوحة التحكم الخاصة بك';
+    destination = getHomeRoomForRole(workspaceRole);
+  }
+
   return (
     <div className="bg-gradient-to-r from-primary/10 to-orange-50 border border-primary/20 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4">
       <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -179,17 +218,17 @@ const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnTyp
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-extrabold text-foreground mb-0.5">
-          {workspaceRole === 'manufacturer' ? ma.manufacturerWorkspaceTitle : workspaceRole === 'logistics' ? ma.logisticsWorkspaceTitle : ma.adminWorkspaceTitle}
+          {title}
         </p>
         <p className="text-xs text-muted-foreground">
-          {workspaceRole === 'manufacturer' ? ma.manufacturerWorkspaceDesc : ma.workspaceAccessDesc}
+          {description}
         </p>
       </div>
       <button
-        onClick={() => router.push(home)}
+        onClick={() => router.push(destination)}
         className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 transition-opacity shrink-0"
       >
-        {ma.goToWorkspace}
+        الذهاب إلى مساحة العمل
       </button>
     </div>
   );
