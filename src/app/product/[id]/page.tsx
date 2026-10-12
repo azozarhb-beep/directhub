@@ -727,7 +727,7 @@ export default function ProductDetailPage() {
             {/* Title */}
             <div>
               <div className="flex items-start justify-between gap-3 mb-2">
-                <h1 className="text-xl md:text-2xl font-extrabold text-foreground leading-tight flex-1">
+                <h1 className="text-xl md:text-2xl font-extrabold text-foreground leading-tight flex-1" dir={isArabic ? 'rtl' : 'ltr'}>
                   {displayName(product)}
                 </h1>
                 <WishlistButton itemType="product" productId={product.id} size="sm" />
@@ -762,10 +762,10 @@ export default function ProductDetailPage() {
 
             {/* ── Price Block ── */}
             <div className="rounded-2xl border border-primary/25 overflow-hidden">
-              <div className="bg-gradient-to-br from-primary/8 via-primary/5 to-transparent px-5 py-4">
-                <p className="text-[10px] font-extrabold text-primary/70 uppercase tracking-widest mb-1">{pp.priceRange}</p>
-                <p className="text-3xl font-extrabold text-foreground tracking-tight">{product.priceRange}</p>
-                <p className="text-xs text-muted-foreground mt-1">{pp.perUnitByQty}</p>
+              <div className="bg-gradient-to-br from-primary/8 via-primary/5 to-transparent px-5 py-5">
+                <p className="text-[10px] font-extrabold text-primary/70 uppercase tracking-widest mb-2">{pp.priceRange}</p>
+                <p className="text-3xl font-extrabold text-foreground tracking-tight leading-tight min-h-[2.5rem] flex items-center" dir="ltr">{product.priceRange}</p>
+                <p className="text-xs text-muted-foreground mt-2">{pp.perUnitByQty}</p>
               </div>
               <div className="px-5 py-3 bg-muted/30 border-t border-primary/15 flex items-center gap-4 flex-wrap">
                 <div className="flex items-center gap-2">
@@ -1160,7 +1160,7 @@ export default function ProductDetailPage() {
               <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
                 <div className="p-4 border-b border-border bg-muted/30">
                   <p className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-widest mb-1">{pp.priceRange}</p>
-                  <p className="text-2xl font-extrabold text-foreground">{product.priceRange}</p>
+                  <p className="text-2xl font-extrabold text-foreground leading-tight min-h-[2rem] flex items-center" dir="ltr">{product.priceRange}</p>
                   <div className="flex items-center gap-2 mt-2">
                     <Icon name="CubeIcon" size={12} className="text-primary" />
                     <span className="text-xs font-bold text-primary">{pp.moq}: {product.moq}</span>
@@ -1651,7 +1651,7 @@ export default function ProductDetailPage() {
         }
 
         {/* ── MOBILE FIXED CTA BAR ── */}
-        <div className="fixed bottom-16 md:bottom-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-md border-t border-border px-4 py-3 lg:hidden">
+        <div className="fixed bottom-20 md:bottom-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-md border-t border-border px-4 py-3 lg:hidden">
           <div className="max-w-7xl mx-auto flex flex-col gap-2">
             {isB2B ? (
             /* B2B fixed bar: primary RFQ + Chat */

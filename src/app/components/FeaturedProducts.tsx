@@ -25,106 +25,106 @@ interface Product {
   category: string;
   seller_badge?: 'certified_factory' | 'local_supplier' | null;
   international_manufacturer_id?: string | null;
-  user_profiles?: { company_name: string; full_name: string; country: string; role: string };
-  supplier_profiles?: { is_verified: boolean; tier: string };
+  user_profiles?: {company_name: string;full_name: string;country: string;role: string;};
+  supplier_profiles?: {is_verified: boolean;tier: string;};
 }
 
 // ── Mock data shown when Supabase returns no results ──────────────────────────
 const MOCK_PRODUCTS: Product[] = [
-  {
-    id: 'mock-1',
-    name: 'Industrial Steel Pipes',
-    name_ar: 'أنابيب فولاذية صناعية',
-    image_url: null,
-    unit_price: 45,
-    minimum_order_qty: 500,
-    unit: 'pcs',
-    origin_country: 'China',
-    is_active: true,
-    category: 'building',
-    user_profiles: { company_name: 'SteelPro Manufacturing', full_name: 'SteelPro', country: 'China', role: 'manufacturer' },
-    supplier_profiles: { is_verified: true, tier: 'gold' },
-  },
-  {
-    id: 'mock-2',
-    name: 'LED Smart Lighting System',
-    name_ar: 'نظام إضاءة LED ذكي',
-    image_url: null,
-    unit_price: 12,
-    minimum_order_qty: 1000,
-    unit: 'units',
-    origin_country: 'China',
-    is_active: true,
-    category: 'electronics',
-    user_profiles: { company_name: 'LightTech Co.', full_name: 'LightTech', country: 'China', role: 'manufacturer' },
-    supplier_profiles: { is_verified: true, tier: 'silver' },
-  },
-  {
-    id: 'mock-3',
-    name: 'Cotton Fabric Roll',
-    name_ar: 'لفة قماش قطني',
-    image_url: null,
-    unit_price: 3.5,
-    minimum_order_qty: 2000,
-    unit: 'meters',
-    origin_country: 'Turkey',
-    is_active: true,
-    category: 'textiles',
-    user_profiles: { company_name: 'TextileMaster', full_name: 'TextileMaster', country: 'Turkey', role: 'manufacturer' },
-    supplier_profiles: { is_verified: false, tier: 'basic' },
-  },
-  {
-    id: 'mock-4',
-    name: 'CNC Milling Machine',
-    name_ar: 'ماكينة تفريز CNC',
-    image_url: null,
-    unit_price: 8500,
-    minimum_order_qty: 1,
-    unit: 'unit',
-    origin_country: 'Germany',
-    is_active: true,
-    category: 'machinery',
-    user_profiles: { company_name: 'PrecisionMach GmbH', full_name: 'PrecisionMach', country: 'Germany', role: 'manufacturer' },
-    supplier_profiles: { is_verified: true, tier: 'platinum' },
-  },
-  {
-    id: 'mock-5',
-    name: 'Organic Olive Oil',
-    name_ar: 'زيت زيتون عضوي',
-    image_url: null,
-    unit_price: 8,
-    minimum_order_qty: 500,
-    unit: 'liters',
-    origin_country: 'Saudi Arabia',
-    is_active: true,
-    category: 'food',
-    user_profiles: { company_name: 'GreenFarm SA', full_name: 'GreenFarm', country: 'Saudi Arabia', role: 'manufacturer' },
-    supplier_profiles: { is_verified: true, tier: 'gold' },
-  },
-  {
-    id: 'mock-6',
-    name: 'Industrial Chemicals Pack',
-    name_ar: 'حزمة مواد كيميائية صناعية',
-    image_url: null,
-    unit_price: 25,
-    minimum_order_qty: 200,
-    unit: 'kg',
-    origin_country: 'India',
-    is_active: true,
-    category: 'chemicals',
-    user_profiles: { company_name: 'ChemIndia Ltd.', full_name: 'ChemIndia', country: 'India', role: 'manufacturer' },
-    supplier_profiles: { is_verified: false, tier: 'basic' },
-  },
-];
+{
+  id: 'p1',
+  name: 'Industrial Hydraulic Pump',
+  name_ar: 'مضخة هيدروليكية صناعية',
+  image_url: "https://img.rocket.new/generatedImages/rocket_gen_img_154853444-1777836354079.png",
+  unit_price: 285,
+  minimum_order_qty: 5,
+  unit: 'units',
+  origin_country: 'China',
+  is_active: true,
+  category: 'machinery',
+  user_profiles: { company_name: 'Zhongshan Heavy Equipment Co.', full_name: 'Zhongshan Heavy', country: 'China', role: 'manufacturer' },
+  supplier_profiles: { is_verified: true, tier: 'gold' }
+},
+{
+  id: 'p2',
+  name: 'Premium Cotton Fabric Roll',
+  name_ar: 'قماش قطني ممتاز',
+  image_url: "https://img.rocket.new/generatedImages/rocket_gen_img_159a1ac03-1785820146465.png",
+  unit_price: 3.2,
+  minimum_order_qty: 500,
+  unit: 'meters',
+  origin_country: 'Turkey',
+  is_active: true,
+  category: 'textiles',
+  user_profiles: { company_name: 'Antalya Textile Mills', full_name: 'Antalya Textile', country: 'Turkey', role: 'manufacturer' },
+  supplier_profiles: { is_verified: true, tier: 'platinum' }
+},
+{
+  id: 'p3',
+  name: 'Monocrystalline Solar Panel 400W',
+  name_ar: 'لوح طاقة شمسية 400 واط',
+  image_url: "https://img.rocket.new/generatedImages/rocket_gen_img_1c4c2811d-1785853988457.png",
+  unit_price: 95,
+  minimum_order_qty: 20,
+  unit: 'pcs',
+  origin_country: 'China',
+  is_active: true,
+  category: 'electronics',
+  user_profiles: { company_name: 'Shenzhen Solar Tech Ltd.', full_name: 'Shenzhen Solar', country: 'China', role: 'manufacturer' },
+  supplier_profiles: { is_verified: true, tier: 'gold' }
+},
+{
+  id: 'p4',
+  name: 'Portland Cement 50kg Bag',
+  name_ar: 'إسمنت بورتلاند 50 كيلو',
+  image_url: 'https://img.rocket.new/generatedImages/rocket_gen_img_1e59a0c95-1772134956918.png',
+  unit_price: 8.5,
+  minimum_order_qty: 100,
+  unit: 'bags',
+  origin_country: 'Saudi Arabia',
+  is_active: true,
+  category: 'building',
+  user_profiles: { company_name: 'Arabian Cement Industries', full_name: 'Arabian Cement', country: 'Saudi Arabia', role: 'manufacturer' },
+  supplier_profiles: { is_verified: true, tier: 'gold' }
+},
+{
+  id: 'p5',
+  name: 'Automatic Packaging Machine',
+  name_ar: 'ماكينة تعبئة أوتوماتيكية',
+  image_url: "https://img.rocket.new/generatedImages/rocket_gen_img_1bdaa0712-1766818385102.png",
+  unit_price: 4200,
+  minimum_order_qty: 1,
+  unit: 'unit',
+  origin_country: 'China',
+  is_active: true,
+  category: 'machinery',
+  user_profiles: { company_name: 'Jinan Packing Solutions', full_name: 'Jinan Packing', country: 'China', role: 'manufacturer' },
+  supplier_profiles: { is_verified: false, tier: 'basic' }
+},
+{
+  id: 'p6',
+  name: 'Stainless Steel Pipe (304 Grade)',
+  name_ar: 'أنبوب ستانلس ستيل درجة 304',
+  image_url: "https://img.rocket.new/generatedImages/rocket_gen_img_140db1042-1769438715946.png",
+  unit_price: 45,
+  minimum_order_qty: 50,
+  unit: 'meters',
+  origin_country: 'India',
+  is_active: true,
+  category: 'building',
+  user_profiles: { company_name: 'Mumbai Steel Exports Pvt.', full_name: 'Mumbai Steel', country: 'India', role: 'manufacturer' },
+  supplier_profiles: { is_verified: true, tier: 'silver' }
+}];
 
-const ProductCard: React.FC<{product: Product; index: number; isInternational?: boolean}> = React.memo(({ product, index, isInternational = false }) => {
+
+const ProductCard: React.FC<{product: Product;index: number;isInternational?: boolean;}> = React.memo(({ product, index, isInternational = false }) => {
   const { t } = useLanguage();
   const cardRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) { setVisible(true); observer.disconnect(); } },
+      ([entry]) => {if (entry.isIntersecting) {setVisible(true);observer.disconnect();}},
       { threshold: 0.05, rootMargin: '40px' }
     );
     if (cardRef.current) observer.observe(cardRef.current);
@@ -135,8 +135,8 @@ const ProductCard: React.FC<{product: Product; index: number; isInternational?: 
     <div
       ref={cardRef}
       className={`${visible ? 'reveal-animate' : 'opacity-0'}`}
-      style={{ animationDelay: `${Math.min(index * 0.06, 0.3)}s` }}
-    >
+      style={{ animationDelay: `${Math.min(index * 0.06, 0.3)}s` }}>
+      
       <MarketplaceProductCard
         product={{
           id: product.id,
@@ -151,24 +151,24 @@ const ProductCard: React.FC<{product: Product; index: number; isInternational?: 
           is_verified: product.supplier_profiles?.is_verified ?? false,
           seller_badge: product.seller_badge,
           company_name: product.user_profiles?.company_name || product.user_profiles?.full_name,
-          manufacturer_id: product.international_manufacturer_id,
+          manufacturer_id: product.international_manufacturer_id
         }}
         buyerMode="b2b"
         index={index}
-        priority={index < 2}
-      />
-    </div>
-  );
+        priority={index < 2} />
+      
+    </div>);
+
 });
 
 ProductCard.displayName = 'ProductCard';
 
 // ── Placeholder card shown when a slot has no product yet ──────────────────
 const PLACEHOLDER_ICONS = [
-  'CubeIcon', 'BeakerIcon', 'WrenchScrewdriverIcon', 'TruckIcon', 'SparklesIcon', 'GlobeAltIcon',
-] as const;
+'CubeIcon', 'BeakerIcon', 'WrenchScrewdriverIcon', 'TruckIcon', 'SparklesIcon', 'GlobeAltIcon'] as
+const;
 
-const PlaceholderCard: React.FC<{ index: number }> = ({ index }) => {
+const PlaceholderCard: React.FC<{index: number;}> = ({ index }) => {
   const { t } = useLanguage();
   const ui = t.featuredProducts;
   const iconName = PLACEHOLDER_ICONS[index % PLACEHOLDER_ICONS.length];
@@ -204,8 +204,8 @@ const PlaceholderCard: React.FC<{ index: number }> = ({ index }) => {
         {/* Fake CTA */}
         <div className="h-9 bg-muted/40 rounded-xl w-full mt-1" />
       </div>
-    </div>
-  );
+    </div>);
+
 };
 
 // Build the tab label shown above the product grid
@@ -232,43 +232,43 @@ const FeaturedProducts: React.FC = () => {
     'electronics': ui.electronics,
     'building': ui.building,
     'food': ui.food,
-    'chemicals': ui.chemicals,
+    'chemicals': ui.chemicals
   };
 
   useEffect(() => {
     const PRODUCT_SELECT =
-      'id, name, name_ar, image_url, unit_price, minimum_order_qty, unit, origin_country, is_active, category, seller_badge, international_manufacturer_id, user_profiles!manufacturer_products_manufacturer_id_fkey(company_name, full_name, country, role, supplier_profiles(is_verified, tier))';
+    'id, name, name_ar, image_url, unit_price, minimum_order_qty, unit, origin_country, is_active, category, seller_badge, international_manufacturer_id, user_profiles!manufacturer_products_manufacturer_id_fkey(company_name, full_name, country, role, supplier_profiles(is_verified, tier))';
 
     const normalizeProducts = (rows: any[]): Product[] =>
-      (rows || []).map((row) => {
-        const profile = Array.isArray(row.user_profiles) ? row.user_profiles[0] : row.user_profiles;
-        const supplierRaw = profile?.supplier_profiles;
-        const supplier = Array.isArray(supplierRaw) ? supplierRaw[0] : supplierRaw;
-        return {
-          ...row,
-          user_profiles: profile
-            ? {
-                company_name: profile.company_name,
-                full_name: profile.full_name,
-                country: profile.country,
-                role: profile.role,
-              }
-            : undefined,
-          supplier_profiles: supplier
-            ? { is_verified: !!supplier.is_verified, tier: supplier.tier || 'basic' }
-            : undefined,
-        } as Product;
-      });
+    (rows || []).map((row) => {
+      const profile = Array.isArray(row.user_profiles) ? row.user_profiles[0] : row.user_profiles;
+      const supplierRaw = profile?.supplier_profiles;
+      const supplier = Array.isArray(supplierRaw) ? supplierRaw[0] : supplierRaw;
+      return {
+        ...row,
+        user_profiles: profile ?
+        {
+          company_name: profile.company_name,
+          full_name: profile.full_name,
+          country: profile.country,
+          role: profile.role
+        } :
+        undefined,
+        supplier_profiles: supplier ?
+        { is_verified: !!supplier.is_verified, tier: supplier.tier || 'basic' } :
+        undefined
+      } as Product;
+    });
 
     const fetchProducts = async () => {
       setLoading(true);
       try {
-        let query = supabase
-          .from('manufacturer_products')
-          .select(PRODUCT_SELECT)
-          .eq('is_active', true)
-          .order('created_at', { ascending: false })
-          .limit(6);
+        let query = supabase.
+        from('manufacturer_products').
+        select(PRODUCT_SELECT).
+        eq('is_active', true).
+        order('created_at', { ascending: false }).
+        limit(6);
 
         if (activeFilter !== 'All') {
           query = query.eq('category', activeFilter);
@@ -277,14 +277,14 @@ const FeaturedProducts: React.FC = () => {
         // ── Dynamic Supabase filter based on active sourcing tab ──
         if (activeTab === 'local_manufacturers') {
           // Local origin + manufacturer role
-          query = query
-            .in('origin_country', LOCAL_COUNTRY_IDENTIFIERS)
-            .eq('user_profiles.role', 'manufacturer');
+          query = query.
+          in('origin_country', LOCAL_COUNTRY_IDENTIFIERS).
+          eq('user_profiles.role', 'manufacturer');
         } else if (activeTab === 'local_suppliers') {
           // Local origin + supplier role (non-manufacturer)
-          query = query
-            .in('origin_country', LOCAL_COUNTRY_IDENTIFIERS)
-            .eq('user_profiles.role', 'supplier');
+          query = query.
+          in('origin_country', LOCAL_COUNTRY_IDENTIFIERS).
+          eq('user_profiles.role', 'supplier');
         } else if (activeTab === 'global_manufacturers') {
           // NOT local origin — international manufacturers
           // PostgREST not.in syntax: values as comma-separated list in parentheses
@@ -299,13 +299,13 @@ const FeaturedProducts: React.FC = () => {
         let result = normalizeProducts(data || []);
         if (result.length === 0 && (activeTab === 'local_manufacturers' || activeTab === 'local_suppliers')) {
           // Fallback: just filter by local origin without role constraint
-          let fallbackQuery = supabase
-            .from('manufacturer_products')
-            .select(PRODUCT_SELECT)
-            .eq('is_active', true)
-            .in('origin_country', LOCAL_COUNTRY_IDENTIFIERS)
-            .order('created_at', { ascending: false })
-            .limit(6);
+          let fallbackQuery = supabase.
+          from('manufacturer_products').
+          select(PRODUCT_SELECT).
+          eq('is_active', true).
+          in('origin_country', LOCAL_COUNTRY_IDENTIFIERS).
+          order('created_at', { ascending: false }).
+          limit(6);
           if (activeFilter !== 'All') {
             fallbackQuery = fallbackQuery.eq('category', activeFilter);
           }
@@ -344,26 +344,26 @@ const FeaturedProducts: React.FC = () => {
 
           {/* ── Category filters (appear directly under section title) ── */}
           <div className="flex flex-wrap gap-2 overflow-x-auto hide-scrollbar">
-            {filters.map((f) => (
-              <button
-                key={f}
-                onClick={() => setActiveFilter(f)}
-                className={`px-4 py-2 text-xs font-bold rounded-full border transition-colors whitespace-nowrap ${
-                  activeFilter === f
-                    ? 'bg-foreground text-primary-foreground border-foreground'
-                    : 'bg-background text-muted-foreground border-border hover:border-foreground hover:text-foreground'
-                }`}>
+            {filters.map((f) =>
+            <button
+              key={f}
+              onClick={() => setActiveFilter(f)}
+              className={`px-4 py-2 text-xs font-bold rounded-full border transition-colors whitespace-nowrap ${
+              activeFilter === f ?
+              'bg-foreground text-primary-foreground border-foreground' :
+              'bg-background text-muted-foreground border-border hover:border-foreground hover:text-foreground'}`
+              }>
                 {filterLabels[f] || f}
               </button>
-            ))}
+            )}
           </div>
         </div>
 
         {/* Products Grid */}
-        {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="bg-card rounded-2xl border border-border overflow-hidden animate-pulse">
+        {loading ?
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+            {[...Array(6)].map((_, i) =>
+          <div key={i} className="bg-card rounded-2xl border border-border overflow-hidden animate-pulse">
                 <div className="aspect-square bg-muted" />
                 <div className="p-4 space-y-2">
                   <div className="h-4 bg-muted rounded w-3/4" />
@@ -371,25 +371,25 @@ const FeaturedProducts: React.FC = () => {
                   <div className="h-8 bg-muted rounded mt-3" />
                 </div>
               </div>
-            ))}
-          </div>
-        ) : (
-          <>
+          )}
+          </div> :
+
+        <>
             {/* Always render 6 slots: real products first, then placeholders */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
               {Array.from({ length: 6 }).map((_, index) => {
-                const product = products[index];
-                return product ? (
-                  <ProductCard key={product.id} product={product} index={index} isInternational={activeTab === 'global_manufacturers'} />
-                ) : (
-                  <PlaceholderCard key={`placeholder-${index}`} index={index} />
-                );
-              })}
+              const product = products[index];
+              return product ?
+              <ProductCard key={product.id} product={product} index={index} isInternational={activeTab === 'global_manufacturers'} /> :
+
+              <PlaceholderCard key={`placeholder-${index}`} index={index} />;
+
+            })}
             </div>
 
             {/* Invite-to-upload banner — shown only when there are empty slots */}
-            {products.length < 6 && (
-              <div className="mt-6 flex items-center gap-4 px-5 py-4 bg-muted/40 border border-dashed border-border rounded-2xl">
+            {products.length < 6 &&
+          <div className="mt-6 flex items-center gap-4 px-5 py-4 bg-muted/40 border border-dashed border-border rounded-2xl">
                 <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                   <Icon name="RocketLaunchIcon" size={20} className="text-primary" />
                 </div>
@@ -402,28 +402,28 @@ const FeaturedProducts: React.FC = () => {
                   </p>
                 </div>
                 <Link
-                  href="/factory/upload"
-                  className="shrink-0 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl whitespace-nowrap hover:opacity-90 transition-opacity">
+              href="/factory/upload"
+              className="shrink-0 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl whitespace-nowrap hover:opacity-90 transition-opacity">
                   {ui.uploadProduct}
                 </Link>
               </div>
-            )}
+          }
           </>
-        )}
+        }
 
         {/* View all link */}
         <div className="flex justify-center mt-8">
           <Link
             href="/search"
-            className="inline-flex items-center gap-2 px-6 py-3 border border-border text-sm font-semibold text-foreground rounded-xl hover:bg-muted transition-colors"
-          >
+            className="inline-flex items-center gap-2 px-6 py-3 border border-border text-sm font-semibold text-foreground rounded-xl hover:bg-muted transition-colors">
+            
             {ui.viewAll}
             <Icon name="ArrowRightIcon" size={16} />
           </Link>
         </div>
       </div>
-    </section>
-  );
+    </section>);
+
 };
 
 export default FeaturedProducts;
