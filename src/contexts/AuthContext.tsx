@@ -185,6 +185,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           phone: metadata?.phone || '',
           country: metadata?.country || '',
           role: metadata?.role || 'buyer',
+          account_role: metadata?.account_role || '',
+          dashboard_path: metadata?.dashboard_path || '',
           avatar_url: metadata?.avatarUrl || '',
         },
         emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || ''}/auth/callback`,
