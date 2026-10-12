@@ -4252,7 +4252,8 @@
                 "timeline": "الجدول الزمني"
             },
             "expiresLabel": "ينتهي اليوم",
-            "daysLeft": "يوم متبقٍ",
+            "daysLeft": "يوماً",
+            "daysLeftPrefix": "متبقي",
             "details": {
                 "quantity": "الكمية",
                 "targetPrice": "السعر المستهدف",
@@ -4290,6 +4291,11 @@
             "placeEscrow": "تقديم طلب بالضمان",
             "rejectAll": "رفض الكل",
             "submitQuote": "تقديم عرض سعر",
+            "editRfq": "تعديل الطلب",
+            "cancelRfq": "إلغاء الطلب",
+            "cancelRfqConfirm": "هل أنت متأكد من إلغاء هذا الطلب؟",
+            "cancelRfqSuccess": "تم إلغاء الطلب بنجاح.",
+            "cancelRfqError": "تعذّر إلغاء الطلب. يرجى المحاولة مجدداً.",
             "close": "إغلاق"
         },
         "submitQuote": {

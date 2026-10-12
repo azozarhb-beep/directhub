@@ -328,6 +328,23 @@ function RFQDetailModal({
   const urgencyCfg = URGENCY_CONFIG[rfq.urgency || 'standard'];
   const daysLeft = Math.max(0, Math.ceil((new Date(rfq.expires_at).getTime() - Date.now()) / 86400000));
   const [activeSection, setActiveSection] = useState<'details' | 'quotes' | 'timeline'>('details');
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
+  // Translate unit key to Arabic label
+  const unitLabel: string = (L.createRfq?.units?.[rfq.unit] || rfq.unit);
+
+  const handleCancelRfq = async () => {
+    setCancelling(true);
+    try {
+      await onUpdateStatus(rfq.id, 'rejected');
+    } catch {
+      alert(L.modal.cancelRfqError);
+    } finally {
+      setCancelling(false);
+      setShowCancelConfirm(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
@@ -341,7 +358,7 @@ function RFQDetailModal({
             <div>
               <h2 className="font-bold text-foreground text-sm">{rfq.product_name}</h2>
               <p className="text-xs text-muted-foreground">
-                <span dir="ltr">{rfq.quantity.toLocaleString()} {rfq.unit}</span>
+                <span dir="ltr">{rfq.quantity.toLocaleString()}</span>{' '}{unitLabel}
                 {' · '}{rfq.destination_country}
               </p>
             </div>
@@ -386,7 +403,7 @@ function RFQDetailModal({
               </span>
             )}
             <span className={`text-xs font-medium px-2 py-1 rounded-full ${daysLeft <= 3 ? 'bg-red-50 text-red-600' : 'bg-muted text-muted-foreground'}`}>
-              {daysLeft === 0 ? L.modal.expiresLabel : <><span dir="ltr">{daysLeft}</span> {L.modal.daysLeft}</>}
+              {daysLeft === 0 ? L.modal.expiresLabel : <>{L.modal.daysLeftPrefix} <span dir="ltr">{daysLeft}</span> {L.modal.daysLeft}</>}
             </span>
           </div>
 
@@ -395,7 +412,7 @@ function RFQDetailModal({
             <>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {[
-                  { label: L.modal.details.quantity, value: <span dir="ltr">{rfq.quantity.toLocaleString()} {rfq.unit}</span>, icon: 'CubeIcon' as const },
+                  { label: L.modal.details.quantity, value: <><span dir="ltr">{rfq.quantity.toLocaleString()}</span>{' '}{unitLabel}</>, icon: 'CubeIcon' as const },
                   { label: L.modal.details.targetPrice, value: rfq.target_price ? <span dir="ltr">{rfq.currency} {rfq.target_price.toLocaleString()}</span> : L.modal.details.open, icon: 'BanknotesIcon' as const },
                   { label: L.modal.details.destination, value: rfq.destination_country || '—', icon: 'MapPinIcon' as const },
                   { label: L.modal.details.incoterms, value: rfq.incoterms || '—', icon: 'TruckIcon' as const },
@@ -449,6 +466,48 @@ function RFQDetailModal({
                 <div className="bg-muted/30 rounded-xl p-3">
                   <p className="text-xs font-bold text-foreground mb-1">{L.modal.additionalNotes}</p>
                   <p className="text-sm text-muted-foreground">{rfq.additional_notes}</p>
+                </div>
+              )}
+
+              {/* Buyer Action Buttons */}
+              {!isManufacturer && (rfq.status === 'pending' || rfq.status === 'responded') && (
+                <div className="flex gap-2 pt-2">
+                  <Link
+                    href={`/rfq/create?edit=${rfq.id}`}
+                    className="flex-1 py-2.5 flex items-center justify-center gap-1.5 border border-primary text-primary text-sm font-semibold rounded-xl hover:bg-primary/5 transition-colors"
+                  >
+                    <Icon name="PencilSquareIcon" size={14} />
+                    {L.modal.editRfq}
+                  </Link>
+                  <button
+                    onClick={() => setShowCancelConfirm(true)}
+                    className="flex-1 py-2.5 flex items-center justify-center gap-1.5 border border-red-300 text-red-600 text-sm font-semibold rounded-xl hover:bg-red-50 transition-colors"
+                  >
+                    <Icon name="XCircleIcon" size={14} />
+                    {L.modal.cancelRfq}
+                  </button>
+                </div>
+              )}
+
+              {/* Cancel Confirmation */}
+              {showCancelConfirm && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                  <p className="text-sm font-semibold text-red-800 mb-3">{L.modal.cancelRfqConfirm}</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleCancelRfq}
+                      disabled={cancelling}
+                      className="flex-1 py-2 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700 transition-colors disabled:opacity-60"
+                    >
+                      {cancelling ? '...' : L.modal.cancelRfq}
+                    </button>
+                    <button
+                      onClick={() => setShowCancelConfirm(false)}
+                      className="flex-1 py-2 border border-border text-foreground text-xs font-medium rounded-lg hover:bg-muted transition-colors"
+                    >
+                      {L.modal.close}
+                    </button>
+                  </div>
                 </div>
               )}
             </>
