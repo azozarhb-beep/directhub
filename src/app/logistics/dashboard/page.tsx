@@ -13,7 +13,7 @@ import {
   resolvePlatformRole,
   getHomeRoomForRole,
 } from '@/lib/roomIsolation';
-import ShipmentTimeline from '@/components/ShipmentTimeline';
+
 
 import LogisticsDocumentsPanel from './LogisticsDocumentsPanel';
 
@@ -155,16 +155,16 @@ const SERVICES_ALL = [
 ];
 
 const ORDER_STATUS_OPTIONS = [
-  { value: 'pending',          label: 'Pending',            color: 'bg-amber-50 text-amber-700 border-amber-200' },
-  { value: 'confirmed',        label: 'Confirmed',          color: 'bg-blue-50 text-blue-700 border-blue-200' },
-  { value: 'processing',       label: 'Processing',         color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-  { value: 'shipped',          label: 'Shipped',            color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
-  { value: 'in_transit',       label: 'In Transit',         color: 'bg-sky-50 text-sky-700 border-sky-200' },
-  { value: 'customs_clearance',label: 'Customs Clearance',  color: 'bg-violet-50 text-violet-700 border-violet-200' },
-  { value: 'out_for_delivery', label: 'Out for Delivery',   color: 'bg-orange-50 text-orange-700 border-orange-200' },
-  { value: 'delivered',        label: 'Delivered',          color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  { value: 'cancelled',        label: 'Cancelled',          color: 'bg-red-50 text-red-700 border-red-200' },
-  { value: 'disputed',         label: 'Disputed',           color: 'bg-rose-50 text-rose-700 border-rose-200' },
+  { value: 'pending',          label: 'قيد الانتظار',            color: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { value: 'confirmed',        label: 'مؤكد',                    color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { value: 'processing',       label: 'قيد التجهيز',             color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  { value: 'shipped',          label: 'تم الشحن',                color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+  { value: 'in_transit',       label: 'في الطريق (قيد النقل)',   color: 'bg-sky-50 text-sky-700 border-sky-200' },
+  { value: 'customs_clearance',label: 'التخليص الجمركي',         color: 'bg-violet-50 text-violet-700 border-violet-200' },
+  { value: 'out_for_delivery', label: 'خارج للتسليم',            color: 'bg-orange-50 text-orange-700 border-orange-200' },
+  { value: 'delivered',        label: 'تم التسليم',              color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { value: 'cancelled',        label: 'ملغي',                    color: 'bg-red-50 text-red-700 border-red-200' },
+  { value: 'disputed',         label: 'نزاع / قيد التدقيق',      color: 'bg-rose-50 text-rose-700 border-rose-200' },
 ];
 
 // ─── Arabic translations for profile fields ───────────────────────────────────
@@ -3156,7 +3156,6 @@ export default function LogisticsDashboardPage() {
           {activeTab === 'orders' && (
             <div className="space-y-4">
               <OrdersTab partnerId={partner.id} />
-              <ShipmentTimeline partnerId={partner?.id || ''} type="local" />
             </div>
           )}
           {activeTab === 'conversations' && (
