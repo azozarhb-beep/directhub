@@ -50,6 +50,12 @@ const Header: React.FC = () => {
     '/admin',
     '/my-account/add-product',
     '/my-account/edit-profile',
+    // Dashboard routes — hide marketplace search & category bar
+    '/logistics',
+    '/supplier',
+    '/factory',
+    '/manufacturer',
+    '/agent',
   ];
   // Guard with `mounted` so server and client render identical HTML on first pass,
   // preventing the hydration mismatch caused by pathname being null/different on SSR.
