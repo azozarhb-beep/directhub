@@ -185,9 +185,32 @@ const INDUSTRIAL_HUBS = [
   'Seoul, South Korea', 'Osaka, Japan', 'Dubai, UAE', 'Other',
 ];
 
+const INDUSTRIAL_HUB_LABELS: Record<string, string> = {
+  'Guangzhou, China': 'قوانغتشو، الصين',
+  'Shenzhen, China': 'شنتشن، الصين',
+  'Yiwu, China': 'إيوو، الصين',
+  'Shanghai, China': 'شنغهاي، الصين',
+  'Ningbo, China': 'نينغبو، الصين',
+  'Qingdao, China': 'تشينغداو، الصين',
+  'Tianjin, China': 'تيانجين، الصين',
+  'Foshan, China': 'فوشان، الصين',
+  'Istanbul, Turkey': 'إسطنبول، تركيا',
+  'Mumbai, India': 'مومباي، الهند',
+  'Delhi, India': 'دلهي، الهند',
+  'Dhaka, Bangladesh': 'دكا، بنغلاديش',
+  'Ho Chi Minh City, Vietnam': 'مدينة هو تشي منه، فيتنام',
+  'Jakarta, Indonesia': 'جاكرتا، إندونيسيا',
+  'Kuala Lumpur, Malaysia': 'كوالالمبور، ماليزيا',
+  'Seoul, South Korea': 'سيول، كوريا الجنوبية',
+  'Osaka, Japan': 'أوساكا، اليابان',
+  'Dubai, UAE': 'دبي، الإمارات',
+  'Other': 'أخرى',
+};
+
 const MAJOR_PORTS = [
   'Jeddah Islamic Port', 'King Abdulaziz Port (Dammam)', 'Yanbu Commercial Port',
   'Port of Dubai (Jebel Ali)', 'Port of Abu Dhabi', 'Port of Salalah', 'Port of Muscat',
+  'Port of Aden', 'Port of Hodeidah',
   'Port of Shanghai', 'Port of Shenzhen', 'Port of Guangzhou', 'Port of Ningbo',
   'Port of Tianjin', 'Port of Qingdao', 'Port of Hong Kong',
   'Port of Singapore', 'Port of Busan', 'Port of Rotterdam', 'Port of Hamburg',
@@ -195,6 +218,41 @@ const MAJOR_PORTS = [
   'Port of Mumbai', 'Port of Chennai', 'Port of Colombo', 'Port of Karachi',
   'Port of Istanbul', 'Port of Alexandria', 'Port of Aqaba', 'Port of Beirut',
 ];
+
+const MAJOR_PORT_LABELS: Record<string, string> = {
+  'Jeddah Islamic Port': 'ميناء جدة الإسلامي',
+  'King Abdulaziz Port (Dammam)': 'ميناء الملك عبدالعزيز (الدمام)',
+  'Yanbu Commercial Port': 'ميناء ينبع التجاري',
+  'Port of Dubai (Jebel Ali)': 'ميناء جبل علي (دبي)',
+  'Port of Abu Dhabi': 'ميناء أبوظبي',
+  'Port of Salalah': 'ميناء صلالة',
+  'Port of Muscat': 'ميناء مسقط',
+  'Port of Aden': 'ميناء عدن',
+  'Port of Hodeidah': 'ميناء الحديدة',
+  'Port of Shanghai': 'ميناء شنغهاي',
+  'Port of Shenzhen': 'ميناء شنتشن',
+  'Port of Guangzhou': 'ميناء قوانغتشو',
+  'Port of Ningbo': 'ميناء نينغبو',
+  'Port of Tianjin': 'ميناء تيانجين',
+  'Port of Qingdao': 'ميناء تشينغداو',
+  'Port of Hong Kong': 'ميناء هونغ كونغ',
+  'Port of Singapore': 'ميناء سنغافورة',
+  'Port of Busan': 'ميناء بوسان',
+  'Port of Rotterdam': 'ميناء روتردام',
+  'Port of Hamburg': 'ميناء هامبورغ',
+  'Port of Antwerp': 'ميناء أنتويرب',
+  'Port of Felixstowe': 'ميناء فيليكستو',
+  'Port of Los Angeles': 'ميناء لوس أنجلوس',
+  'Port of New York': 'ميناء نيويورك',
+  'Port of Mumbai': 'ميناء مومباي',
+  'Port of Chennai': 'ميناء تشيناي',
+  'Port of Colombo': 'ميناء كولومبو',
+  'Port of Karachi': 'ميناء كراتشي',
+  'Port of Istanbul': 'ميناء إسطنبول',
+  'Port of Alexandria': 'ميناء الإسكندرية',
+  'Port of Aqaba': 'ميناء العقبة',
+  'Port of Beirut': 'ميناء بيروت',
+};
 
 const SERVICES_BY_TYPE: Record<string, string[]> = {
   international_shipping_office: [
@@ -212,6 +270,60 @@ const SERVICES_BY_TYPE: Record<string, string[]> = {
     'Document Preparation', 'Inspection Coordination', 'Compliance Consulting',
     'Bond Management', 'Duty Drawback', 'Free Zone Services',
   ],
+};
+
+const SERVICE_LABELS: Record<string, string> = {
+  'Sea Freight (FCL)': 'شحن بحري (حاوية كاملة - FCL)',
+  'Sea Freight (LCL)': 'شحن بحري مجزأ (LCL)',
+  'Air Freight': 'شحن جوي',
+  'Express Air Freight': 'شحن جوي سريع (إكسبريس)',
+  'Port Handling': 'مناولة وتخليص موانئ',
+  'Document Preparation': 'إعداد وتجهيز الوثائق الجمركية',
+  'Cargo Insurance': 'تأمين الشحنات والبضائع',
+  'Packaging & Labeling': 'التغليف والوسم',
+  'Inspection Services': 'فحص ومعاينة الشحنات',
+  'Consolidation (LCL)': 'تجميع الشحنات المجزأة',
+  'Dangerous Goods Handling': 'مناولة البضائع الخطرة',
+  'Port Pickup': 'استلام من الميناء',
+  'Warehouse Storage': 'تخزين في المستودعات',
+  'Door-to-Door Delivery': 'توصيل من الباب للباب',
+  'Last-Mile Delivery': 'توصيل المرحلة الأخيرة',
+  'Cold Chain Logistics': 'لوجستيات السلسلة الباردة',
+  'Heavy Cargo Transport': 'نقل البضائع الثقيلة',
+  'Express Delivery': 'توصيل سريع',
+  'Distribution Network': 'شبكة التوزيع',
+  'Return Logistics': 'لوجستيات المرتجعات',
+  'Tracking & Reporting': 'تتبع وإعداد التقارير',
+  'Import Clearance': 'تخليص الاستيراد',
+  'Export Clearance': 'تخليص التصدير',
+  'Tariff Classification': 'تصنيف التعريفات الجمركية',
+  'Duty Calculation': 'احتساب الرسوم الجمركية',
+  'Inspection Coordination': 'تنسيق الفحص والمعاينة',
+  'Compliance Consulting': 'استشارات الامتثال الجمركي',
+  'Bond Management': 'إدارة الكفالات الجمركية',
+  'Duty Drawback': 'استرداد الرسوم الجمركية',
+  'Free Zone Services': 'خدمات المناطق الحرة',
+  'Sea Freight': 'شحن بحري',
+  'Air Freight (General)': 'شحن جوي عام',
+  'Land Transport': 'نقل بري',
+  'Customs Clearance': 'تخليص جمركي',
+  'Warehousing': 'تخزين',
+  'Insurance': 'تأمين',
+  'Packaging': 'تغليف',
+};
+
+const INCOTERM_LABELS: Record<string, string> = {
+  'EXW': 'EXW - تسليم أرض المصنع',
+  'FCA': 'FCA - تسليم للناقل',
+  'CPT': 'CPT - الشحن مدفوع حتى',
+  'CIP': 'CIP - الشحن والتأمين مدفوعان حتى',
+  'DAP': 'DAP - تسليم في المكان المحدد',
+  'DPU': 'DPU - تسليم وتفريغ في المكان المحدد',
+  'DDP': 'DDP - واصل مع الرسوم',
+  'FAS': 'FAS - تسليم بجانب السفينة',
+  'FOB': 'FOB - تسليم ظهر السفينة',
+  'CFR': 'CFR - التكلفة والشحن',
+  'CIF': 'CIF - شامل الشحن والتأمين',
 };
 
 const DEFAULT_SERVICES = [
@@ -785,7 +897,7 @@ export default function LogisticsRegisterPage() {
                     className="w-full h-11 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
                   >
                     <option value="">{lr.selectIndustrialHub}</option>
-                    {INDUSTRIAL_HUBS.map(h => <option key={h} value={h}>{h}</option>)}
+                    {INDUSTRIAL_HUBS.map(h => <option key={h} value={h}>{INDUSTRIAL_HUB_LABELS[h] || h}</option>)}
                   </select>
                 </div>
               )}
@@ -920,7 +1032,7 @@ export default function LogisticsRegisterPage() {
                         : 'bg-muted text-muted-foreground hover:bg-muted/80'
                     }`}
                   >
-                    {p}
+                    {MAJOR_PORT_LABELS[p] || p}
                   </button>
                 ))}
               </div>
@@ -941,7 +1053,7 @@ export default function LogisticsRegisterPage() {
                         : 'bg-muted text-muted-foreground hover:bg-muted/80'
                     }`}
                   >
-                    {s}
+                    {SERVICE_LABELS[s] || s}
                   </button>
                 ))}
               </div>
@@ -962,7 +1074,7 @@ export default function LogisticsRegisterPage() {
                           ? 'bg-blue-600 text-white' :'bg-muted text-muted-foreground hover:bg-muted/80'
                       }`}
                     >
-                      {t}
+                      {INCOTERM_LABELS[t] || t}
                     </button>
                   ))}
                 </div>
