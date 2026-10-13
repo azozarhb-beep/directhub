@@ -16,6 +16,7 @@ import {
 
 
 import LogisticsDocumentsPanel from './LogisticsDocumentsPanel';
+import toast from 'react-hot-toast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -2359,6 +2360,15 @@ interface IntlShipment {
   updated_at: string;
 }
 
+interface ShipmentDoc {
+  id: string;
+  file_name: string;
+  file_url: string;
+  file_size: number;
+  storage_path: string;
+  created_at: string;
+}
+
 const TRANSPORT_TYPE_OPTIONS = [
   { value: 'sea_fcl',  label: 'بحري حاويات كاملة (FCL)',  icon: '🚢' },
   { value: 'sea_lcl',  label: 'بحري مجزأ (LCL)',           icon: '📦' },
@@ -2400,6 +2410,8 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [updateSuccess, setUpdateSuccess] = useState<string | null>(null);
   const [docUploading, setDocUploading] = useState<string | null>(null);
+  const [shipmentDocs, setShipmentDocs] = useState<Record<string, ShipmentDoc[]>>({});
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
 
   // Add shipment form state
@@ -2476,33 +2488,99 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
     setUpdatingId(null);
   };
 
+  // ── Fetch shipment documents ───────────────────────────────────────────────
+  const fetchShipmentDocs = useCallback(async (shipmentId: string) => {
+    const { data } = await supabase
+      .from('logistics_documents')
+      .select('id, file_name, file_url, file_size, storage_path, created_at')
+      .eq('shipment_id', shipmentId)
+      .order('created_at', { ascending: false });
+    if (data) {
+      setShipmentDocs(prev => ({ ...prev, [shipmentId]: data as ShipmentDoc[] }));
+    }
+  }, [supabase]);
+
   // ── Document Upload ────────────────────────────────────────────────────────
   const handleDocUpload = async (shipmentId: string, file: File) => {
     setDocUploading(shipmentId);
     try {
       const ext = file.name.split('.').pop();
-      const path = `${partnerId}/${shipmentId}/customs_doc_${Date.now()}.${ext}`;
+      const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storagePath = `${partnerId}/${shipmentId}/customs_doc_${Date.now()}_${safeFileName}`;
+
       const { error: uploadErr } = await supabase.storage
         .from('logistics-documents')
-        .upload(path, file, { upsert: true });
-      if (uploadErr) throw uploadErr;
+        .upload(storagePath, file, { upsert: false });
+      if (uploadErr) throw new Error(`فشل رفع الملف: ${uploadErr.message}`);
 
-      const { data: urlData } = supabase.storage
+      // Use signed URL (bucket is private)
+      const { data: signedData, error: signErr } = await supabase.storage
         .from('logistics-documents')
-        .getPublicUrl(path);
+        .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
+      if (signErr || !signedData?.signedUrl) throw new Error('فشل إنشاء رابط المعاينة');
 
-      const { error: updateErr } = await supabase
+      const publicUrl = signedData.signedUrl;
+
+      // Insert into logistics_documents table linked to shipment_id
+      const { data: docData, error: insertErr } = await supabase
+        .from('logistics_documents')
+        .insert({
+          partner_id: partnerId,
+          shipment_id: shipmentId,
+          document_type: 'customs_declaration',
+          file_name: file.name,
+          file_url: publicUrl,
+          storage_path: storagePath,
+          file_size: file.size,
+          status: 'pending_review',
+        })
+        .select('id, file_name, file_url, file_size, storage_path, created_at')
+        .single();
+
+      if (insertErr) throw new Error(`فشل حفظ بيانات المستند: ${insertErr.message}`);
+
+      // Also update document_url on the shipment for quick reference
+      await supabase
         .from('logistics_shipments')
-        .update({ document_url: urlData.publicUrl, updated_at: new Date().toISOString() })
+        .update({ document_url: publicUrl, updated_at: new Date().toISOString() })
         .eq('id', shipmentId)
         .eq('logistics_partner_id', partnerId);
-      if (!updateErr) {
-        setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, document_url: urlData.publicUrl } : s));
-      }
-    } catch {
-      // silent
+
+      // Update local state
+      setShipmentDocs(prev => ({
+        ...prev,
+        [shipmentId]: [docData as ShipmentDoc, ...(prev[shipmentId] || [])],
+      }));
+      setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, document_url: publicUrl } : s));
+
+      toast.success('تم رفع الوثيقة الجمركية وحفظها بنجاح ✓', { duration: 4000 });
+    } catch (err: any) {
+      toast.error(err?.message || 'حدث خطأ أثناء رفع الوثيقة');
     } finally {
       setDocUploading(null);
+    }
+  };
+
+  // ── Delete Document ────────────────────────────────────────────────────────
+  const handleDeleteDoc = async (shipmentId: string, doc: ShipmentDoc) => {
+    setDeletingDocId(doc.id);
+    try {
+      // Delete from storage
+      if (doc.storage_path) {
+        await supabase.storage.from('logistics-documents').remove([doc.storage_path]);
+      }
+      // Delete from DB
+      await supabase.from('logistics_documents').delete().eq('id', doc.id);
+      // Update local state
+      setShipmentDocs(prev => ({
+        ...prev,
+        [shipmentId]: (prev[shipmentId] || []).filter(d => d.id !== doc.id),
+      }));
+      toast.success('تم حذف الوثيقة بنجاح');
+    } catch {
+      toast.error('فشل حذف الوثيقة');
+    } finally {
+      setDeletingDocId(null);
     }
   };
 
@@ -2615,7 +2693,13 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
               </a>
             )}
             <button
-              onClick={() => setExpandedId(isExpanded ? null : shipment.id)}
+              onClick={() => {
+                const nextExpanded = isExpanded ? null : shipment.id;
+                setExpandedId(nextExpanded);
+                if (nextExpanded && !shipmentDocs[nextExpanded]) {
+                  fetchShipmentDocs(nextExpanded);
+                }
+              }}
               className="text-xs text-primary hover:underline flex items-center gap-0.5"
             >
               {isExpanded ? 'طي' : 'إدارة'}
@@ -2662,29 +2746,70 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
                   ) : (
                     <Icon name="PaperClipIcon" size={15} />
                   )}
-                  {docUploading === shipment.id ? 'جارٍ الرفع...' : 'إرفاق وثيقة (PDF / صورة)'}
+                  {docUploading === shipment.id ? 'جاري رفع الوثيقة... ⏳' : 'إرفاق وثيقة (PDF / صورة)'}
                   <input
                     type="file"
                     accept=".pdf,.jpg,.jpeg,.png,.webp"
                     className="hidden"
+                    disabled={docUploading === shipment.id}
                     onChange={e => {
                       const file = e.target.files?.[0];
                       if (file) handleDocUpload(shipment.id, file);
+                      e.target.value = '';
                     }}
                   />
                 </label>
-                {shipment.document_url && (
-                  <a
-                    href={shipment.document_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-xs text-emerald-600 hover:underline"
-                  >
-                    <Icon name="DocumentCheckIcon" size={14} />
-                    عرض الوثيقة المرفقة
-                  </a>
-                )}
               </div>
+
+              {/* Attached Documents List */}
+              {(shipmentDocs[shipment.id] || []).length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {(shipmentDocs[shipment.id] || []).map(doc => {
+                    const isPdf = doc.file_name.toLowerCase().endsWith('.pdf');
+                    const fileSizeKb = doc.file_size > 0
+                      ? doc.file_size < 1024 * 1024
+                        ? `${(doc.file_size / 1024).toFixed(1)} KB`
+                        : `${(doc.file_size / (1024 * 1024)).toFixed(1)} MB`
+                      : '';
+                    return (
+                      <div key={doc.id} className="flex items-center justify-between gap-2 bg-background border border-border rounded-xl px-3 py-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isPdf ? 'bg-red-50' : 'bg-blue-50'}`}>
+                            <Icon name={isPdf ? 'DocumentTextIcon' : 'PhotoIcon'} size={16} className={isPdf ? 'text-red-500' : 'text-blue-500'} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-foreground truncate max-w-[160px]">{doc.file_name}</p>
+                            {fileSizeKb && <p className="text-xs text-muted-foreground">{fileSizeKb}</p>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <a
+                            href={doc.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+                          >
+                            <Icon name="EyeIcon" size={12} />
+                            معاينة
+                          </a>
+                          <button
+                            onClick={() => handleDeleteDoc(shipment.id, doc)}
+                            disabled={deletingDocId === doc.id}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 text-red-600 text-xs font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
+                          >
+                            {deletingDocId === doc.id ? (
+                              <div className="w-3 h-3 border border-red-500 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <Icon name="TrashIcon" size={12} />
+                            )}
+                            حذف
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Details */}
