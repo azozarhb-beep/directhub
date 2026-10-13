@@ -681,21 +681,29 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
       </div>
 
       {/* Partner origin/destination info banner */}
-      {partner && (partner.origin_countries?.length > 0 || partner.destination_countries?.length > 0) && (
-        <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex flex-wrap gap-3 text-xs">
-          {partner.origin_countries?.length > 0 && (
-            <div>
-              <span className="font-semibold text-primary">دول المنشأ: </span>
-              <span className="text-foreground">{partner.origin_countries.slice(0, 3).map(c => COUNTRIES_AR[c] || c).join('، ')}{partner.origin_countries.length > 3 ? ` +${partner.origin_countries.length - 3}` : ''}</span>
-            </div>
-          )}
-          {partner.destination_countries?.length > 0 && (
-            <div>
-              <span className="font-semibold text-emerald-600">دول الوصول: </span>
-              <span className="text-foreground">{partner.destination_countries.slice(0, 3).map(c => COUNTRIES_AR[c] || c).join('، ')}{partner.destination_countries.length > 3 ? ` +${partner.destination_countries.length - 3}` : ''}</span>
-            </div>
-          )}
+      {isYemen ? (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2 text-xs">
+          <span className="text-emerald-600 text-base">🇾🇪</span>
+          <span className="font-semibold text-emerald-700">النطاق:</span>
+          <span className="text-emerald-700">نقل داخلي بين المحافظات اليمنية</span>
         </div>
+      ) : (
+        partner && (partner.origin_countries?.length > 0 || partner.destination_countries?.length > 0) && (
+          <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex flex-wrap gap-3 text-xs">
+            {partner.origin_countries?.length > 0 && (
+              <div>
+                <span className="font-semibold text-primary">دول المنشأ: </span>
+                <span className="text-foreground">{partner.origin_countries.slice(0, 3).map(c => COUNTRIES_AR[c] || c).join('، ')}{partner.origin_countries.length > 3 ? ` +${partner.origin_countries.length - 3}` : ''}</span>
+              </div>
+            )}
+            {partner.destination_countries?.length > 0 && (
+              <div>
+                <span className="font-semibold text-emerald-600">دول الوصول: </span>
+                <span className="text-foreground">{partner.destination_countries.slice(0, 3).map(c => COUNTRIES_AR[c] || c).join('، ')}{partner.destination_countries.length > 3 ? ` +${partner.destination_countries.length - 3}` : ''}</span>
+              </div>
+            )}
+          </div>
+        )
       )}
 
       {/* Input Fields */}
