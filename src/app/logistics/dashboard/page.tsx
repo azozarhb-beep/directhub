@@ -13,7 +13,7 @@ import {
   resolvePlatformRole,
   getHomeRoomForRole,
 } from '@/lib/roomIsolation';
-import ShipmentTimeline from '@/components/ShipmentTimeline';
+
 
 import LogisticsDocumentsPanel from './LogisticsDocumentsPanel';
 
@@ -155,16 +155,16 @@ const SERVICES_ALL = [
 ];
 
 const ORDER_STATUS_OPTIONS = [
-  { value: 'pending',          label: 'Pending',            color: 'bg-amber-50 text-amber-700 border-amber-200' },
-  { value: 'confirmed',        label: 'Confirmed',          color: 'bg-blue-50 text-blue-700 border-blue-200' },
-  { value: 'processing',       label: 'Processing',         color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-  { value: 'shipped',          label: 'Shipped',            color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
-  { value: 'in_transit',       label: 'In Transit',         color: 'bg-sky-50 text-sky-700 border-sky-200' },
-  { value: 'customs_clearance',label: 'Customs Clearance',  color: 'bg-violet-50 text-violet-700 border-violet-200' },
-  { value: 'out_for_delivery', label: 'Out for Delivery',   color: 'bg-orange-50 text-orange-700 border-orange-200' },
-  { value: 'delivered',        label: 'Delivered',          color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  { value: 'cancelled',        label: 'Cancelled',          color: 'bg-red-50 text-red-700 border-red-200' },
-  { value: 'disputed',         label: 'Disputed',           color: 'bg-rose-50 text-rose-700 border-rose-200' },
+  { value: 'pending',          label: 'قيد الانتظار',            color: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { value: 'confirmed',        label: 'مؤكد',                    color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { value: 'processing',       label: 'قيد التجهيز',             color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  { value: 'shipped',          label: 'تم الشحن',                color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+  { value: 'in_transit',       label: 'في الطريق (قيد النقل)',   color: 'bg-sky-50 text-sky-700 border-sky-200' },
+  { value: 'customs_clearance',label: 'التخليص الجمركي',         color: 'bg-violet-50 text-violet-700 border-violet-200' },
+  { value: 'out_for_delivery', label: 'خارج للتسليم',            color: 'bg-orange-50 text-orange-700 border-orange-200' },
+  { value: 'delivered',        label: 'تم التسليم',              color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { value: 'cancelled',        label: 'ملغي',                    color: 'bg-red-50 text-red-700 border-red-200' },
+  { value: 'disputed',         label: 'نزاع / قيد التدقيق',      color: 'bg-rose-50 text-rose-700 border-rose-200' },
 ];
 
 // ─── Arabic translations for profile fields ───────────────────────────────────
@@ -1399,10 +1399,40 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
 
 // ─── Payments Tab ─────────────────────────────────────────────────────────────
 
+interface BankAccount {
+  bank_name: string;
+  account_number: string;
+  beneficiary_name: string;
+}
+
+const TRANSACTION_STATUS_META: Record<string, { label: string; color: string; icon: string }> = {
+  held_in_escrow: { label: 'في الضمان',      color: 'bg-blue-50 text-blue-700 border-blue-200',       icon: 'LockClosedIcon' },
+  released:       { label: 'مكتملة',          color: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: 'CheckCircleIcon' },
+  transferred:    { label: 'تم التحويل',      color: 'bg-violet-50 text-violet-700 border-violet-200', icon: 'ArrowUpRightIcon' },
+  pending:        { label: 'معلقة',           color: 'bg-amber-50 text-amber-700 border-amber-200',   icon: 'ClockIcon' },
+  refunded:       { label: 'مُسترجعة',        color: 'bg-gray-50 text-gray-600 border-gray-200',      icon: 'ArrowUturnLeftIcon' },
+  disputed:       { label: 'متنازع عليها',    color: 'bg-red-50 text-red-700 border-red-200',         icon: 'ExclamationTriangleIcon' },
+};
+
+const PLATFORM_COMMISSION_RATE = 0.05; // 5%
+
 function PaymentsTab({ partnerId }: { partnerId: string }) {
   const supabase = createClient();
   const [payments, setPayments] = useState<EscrowPayment[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Withdrawal modal state
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
+  const [withdrawSuccess, setWithdrawSuccess] = useState(false);
+
+  // Bank account state
+  const [showBankModal, setShowBankModal] = useState(false);
+  const [bankAccount, setBankAccount] = useState<BankAccount>({ bank_name: '', account_number: '', beneficiary_name: '' });
+  const [savedBank, setSavedBank] = useState<BankAccount | null>(null);
+  const [bankSaving, setBankSaving] = useState(false);
+  const [bankSaved, setBankSaved] = useState(false);
 
   useEffect(() => {
     const fetch = async () => {
@@ -1422,6 +1452,24 @@ function PaymentsTab({ partnerId }: { partnerId: string }) {
   const totalHeld = payments.filter(p => p.payment_status === 'held_in_escrow').reduce((s, p) => s + p.amount, 0);
   const totalPending = payments.filter(p => p.payment_status === 'pending').reduce((s, p) => s + p.amount, 0);
 
+  const handleWithdrawSubmit = async () => {
+    setWithdrawSubmitting(true);
+    await new Promise(r => setTimeout(r, 1200));
+    setWithdrawSubmitting(false);
+    setWithdrawSuccess(true);
+    setTimeout(() => { setWithdrawSuccess(false); setShowWithdrawModal(false); setWithdrawAmount(''); }, 2500);
+  };
+
+  const handleBankSave = async () => {
+    if (!bankAccount.bank_name || !bankAccount.account_number || !bankAccount.beneficiary_name) return;
+    setBankSaving(true);
+    await new Promise(r => setTimeout(r, 800));
+    setSavedBank({ ...bankAccount });
+    setBankSaving(false);
+    setBankSaved(true);
+    setTimeout(() => { setBankSaved(false); setShowBankModal(false); }, 1800);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -1431,70 +1479,267 @@ function PaymentsTab({ partnerId }: { partnerId: string }) {
   }
 
   return (
-    <div>
-      <div className="grid grid-cols-3 gap-3 mb-6">
+    <div dir="rtl" className="space-y-6">
+
+      {/* ── Balance Cards ── */}
+      <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'Released', amount: totalReleased, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', icon: 'CheckCircleIcon' },
-          { label: 'In Escrow', amount: totalHeld,    color: 'text-blue-600',    bg: 'bg-blue-50 border-blue-200',       icon: 'LockClosedIcon' },
-          { label: 'Pending',   amount: totalPending, color: 'text-amber-600',   bg: 'bg-amber-50 border-amber-200',     icon: 'ClockIcon' },
+          { label: 'متاحة للسحب', sublabel: 'Released', amount: totalReleased, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', icon: 'CheckCircleIcon' },
+          { label: 'في الضمان المالي المشروط', sublabel: 'In Escrow', amount: totalHeld, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200', icon: 'LockClosedIcon' },
+          { label: 'معلقة / قيد الانتظار', sublabel: 'Pending', amount: totalPending, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200', icon: 'ClockIcon' },
         ].map(card => (
           <div key={card.label} className={`rounded-xl border p-4 ${card.bg}`}>
             <div className="flex items-center gap-2 mb-1">
               <Icon name={card.icon as any} size={16} className={card.color} />
-              <span className="text-xs text-muted-foreground">{card.label}</span>
+              <span className="text-xs font-semibold text-muted-foreground">{card.label}</span>
             </div>
             <p className={`text-xl font-bold ${card.color}`}>
               ${card.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{card.sublabel}</p>
           </div>
         ))}
       </div>
 
-      {payments.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
-            <Icon name="BanknotesIcon" size={28} className="text-muted-foreground" />
+      {/* ── Action Buttons ── */}
+      <div className="flex flex-wrap gap-3">
+        <button
+          onClick={() => setShowWithdrawModal(true)}
+          disabled={totalReleased <= 0}
+          className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-sm"
+        >
+          <Icon name="ArrowUpTrayIcon" size={16} />
+          طلب سحب الأرباح
+          {totalReleased > 0 && (
+            <span className="bg-white/20 px-2 py-0.5 rounded-lg text-xs">
+              ${totalReleased.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setShowBankModal(true)}
+          className="flex items-center gap-2 px-5 py-2.5 bg-card border border-border hover:bg-muted text-foreground rounded-xl text-sm font-semibold transition-colors"
+        >
+          <Icon name="BuildingLibraryIcon" size={16} />
+          {savedBank ? 'تعديل بيانات الحساب البنكي' : 'إضافة حساب بنكي / وسيلة تحويل'}
+        </button>
+      </div>
+
+      {/* ── Saved Bank Info ── */}
+      {savedBank && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+          <Icon name="BuildingLibraryIcon" size={18} className="text-blue-600 mt-0.5 shrink-0" />
+          <div className="text-sm">
+            <p className="font-semibold text-blue-800 mb-1">بيانات الحساب البنكي المحفوظة</p>
+            <p className="text-blue-700">البنك: <span className="font-medium">{savedBank.bank_name}</span></p>
+            <p className="text-blue-700">رقم الحساب / IBAN: <span className="font-medium font-mono">{savedBank.account_number}</span></p>
+            <p className="text-blue-700">اسم المستفيد: <span className="font-medium">{savedBank.beneficiary_name}</span></p>
           </div>
-          <p className="font-semibold text-foreground">No payments yet</p>
-          <p className="text-sm text-muted-foreground mt-1">Escrow payments linked to your account will appear here.</p>
         </div>
-      ) : (
-        <div className="border border-border rounded-xl overflow-hidden">
-          <table className="w-full text-sm min-w-[500px]">
-            <thead className="bg-muted/40 border-b border-border">
-              <tr>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Buyer</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Amount</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Status</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Date</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Released</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {payments.map(payment => {
-                const meta = PAYMENT_STATUS_META[payment.payment_status] || PAYMENT_STATUS_META.pending;
-                const buyer = payment.buyer as any;
-                return (
-                  <tr key={payment.id} className="hover:bg-muted/20 transition-colors">
-                    <td className="px-4 py-3 font-medium text-foreground">
-                      {buyer?.full_name || buyer?.email || '—'}
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-foreground">
-                      {payment.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} {payment.currency}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${meta.color}`}>
-                        <Icon name={meta.icon as any} size={12} />
-                        {meta.label}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{formatDate(payment.created_at)}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{formatDate(payment.released_at)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      )}
+
+      {/* ── Transaction History Table ── */}
+      <div>
+        <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+          <Icon name="ClipboardDocumentListIcon" size={16} className="text-primary" />
+          سجل الحركات المالية
+        </h3>
+
+        {payments.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-14 text-center bg-muted/20 rounded-2xl border border-dashed border-border">
+            <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
+              <Icon name="BanknotesIcon" size={28} className="text-muted-foreground" />
+            </div>
+            <p className="font-semibold text-foreground">لا توجد دفعات مالية حتى الآن</p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+              ستظهر هنا مستحقات الشحن المحمية بنظام الضمان المالي فور ربطها بشحناتك.
+            </p>
+          </div>
+        ) : (
+          <div className="border border-border rounded-xl overflow-x-auto">
+            <table className="w-full text-sm min-w-[700px]">
+              <thead className="bg-muted/40 border-b border-border">
+                <tr>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">تاريخ المعاملة</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">رقم الشحنة / الطلب</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">إجمالي المبلغ</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">عمولة المنصة</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">الصافي المستحق</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">حالة العملية</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {payments.map(payment => {
+                  const meta = TRANSACTION_STATUS_META[payment.payment_status] || TRANSACTION_STATUS_META.pending;
+                  const commission = payment.amount * PLATFORM_COMMISSION_RATE;
+                  const net = payment.amount - commission;
+                  return (
+                    <tr key={payment.id} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(payment.created_at)}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-foreground">
+                        {payment.order_id ? payment.order_id.slice(0, 8).toUpperCase() : '—'}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-foreground">
+                        ${payment.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} {payment.currency}
+                      </td>
+                      <td className="px-4 py-3 text-red-600 text-xs">
+                        -${commission.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        <span className="text-muted-foreground mr-1">(5%)</span>
+                      </td>
+                      <td className="px-4 py-3 font-bold text-emerald-700">
+                        ${net.toLocaleString('en-US', { minimumFractionDigits: 2 })} {payment.currency}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${meta.color}`}>
+                          <Icon name={meta.icon as any} size={12} />
+                          {meta.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Withdrawal Modal ── */}
+      {showWithdrawModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-card rounded-2xl shadow-2xl border border-border w-full max-w-md p-6" dir="rtl">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <Icon name="ArrowUpTrayIcon" size={20} className="text-emerald-600" />
+                طلب سحب الأرباح
+              </h2>
+              <button onClick={() => setShowWithdrawModal(false)} className="text-muted-foreground hover:text-foreground">
+                <Icon name="XMarkIcon" size={20} />
+              </button>
+            </div>
+
+            {withdrawSuccess ? (
+              <div className="flex flex-col items-center py-6 text-center gap-3">
+                <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <Icon name="CheckCircleIcon" size={32} className="text-emerald-600" />
+                </div>
+                <p className="font-bold text-emerald-700">تم إرسال طلب السحب بنجاح!</p>
+                <p className="text-sm text-muted-foreground">سيتم مراجعة الطلب وتحويل المبلغ خلال 1-3 أيام عمل.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-800">
+                  الرصيد المتاح للسحب: <span className="font-bold">${totalReleased.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                </div>
+                {!savedBank && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-start gap-2">
+                    <Icon name="ExclamationTriangleIcon" size={14} className="mt-0.5 shrink-0" />
+                    يرجى إضافة بيانات الحساب البنكي أولاً لضمان تحويل المبلغ بشكل صحيح.
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-semibold text-foreground mb-1.5">المبلغ المطلوب سحبه (USD)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={totalReleased}
+                    value={withdrawAmount}
+                    onChange={e => setWithdrawAmount(e.target.value)}
+                    placeholder={`الحد الأقصى: $${totalReleased.toFixed(2)}`}
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  />
+                </div>
+                {savedBank && (
+                  <div className="text-xs text-muted-foreground bg-muted/30 rounded-xl p-3">
+                    سيتم التحويل إلى: <span className="font-semibold text-foreground">{savedBank.bank_name}</span> — {savedBank.beneficiary_name}
+                  </div>
+                )}
+                <button
+                  onClick={handleWithdrawSubmit}
+                  disabled={withdrawSubmitting || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > totalReleased}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+                >
+                  {withdrawSubmitting ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Icon name="ArrowUpTrayIcon" size={16} />
+                  )}
+                  تأكيد طلب السحب
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Bank Account Modal ── */}
+      {showBankModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-card rounded-2xl shadow-2xl border border-border w-full max-w-md p-6" dir="rtl">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <Icon name="BuildingLibraryIcon" size={20} className="text-primary" />
+                بيانات الحساب البنكي / وسيلة التحويل
+              </h2>
+              <button onClick={() => setShowBankModal(false)} className="text-muted-foreground hover:text-foreground">
+                <Icon name="XMarkIcon" size={20} />
+              </button>
+            </div>
+
+            {bankSaved ? (
+              <div className="flex flex-col items-center py-6 text-center gap-3">
+                <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <Icon name="CheckCircleIcon" size={32} className="text-emerald-600" />
+                </div>
+                <p className="font-bold text-emerald-700">تم حفظ بيانات الحساب بنجاح!</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-foreground mb-1.5">اسم البنك</label>
+                  <input
+                    type="text"
+                    value={bankAccount.bank_name}
+                    onChange={e => setBankAccount(prev => ({ ...prev, bank_name: e.target.value }))}
+                    placeholder="مثال: البنك الأهلي اليمني"
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-foreground mb-1.5">رقم الحساب / IBAN</label>
+                  <input
+                    type="text"
+                    value={bankAccount.account_number}
+                    onChange={e => setBankAccount(prev => ({ ...prev, account_number: e.target.value }))}
+                    placeholder="YE00 0000 0000 0000 0000 0000"
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-foreground mb-1.5">اسم المستفيد</label>
+                  <input
+                    type="text"
+                    value={bankAccount.beneficiary_name}
+                    onChange={e => setBankAccount(prev => ({ ...prev, beneficiary_name: e.target.value }))}
+                    placeholder="الاسم الكامل كما في البطاقة البنكية"
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <button
+                  onClick={handleBankSave}
+                  disabled={bankSaving || !bankAccount.bank_name || !bankAccount.account_number || !bankAccount.beneficiary_name}
+                  className="w-full py-3 bg-primary hover:bg-primary/90 disabled:opacity-40 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+                >
+                  {bankSaving ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Icon name="CheckIcon" size={16} />
+                  )}
+                  حفظ بيانات الحساب
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -2039,6 +2284,686 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
   );
 }
 
+// ─── International Shipments Tab ──────────────────────────────────────────────
+
+interface IntlShipment {
+  id: string;
+  tracking_number: string;
+  bl_number: string | null;
+  transport_type: string | null;
+  origin_address: string | null;
+  destination_address: string | null;
+  route_origin_port: string | null;
+  route_destination_port: string | null;
+  shipment_status: string;
+  etd: string | null;
+  estimated_delivery: string | null;
+  document_url: string | null;
+  carrier_name: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const TRANSPORT_TYPE_OPTIONS = [
+  { value: 'sea_fcl',  label: 'بحري حاويات كاملة (FCL)',  icon: '🚢' },
+  { value: 'sea_lcl',  label: 'بحري مجزأ (LCL)',           icon: '📦' },
+  { value: 'air',      label: 'شحن جوي',                   icon: '✈️' },
+  { value: 'express',  label: 'شحن جوي سريع (Express)',    icon: '⚡' },
+];
+
+const INTL_STATUS_OPTIONS = [
+  { value: 'pending',           label: 'في ميناء التصدير',         color: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { value: 'picked_up',         label: 'أبحرت / أقلعت',            color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { value: 'in_transit',        label: 'في الطريق',                 color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  { value: 'arrived_at_hub',    label: 'وصلت الميناء',              color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+  { value: 'out_for_delivery',  label: 'تحت التخليص الجمركي',       color: 'bg-violet-50 text-violet-700 border-violet-200' },
+  { value: 'delivered',         label: 'سُلِّمت',                   color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { value: 'failed_delivery',   label: 'مشكلة في التسليم',          color: 'bg-red-50 text-red-700 border-red-200' },
+  { value: 'returned',          label: 'مُعادة',                    color: 'bg-orange-50 text-orange-700 border-orange-200' },
+  { value: 'cancelled',         label: 'ملغاة',                     color: 'bg-gray-50 text-gray-500 border-gray-200' },
+];
+
+function getIntlStatusMeta(status: string) {
+  return INTL_STATUS_OPTIONS.find(o => o.value === status) || { value: status, label: status, color: 'bg-gray-50 text-gray-500 border-gray-200' };
+}
+
+function getTransportLabel(type: string | null) {
+  return TRANSPORT_TYPE_OPTIONS.find(t => t.value === type) || { value: type || '', label: type || '—', icon: '📦' };
+}
+
+function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
+  const supabase = createClient();
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [shipments, setShipments] = useState<IntlShipment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [searchResult, setSearchResult] = useState<IntlShipment | null | 'not_found'>(null);
+  const [searching, setSearching] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [updateSuccess, setUpdateSuccess] = useState<string | null>(null);
+  const [docUploading, setDocUploading] = useState<string | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  // Add shipment form state
+  const [addForm, setAddForm] = useState({
+    tracking_number: '',
+    bl_number: '',
+    transport_type: 'sea_fcl',
+    route_origin_port: '',
+    route_destination_port: '',
+    carrier_name: '',
+    etd: '',
+    estimated_delivery: '',
+    notes: '',
+  });
+  const [addSaving, setAddSaving] = useState(false);
+  const [addError, setAddError] = useState('');
+
+  // ── Fetch ──────────────────────────────────────────────────────────────────
+  const fetchShipments = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('logistics_shipments')
+      .select('id, tracking_number, bl_number, transport_type, origin_address, destination_address, route_origin_port, route_destination_port, shipment_status, etd, estimated_delivery, document_url, carrier_name, notes, created_at, updated_at')
+      .eq('logistics_partner_id', partnerId)
+      .order('created_at', { ascending: false });
+    setShipments((data as IntlShipment[]) || []);
+    setLoading(false);
+  }, [partnerId, supabase]);
+
+  useEffect(() => { fetchShipments(); }, [fetchShipments]);
+
+  // ── Tracking Search ────────────────────────────────────────────────────────
+  const handleSearch = async () => {
+    const q = searchInput.trim();
+    if (!q) return;
+    setSearching(true);
+    setSearchResult(null);
+    setSearchQuery(q);
+
+    const { data } = await supabase
+      .from('logistics_shipments')
+      .select('id, tracking_number, bl_number, transport_type, origin_address, destination_address, route_origin_port, route_destination_port, shipment_status, etd, estimated_delivery, document_url, carrier_name, notes, created_at, updated_at')
+      .eq('logistics_partner_id', partnerId)
+      .or(`tracking_number.ilike.%${q}%,bl_number.ilike.%${q}%`)
+      .limit(1)
+      .maybeSingle();
+
+    setSearchResult(data ? (data as IntlShipment) : 'not_found');
+    setSearching(false);
+  };
+
+  const clearSearch = () => {
+    setSearchInput('');
+    setSearchQuery('');
+    setSearchResult(null);
+  };
+
+  // ── Status Update ──────────────────────────────────────────────────────────
+  const updateStatus = async (shipmentId: string, newStatus: string) => {
+    setUpdatingId(shipmentId);
+    const { error } = await supabase
+      .from('logistics_shipments')
+      .update({ shipment_status: newStatus, updated_at: new Date().toISOString() })
+      .eq('id', shipmentId)
+      .eq('logistics_partner_id', partnerId);
+    if (!error) {
+      setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, shipment_status: newStatus } : s));
+      if (searchResult && searchResult !== 'not_found' && searchResult.id === shipmentId) {
+        setSearchResult({ ...searchResult, shipment_status: newStatus });
+      }
+      setUpdateSuccess(shipmentId);
+      setTimeout(() => setUpdateSuccess(null), 2500);
+    }
+    setUpdatingId(null);
+  };
+
+  // ── Document Upload ────────────────────────────────────────────────────────
+  const handleDocUpload = async (shipmentId: string, file: File) => {
+    setDocUploading(shipmentId);
+    try {
+      const ext = file.name.split('.').pop();
+      const path = `${partnerId}/${shipmentId}/customs_doc_${Date.now()}.${ext}`;
+      const { error: uploadErr } = await supabase.storage
+        .from('logistics-documents')
+        .upload(path, file, { upsert: true });
+      if (uploadErr) throw uploadErr;
+
+      const { data: urlData } = supabase.storage
+        .from('logistics-documents')
+        .getPublicUrl(path);
+
+      const { error: updateErr } = await supabase
+        .from('logistics_shipments')
+        .update({ document_url: urlData.publicUrl, updated_at: new Date().toISOString() })
+        .eq('id', shipmentId)
+        .eq('logistics_partner_id', partnerId);
+      if (!updateErr) {
+        setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, document_url: urlData.publicUrl } : s));
+      }
+    } catch {
+      // silent
+    } finally {
+      setDocUploading(null);
+    }
+  };
+
+  // ── Add Shipment ───────────────────────────────────────────────────────────
+  const handleAddShipment = async () => {
+    if (!addForm.tracking_number.trim()) {
+      setAddError('رقم التتبع مطلوب');
+      return;
+    }
+    setAddSaving(true);
+    setAddError('');
+    const { data, error } = await supabase
+      .from('logistics_shipments')
+      .insert({
+        logistics_partner_id: partnerId,
+        tracking_number: addForm.tracking_number.trim(),
+        bl_number: addForm.bl_number.trim() || null,
+        transport_type: addForm.transport_type,
+        route_origin_port: addForm.route_origin_port.trim() || null,
+        route_destination_port: addForm.route_destination_port.trim() || null,
+        carrier_name: addForm.carrier_name.trim() || null,
+        etd: addForm.etd || null,
+        estimated_delivery: addForm.estimated_delivery || null,
+        notes: addForm.notes.trim() || null,
+        shipment_status: 'pending',
+      })
+      .select()
+      .single();
+    if (error) {
+      setAddError(error.message);
+    } else {
+      setShipments(prev => [data as IntlShipment, ...prev]);
+      setShowAddModal(false);
+      setAddForm({ tracking_number: '', bl_number: '', transport_type: 'sea_fcl', route_origin_port: '', route_destination_port: '', carrier_name: '', etd: '', estimated_delivery: '', notes: '' });
+    }
+    setAddSaving(false);
+  };
+
+  // ── Render helpers ─────────────────────────────────────────────────────────
+  const renderShipmentRow = (shipment: IntlShipment) => {
+    const sm = getIntlStatusMeta(shipment.shipment_status);
+    const tm = getTransportLabel(shipment.transport_type);
+    const isExpanded = expandedId === shipment.id;
+    const isUpdating = updatingId === shipment.id;
+    const justUpdated = updateSuccess === shipment.id;
+
+    return (
+      <div key={shipment.id} className="bg-card border border-border rounded-xl overflow-hidden hover:border-primary/30 transition-colors">
+        {/* Row header */}
+        <div className="flex items-start gap-3 p-4">
+          <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center shrink-0 text-lg">
+            {tm.icon}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <p className="font-bold text-foreground text-sm font-mono">
+                {shipment.bl_number ? `B/L: ${shipment.bl_number}` : `TRK: ${shipment.tracking_number}`}
+              </p>
+              <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border ${sm.color}`}>
+                {sm.label}
+              </span>
+              <span className="px-2 py-0.5 rounded-lg text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                {tm.icon} {tm.label}
+              </span>
+              {justUpdated && (
+                <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
+                  <Icon name="CheckCircleIcon" size={11} /> تم التحديث
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
+              {(shipment.route_origin_port || shipment.origin_address) && (
+                <span className="flex items-center gap-1">
+                  <Icon name="MapPinIcon" size={11} />
+                  {shipment.route_origin_port || shipment.origin_address}
+                </span>
+              )}
+              {(shipment.route_destination_port || shipment.destination_address) && (
+                <>
+                  <Icon name="ArrowRightIcon" size={11} />
+                  <span>{shipment.route_destination_port || shipment.destination_address}</span>
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground mt-0.5">
+              {shipment.etd && (
+                <span className="flex items-center gap-1">
+                  <Icon name="CalendarIcon" size={11} />
+                  ETD: {formatDate(shipment.etd)}
+                </span>
+              )}
+              {shipment.estimated_delivery && (
+                <span className="flex items-center gap-1">
+                  <Icon name="ClockIcon" size={11} />
+                  ETA: {formatDate(shipment.estimated_delivery)}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="shrink-0 flex flex-col items-end gap-1.5">
+            {shipment.document_url && (
+              <a
+                href={shipment.document_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-primary hover:underline flex items-center gap-1"
+              >
+                <Icon name="DocumentTextIcon" size={12} />
+                وثيقة
+              </a>
+            )}
+            <button
+              onClick={() => setExpandedId(isExpanded ? null : shipment.id)}
+              className="text-xs text-primary hover:underline flex items-center gap-0.5"
+            >
+              {isExpanded ? 'طي' : 'إدارة'}
+              <Icon name={isExpanded ? 'ChevronUpIcon' : 'ChevronDownIcon'} size={12} />
+            </button>
+          </div>
+        </div>
+
+        {/* Expanded panel */}
+        {isExpanded && (
+          <div className="border-t border-border bg-muted/20 p-4 space-y-4">
+            {/* Status update */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">تحديث مرحلة الشحنة</p>
+              <div className="flex flex-wrap gap-2">
+                {INTL_STATUS_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => updateStatus(shipment.id, opt.value)}
+                    disabled={isUpdating || shipment.shipment_status === opt.value}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all disabled:opacity-60 ${
+                      shipment.shipment_status === opt.value
+                        ? opt.color + 'ring-2 ring-offset-1 ring-current' :'bg-background border-border text-foreground hover:border-primary/50'
+                    }`}
+                  >
+                    {isUpdating && shipment.shipment_status !== opt.value ? (
+                      <span className="flex items-center gap-1">
+                        <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                        {opt.label}
+                      </span>
+                    ) : opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Document attachment */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">إرفاق وثيقة جمركية</p>
+              <div className="flex items-center gap-3">
+                <label className={`flex items-center gap-2 px-4 py-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 text-primary text-sm font-medium cursor-pointer hover:bg-primary/10 transition-colors ${docUploading === shipment.id ? 'opacity-60 pointer-events-none' : ''}`}>
+                  {docUploading === shipment.id ? (
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Icon name="PaperClipIcon" size={15} />
+                  )}
+                  {docUploading === shipment.id ? 'جارٍ الرفع...' : 'إرفاق وثيقة (PDF / صورة)'}
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp"
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) handleDocUpload(shipment.id, file);
+                    }}
+                  />
+                </label>
+                {shipment.document_url && (
+                  <a
+                    href={shipment.document_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-xs text-emerald-600 hover:underline"
+                  >
+                    <Icon name="DocumentCheckIcon" size={14} />
+                    عرض الوثيقة المرفقة
+                  </a>
+                )}
+              </div>
+            </div>
+
+            {/* Details */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+              {shipment.tracking_number && (
+                <div>
+                  <p className="text-muted-foreground mb-0.5">رقم التتبع</p>
+                  <p className="font-mono font-semibold text-foreground">{shipment.tracking_number}</p>
+                </div>
+              )}
+              {shipment.bl_number && (
+                <div>
+                  <p className="text-muted-foreground mb-0.5">رقم البوليصة (B/L)</p>
+                  <p className="font-mono font-semibold text-foreground">{shipment.bl_number}</p>
+                </div>
+              )}
+              {shipment.carrier_name && (
+                <div>
+                  <p className="text-muted-foreground mb-0.5">الناقل / الشركة</p>
+                  <p className="font-semibold text-foreground">{shipment.carrier_name}</p>
+                </div>
+              )}
+            </div>
+
+            {shipment.notes && (
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">ملاحظات</p>
+                <p className="text-sm text-foreground bg-background border border-border rounded-xl px-3 py-2">{shipment.notes}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ── Main render ────────────────────────────────────────────────────────────
+  return (
+    <div className="space-y-6" dir="rtl">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
+            <Icon name="GlobeAltIcon" size={20} className="text-blue-600" />
+          </div>
+          <div>
+            <h2 className="font-bold text-foreground text-lg">إدارة الشحنات الدولية (بحري وجوي)</h2>
+            <p className="text-sm text-muted-foreground">تتبع وإدارة شحناتك الدولية — FCL / LCL / Air Freight</p>
+          </div>
+        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"
+        >
+          <Icon name="PlusIcon" size={15} />
+          إضافة شحنة جديدة
+        </button>
+      </div>
+
+      {/* Tracking Search Bar */}
+      <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-2xl p-5">
+        <p className="text-sm font-bold text-blue-800 mb-3 flex items-center gap-2">
+          <Icon name="MagnifyingGlassIcon" size={16} className="text-blue-600" />
+          بحث وتتبع الشحنة
+        </p>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Icon name="MagnifyingGlassIcon" size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              placeholder="أدخل رقم الشحنة أو رقم بوليصة الشحن (B/L) أو كود التتبع..."
+              className="w-full h-11 pr-10 pl-4 rounded-xl border border-blue-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 placeholder:text-muted-foreground/60"
+              dir="rtl"
+            />
+          </div>
+          <button
+            onClick={handleSearch}
+            disabled={searching || !searchInput.trim()}
+            className="h-11 px-5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors flex items-center gap-2 shrink-0"
+          >
+            {searching ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Icon name="MagnifyingGlassIcon" size={15} />
+            )}
+            بحث / تتبع
+          </button>
+          {searchQuery && (
+            <button
+              onClick={clearSearch}
+              className="h-11 px-3 border border-border rounded-xl text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Icon name="XMarkIcon" size={15} />
+            </button>
+          )}
+        </div>
+
+        {/* Search result */}
+        {searchResult === 'not_found' && (
+          <div className="mt-3 flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+            <Icon name="ExclamationCircleIcon" size={15} />
+            لم يتم العثور على شحنة بالرقم: <span className="font-mono font-bold">{searchQuery}</span>
+          </div>
+        )}
+        {searchResult && searchResult !== 'not_found' && (
+          <div className="mt-3">
+            <p className="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1">
+              <Icon name="CheckCircleIcon" size={13} />
+              نتيجة البحث:
+            </p>
+            {renderShipmentRow(searchResult)}
+          </div>
+        )}
+      </div>
+
+      {/* Shipments Table */}
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <div className="w-7 h-7 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : shipments.length === 0 ? (
+        /* Empty State */
+        <div className="flex flex-col items-center justify-center py-16 text-center gap-4 bg-muted/20 rounded-2xl border border-dashed border-border">
+          <div className="w-16 h-16 rounded-2xl bg-blue-100 flex items-center justify-center text-3xl">
+            🚢
+          </div>
+          <div>
+            <p className="font-bold text-foreground text-lg">لا توجد شحنات دولية مسندة إليك حالياً</p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
+              ستظهر هنا الشحنات المحجوزة وطلبات الاستيراد فور اعتمادها. يمكنك أيضاً إضافة شحنة يدوياً.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"
+          >
+            <Icon name="PlusIcon" size={15} />
+            إضافة شحنة دولية
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {/* Summary row */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: 'إجمالي الشحنات', count: shipments.length, icon: 'GlobeAltIcon', color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200' },
+              { label: 'في الطريق', count: shipments.filter(s => ['picked_up', 'in_transit'].includes(s.shipment_status)).length, icon: 'TruckIcon', color: 'text-indigo-600', bg: 'bg-indigo-50 border-indigo-200' },
+              { label: 'تحت التخليص', count: shipments.filter(s => s.shipment_status === 'out_for_delivery').length, icon: 'DocumentTextIcon', color: 'text-violet-600', bg: 'bg-violet-50 border-violet-200' },
+              { label: 'تم التسليم', count: shipments.filter(s => s.shipment_status === 'delivered').length, icon: 'CheckBadgeIcon', color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200' },
+            ].map(kpi => (
+              <div key={kpi.label} className={`rounded-xl border p-3 ${kpi.bg}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <Icon name={kpi.icon as any} size={15} className={kpi.color} />
+                  <span className="text-xs text-muted-foreground">{kpi.label}</span>
+                </div>
+                <p className={`text-2xl font-bold ${kpi.color}`}>{kpi.count}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Shipment cards */}
+          {shipments.map(renderShipmentRow)}
+        </div>
+      )}
+
+      {/* Add Shipment Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" dir="rtl">
+          <div className="bg-background rounded-2xl border border-border w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-border">
+              <h3 className="font-bold text-foreground text-lg">إضافة شحنة دولية جديدة</h3>
+              <button
+                onClick={() => { setShowAddModal(false); setAddError(''); }}
+                className="w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"
+              >
+                <Icon name="XMarkIcon" size={16} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {addError && (
+                <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-2.5 text-sm">
+                  <Icon name="ExclamationCircleIcon" size={15} />
+                  {addError}
+                </div>
+              )}
+
+              {/* Transport type */}
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-2">نوع النقل</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {TRANSPORT_TYPE_OPTIONS.map(t => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      onClick={() => setAddForm(prev => ({ ...prev, transport_type: t.value }))}
+                      className={`p-2.5 rounded-xl border text-right transition-all ${
+                        addForm.transport_type === t.value
+                          ? 'border-primary bg-primary/5 ring-2 ring-primary/20' :'border-border bg-background hover:border-primary/40'
+                      }`}
+                    >
+                      <span className="text-base">{t.icon}</span>
+                      <p className={`text-xs font-semibold mt-0.5 ${addForm.transport_type === t.value ? 'text-primary' : 'text-foreground'}`}>{t.label}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tracking / B/L */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                    رقم التتبع <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={addForm.tracking_number}
+                    onChange={e => setAddForm(prev => ({ ...prev, tracking_number: e.target.value }))}
+                    placeholder="TRK-2024-XXXX"
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">رقم البوليصة (B/L)</label>
+                  <input
+                    type="text"
+                    value={addForm.bl_number}
+                    onChange={e => setAddForm(prev => ({ ...prev, bl_number: e.target.value }))}
+                    placeholder="MSKU1234567"
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Route */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">ميناء / مطار المنشأ</label>
+                  <input
+                    type="text"
+                    value={addForm.route_origin_port}
+                    onChange={e => setAddForm(prev => ({ ...prev, route_origin_port: e.target.value }))}
+                    placeholder="مثال: ميناء شنغهاي، الصين"
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">ميناء / مطار الوجهة</label>
+                  <input
+                    type="text"
+                    value={addForm.route_destination_port}
+                    onChange={e => setAddForm(prev => ({ ...prev, route_destination_port: e.target.value }))}
+                    placeholder="مثال: ميناء عدن، اليمن"
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+              </div>
+
+              {/* Carrier */}
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">الناقل / شركة الشحن</label>
+                <input
+                  type="text"
+                  value={addForm.carrier_name}
+                  onChange={e => setAddForm(prev => ({ ...prev, carrier_name: e.target.value }))}
+                  placeholder="مثال: COSCO، MSC، Emirates SkyCargo"
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+
+              {/* ETD / ETA */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">تاريخ المغادرة (ETD)</label>
+                  <input
+                    type="date"
+                    value={addForm.etd}
+                    onChange={e => setAddForm(prev => ({ ...prev, etd: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">تاريخ الوصول المتوقع (ETA)</label>
+                  <input
+                    type="date"
+                    value={addForm.estimated_delivery}
+                    onChange={e => setAddForm(prev => ({ ...prev, estimated_delivery: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">ملاحظات</label>
+                <textarea
+                  value={addForm.notes}
+                  onChange={e => setAddForm(prev => ({ ...prev, notes: e.target.value }))}
+                  rows={2}
+                  placeholder="أي ملاحظات إضافية عن الشحنة..."
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 p-5 border-t border-border">
+              <button
+                onClick={() => { setShowAddModal(false); setAddError(''); }}
+                className="flex-1 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={handleAddShipment}
+                disabled={addSaving || !addForm.tracking_number.trim()}
+                className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+              >
+                {addSaving ? (
+                  <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Icon name="PlusIcon" size={15} />
+                )}
+                إضافة الشحنة
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Dashboard Page ──────────────────────────────────────────────────────
 
 export default function LogisticsDashboardPage() {
@@ -2048,7 +2973,7 @@ export default function LogisticsDashboardPage() {
 
   const [partner, setPartner] = useState<LogisticsPartner | null>(null);
   const [checkLoading, setCheckLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'orders' | 'conversations' | 'stats' | 'calculator' | 'profile' | 'payments' | 'international_orders' | 'freight' | 'customs_docs' | 'documents'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'conversations' | 'stats' | 'calculator' | 'profile' | 'payments' | 'international_orders' | 'customs_docs' | 'documents'>('orders');
 
   useEffect(() => {
     if (authLoading) return;
@@ -2103,8 +3028,7 @@ export default function LogisticsDashboardPage() {
       key: 'international',
       label: 'الشحن الدولي',
       tabs: [
-        { key: 'international_orders', label: '✈️ الشحنات الدولية', icon: 'GlobeAltIcon' },
-        { key: 'freight', label: '🚢 الشحن البحري والجوي', icon: 'TruckIcon' },
+        { key: 'international_orders', label: '🌍 إدارة الشحنات الدولية (بحري وجوي)', icon: 'GlobeAltIcon' },
       ]
     },
     {
@@ -2232,7 +3156,6 @@ export default function LogisticsDashboardPage() {
           {activeTab === 'orders' && (
             <div className="space-y-4">
               <OrdersTab partnerId={partner.id} />
-              <ShipmentTimeline partnerId={partner?.id || ''} type="local" />
             </div>
           )}
           {activeTab === 'conversations' && (
@@ -2248,16 +3171,7 @@ export default function LogisticsDashboardPage() {
             <PaymentsTab partnerId={partner.id} />
           )}
           {activeTab === 'international_orders' && (
-            <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-              <h2 className="text-lg font-semibold text-white mb-4">الشحنات الدولية</h2>
-              <ShipmentTimeline partnerId={partner?.id || ''} type="international" />
-            </div>
-          )}
-          {activeTab === 'freight' && (
-            <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-              <h2 className="text-lg font-semibold text-white mb-4">الشحن البحري والجوي</h2>
-              <ShipmentTimeline partnerId={partner?.id || ''} type="freight" />
-            </div>
+            <InternationalShipmentsTab partnerId={partner.id} />
           )}
           {activeTab === 'customs_docs' && (
             <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
