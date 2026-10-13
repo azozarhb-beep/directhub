@@ -886,6 +886,8 @@ export default function ManufacturerDashboard() {
         updatePayload.factory_status = 'shipped';
       } else if (newStatus === 'cancelled') {
         updatePayload.factory_status = 'cancelled';
+      } else if (newStatus === 'ready_for_dispatch') {
+        updatePayload.factory_status = 'ready_for_dispatch';
       }
       if (factoryOrderNoteInput.trim()) {
         updatePayload.factory_notes = factoryOrderNoteInput.trim();
@@ -904,7 +906,51 @@ export default function ManufacturerDashboard() {
         note: factoryOrderNoteInput.trim() || `Status updated to ${newStatus} by factory`,
       });
 
-      setFactoryOrderStatusMsg(`✅ Order status updated to "${newStatus}" successfully.`);
+      // ── Auto-create dispatch room when status → ready_for_dispatch ──────────
+      if (newStatus === 'ready_for_dispatch') {
+        const orderData = factoryOrders.find((o: any) => o.id === orderId);
+        const { data: existingRoom } = await supabase
+          .from('order_dispatch_rooms')
+          .select('id')
+          .eq('order_id', orderId)
+          .maybeSingle();
+
+        if (!existingRoom) {
+          const { data: newRoom } = await supabase
+            .from('order_dispatch_rooms')
+            .insert({
+              order_id: orderId,
+              factory_id: user.id,
+              agent_id: orderData?.agent_id ?? null,
+              logistics_id: orderData?.logistics_partner_id ?? null,
+              status: 'active',
+            })
+            .select()
+            .single();
+
+          // Send in-app notifications to all parties
+          if (newRoom) {
+            const recipients = [
+              orderData?.agent_id,
+              orderData?.logistics_partner_id,
+            ].filter(Boolean) as string[];
+
+            if (recipients.length > 0) {
+              await supabase.from('notifications').insert(
+                recipients.map((uid: string) => ({
+                  user_id: uid,
+                  title: '🚚 البضاعة جاهزة للشحن — غرفة التنسيق الميداني',
+                  message: `تم فتح غرفة تنسيق ميداني للطلب ${orderData?.order_number ?? orderId}. يرجى الانضمام والتنسيق الفوري.`,
+                  type: 'dispatch_room_created',
+                  is_read: false,
+                }))
+              );
+            }
+          }
+        }
+      }
+
+      setFactoryOrderStatusMsg(`✅ تم تحديث حالة الطلب إلى "${newStatus}" بنجاح.`);
       setFactoryOrderStatusSuccess(true);
       setFactoryOrderNoteInput('');
       await fetchFactoryOrders();
@@ -2528,6 +2574,7 @@ export default function ManufacturerDashboard() {
             handleFactoryOrderStatusUpdate={handleFactoryOrderStatusUpdate}
             fetchFactoryOrders={fetchFactoryOrders}
             md={md}
+            currentUserId={user?.id}
           />
         )}
 
