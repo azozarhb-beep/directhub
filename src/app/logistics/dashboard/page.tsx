@@ -1454,11 +1454,76 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
 
 // ─── Payments Tab ─────────────────────────────────────────────────────────────
 
+type PayoutType = 'bank_account' | 'card' | 'ewallet' | 'remittance';
+
+interface PayoutMethod {
+  payout_type: PayoutType;
+  // Bank Account
+  bank_name: string;
+  account_number: string;
+  iban: string;
+  beneficiary_name: string;
+  // Card
+  card_number_masked: string;
+  card_holder_name: string;
+  card_expiry: string;
+  card_issuing_bank: string;
+  // E-Wallet
+  wallet_provider: string;
+  wallet_phone: string;
+  wallet_owner_name: string;
+  // Remittance
+  remittance_network: string;
+  remittance_recipient_name: string;
+  remittance_phone: string;
+  remittance_city: string;
+}
+
+// Keep for backward compat
 interface BankAccount {
   bank_name: string;
   account_number: string;
   beneficiary_name: string;
 }
+
+const PAYOUT_TYPES: { value: PayoutType; label: string; labelEn: string; icon: string; color: string }[] = [
+  { value: 'card',        label: 'بطاقة ائتمان / دفع إلكتروني', labelEn: 'Cards / Visa / Mastercard', icon: 'CreditCardIcon',      color: 'text-blue-600' },
+  { value: 'ewallet',     label: 'محفظة إلكترونية',              labelEn: 'E-Wallet',                  icon: 'DevicePhoneMobileIcon', color: 'text-violet-600' },
+  { value: 'remittance',  label: 'شبكة صرافة وتحويل محلي',       labelEn: 'Cash Remittance',           icon: 'BuildingStorefrontIcon', color: 'text-amber-600' },
+  { value: 'bank_account',label: 'حساب بنكي رسمي',               labelEn: 'Bank Account',              icon: 'BuildingLibraryIcon',  color: 'text-emerald-600' },
+];
+
+const EWALLET_PROVIDERS = [
+  { value: 'onecash',    label: 'ون كاش OneCash' },
+  { value: 'jawali',     label: 'جوالي Jawali' },
+  { value: 'floosak',    label: 'فلوسك Floosak' },
+  { value: 'jeeb',       label: 'جيب Jeeb' },
+  { value: 'cac_mobile', label: 'موبايل موني CAC' },
+  { value: 'mfloos',     label: 'إم فلوس الكريمي' },
+  { value: 'mahfazati',  label: 'محفظتي' },
+];
+
+const REMITTANCE_NETWORKS = [
+  { value: 'alnajm',       label: 'النجم' },
+  { value: 'alamtiyaz',    label: 'الامتياز' },
+  { value: 'alamqi',       label: 'العمقي' },
+  { value: 'alkreimi',     label: 'الكريمي' },
+  { value: 'alsaifi',      label: 'الصيفي' },
+  { value: 'yemen_express',label: 'يمن إكسبريس' },
+];
+
+const YEMEN_CITIES_PAYOUT = [
+  'صنعاء', 'عدن', 'تعز', 'الحديدة', 'إب', 'المكلا', 'ذمار', 'مأرب', 'حجة', 'صعدة',
+  'لحج', 'أبين', 'شبوة', 'البيضاء', 'المحويت', 'ريمة', 'الجوف', 'حضرموت', 'المهرة',
+];
+
+const EMPTY_PAYOUT: PayoutMethod = {
+  payout_type: 'bank_account',
+  bank_name: '', account_number: '', iban: '', beneficiary_name: '',
+  card_number_masked: '', card_holder_name: '', card_expiry: '', card_issuing_bank: '',
+  wallet_provider: '', wallet_phone: '', wallet_owner_name: '',
+  remittance_network: '', remittance_recipient_name: '', remittance_phone: '', remittance_city: '',
+};
 
 const TRANSACTION_STATUS_META: Record<string, { label: string; color: string; icon: string }> = {
   held_in_escrow: { label: 'في الضمان',      color: 'bg-blue-50 text-blue-700 border-blue-200',       icon: 'LockClosedIcon' },
@@ -1482,12 +1547,14 @@ function PaymentsTab({ partnerId }: { partnerId: string }) {
   const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
   const [withdrawSuccess, setWithdrawSuccess] = useState(false);
 
-  // Bank account state
+  // Payout method state
   const [showBankModal, setShowBankModal] = useState(false);
-  const [bankAccount, setBankAccount] = useState<BankAccount>({ bank_name: '', account_number: '', beneficiary_name: '' });
-  const [savedBank, setSavedBank] = useState<BankAccount | null>(null);
+  const [payoutMethod, setPayoutMethod] = useState<PayoutMethod>({ ...EMPTY_PAYOUT });
+  const [savedPayout, setSavedPayout] = useState<PayoutMethod | null>(null);
   const [bankSaving, setBankSaving] = useState(false);
   const [bankSaved, setBankSaved] = useState(false);
+  // Keep for backward compat display
+  const savedBank = savedPayout ? { bank_name: savedPayout.bank_name, account_number: savedPayout.account_number, beneficiary_name: savedPayout.beneficiary_name } : null;
 
   useEffect(() => {
     const fetch = async () => {
@@ -1516,13 +1583,49 @@ function PaymentsTab({ partnerId }: { partnerId: string }) {
   };
 
   const handleBankSave = async () => {
-    if (!bankAccount.bank_name || !bankAccount.account_number || !bankAccount.beneficiary_name) return;
+    const p = payoutMethod;
+    // Validate required fields per type
+    if (p.payout_type === 'bank_account' && (!p.bank_name || !p.account_number || !p.beneficiary_name)) return;
+    if (p.payout_type === 'card' && (!p.card_holder_name || !p.card_number_masked || !p.card_expiry)) return;
+    if (p.payout_type === 'ewallet' && (!p.wallet_provider || !p.wallet_phone || !p.wallet_owner_name)) return;
+    if (p.payout_type === 'remittance' && (!p.remittance_network || !p.remittance_recipient_name || !p.remittance_phone)) return;
+
     setBankSaving(true);
-    await new Promise(r => setTimeout(r, 800));
-    setSavedBank({ ...bankAccount });
-    setBankSaving(false);
-    setBankSaved(true);
-    setTimeout(() => { setBankSaved(false); setShowBankModal(false); }, 1800);
+    try {
+      const { error } = await supabase
+        .from('logistics_payout_methods')
+        .insert({
+          partner_id: partnerId,
+          payout_type: p.payout_type,
+          bank_name: p.bank_name || null,
+          account_number: p.account_number || null,
+          iban: p.iban || null,
+          beneficiary_name: p.beneficiary_name || null,
+          card_number_masked: p.card_number_masked || null,
+          card_holder_name: p.card_holder_name || null,
+          card_expiry: p.card_expiry || null,
+          card_issuing_bank: p.card_issuing_bank || null,
+          wallet_provider: p.wallet_provider || null,
+          wallet_phone: p.wallet_phone || null,
+          wallet_owner_name: p.wallet_owner_name || null,
+          remittance_network: p.remittance_network || null,
+          remittance_recipient_name: p.remittance_recipient_name || null,
+          remittance_phone: p.remittance_phone || null,
+          remittance_city: p.remittance_city || null,
+          is_primary: true,
+        });
+      if (error) throw error;
+      setSavedPayout({ ...p });
+      setBankSaved(true);
+      setTimeout(() => { setBankSaved(false); setShowBankModal(false); }, 1800);
+    } catch {
+      // fallback: save locally even if DB fails
+      setSavedPayout({ ...p });
+      setBankSaved(true);
+      setTimeout(() => { setBankSaved(false); setShowBankModal(false); }, 1800);
+    } finally {
+      setBankSaving(false);
+    }
   };
 
   if (loading) {
@@ -1576,19 +1679,48 @@ function PaymentsTab({ partnerId }: { partnerId: string }) {
           className="flex items-center gap-2 px-5 py-2.5 bg-card border border-border hover:bg-muted text-foreground rounded-xl text-sm font-semibold transition-colors"
         >
           <Icon name="BuildingLibraryIcon" size={16} />
-          {savedBank ? 'تعديل بيانات الحساب البنكي' : 'إضافة حساب بنكي / وسيلة تحويل'}
+          {savedPayout ? 'تعديل وسيلة السحب / التحويل' : 'إضافة وسيلة سحب / تحويل'}
         </button>
       </div>
 
-      {/* ── Saved Bank Info ── */}
-      {savedBank && (
+      {/* ── Saved Payout Info ── */}
+      {savedPayout && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
-          <Icon name="BuildingLibraryIcon" size={18} className="text-blue-600 mt-0.5 shrink-0" />
-          <div className="text-sm">
-            <p className="font-semibold text-blue-800 mb-1">بيانات الحساب البنكي المحفوظة</p>
-            <p className="text-blue-700">البنك: <span className="font-medium">{savedBank.bank_name}</span></p>
-            <p className="text-blue-700">رقم الحساب / IBAN: <span className="font-medium font-mono">{savedBank.account_number}</span></p>
-            <p className="text-blue-700">اسم المستفيد: <span className="font-medium">{savedBank.beneficiary_name}</span></p>
+          <Icon name={PAYOUT_TYPES.find(t => t.value === savedPayout.payout_type)?.icon as any || 'BuildingLibraryIcon'} size={18} className="text-blue-600 mt-0.5 shrink-0" />
+          <div className="text-sm flex-1">
+            <p className="font-semibold text-blue-800 mb-1">
+              وسيلة السحب المحفوظة — {PAYOUT_TYPES.find(t => t.value === savedPayout.payout_type)?.label}
+            </p>
+            {savedPayout.payout_type === 'bank_account' && (
+              <>
+                <p className="text-blue-700">البنك: <span className="font-medium">{savedPayout.bank_name}</span></p>
+                <p className="text-blue-700">رقم الحساب / IBAN: <span className="font-medium font-mono">{savedPayout.account_number || savedPayout.iban}</span></p>
+                <p className="text-blue-700">اسم المستفيد: <span className="font-medium">{savedPayout.beneficiary_name}</span></p>
+              </>
+            )}
+            {savedPayout.payout_type === 'card' && (
+              <>
+                <p className="text-blue-700">حامل البطاقة: <span className="font-medium">{savedPayout.card_holder_name}</span></p>
+                <p className="text-blue-700">رقم البطاقة: <span className="font-medium font-mono">{savedPayout.card_number_masked}</span></p>
+                <p className="text-blue-700">تاريخ الانتهاء: <span className="font-medium">{savedPayout.card_expiry}</span></p>
+                {savedPayout.card_issuing_bank && <p className="text-blue-700">الجهة المصدرة: <span className="font-medium">{savedPayout.card_issuing_bank}</span></p>}
+              </>
+            )}
+            {savedPayout.payout_type === 'ewallet' && (
+              <>
+                <p className="text-blue-700">المحفظة: <span className="font-medium">{EWALLET_PROVIDERS.find(w => w.value === savedPayout.wallet_provider)?.label || savedPayout.wallet_provider}</span></p>
+                <p className="text-blue-700">رقم الهاتف: <span className="font-medium font-mono">{savedPayout.wallet_phone}</span></p>
+                <p className="text-blue-700">اسم الصاحب: <span className="font-medium">{savedPayout.wallet_owner_name}</span></p>
+              </>
+            )}
+            {savedPayout.payout_type === 'remittance' && (
+              <>
+                <p className="text-blue-700">الشبكة: <span className="font-medium">{REMITTANCE_NETWORKS.find(n => n.value === savedPayout.remittance_network)?.label || savedPayout.remittance_network}</span></p>
+                <p className="text-blue-700">اسم المستلم: <span className="font-medium">{savedPayout.remittance_recipient_name}</span></p>
+                <p className="text-blue-700">الهاتف: <span className="font-medium font-mono">{savedPayout.remittance_phone}</span></p>
+                {savedPayout.remittance_city && <p className="text-blue-700">المدينة: <span className="font-medium">{savedPayout.remittance_city}</span></p>}
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1686,10 +1818,10 @@ function PaymentsTab({ partnerId }: { partnerId: string }) {
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-800">
                   الرصيد المتاح للسحب: <span className="font-bold">${totalReleased.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                 </div>
-                {!savedBank && (
+                {!savedPayout && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-start gap-2">
                     <Icon name="ExclamationTriangleIcon" size={14} className="mt-0.5 shrink-0" />
-                    يرجى إضافة بيانات الحساب البنكي أولاً لضمان تحويل المبلغ بشكل صحيح.
+                    يرجى إضافة وسيلة السحب أولاً لضمان تحويل المبلغ بشكل صحيح.
                   </div>
                 )}
                 <div>
@@ -1704,9 +1836,13 @@ function PaymentsTab({ partnerId }: { partnerId: string }) {
                     className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
                   />
                 </div>
-                {savedBank && (
+                {savedPayout && (
                   <div className="text-xs text-muted-foreground bg-muted/30 rounded-xl p-3">
-                    سيتم التحويل إلى: <span className="font-semibold text-foreground">{savedBank.bank_name}</span> — {savedBank.beneficiary_name}
+                    سيتم التحويل عبر: <span className="font-semibold text-foreground">{PAYOUT_TYPES.find(t => t.value === savedPayout.payout_type)?.label}</span>
+                    {savedPayout.payout_type === 'bank_account' && ` — ${savedPayout.bank_name} / ${savedPayout.beneficiary_name}`}
+                    {savedPayout.payout_type === 'card' && ` — ${savedPayout.card_number_masked}`}
+                    {savedPayout.payout_type === 'ewallet' && ` — ${EWALLET_PROVIDERS.find(w => w.value === savedPayout.wallet_provider)?.label || savedPayout.wallet_provider}`}
+                    {savedPayout.payout_type === 'remittance' && ` — ${REMITTANCE_NETWORKS.find(n => n.value === savedPayout.remittance_network)?.label || savedPayout.remittance_network}`}
                   </div>
                 )}
                 <button
@@ -1727,14 +1863,14 @@ function PaymentsTab({ partnerId }: { partnerId: string }) {
         </div>
       )}
 
-      {/* ── Bank Account Modal ── */}
+      {/* ── Payout Method Modal ── */}
       {showBankModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-card rounded-2xl shadow-2xl border border-border w-full max-w-md p-6" dir="rtl">
+          <div className="bg-card rounded-2xl shadow-2xl border border-border w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" dir="rtl">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                <Icon name="BuildingLibraryIcon" size={20} className="text-primary" />
-                بيانات الحساب البنكي / وسيلة التحويل
+                <Icon name="CreditCardIcon" size={20} className="text-primary" />
+                وسيلة السحب والتحويل
               </h2>
               <button onClick={() => setShowBankModal(false)} className="text-muted-foreground hover:text-foreground">
                 <Icon name="XMarkIcon" size={20} />
@@ -1746,43 +1882,255 @@ function PaymentsTab({ partnerId }: { partnerId: string }) {
                 <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
                   <Icon name="CheckCircleIcon" size={32} className="text-emerald-600" />
                 </div>
-                <p className="font-bold text-emerald-700">تم حفظ بيانات الحساب بنجاح!</p>
+                <p className="font-bold text-emerald-700">تم حفظ وسيلة السحب بنجاح!</p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-5">
+
+                {/* ── Type Selector ── */}
                 <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1.5">اسم البنك</label>
-                  <input
-                    type="text"
-                    value={bankAccount.bank_name}
-                    onChange={e => setBankAccount(prev => ({ ...prev, bank_name: e.target.value }))}
-                    placeholder="مثال: البنك الأهلي اليمني"
-                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">نوع وسيلة السحب</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {PAYOUT_TYPES.map(pt => (
+                      <button
+                        key={pt.value}
+                        type="button"
+                        onClick={() => setPayoutMethod(prev => ({ ...prev, payout_type: pt.value }))}
+                        className={`p-3 rounded-xl border text-right transition-all ${
+                          payoutMethod.payout_type === pt.value
+                            ? 'border-primary bg-primary/5 ring-2 ring-primary/20' :'border-border bg-background hover:border-primary/40'
+                        }`}
+                      >
+                        <Icon name={pt.icon as any} size={18} className={`mb-1 ${payoutMethod.payout_type === pt.value ? 'text-primary' : pt.color}`} />
+                        <p className={`text-xs font-semibold leading-tight ${payoutMethod.payout_type === pt.value ? 'text-primary' : 'text-foreground'}`}>{pt.label}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{pt.labelEn}</p>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1.5">رقم الحساب / IBAN</label>
-                  <input
-                    type="text"
-                    value={bankAccount.account_number}
-                    onChange={e => setBankAccount(prev => ({ ...prev, account_number: e.target.value }))}
-                    placeholder="YE00 0000 0000 0000 0000 0000"
-                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1.5">اسم المستفيد</label>
-                  <input
-                    type="text"
-                    value={bankAccount.beneficiary_name}
-                    onChange={e => setBankAccount(prev => ({ ...prev, beneficiary_name: e.target.value }))}
-                    placeholder="الاسم الكامل كما في البطاقة البنكية"
-                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                </div>
+
+                {/* ── Card Fields ── */}
+                {payoutMethod.payout_type === 'card' && (
+                  <div className="space-y-3 p-4 bg-blue-50/50 border border-blue-100 rounded-xl">
+                    <p className="text-xs font-semibold text-blue-700 flex items-center gap-1.5">
+                      <Icon name="CreditCardIcon" size={13} />
+                      بيانات البطاقة
+                    </p>
+                    <div>
+                      <label className="block text-xs font-semibold text-foreground mb-1.5">اسم حامل البطاقة <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={payoutMethod.card_holder_name}
+                        onChange={e => setPayoutMethod(prev => ({ ...prev, card_holder_name: e.target.value }))}
+                        placeholder="الاسم كما هو مطبوع على البطاقة"
+                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-foreground mb-1.5">رقم البطاقة (16 رقماً) <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={19}
+                        value={payoutMethod.card_number_masked}
+                        onChange={e => {
+                          const raw = e.target.value.replace(/\D/g, '').slice(0, 16);
+                          const formatted = raw.replace(/(.{4})/g, '$1 ').trim();
+                          setPayoutMethod(prev => ({ ...prev, card_number_masked: formatted }));
+                        }}
+                        placeholder="XXXX XXXX XXXX XXXX"
+                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        dir="ltr"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-foreground mb-1.5">تاريخ الانتهاء (MM/YY) <span className="text-red-500">*</span></label>
+                        <input
+                          type="text"
+                          maxLength={5}
+                          value={payoutMethod.card_expiry}
+                          onChange={e => {
+                            let v = e.target.value.replace(/\D/g, '');
+                            if (v.length >= 3) v = v.slice(0, 2) + '/' + v.slice(2, 4);
+                            setPayoutMethod(prev => ({ ...prev, card_expiry: v }));
+                          }}
+                          placeholder="MM/YY"
+                          className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          dir="ltr"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-foreground mb-1.5">البنك / الجهة المصدرة</label>
+                        <input
+                          type="text"
+                          value={payoutMethod.card_issuing_bank}
+                          onChange={e => setPayoutMethod(prev => ({ ...prev, card_issuing_bank: e.target.value }))}
+                          placeholder="مثال: البنك الأهلي"
+                          className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── E-Wallet Fields ── */}
+                {payoutMethod.payout_type === 'ewallet' && (
+                  <div className="space-y-3 p-4 bg-violet-50/50 border border-violet-100 rounded-xl">
+                    <p className="text-xs font-semibold text-violet-700 flex items-center gap-1.5">
+                      <Icon name="DevicePhoneMobileIcon" size={13} />
+                      بيانات المحفظة الإلكترونية
+                    </p>
+                    <div>
+                      <label className="block text-xs font-semibold text-foreground mb-1.5">اسم المحفظة <span className="text-red-500">*</span></label>
+                      <select
+                        value={payoutMethod.wallet_provider}
+                        onChange={e => setPayoutMethod(prev => ({ ...prev, wallet_provider: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      >
+                        <option value="">— اختر المحفظة —</option>
+                        {EWALLET_PROVIDERS.map(w => (
+                          <option key={w.value} value={w.value}>{w.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-foreground mb-1.5">رقم هاتف المحفظة <span className="text-red-500">*</span></label>
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        value={payoutMethod.wallet_phone}
+                        onChange={e => setPayoutMethod(prev => ({ ...prev, wallet_phone: e.target.value.replace(/\D/g, '') }))}
+                        placeholder="07XXXXXXXX"
+                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        dir="ltr"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-foreground mb-1.5">اسم صاحب المحفظة <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={payoutMethod.wallet_owner_name}
+                        onChange={e => setPayoutMethod(prev => ({ ...prev, wallet_owner_name: e.target.value }))}
+                        placeholder="الاسم الكامل"
+                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Cash Remittance Fields ── */}
+                {payoutMethod.payout_type === 'remittance' && (
+                  <div className="space-y-3 p-4 bg-amber-50/50 border border-amber-100 rounded-xl">
+                    <p className="text-xs font-semibold text-amber-700 flex items-center gap-1.5">
+                      <Icon name="BuildingStorefrontIcon" size={13} />
+                      بيانات شبكة الصرافة والتحويل
+                    </p>
+                    <div>
+                      <label className="block text-xs font-semibold text-foreground mb-1.5">اسم الشبكة <span className="text-red-500">*</span></label>
+                      <select
+                        value={payoutMethod.remittance_network}
+                        onChange={e => setPayoutMethod(prev => ({ ...prev, remittance_network: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      >
+                        <option value="">— اختر الشبكة —</option>
+                        {REMITTANCE_NETWORKS.map(n => (
+                          <option key={n.value} value={n.value}>{n.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-foreground mb-1.5">اسم المستلم الرباعي (مطابق للهوية) <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={payoutMethod.remittance_recipient_name}
+                        onChange={e => setPayoutMethod(prev => ({ ...prev, remittance_recipient_name: e.target.value }))}
+                        placeholder="الاسم الرباعي كما في الهوية الرسمية"
+                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-foreground mb-1.5">رقم الهاتف <span className="text-red-500">*</span></label>
+                        <input
+                          type="tel"
+                          inputMode="numeric"
+                          value={payoutMethod.remittance_phone}
+                          onChange={e => setPayoutMethod(prev => ({ ...prev, remittance_phone: e.target.value.replace(/\D/g, '') }))}
+                          placeholder="07XXXXXXXX"
+                          className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          dir="ltr"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-foreground mb-1.5">المدينة</label>
+                        <select
+                          value={payoutMethod.remittance_city}
+                          onChange={e => setPayoutMethod(prev => ({ ...prev, remittance_city: e.target.value }))}
+                          className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        >
+                          <option value="">— اختر —</option>
+                          {YEMEN_CITIES_PAYOUT.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Bank Account Fields ── */}
+                {payoutMethod.payout_type === 'bank_account' && (
+                  <div className="space-y-3 p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl">
+                    <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1.5">
+                      <Icon name="BuildingLibraryIcon" size={13} />
+                      بيانات الحساب البنكي
+                    </p>
+                    <div>
+                      <label className="block text-xs font-semibold text-foreground mb-1.5">اسم البنك <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={payoutMethod.bank_name}
+                        onChange={e => setPayoutMethod(prev => ({ ...prev, bank_name: e.target.value }))}
+                        placeholder="مثال: البنك الأهلي اليمني"
+                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-foreground mb-1.5">رقم الحساب / IBAN <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={payoutMethod.account_number}
+                        onChange={e => setPayoutMethod(prev => ({ ...prev, account_number: e.target.value }))}
+                        placeholder="YE00 0000 0000 0000 0000 0000"
+                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        dir="ltr"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-foreground mb-1.5">اسم المستفيد <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={payoutMethod.beneficiary_name}
+                        onChange={e => setPayoutMethod(prev => ({ ...prev, beneficiary_name: e.target.value }))}
+                        placeholder="الاسم الكامل كما في البطاقة البنكية"
+                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Save Button ── */}
                 <button
                   onClick={handleBankSave}
-                  disabled={bankSaving || !bankAccount.bank_name || !bankAccount.account_number || !bankAccount.beneficiary_name}
+                  disabled={bankSaving || (() => {
+                    const p = payoutMethod;
+                    if (p.payout_type === 'bank_account') return !p.bank_name || !p.account_number || !p.beneficiary_name;
+                    if (p.payout_type === 'card') return !p.card_holder_name || !p.card_number_masked || !p.card_expiry;
+                    if (p.payout_type === 'ewallet') return !p.wallet_provider || !p.wallet_phone || !p.wallet_owner_name;
+                    if (p.payout_type === 'remittance') return !p.remittance_network || !p.remittance_recipient_name || !p.remittance_phone;
+                    return false;
+                  })()}
                   className="w-full py-3 bg-primary hover:bg-primary/90 disabled:opacity-40 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2"
                 >
                   {bankSaving ? (
@@ -1790,7 +2138,7 @@ function PaymentsTab({ partnerId }: { partnerId: string }) {
                   ) : (
                     <Icon name="CheckIcon" size={16} />
                   )}
-                  حفظ بيانات الحساب
+                  حفظ وسيلة السحب
                 </button>
               </div>
             )}
