@@ -498,6 +498,10 @@ const DEFAULT_RATES = {
   sea_base_docs_fee:       300.00,
   sea_min_bl_charge:       500.00,
   sea_rate_per_cbm_ton:    150.00,
+  sea_fcl_20ft_rate:       1200.00, // FCL 20ft Standard Container
+  sea_fcl_40ft_rate:       1800.00, // FCL 40ft Standard Container
+  sea_fcl_40hq_rate:       2000.00, // FCL 40ft High Cube
+  sea_fcl_docs_fee:        250.00,  // FCL Documentation Fee
   air_rate_per_kg:         6.50,
   air_handling_fee:        80.00,
   air_min_charge:          150.00,
@@ -561,12 +565,39 @@ const YEMEN_CITIES: { name: string; nameAr: string; distanceFromSanaa: number }[
 
 // ── Sea freight ports ─────────────────────────────────────────────────────────
 const SEA_ORIGIN_PORTS = [
-  { value: 'shanghai',     label: 'Shanghai (CNSHA)',       labelAr: 'شنغهاي' },
-  { value: 'ningbo',       label: 'Ningbo (CNNGB)',         labelAr: 'نينغبو' },
-  { value: 'shenzhen',     label: 'Shenzhen (CNSZX)',       labelAr: 'شنزن' },
-  { value: 'guangzhou',    label: 'Guangzhou (CNGZH)',      labelAr: 'غوانغتشو' },
-  { value: 'istanbul',     label: 'Istanbul (TRIST)',       labelAr: 'إسطنبول' },
-  { value: 'jebel_ali',   label: 'Jebel Ali (AEJEA)',      labelAr: 'جبل علي' },
+  // China & East Asia
+  { value: 'shanghai',     label: 'Shanghai (CNSHA)',          labelAr: 'شنغهاي',           country: 'China' },
+  { value: 'ningbo',       label: 'Ningbo (CNNGB)',            labelAr: 'نينغبو',            country: 'China' },
+  { value: 'shenzhen',     label: 'Shenzhen (CNSZX)',          labelAr: 'شنزن',              country: 'China' },
+  { value: 'guangzhou',    label: 'Guangzhou (CNGZH)',         labelAr: 'غوانغتشو',          country: 'China' },
+  { value: 'qingdao',      label: 'Qingdao (CNTAO)',           labelAr: 'تشينغداو',          country: 'China' },
+  { value: 'tianjin',      label: 'Tianjin (CNTXG)',           labelAr: 'تيانجين',           country: 'China' },
+  { value: 'singapore',    label: 'Singapore (SGSIN)',         labelAr: 'سنغافورة',          country: 'Singapore' },
+  // India
+  { value: 'nhava_sheva',  label: 'Nhava Sheva / Mumbai (INNSA)', labelAr: 'نهافا شيفا / مومباي', country: 'India' },
+  { value: 'mundra',       label: 'Mundra (INMUN)',            labelAr: 'موندرا',            country: 'India' },
+  { value: 'chennai',      label: 'Chennai (INMAA)',           labelAr: 'تشيناي',            country: 'India' },
+  // South Korea
+  { value: 'busan',        label: 'Busan (KRPUS)',             labelAr: 'بوسان',             country: 'South Korea' },
+  { value: 'incheon',      label: 'Incheon (KRINC)',           labelAr: 'إنتشون',            country: 'South Korea' },
+  // Iran
+  { value: 'bandar_abbas', label: 'Bandar Abbas (IRBND)',      labelAr: 'بندر عباس',         country: 'Iran' },
+  { value: 'chabahar',     label: 'Chabahar (IRZBR)',          labelAr: 'تشابهار',           country: 'Iran' },
+  // Europe
+  { value: 'rotterdam',    label: 'Rotterdam (NLRTM)',         labelAr: 'روتردام',           country: 'Netherlands' },
+  { value: 'hamburg',      label: 'Hamburg (DEHAM)',           labelAr: 'هامبورغ',           country: 'Germany' },
+  { value: 'antwerp',      label: 'Antwerp (BEANR)',           labelAr: 'أنتويرب',           country: 'Belgium' },
+  { value: 'valencia',     label: 'Valencia (ESVLC)',          labelAr: 'فالنسيا',           country: 'Spain' },
+  { value: 'genoa',        label: 'Genoa (ITGOA)',             labelAr: 'جنوة',              country: 'Italy' },
+  // Turkey & Regional
+  { value: 'istanbul',     label: 'Istanbul (TRIST)',          labelAr: 'إسطنبول',           country: 'Turkey' },
+  { value: 'mersin',       label: 'Mersin (TRMER)',            labelAr: 'مرسين',             country: 'Turkey' },
+  { value: 'izmir',        label: 'Izmir (TRIZM)',             labelAr: 'إزمير',             country: 'Turkey' },
+  // Gulf & Middle East
+  { value: 'jebel_ali',   label: 'Jebel Ali (AEJEA)',         labelAr: 'جبل علي',           country: 'UAE' },
+  { value: 'jeddah',       label: 'Jeddah Islamic Port (SAJED)', labelAr: 'ميناء جدة الإسلامي', country: 'Saudi Arabia' },
+  { value: 'dammam',       label: 'Dammam (SADMM)',            labelAr: 'الدمام',            country: 'Saudi Arabia' },
+  { value: 'salalah',      label: 'Salalah (OMSLL)',           labelAr: 'صلالة',             country: 'Oman' },
 ];
 
 const SEA_DEST_PORTS = [
@@ -591,32 +622,86 @@ const AIR_DEST_AIRPORTS = [
   { value: 'sanaa',   label: "Sana'a International (SAH)", labelAr: 'مطار صنعاء الدولي' },
 ];
 
+// ── FTL Truck types ───────────────────────────────────────────────────────────
+const FTL_TRUCKS = [
+  { value: 'dyna',     label: 'دينا (Dyna)',                    labelEn: 'Dyna — up to 5 tons',          flatRate: 120 },
+  { value: 'medium',   label: 'شاحنة متوسطة / عايدي',           labelEn: 'Medium Truck — up to 12 tons', flatRate: 250 },
+  { value: 'trailer',  label: 'قاطرة / تريلا كاملة',            labelEn: 'Full Trailer — up to 35-40 tons', flatRate: 600 },
+];
+
+// ── FCL Container Types ───────────────────────────────────────────────────────
+const FCL_CONTAINER_TYPES = [
+  {
+    value: '20ft',
+    label: '20ft Standard Container',
+    labelAr: 'حاوية 20 قدم قياسية',
+    specs: 'حتى 26 طن / 33 CBM',
+    rateKey: 'sea_fcl_20ft_rate' as keyof PartnerRates,
+  },
+  {
+    value: '40ft',
+    label: '40ft Standard Container',
+    labelAr: 'حاوية 40 قدم قياسية',
+    specs: 'حتى 28 طن / 67 CBM',
+    rateKey: 'sea_fcl_40ft_rate' as keyof PartnerRates,
+  },
+  {
+    value: '40hq',
+    label: '40ft High Cube (40HQ)',
+    labelAr: 'حاوية 40 قدم مرتفعة (الأكثر طلباً)',
+    specs: 'الأكثر طلباً للمصانع / 76 CBM',
+    rateKey: 'sea_fcl_40hq_rate' as keyof PartnerRates,
+  },
+];
+
+// ── Route-based ton rates ─────────────────────────────────────────────────────
+// Returns the per-ton rate based on origin city (Hodeidah→Sana'a: $35, Aden→Sana'a: $60, default: rates.land_heavy_rate_per_ton)
+function getRouteTonRate(fromCity: string, toCity: string, rates: PartnerRates): number {
+  const from = fromCity.toLowerCase();
+  const to   = toCity.toLowerCase();
+  const isHodeidahSanaa =
+    (from.includes('hodeidah') || from.includes('الحديدة')) &&
+    (to.includes("sana") || to.includes('صنعاء'));
+  const isAdenSanaa =
+    (from.includes('aden') || from.includes('عدن')) &&
+    (to.includes("sana") || to.includes('صنعاء'));
+  if (isHodeidahSanaa) return 35;
+  if (isAdenSanaa)     return 60;
+  return rates.land_heavy_rate_per_ton;
+}
+
 // ── Tiered land weight pricing ────────────────────────────────────────────────
-function calcLandCost(weightKg: number, rates: PartnerRates): { cost: number; tier: string; breakdown: { label: string; amount: number }[] } {
+function calcLandCost(weightKg: number, rates: PartnerRates, tonRate?: number): { cost: number; tier: string; breakdown: { label: string; amount: number }[] } {
   let breakdown: { label: string; amount: number }[] = [];
   let cost = 0;
   let tier = '';
 
+  const effectiveTonRate = tonRate ?? rates.land_heavy_rate_per_ton;
+
   if (weightKg < 100) {
-    // Light: < 100 kg
-    cost = weightKg * rates.land_light_rate_per_kg;
-    tier = `شحنة خفيفة (< 100 كجم) — $${rates.land_light_rate_per_kg}/كجم`;
-    breakdown.push({ label: `الوزن (${weightKg} كجم × $${rates.land_light_rate_per_kg}/كجم)`, amount: cost });
-  } else if (weightKg <= 1000) {
-    // Medium: 100–1000 kg
-    cost = weightKg * rates.land_medium_rate_per_kg;
-    tier = `حمولة متوسطة (100–1,000 كجم) — $${rates.land_medium_rate_per_kg}/كجم`;
-    breakdown.push({ label: `الوزن (${weightKg} كجم × $${rates.land_medium_rate_per_kg}/كجم)`, amount: cost });
-  } else {
-    // Heavy: > 1000 kg → price per ton, capped at max trip rate
-    const tons = weightKg / 1000;
-    const rawCost = tons * rates.land_heavy_rate_per_ton;
+    // Light: < 100 kg — apply cap
+    const rawCost = weightKg * rates.land_light_rate_per_kg;
     cost = Math.min(rawCost, rates.land_max_cap_per_trip);
-    tier = `حمولة تجارية ثقيلة (> 1,000 كجم) — $${rates.land_heavy_rate_per_ton}/طن`;
-    breakdown.push({ label: `الوزن (${tons.toFixed(2)} طن × $${rates.land_heavy_rate_per_ton}/طن)`, amount: rawCost });
+    tier = `شحنة خفيفة (< 100 كجم) — $${rates.land_light_rate_per_kg}/كجم`;
+    breakdown.push({ label: `الوزن (${weightKg} كجم × $${rates.land_light_rate_per_kg}/كجم)`, amount: rawCost });
     if (rawCost > rates.land_max_cap_per_trip) {
       breakdown.push({ label: `سقف أقصى للرحلة (Max Cap)`, amount: -(rawCost - rates.land_max_cap_per_trip) });
     }
+  } else if (weightKg <= 1000) {
+    // Medium: 100–1000 kg — apply cap
+    const rawCost = weightKg * rates.land_medium_rate_per_kg;
+    cost = Math.min(rawCost, rates.land_max_cap_per_trip);
+    tier = `حمولة متوسطة (100–1,000 كجم) — $${rates.land_medium_rate_per_kg}/كجم`;
+    breakdown.push({ label: `الوزن (${weightKg} كجم × $${rates.land_medium_rate_per_kg}/كجم)`, amount: rawCost });
+    if (rawCost > rates.land_max_cap_per_trip) {
+      breakdown.push({ label: `سقف أقصى للرحلة (Max Cap)`, amount: -(rawCost - rates.land_max_cap_per_trip) });
+    }
+  } else {
+    // Heavy: > 1000 kg → price per ton — NO cap, direct rate
+    const tons = weightKg / 1000;
+    cost = tons * effectiveTonRate;
+    tier = `حمولة تجارية ثقيلة (> 1,000 كجم) — $${effectiveTonRate}/طن`;
+    breakdown.push({ label: `الوزن (${tons.toFixed(2)} طن × $${effectiveTonRate}/طن)`, amount: cost });
   }
 
   return { cost, tier, breakdown };
@@ -630,6 +715,11 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
     : 'local_land_yemen';
 
   const [shipmentType, setShipmentType] = useState<ShipmentType>(defaultShipmentType);
+  const [freightMode, setFreightMode] = useState<'ltl' | 'ftl'>('ltl');
+  const [ftlTruckType, setFtlTruckType] = useState<string>('dyna');
+  const [seaShippingMode, setSeaShippingMode] = useState<'lcl' | 'fcl'>('lcl');
+  const [fclContainerType, setFclContainerType] = useState<string>('40hq');
+  const [fclContainerCount, setFclContainerCount] = useState<number>(1);
   const [weightKg, setWeightKg] = useState('');
   const [cbmVolume, setCbmVolume] = useState('');
   const [distanceKm, setDistanceKm] = useState('');
@@ -637,6 +727,8 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
   const [toCity, setToCity] = useState('');
   const [seaOriginPort, setSeaOriginPort] = useState('');
   const [seaDestPort, setSeaDestPort] = useState('');
+  const [seaOriginSearch, setSeaOriginSearch] = useState('');
+  const [showSeaOriginDropdown, setShowSeaOriginDropdown] = useState(false);
   const [airOriginAirport, setAirOriginAirport] = useState('');
   const [airDestAirport, setAirDestAirport] = useState('');
   const [result, setResult] = useState<CalcResult | null>(null);
@@ -671,6 +763,10 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
             sea_base_docs_fee:       Number(data.sea_base_docs_fee)       || DEFAULT_RATES.sea_base_docs_fee,
             sea_min_bl_charge:       Number(data.sea_min_bl_charge)       || DEFAULT_RATES.sea_min_bl_charge,
             sea_rate_per_cbm_ton:    Number(data.sea_rate_per_cbm_ton)    || DEFAULT_RATES.sea_rate_per_cbm_ton,
+            sea_fcl_20ft_rate:       Number(data.sea_fcl_20ft_rate)       || DEFAULT_RATES.sea_fcl_20ft_rate,
+            sea_fcl_40ft_rate:       Number(data.sea_fcl_40ft_rate)       || DEFAULT_RATES.sea_fcl_40ft_rate,
+            sea_fcl_40hq_rate:       Number(data.sea_fcl_40hq_rate)       || DEFAULT_RATES.sea_fcl_40hq_rate,
+            sea_fcl_docs_fee:        Number(data.sea_fcl_docs_fee)        || DEFAULT_RATES.sea_fcl_docs_fee,
             air_rate_per_kg:         Number(data.air_rate_per_kg)         || DEFAULT_RATES.air_rate_per_kg,
             air_handling_fee:        Number(data.air_handling_fee)        || DEFAULT_RATES.air_handling_fee,
             air_min_charge:          Number(data.air_min_charge)          || DEFAULT_RATES.air_min_charge,
@@ -697,6 +793,20 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
 
   const calculate = () => {
     const weight = parseFloat(weightKg) || 0;
+
+    if (isYemen && freightMode === 'ftl') {
+      // FTL mode: flat rate per truck type
+      const truck = FTL_TRUCKS.find(t => t.value === ftlTruckType) || FTL_TRUCKS[0];
+      let total = truck.flatRate;
+      let breakdown = [
+        { label: `📦 نمط الشحن: حجز شاحنة كاملة (FTL)`, amount: 0 },
+        { label: `${truck.label} — ${truck.labelEn}`, amount: truck.flatRate },
+      ];
+      setResult({ baseCost: truck.flatRate, distanceCost: 0, weightCost: 0, fuelSurcharge: 0, total, currency: 'USD', breakdown });
+      setCalculated(true);
+      return;
+    }
+
     if (weight <= 0) return;
 
     let breakdown: { label: string; amount: number }[] = [];
@@ -707,8 +817,9 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
     let fuelSurcharge = 0;
 
     if (isYemen) {
-      // ── Tiered land pricing ──────────────────────────────────────────────────
-      const { cost, tier, breakdown: wb } = calcLandCost(weight, rates);
+      // ── Tiered land pricing (LTL) ────────────────────────────────────────────
+      const tonRate = getRouteTonRate(fromCity, toCity, rates);
+      const { cost, tier, breakdown: wb } = calcLandCost(weight, rates, tonRate);
       weightCost = cost;
       breakdown = wb;
       total = weightCost;
@@ -717,19 +828,37 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
 
     } else if (isSea) {
       // ── Sea freight ──────────────────────────────────────────────────────────
-      const cbm = parseFloat(cbmVolume) || 0;
-      const chargeable = Math.max(weight / 1000, cbm); // ton or CBM, whichever is greater
-      baseCost = rates.sea_base_docs_fee;
-      weightCost = chargeable * rates.sea_rate_per_cbm_ton;
-      const subtotal = baseCost + weightCost;
-      total = Math.max(subtotal, rates.sea_min_bl_charge);
+      if (seaShippingMode === 'fcl') {
+        // FCL mode: container rate × count + docs fee
+        const container = FCL_CONTAINER_TYPES.find(c => c.value === fclContainerType) || FCL_CONTAINER_TYPES[2];
+        const containerRate = Number(rates[container.rateKey]) || 0;
+        const docsFeeFcl = rates.sea_fcl_docs_fee;
+        const containersCost = containerRate * fclContainerCount;
+        total = containersCost + docsFeeFcl;
+        baseCost = docsFeeFcl;
+        weightCost = containersCost;
 
-      breakdown = [
-        { label: `رسوم أساسية ووثائق (Base & Docs)`, amount: baseCost },
-        { label: `الشحن (${chargeable.toFixed(2)} طن/CBM × $${rates.sea_rate_per_cbm_ton})`, amount: weightCost },
-      ];
-      if (total > subtotal) {
-        breakdown.push({ label: `الحد الأدنى لبوليصة الشحن (Min B/L)`, amount: total - subtotal });
+        breakdown = [
+          { label: `📦 نمط الشحن: حاوية كاملة (FCL) — ${container.labelAr}`, amount: 0 },
+          { label: `${container.label} × ${fclContainerCount} حاوية`, amount: containersCost },
+          { label: `رسوم إصدار البوليصة والوثائق (Documentation Fee)`, amount: docsFeeFcl },
+        ];
+      } else {
+        // LCL mode (existing logic)
+        const cbm = parseFloat(cbmVolume) || 0;
+        const chargeable = Math.max(weight / 1000, cbm); // ton or CBM, whichever is greater
+        baseCost = rates.sea_base_docs_fee;
+        weightCost = chargeable * rates.sea_rate_per_cbm_ton;
+        const subtotal = baseCost + weightCost;
+        total = Math.max(subtotal, rates.sea_min_bl_charge);
+
+        breakdown = [
+          { label: `رسوم أساسية ووثائق (Base & Docs)`, amount: baseCost },
+          { label: `الشحن (${chargeable.toFixed(2)} طن/CBM × $${rates.sea_rate_per_cbm_ton})`, amount: weightCost },
+        ];
+        if (total > subtotal) {
+          breakdown.push({ label: `الحد الأدنى لبوليصة الشحن (Min B/L)`, amount: total - subtotal });
+        }
       }
 
     } else if (isAir) {
@@ -779,8 +908,11 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
     setToCity('');
     setSeaOriginPort('');
     setSeaDestPort('');
+    setSeaOriginSearch('');
+    setShowSeaOriginDropdown(false);
     setAirOriginAirport('');
     setAirDestAirport('');
+    setFclContainerCount(1);
   };
 
   const saveRates = async () => {
@@ -801,6 +933,8 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
 
   // Determine if calculate button should be enabled
   const canCalculate = (() => {
+    if (isYemen && freightMode === 'ftl') return !!ftlTruckType;
+    if (isSea && seaShippingMode === 'fcl') return !!seaOriginPort && !!seaDestPort && fclContainerCount >= 1;
     const w = parseFloat(weightKg) || 0;
     if (w <= 0) return false;
     if (isYemen) return !!autoDistance;
@@ -875,9 +1009,9 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
               </div>
             ))}
 
-            {/* Sea rates */}
+            {/* Sea LCL rates */}
             <div className="col-span-2 md:col-span-3 mt-2">
-              <p className="font-semibold text-amber-700 mb-2 uppercase tracking-wide text-[10px]">🚢 الشحن البحري الدولي</p>
+              <p className="font-semibold text-amber-700 mb-2 uppercase tracking-wide text-[10px]">🚢 الشحن البحري الدولي — LCL (مجزأ)</p>
             </div>
             {[
               { key: 'sea_base_docs_fee',    label: 'رسوم أساسية ووثائق $' },
@@ -891,6 +1025,27 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
                   value={(editRates as any)[key]}
                   onChange={e => setEditRates(r => ({ ...r, [key]: parseFloat(e.target.value) || 0 }))}
                   className="w-full px-2 py-1.5 rounded-lg border border-amber-300 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-300"
+                />
+              </div>
+            ))}
+
+            {/* Sea FCL rates */}
+            <div className="col-span-2 md:col-span-3 mt-2">
+              <p className="font-semibold text-cyan-700 mb-2 uppercase tracking-wide text-[10px]">📦 الشحن البحري الدولي — FCL (حاوية كاملة)</p>
+            </div>
+            {[
+              { key: 'sea_fcl_20ft_rate',  label: 'سعر الحاوية 20ft Standard $' },
+              { key: 'sea_fcl_40ft_rate',  label: 'سعر الحاوية 40ft Standard $' },
+              { key: 'sea_fcl_40hq_rate',  label: 'سعر الحاوية 40ft High Cube (40HQ) $' },
+              { key: 'sea_fcl_docs_fee',   label: 'رسوم إصدار البوليصة والوثائق (FCL Docs) $' },
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <label className="block text-[10px] text-cyan-700 mb-1">{label}</label>
+                <input
+                  type="number" step="0.01" min="0"
+                  value={(editRates as any)[key]}
+                  onChange={e => setEditRates(r => ({ ...r, [key]: parseFloat(e.target.value) || 0 }))}
+                  className="w-full px-2 py-1.5 rounded-lg border border-cyan-300 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-cyan-300"
                 />
               </div>
             ))}
@@ -942,7 +1097,7 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
           {(Object.entries(SHIPMENT_TYPE_CONFIG) as [ShipmentType, typeof SHIPMENT_TYPE_CONFIG[ShipmentType]][]).map(([key, cfg]) => (
             <button
               key={key}
-              onClick={() => { setShipmentType(key); setResult(null); setCalculated(false); }}
+              onClick={() => { setShipmentType(key); setResult(null); setCalculated(false); setSeaShippingMode('lcl'); }}
               className={`p-3 rounded-xl border text-left transition-all ${
                 shipmentType === key
                   ? 'border-primary bg-primary/5 ring-2 ring-primary/20' :'border-border bg-background hover:border-primary/40'
@@ -959,6 +1114,35 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
           {SHIPMENT_TYPE_CONFIG[shipmentType].description}
         </p>
       </div>
+
+      {/* Sea Shipping Mode Toggle (LCL / FCL) — shown only for international_sea */}
+      {isSea && (
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">نمط الشحن البحري / Sea Shipping Mode</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => { setSeaShippingMode('lcl'); setResult(null); setCalculated(false); }}
+              className={`p-3 rounded-xl border text-left transition-all ${seaShippingMode === 'lcl' ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border bg-background hover:border-primary/40'}`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Icon name="CubeIcon" size={16} className={seaShippingMode === 'lcl' ? 'text-primary' : 'text-muted-foreground'} />
+                <p className={`text-xs font-bold ${seaShippingMode === 'lcl' ? 'text-primary' : 'text-foreground'}`}>LCL — شحن مجزأ</p>
+              </div>
+              <p className="text-[10px] text-muted-foreground">Shared Cargo — يُحسب بالطن و CBM</p>
+            </button>
+            <button
+              onClick={() => { setSeaShippingMode('fcl'); setResult(null); setCalculated(false); }}
+              className={`p-3 rounded-xl border text-left transition-all ${seaShippingMode === 'fcl' ? 'border-cyan-600 bg-cyan-50 ring-2 ring-cyan-200' : 'border-border bg-background hover:border-cyan-400/60'}`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Icon name="RectangleStackIcon" size={16} className={seaShippingMode === 'fcl' ? 'text-cyan-600' : 'text-muted-foreground'} />
+                <p className={`text-xs font-bold ${seaShippingMode === 'fcl' ? 'text-cyan-700' : 'text-foreground'}`}>FCL — حاوية كاملة</p>
+              </div>
+              <p className="text-[10px] text-muted-foreground">Full Container Load — سعر الحاوية الكاملة</p>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Geographic scope badge */}
       {isYemen ? (
@@ -988,10 +1172,11 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
 
       {/* Input Fields */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Weight */}
+        {/* Weight — hidden in FCL mode */}
+        {!(isSea && seaShippingMode === 'fcl') && (
         <div>
           <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
-            الوزن (كجم) / Weight (kg) <span className="text-red-500">*</span>
+            الوزن (كجم) / Weight (kg) <span className="text-red-500">{isYemen && freightMode === 'ftl' ? '' : '*'}</span>
           </label>
           <div className="relative">
             <input
@@ -999,82 +1184,249 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
               value={weightKg}
               onChange={e => { setWeightKg(e.target.value); setResult(null); }}
               placeholder="e.g. 500"
-              className="w-full px-3 py-2.5 pr-12 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              disabled={isYemen && freightMode === 'ftl'}
+              className="w-full px-3 py-2.5 pr-12 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-40 disabled:cursor-not-allowed"
             />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">kg</span>
           </div>
-          {/* Tier hint for Yemen land */}
-          {isYemen && weightKg && (
+          {/* Tier hint for Yemen land LTL */}
+          {isYemen && freightMode === 'ltl' && weightKg && (
             <p className="text-[10px] text-blue-600 mt-1 flex items-center gap-1">
               <Icon name="InformationCircleIcon" size={11} />
               {parseFloat(weightKg) < 100
-                ? `شحنة خفيفة → $${rates.land_light_rate_per_kg}/كجم`
+                ? `شحنة خفيفة → $${rates.land_light_rate_per_kg}/كجم (سقف $${rates.land_max_cap_per_trip})`
                 : parseFloat(weightKg) <= 1000
-                ? `حمولة متوسطة → $${rates.land_medium_rate_per_kg}/كجم`
-                : `حمولة ثقيلة → $${rates.land_heavy_rate_per_ton}/طن (سقف $${rates.land_max_cap_per_trip})`}
+                ? `حمولة متوسطة → $${rates.land_medium_rate_per_kg}/كجم (سقف $${rates.land_max_cap_per_trip})`
+                : `حمولة ثقيلة → ${getRouteTonRate(fromCity, toCity, rates)}/طن (بدون سقف)`}
             </p>
           )}
         </div>
+        )}
 
         {/* Second input: depends on shipment type */}
         {isYemen && (
-          <div className="space-y-2">
-            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
-              المسار / Route (Yemen Cities)
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] text-muted-foreground mb-1 block">From / من</label>
-                <select
-                  value={fromCity}
-                  onChange={e => { setFromCity(e.target.value); setResult(null); }}
-                  className="w-full px-2 py-2 rounded-xl border border-border bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+          <div className="space-y-3">
+            {/* Freight Mode Selector */}
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                نمط الشحن / Freight Mode
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => { setFreightMode('ltl'); setResult(null); }}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${freightMode === 'ltl' ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border bg-background hover:border-primary/40'}`}
                 >
-                  <option value="">اختر المدينة</option>
-                  {YEMEN_CITIES.map(c => (
-                    <option key={c.name} value={c.name}>{c.name} — {c.nameAr}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] text-muted-foreground mb-1 block">To / إلى</label>
-                <select
-                  value={toCity}
-                  onChange={e => { setToCity(e.target.value); setResult(null); }}
-                  className="w-full px-2 py-2 rounded-xl border border-border bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  <p className={`text-xs font-semibold ${freightMode === 'ltl' ? 'text-primary' : 'text-foreground'}`}>LTL — شحن مجزأ</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">يُحسب بالطن / الكيلو</p>
+                </button>
+                <button
+                  onClick={() => { setFreightMode('ftl'); setResult(null); }}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${freightMode === 'ftl' ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border bg-background hover:border-primary/40'}`}
                 >
-                  <option value="">اختر المدينة</option>
-                  {YEMEN_CITIES.map(c => (
-                    <option key={c.name} value={c.name}>{c.name} — {c.nameAr}</option>
-                  ))}
-                </select>
+                  <p className={`text-xs font-semibold ${freightMode === 'ftl' ? 'text-primary' : 'text-foreground'}`}>FTL — شاحنة كاملة</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">سعر مقطوع للمشوار</p>
+                </button>
               </div>
             </div>
-            {autoDistance !== null && (
-              <p className="text-xs text-blue-600 flex items-center gap-1">
-                <Icon name="MapPinIcon" size={11} />
-                المسافة التقديرية: ~{autoDistance} كم
-              </p>
+
+            {/* FTL: Truck type selector */}
+            {freightMode === 'ftl' && (
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                  نوع الشاحنة / Truck Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={ftlTruckType}
+                  onChange={e => { setFtlTruckType(e.target.value); setResult(null); }}
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  {FTL_TRUCKS.map(t => (
+                    <option key={t.value} value={t.value}>{t.label} — ${t.flatRate}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-blue-600 mt-1 flex items-center gap-1">
+                  <Icon name="InformationCircleIcon" size={11} />
+                  {FTL_TRUCKS.find(t => t.value === ftlTruckType)?.labelEn} — سعر مقطوع: ${FTL_TRUCKS.find(t => t.value === ftlTruckType)?.flatRate}
+                </p>
+              </div>
+            )}
+
+            {/* LTL: Route selector */}
+            {freightMode === 'ltl' && (
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                  المسار / Route (Yemen Cities)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-muted-foreground mb-1 block">From / من</label>
+                    <select
+                      value={fromCity}
+                      onChange={e => { setFromCity(e.target.value); setResult(null); }}
+                      className="w-full px-2 py-2 rounded-xl border border-border bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      <option value="">اختر المدينة</option>
+                      {YEMEN_CITIES.map(c => (
+                        <option key={c.name} value={c.name}>{c.name} — {c.nameAr}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground mb-1 block">To / إلى</label>
+                    <select
+                      value={toCity}
+                      onChange={e => { setToCity(e.target.value); setResult(null); }}
+                      className="w-full px-2 py-2 rounded-xl border border-border bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      <option value="">اختر المدينة</option>
+                      {YEMEN_CITIES.map(c => (
+                        <option key={c.name} value={c.name}>{c.name} — {c.nameAr}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {autoDistance !== null && (
+                  <p className="text-xs text-blue-600 flex items-center gap-1 mt-1">
+                    <Icon name="MapPinIcon" size={11} />
+                    المسافة التقديرية: ~{autoDistance} كم
+                    {fromCity && toCity && parseFloat(weightKg) > 1000 && (
+                      <span className="text-amber-600 mr-2">
+                        · سعر الطن: ${getRouteTonRate(fromCity, toCity, rates)}/طن
+                      </span>
+                    )}
+                  </p>
+                )}
+              </div>
             )}
           </div>
         )}
 
         {isSea && (
           <>
-            <div>
+            {/* FCL Container Type & Count — shown only in FCL mode */}
+            {seaShippingMode === 'fcl' && (
+              <>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                    نوع الحاوية / Container Type <span className="text-red-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    {FCL_CONTAINER_TYPES.map(ct => (
+                      <button
+                        key={ct.value}
+                        onClick={() => { setFclContainerType(ct.value); setResult(null); }}
+                        className={`p-3 rounded-xl border text-left transition-all ${fclContainerType === ct.value ? 'border-cyan-600 bg-cyan-50 ring-2 ring-cyan-200' : 'border-border bg-background hover:border-cyan-400/60'}`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <Icon name="RectangleStackIcon" size={14} className={fclContainerType === ct.value ? 'text-cyan-600' : 'text-muted-foreground'} />
+                          <p className={`text-xs font-bold leading-tight ${fclContainerType === ct.value ? 'text-cyan-700' : 'text-foreground'}`}>{ct.label}</p>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">{ct.labelAr}</p>
+                        <p className="text-[10px] text-cyan-600 mt-0.5 font-medium">{ct.specs}</p>
+                        <p className="text-xs font-bold text-cyan-700 mt-1">${Number(rates[ct.rateKey]).toFixed(0)}/حاوية</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                    عدد الحاويات / Container Count <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number" min="1" step="1"
+                    value={fclContainerCount}
+                    onChange={e => { setFclContainerCount(Math.max(1, parseInt(e.target.value) || 1)); setResult(null); }}
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-cyan-300"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">الافتراضي: 1 حاوية</p>
+                </div>
+              </>
+            )}
+
+            <div className="relative">
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
                 ميناء التحميل / Origin Port <span className="text-red-500">*</span>
               </label>
-              <select
-                value={seaOriginPort}
-                onChange={e => { setSeaOriginPort(e.target.value); setResult(null); }}
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              >
-                <option value="">اختر ميناء التحميل</option>
-                {SEA_ORIGIN_PORTS.map(p => (
-                  <option key={p.value} value={p.value}>{p.label} — {p.labelAr}</option>
-                ))}
-              </select>
+              {/* Searchable origin port input */}
+              <div className="relative">
+                <div className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl border border-border bg-background focus-within:ring-2 focus-within:ring-primary/30">
+                  <Icon name="MagnifyingGlassIcon" size={14} className="text-muted-foreground shrink-0" />
+                  <input
+                    type="text"
+                    value={seaOriginSearch}
+                    onChange={e => {
+                      setSeaOriginSearch(e.target.value);
+                      setShowSeaOriginDropdown(true);
+                      if (!e.target.value) { setSeaOriginPort(''); setResult(null); }
+                    }}
+                    onFocus={() => setShowSeaOriginDropdown(true)}
+                    placeholder={seaOriginPort ? (SEA_ORIGIN_PORTS.find(p => p.value === seaOriginPort)?.label ?? 'ابحث باسم الميناء أو الدولة أو الرمز…') : 'ابحث باسم الميناء أو الدولة أو الرمز…'}
+                    className="flex-1 bg-transparent text-sm focus:outline-none"
+                  />
+                  {seaOriginPort && (
+                    <button
+                      onClick={() => { setSeaOriginPort(''); setSeaOriginSearch(''); setResult(null); }}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <Icon name="XMarkIcon" size={14} />
+                    </button>
+                  )}
+                </div>
+                {showSeaOriginDropdown && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border border-border rounded-xl shadow-lg max-h-64 overflow-y-auto">
+                    {(() => {
+                      const q = seaOriginSearch.toLowerCase();
+                      const filtered = SEA_ORIGIN_PORTS.filter(p =>
+                        !q ||
+                        p.label.toLowerCase().includes(q) ||
+                        p.labelAr.includes(seaOriginSearch) ||
+                        p.country.toLowerCase().includes(q) ||
+                        p.value.toLowerCase().includes(q)
+                      );
+                      // Group by country
+                      const groups: Record<string, typeof SEA_ORIGIN_PORTS> = {};
+                      filtered.forEach(p => {
+                        if (!groups[p.country]) groups[p.country] = [];
+                        groups[p.country].push(p);
+                      });
+                      if (filtered.length === 0) {
+                        return <p className="px-3 py-3 text-sm text-muted-foreground text-center">لا توجد نتائج</p>;
+                      }
+                      return Object.entries(groups).map(([country, ports]) => (
+                        <div key={country}>
+                          <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wide bg-muted/40 sticky top-0">{country}</p>
+                          {ports.map(p => (
+                            <button
+                              key={p.value}
+                              onMouseDown={e => e.preventDefault()}
+                              onClick={() => {
+                                setSeaOriginPort(p.value);
+                                setSeaOriginSearch('');
+                                setShowSeaOriginDropdown(false);
+                                setResult(null);
+                              }}
+                              className={`w-full text-left px-3 py-2 text-sm hover:bg-primary/5 flex items-center justify-between gap-2 ${seaOriginPort === p.value ? 'bg-primary/10 font-semibold text-primary' : 'text-foreground'}`}
+                            >
+                              <span>{p.label}</span>
+                              <span className="text-xs text-muted-foreground">{p.labelAr}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                )}
+              </div>
+              {seaOriginPort && (
+                <p className="text-[10px] text-primary mt-1 flex items-center gap-1">
+                  <Icon name="CheckCircleIcon" size={11} />
+                  {SEA_ORIGIN_PORTS.find(p => p.value === seaOriginPort)?.label} — {SEA_ORIGIN_PORTS.find(p => p.value === seaOriginPort)?.labelAr}
+                </p>
+              )}
+              {/* Click outside to close */}
+              {showSeaOriginDropdown && (
+                <div className="fixed inset-0 z-40" onClick={() => setShowSeaOriginDropdown(false)} />
+              )}
             </div>
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
@@ -1091,6 +1443,8 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
                 ))}
               </select>
             </div>
+            {/* CBM field — hidden in FCL mode */}
+            {seaShippingMode === 'lcl' && (
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
                 الحجم (CBM) — اختياري
@@ -1107,6 +1461,7 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
               </div>
               <p className="text-[10px] text-muted-foreground mt-1">يُستخدم الأعلى بين الوزن (طن) والحجم (CBM)</p>
             </div>
+            )}
           </>
         )}
 
@@ -1187,7 +1542,7 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
             </div>
           </div>
         )}
-        {isSea && (
+        {isSea && seaShippingMode === 'lcl' && (
           <div className="grid grid-cols-3 gap-3 text-center text-xs">
             <div className="bg-white rounded-lg p-2 border border-border">
               <p className="text-muted-foreground text-[10px]">رسوم أساسية ووثائق</p>
@@ -1200,6 +1555,26 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
             <div className="bg-white rounded-lg p-2 border border-border">
               <p className="text-muted-foreground text-[10px]">الحد الأدنى (Min B/L)</p>
               <p className="font-bold text-foreground">${rates.sea_min_bl_charge}</p>
+            </div>
+          </div>
+        )}
+        {isSea && seaShippingMode === 'fcl' && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center text-xs">
+            <div className="bg-cyan-50 rounded-lg p-2 border border-cyan-200">
+              <p className="text-cyan-600 text-[10px]">20ft Standard</p>
+              <p className="font-bold text-cyan-700">${rates.sea_fcl_20ft_rate}/حاوية</p>
+            </div>
+            <div className="bg-cyan-50 rounded-lg p-2 border border-cyan-200">
+              <p className="text-cyan-600 text-[10px]">40ft Standard</p>
+              <p className="font-bold text-cyan-700">${rates.sea_fcl_40ft_rate}/حاوية</p>
+            </div>
+            <div className="bg-cyan-50 rounded-lg p-2 border border-cyan-200">
+              <p className="text-cyan-600 text-[10px]">40ft High Cube (40HQ)</p>
+              <p className="font-bold text-cyan-700">${rates.sea_fcl_40hq_rate}/حاوية</p>
+            </div>
+            <div className="bg-cyan-50 rounded-lg p-2 border border-cyan-200">
+              <p className="text-cyan-600 text-[10px]">رسوم الوثائق (Docs Fee)</p>
+              <p className="font-bold text-cyan-700">${rates.sea_fcl_docs_fee}</p>
             </div>
           </div>
         )}
