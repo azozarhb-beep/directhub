@@ -17,6 +17,8 @@ import {
 
 import LogisticsDocumentsPanel from './LogisticsDocumentsPanel';
 import LogisticsDispatchRoomsTab from './LogisticsDispatchRoomsTab';
+import LogisticsDelayReportModal from './LogisticsDelayReportModal';
+import LogisticsDisputeTicketingPanel from './LogisticsDisputeTicketingPanel';
 import toast from 'react-hot-toast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -4905,6 +4907,232 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
   );
 }
 
+// ─── Disputes & Delays Tab ────────────────────────────────────────────────────
+
+function DisputesAndDelaysTab({ partnerId, userId }: { partnerId: string; userId: string }) {
+  const supabase = createClient();
+  const [shipments, setShipments] = useState<any[]>([]);
+  const [delays, setDelays] = useState<any[]>([]);
+  const [loadingShipments, setLoadingShipments] = useState(true);
+  const [loadingDelays, setLoadingDelays] = useState(true);
+  const [selectedShipment, setSelectedShipment] = useState<any | null>(null);
+  const [showDelayModal, setShowDelayModal] = useState(false);
+  const [activeSection, setActiveSection] = useState<'delays' | 'disputes'>('delays');
+
+  const fetchShipments = async () => {
+    setLoadingShipments(true);
+    try {
+      const { data } = await supabase
+        .from('logistics_shipments')
+        .select('id, shipment_number, status, estimated_arrival, order_id, origin_port, destination_port')
+        .eq('partner_id', partnerId)
+        .in('status', ['in_transit', 'customs_clearance', 'processing', 'shipped'])
+        .order('created_at', { ascending: false })
+        .limit(20);
+      setShipments(data || []);
+    } catch {
+      setShipments([]);
+    } finally {
+      setLoadingShipments(false);
+    }
+  };
+
+  const fetchDelays = async () => {
+    setLoadingDelays(true);
+    try {
+      const { data } = await supabase
+        .from('logistics_operational_delays')
+        .select('*')
+        .eq('partner_id', partnerId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      setDelays(data || []);
+    } catch {
+      setDelays([]);
+    } finally {
+      setLoadingDelays(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchShipments();
+    fetchDelays();
+  }, [partnerId]);
+
+  const DELAY_REASON_LABELS: Record<string, string> = {
+    customs: 'توقف جمركي',
+    checkpoint: 'نقطة تفتيش',
+    mechanical: 'عطل ميكانيكي',
+    road_conditions: 'أحوال الطريق',
+    weather: 'أحوال جوية',
+    port_congestion: 'ازدحام الميناء',
+    other: 'سبب آخر',
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Section Header */}
+      <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-br from-slate-900 via-amber-950/20 to-slate-900 p-5">
+        <div className="flex items-center gap-3 mb-1">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
+            <Icon name="ExclamationTriangleIcon" size={20} className="text-amber-400" />
+          </div>
+          <div>
+            <h2 className="font-bold text-white">إدارة التأخير والنزاعات التشغيلية</h2>
+            <p className="text-xs text-slate-400">Disputes & Delay Management</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setActiveSection('delays')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+            activeSection === 'delays' ?'bg-amber-500 text-white' :'bg-slate-800 text-slate-300 hover:bg-slate-700'
+          }`}
+        >
+          <Icon name="ClockIcon" size={14} />
+          الإبلاغ عن التأخير
+        </button>
+        <button
+          onClick={() => setActiveSection('disputes')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+            activeSection === 'disputes' ?'bg-red-600 text-white' :'bg-slate-800 text-slate-300 hover:bg-slate-700'
+          }`}
+        >
+          <Icon name="ExclamationCircleIcon" size={14} />
+          النزاعات
+        </button>
+      </div>
+
+      {/* ── DELAYS SECTION ── */}
+      {activeSection === 'delays' && (
+        <div className="space-y-4">
+          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+            <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+              <Icon name="ClockIcon" size={16} className="text-amber-400" />
+              الإبلاغ عن تأخير طارئ
+            </h3>
+            <p className="text-xs text-slate-400 mb-4">
+              اختر الشحنة المتأثرة وسجّل سبب التأخير مع تحديث وقت الوصول المتوقع (ETA). سيتم إشعار العميل فوراً.
+            </p>
+
+            {loadingShipments ? (
+              <div className="flex items-center justify-center py-6">
+                <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : shipments.length === 0 ? (
+              <div className="text-center py-6">
+                <Icon name="TruckIcon" size={32} className="text-slate-600 mx-auto mb-2" />
+                <p className="text-slate-400 text-sm">لا توجد شحنات نشطة حالياً</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400 mb-2">اختر الشحنة المتأثرة:</p>
+                {shipments.map(shipment => (
+                  <div
+                    key={shipment.id}
+                    className={`flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-all ${
+                      selectedShipment?.id === shipment.id
+                        ? 'border-amber-500 bg-amber-500/10' :'border-slate-700 bg-slate-800 hover:border-slate-600'
+                    }`}
+                    onClick={() => setSelectedShipment(shipment)}
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-white">
+                        {shipment.shipment_number ? `شحنة #${shipment.shipment_number}` : 'شحنة بدون رقم'}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {shipment.origin_port || '—'} → {shipment.destination_port || '—'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                        {shipment.status}
+                      </span>
+                      {shipment.estimated_arrival && (
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          ETA: {new Date(shipment.estimated_arrival).toLocaleDateString('ar-SA')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={() => {
+                    if (!selectedShipment) { toast.error('يرجى اختيار شحنة أولاً'); return; }
+                    setShowDelayModal(true);
+                  }}
+                  disabled={!selectedShipment}
+                  className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold disabled:opacity-40 transition-colors"
+                >
+                  <Icon name="ExclamationTriangleIcon" size={16} />
+                  تسجيل تأخير للشحنة المحددة
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Delay History */}
+          {delays.length > 0 && (
+            <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+              <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                <Icon name="ClockIcon" size={16} className="text-slate-400" />
+                سجل التأخيرات المسجّلة
+              </h3>
+              <div className="space-y-2">
+                {delays.map(delay => (
+                  <div key={delay.id} className="flex items-start justify-between gap-3 px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-white">
+                        {DELAY_REASON_LABELS[delay.delay_reason] || delay.delay_reason}
+                      </p>
+                      {delay.description && (
+                        <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{delay.description}</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      {delay.updated_eta && (
+                        <p className="text-[10px] text-amber-400">
+                          ETA: {new Date(delay.updated_eta).toLocaleDateString('ar-SA')}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-slate-500">
+                        {new Date(delay.created_at).toLocaleDateString('ar-SA')}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── DISPUTES SECTION ── */}
+      {activeSection === 'disputes' && (
+        <LogisticsDisputeTicketingPanel
+          partnerId={partnerId}
+          userId={userId}
+          openedBy="logistics_partner"
+        />
+      )}
+
+      {/* Delay Report Modal */}
+      {showDelayModal && selectedShipment && (
+        <LogisticsDelayReportModal
+          shipment={selectedShipment}
+          partnerId={partnerId}
+          userId={userId}
+          onClose={() => setShowDelayModal(false)}
+          onSubmitted={() => { fetchDelays(); fetchShipments(); }}
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── Main Dashboard Page ──────────────────────────────────────────────────────
 
 export default function LogisticsDashboardPage() {
@@ -4914,7 +5142,7 @@ export default function LogisticsDashboardPage() {
 
   const [partner, setPartner] = useState<LogisticsPartner | null>(null);
   const [checkLoading, setCheckLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'orders' | 'conversations' | 'stats' | 'calculator' | 'profile' | 'payments' | 'international_orders' | 'customs_docs' | 'documents' | 'dispatch_rooms' | 'admin_messaging'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'conversations' | 'stats' | 'calculator' | 'profile' | 'payments' | 'international_orders' | 'customs_docs' | 'documents' | 'dispatch_rooms' | 'admin_messaging' | 'disputes_delays'>('orders');
 
   useEffect(() => {
     if (authLoading) return;
@@ -4985,6 +5213,13 @@ export default function LogisticsDashboardPage() {
       label: 'غرف التنسيق الميداني',
       tabs: [
         { key: 'dispatch_rooms', label: '🚚 غرف التنسيق الميداني', icon: 'ChatBubbleLeftRightIcon' },
+      ]
+    },
+    {
+      key: 'disputes_ops',
+      label: 'إدارة التأخير والنزاعات التشغيلية',
+      tabs: [
+        { key: 'disputes_delays', label: '⚖️ التأخير والنزاعات', icon: 'ExclamationTriangleIcon' },
       ]
     },
     {
@@ -5145,6 +5380,9 @@ export default function LogisticsDashboardPage() {
           )}
           {activeTab === 'admin_messaging' && (
             <AdminDirectMessagingTab partnerId={partner.id} userId={user!.id} />
+          )}
+          {activeTab === 'disputes_delays' && (
+            <DisputesAndDelaysTab partnerId={partner.id} userId={user!.id} />
           )}
         </div>
       </div>

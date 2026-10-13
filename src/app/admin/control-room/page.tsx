@@ -36,6 +36,7 @@ import DatabaseExplorerPanel from './DatabaseExplorerPanel';
 import FieldRepresentativesPanel from './FieldRepresentativesPanel';
 import AdminMessagingPanel from './AdminMessagingPanel';
 import LogisticsDashboardPanel from './LogisticsDashboardPanel';
+import AdminDisputeArbitrationPanel from './AdminDisputeArbitrationPanel';
 import ProductApprovalTogglePanel from './ProductApprovalTogglePanel';
 import FastTrackApprovalPanel from './FastTrackApprovalPanel';
 import FactoryOnboardingModePanel from './FactoryOnboardingModePanel';
@@ -212,7 +213,7 @@ interface BankAccount {
   user_profiles?: { full_name: string; email: string; company_name: string };
 }
 
-type ActiveTab = 'overview' | 'verification' | 'users' | 'factories' | 'amal' | 'escrow' | 'messages' | 'direct_orders' | 'admin_messaging' | 'platform_settings' | 'field_agents' | 'page_directory' | 'payments' | 'pending_payment_approval' | 'accounts' | 'logistics' | 'logistics_dashboard' | 'live_infra' | 'phased_escrow' | 'iban_verification' | 'ocr_verification' | 'customs_validator' | 'manual_review_queue' | 'rfq_management' | 'system_health' | 'platform_diagnostics' | 'amal_logs' | 'buyer_seller_chat' | 'smart_rfq_routing' | 'ai_auditor' | 'changelog' | 'supplier_alerts' | 'executive_radar' | 'issue_cards' | 'whatsapp_automation' | 'idea_generator' | 'db_explorer' | 'treasury' | 'role_simulation' | 'broadcast_center' | 'sitemap_hub' | 'international_factories' | 'supplier_dashboard' | 'push_scheduler' | 'abandoned_cart';
+type ActiveTab = 'overview' | 'verification' | 'users' | 'factories' | 'amal' | 'escrow' | 'messages' | 'direct_orders' | 'admin_messaging' | 'platform_settings' | 'field_agents' | 'page_directory' | 'payments' | 'pending_payment_approval' | 'accounts' | 'logistics' | 'logistics_dashboard' | 'logistics_disputes' | 'live_infra' | 'phased_escrow' | 'iban_verification' | 'ocr_verification' | 'customs_validator' | 'manual_review_queue' | 'rfq_management' | 'system_health' | 'platform_diagnostics' | 'amal_logs' | 'buyer_seller_chat' | 'smart_rfq_routing' | 'ai_auditor' | 'changelog' | 'supplier_alerts' | 'executive_radar' | 'issue_cards' | 'whatsapp_automation' | 'idea_generator' | 'db_explorer' | 'treasury' | 'role_simulation' | 'broadcast_center' | 'sitemap_hub' | 'international_factories' | 'supplier_dashboard' | 'push_scheduler' | 'abandoned_cart';
 
 // ─── Drill-Down Modal ─────────────────────────────────────────────────────────
 function DrillDownModal({
@@ -4424,6 +4425,7 @@ export default function AdminControlRoomPage() {
                 { key: 'rfq_management', label: ui.tabs.rfq_management, icon: 'DocumentTextIcon', gradient: 'linear-gradient(135deg,#6366F1,#4F46E5)' },
                 { key: 'logistics', label: ui.tabs.logistics, icon: 'TruckIcon', gradient: 'linear-gradient(135deg,#0EA5E9,#0284C7)' },
                 { key: 'logistics_dashboard', label: 'لوحة اللوجستيات', icon: 'ChartBarSquareIcon', gradient: 'linear-gradient(135deg,#EA580C,#C2410C)' },
+                { key: 'logistics_disputes', label: 'نزاعات اللوجستيات', icon: 'ScaleIcon', gradient: 'linear-gradient(135deg,#DC2626,#991B1B)' },
                 { key: 'international_factories', label: 'المصانع الدولية', icon: 'GlobeAltIcon', gradient: 'linear-gradient(135deg,#0EA5E9,#0284C7)' },
                 { key: 'supplier_dashboard', label: 'لوحة المورد التجاري', icon: 'BuildingStorefrontIcon', gradient: 'linear-gradient(135deg,#D4AF37,#B8860B)' },
                 { key: 'abandoned_cart', label: 'عربات متروكة', icon: 'ShoppingCartIcon', gradient: 'linear-gradient(135deg,#F97316,#EA580C)' },
@@ -7646,6 +7648,26 @@ export default function AdminControlRoomPage() {
         ══════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'logistics_dashboard' && (
           <LogisticsDashboardPanel />
+        )}
+
+        {/* ══════════════════════════════════════════════════════════════════════
+            TAB: LOGISTICS DISPUTES — Dispute Arbitration Panel
+        ══════════════════════════════════════════════════════════════════════ */}
+        {activeTab === 'logistics_disputes' && (
+          <div className="space-y-5">
+            <div className="relative overflow-hidden rounded-2xl border border-red-500/30 p-5" style={{ background: 'linear-gradient(135deg, #1a0a0a 0%, #2d0f0f 50%, #1a0a0a 100%)' }}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center">
+                  <Icon name="ScaleIcon" size={20} className="text-red-400" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-white">نافذة التحكيم وإغلاق النزاعات اللوجستية</h2>
+                  <p className="text-xs text-red-300/70">Logistics Dispute Arbitration — Admin Control</p>
+                </div>
+              </div>
+            </div>
+            <AdminDisputeArbitrationPanel adminUserId={user?.id || ''} />
+          </div>
         )}
 
         {/* ══════════════════════════════════════════════════════════════════════
