@@ -498,6 +498,10 @@ const DEFAULT_RATES = {
   sea_base_docs_fee:       300.00,
   sea_min_bl_charge:       500.00,
   sea_rate_per_cbm_ton:    150.00,
+  sea_fcl_20ft_rate:       1200.00, // FCL 20ft Standard Container
+  sea_fcl_40ft_rate:       1800.00, // FCL 40ft Standard Container
+  sea_fcl_40hq_rate:       2000.00, // FCL 40ft High Cube
+  sea_fcl_docs_fee:        250.00,  // FCL Documentation Fee
   air_rate_per_kg:         6.50,
   air_handling_fee:        80.00,
   air_min_charge:          150.00,
@@ -625,6 +629,31 @@ const FTL_TRUCKS = [
   { value: 'trailer',  label: 'قاطرة / تريلا كاملة',            labelEn: 'Full Trailer — up to 35-40 tons', flatRate: 600 },
 ];
 
+// ── FCL Container Types ───────────────────────────────────────────────────────
+const FCL_CONTAINER_TYPES = [
+  {
+    value: '20ft',
+    label: '20ft Standard Container',
+    labelAr: 'حاوية 20 قدم قياسية',
+    specs: 'حتى 26 طن / 33 CBM',
+    rateKey: 'sea_fcl_20ft_rate' as keyof PartnerRates,
+  },
+  {
+    value: '40ft',
+    label: '40ft Standard Container',
+    labelAr: 'حاوية 40 قدم قياسية',
+    specs: 'حتى 28 طن / 67 CBM',
+    rateKey: 'sea_fcl_40ft_rate' as keyof PartnerRates,
+  },
+  {
+    value: '40hq',
+    label: '40ft High Cube (40HQ)',
+    labelAr: 'حاوية 40 قدم مرتفعة (الأكثر طلباً)',
+    specs: 'الأكثر طلباً للمصانع / 76 CBM',
+    rateKey: 'sea_fcl_40hq_rate' as keyof PartnerRates,
+  },
+];
+
 // ── Route-based ton rates ─────────────────────────────────────────────────────
 // Returns the per-ton rate based on origin city (Hodeidah→Sana'a: $35, Aden→Sana'a: $60, default: rates.land_heavy_rate_per_ton)
 function getRouteTonRate(fromCity: string, toCity: string, rates: PartnerRates): number {
@@ -688,6 +717,9 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
   const [shipmentType, setShipmentType] = useState<ShipmentType>(defaultShipmentType);
   const [freightMode, setFreightMode] = useState<'ltl' | 'ftl'>('ltl');
   const [ftlTruckType, setFtlTruckType] = useState<string>('dyna');
+  const [seaShippingMode, setSeaShippingMode] = useState<'lcl' | 'fcl'>('lcl');
+  const [fclContainerType, setFclContainerType] = useState<string>('40hq');
+  const [fclContainerCount, setFclContainerCount] = useState<number>(1);
   const [weightKg, setWeightKg] = useState('');
   const [cbmVolume, setCbmVolume] = useState('');
   const [distanceKm, setDistanceKm] = useState('');
@@ -731,6 +763,10 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
             sea_base_docs_fee:       Number(data.sea_base_docs_fee)       || DEFAULT_RATES.sea_base_docs_fee,
             sea_min_bl_charge:       Number(data.sea_min_bl_charge)       || DEFAULT_RATES.sea_min_bl_charge,
             sea_rate_per_cbm_ton:    Number(data.sea_rate_per_cbm_ton)    || DEFAULT_RATES.sea_rate_per_cbm_ton,
+            sea_fcl_20ft_rate:       Number(data.sea_fcl_20ft_rate)       || DEFAULT_RATES.sea_fcl_20ft_rate,
+            sea_fcl_40ft_rate:       Number(data.sea_fcl_40ft_rate)       || DEFAULT_RATES.sea_fcl_40ft_rate,
+            sea_fcl_40hq_rate:       Number(data.sea_fcl_40hq_rate)       || DEFAULT_RATES.sea_fcl_40hq_rate,
+            sea_fcl_docs_fee:        Number(data.sea_fcl_docs_fee)        || DEFAULT_RATES.sea_fcl_docs_fee,
             air_rate_per_kg:         Number(data.air_rate_per_kg)         || DEFAULT_RATES.air_rate_per_kg,
             air_handling_fee:        Number(data.air_handling_fee)        || DEFAULT_RATES.air_handling_fee,
             air_min_charge:          Number(data.air_min_charge)          || DEFAULT_RATES.air_min_charge,
@@ -792,19 +828,37 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
 
     } else if (isSea) {
       // ── Sea freight ──────────────────────────────────────────────────────────
-      const cbm = parseFloat(cbmVolume) || 0;
-      const chargeable = Math.max(weight / 1000, cbm); // ton or CBM, whichever is greater
-      baseCost = rates.sea_base_docs_fee;
-      weightCost = chargeable * rates.sea_rate_per_cbm_ton;
-      const subtotal = baseCost + weightCost;
-      total = Math.max(subtotal, rates.sea_min_bl_charge);
+      if (seaShippingMode === 'fcl') {
+        // FCL mode: container rate × count + docs fee
+        const container = FCL_CONTAINER_TYPES.find(c => c.value === fclContainerType) || FCL_CONTAINER_TYPES[2];
+        const containerRate = Number(rates[container.rateKey]) || 0;
+        const docsFeeFcl = rates.sea_fcl_docs_fee;
+        const containersCost = containerRate * fclContainerCount;
+        total = containersCost + docsFeeFcl;
+        baseCost = docsFeeFcl;
+        weightCost = containersCost;
 
-      breakdown = [
-        { label: `رسوم أساسية ووثائق (Base & Docs)`, amount: baseCost },
-        { label: `الشحن (${chargeable.toFixed(2)} طن/CBM × $${rates.sea_rate_per_cbm_ton})`, amount: weightCost },
-      ];
-      if (total > subtotal) {
-        breakdown.push({ label: `الحد الأدنى لبوليصة الشحن (Min B/L)`, amount: total - subtotal });
+        breakdown = [
+          { label: `📦 نمط الشحن: حاوية كاملة (FCL) — ${container.labelAr}`, amount: 0 },
+          { label: `${container.label} × ${fclContainerCount} حاوية`, amount: containersCost },
+          { label: `رسوم إصدار البوليصة والوثائق (Documentation Fee)`, amount: docsFeeFcl },
+        ];
+      } else {
+        // LCL mode (existing logic)
+        const cbm = parseFloat(cbmVolume) || 0;
+        const chargeable = Math.max(weight / 1000, cbm); // ton or CBM, whichever is greater
+        baseCost = rates.sea_base_docs_fee;
+        weightCost = chargeable * rates.sea_rate_per_cbm_ton;
+        const subtotal = baseCost + weightCost;
+        total = Math.max(subtotal, rates.sea_min_bl_charge);
+
+        breakdown = [
+          { label: `رسوم أساسية ووثائق (Base & Docs)`, amount: baseCost },
+          { label: `الشحن (${chargeable.toFixed(2)} طن/CBM × $${rates.sea_rate_per_cbm_ton})`, amount: weightCost },
+        ];
+        if (total > subtotal) {
+          breakdown.push({ label: `الحد الأدنى لبوليصة الشحن (Min B/L)`, amount: total - subtotal });
+        }
       }
 
     } else if (isAir) {
@@ -858,6 +912,7 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
     setShowSeaOriginDropdown(false);
     setAirOriginAirport('');
     setAirDestAirport('');
+    setFclContainerCount(1);
   };
 
   const saveRates = async () => {
@@ -879,6 +934,7 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
   // Determine if calculate button should be enabled
   const canCalculate = (() => {
     if (isYemen && freightMode === 'ftl') return !!ftlTruckType;
+    if (isSea && seaShippingMode === 'fcl') return !!seaOriginPort && !!seaDestPort && fclContainerCount >= 1;
     const w = parseFloat(weightKg) || 0;
     if (w <= 0) return false;
     if (isYemen) return !!autoDistance;
@@ -953,9 +1009,9 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
               </div>
             ))}
 
-            {/* Sea rates */}
+            {/* Sea LCL rates */}
             <div className="col-span-2 md:col-span-3 mt-2">
-              <p className="font-semibold text-amber-700 mb-2 uppercase tracking-wide text-[10px]">🚢 الشحن البحري الدولي</p>
+              <p className="font-semibold text-amber-700 mb-2 uppercase tracking-wide text-[10px]">🚢 الشحن البحري الدولي — LCL (مجزأ)</p>
             </div>
             {[
               { key: 'sea_base_docs_fee',    label: 'رسوم أساسية ووثائق $' },
@@ -969,6 +1025,27 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
                   value={(editRates as any)[key]}
                   onChange={e => setEditRates(r => ({ ...r, [key]: parseFloat(e.target.value) || 0 }))}
                   className="w-full px-2 py-1.5 rounded-lg border border-amber-300 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-300"
+                />
+              </div>
+            ))}
+
+            {/* Sea FCL rates */}
+            <div className="col-span-2 md:col-span-3 mt-2">
+              <p className="font-semibold text-cyan-700 mb-2 uppercase tracking-wide text-[10px]">📦 الشحن البحري الدولي — FCL (حاوية كاملة)</p>
+            </div>
+            {[
+              { key: 'sea_fcl_20ft_rate',  label: 'سعر الحاوية 20ft Standard $' },
+              { key: 'sea_fcl_40ft_rate',  label: 'سعر الحاوية 40ft Standard $' },
+              { key: 'sea_fcl_40hq_rate',  label: 'سعر الحاوية 40ft High Cube (40HQ) $' },
+              { key: 'sea_fcl_docs_fee',   label: 'رسوم إصدار البوليصة والوثائق (FCL Docs) $' },
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <label className="block text-[10px] text-cyan-700 mb-1">{label}</label>
+                <input
+                  type="number" step="0.01" min="0"
+                  value={(editRates as any)[key]}
+                  onChange={e => setEditRates(r => ({ ...r, [key]: parseFloat(e.target.value) || 0 }))}
+                  className="w-full px-2 py-1.5 rounded-lg border border-cyan-300 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-cyan-300"
                 />
               </div>
             ))}
@@ -1020,7 +1097,7 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
           {(Object.entries(SHIPMENT_TYPE_CONFIG) as [ShipmentType, typeof SHIPMENT_TYPE_CONFIG[ShipmentType]][]).map(([key, cfg]) => (
             <button
               key={key}
-              onClick={() => { setShipmentType(key); setResult(null); setCalculated(false); }}
+              onClick={() => { setShipmentType(key); setResult(null); setCalculated(false); setSeaShippingMode('lcl'); }}
               className={`p-3 rounded-xl border text-left transition-all ${
                 shipmentType === key
                   ? 'border-primary bg-primary/5 ring-2 ring-primary/20' :'border-border bg-background hover:border-primary/40'
@@ -1037,6 +1114,35 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
           {SHIPMENT_TYPE_CONFIG[shipmentType].description}
         </p>
       </div>
+
+      {/* Sea Shipping Mode Toggle (LCL / FCL) — shown only for international_sea */}
+      {isSea && (
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">نمط الشحن البحري / Sea Shipping Mode</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => { setSeaShippingMode('lcl'); setResult(null); setCalculated(false); }}
+              className={`p-3 rounded-xl border text-left transition-all ${seaShippingMode === 'lcl' ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border bg-background hover:border-primary/40'}`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Icon name="CubeIcon" size={16} className={seaShippingMode === 'lcl' ? 'text-primary' : 'text-muted-foreground'} />
+                <p className={`text-xs font-bold ${seaShippingMode === 'lcl' ? 'text-primary' : 'text-foreground'}`}>LCL — شحن مجزأ</p>
+              </div>
+              <p className="text-[10px] text-muted-foreground">Shared Cargo — يُحسب بالطن و CBM</p>
+            </button>
+            <button
+              onClick={() => { setSeaShippingMode('fcl'); setResult(null); setCalculated(false); }}
+              className={`p-3 rounded-xl border text-left transition-all ${seaShippingMode === 'fcl' ? 'border-cyan-600 bg-cyan-50 ring-2 ring-cyan-200' : 'border-border bg-background hover:border-cyan-400/60'}`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Icon name="RectangleStackIcon" size={16} className={seaShippingMode === 'fcl' ? 'text-cyan-600' : 'text-muted-foreground'} />
+                <p className={`text-xs font-bold ${seaShippingMode === 'fcl' ? 'text-cyan-700' : 'text-foreground'}`}>FCL — حاوية كاملة</p>
+              </div>
+              <p className="text-[10px] text-muted-foreground">Full Container Load — سعر الحاوية الكاملة</p>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Geographic scope badge */}
       {isYemen ? (
@@ -1066,7 +1172,8 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
 
       {/* Input Fields */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Weight */}
+        {/* Weight — hidden in FCL mode */}
+        {!(isSea && seaShippingMode === 'fcl') && (
         <div>
           <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
             الوزن (كجم) / Weight (kg) <span className="text-red-500">{isYemen && freightMode === 'ftl' ? '' : '*'}</span>
@@ -1094,6 +1201,7 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
             </p>
           )}
         </div>
+        )}
 
         {/* Second input: depends on shipment type */}
         {isYemen && (
@@ -1195,6 +1303,46 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
 
         {isSea && (
           <>
+            {/* FCL Container Type & Count — shown only in FCL mode */}
+            {seaShippingMode === 'fcl' && (
+              <>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                    نوع الحاوية / Container Type <span className="text-red-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    {FCL_CONTAINER_TYPES.map(ct => (
+                      <button
+                        key={ct.value}
+                        onClick={() => { setFclContainerType(ct.value); setResult(null); }}
+                        className={`p-3 rounded-xl border text-left transition-all ${fclContainerType === ct.value ? 'border-cyan-600 bg-cyan-50 ring-2 ring-cyan-200' : 'border-border bg-background hover:border-cyan-400/60'}`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <Icon name="RectangleStackIcon" size={14} className={fclContainerType === ct.value ? 'text-cyan-600' : 'text-muted-foreground'} />
+                          <p className={`text-xs font-bold leading-tight ${fclContainerType === ct.value ? 'text-cyan-700' : 'text-foreground'}`}>{ct.label}</p>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">{ct.labelAr}</p>
+                        <p className="text-[10px] text-cyan-600 mt-0.5 font-medium">{ct.specs}</p>
+                        <p className="text-xs font-bold text-cyan-700 mt-1">${Number(rates[ct.rateKey]).toFixed(0)}/حاوية</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                    عدد الحاويات / Container Count <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number" min="1" step="1"
+                    value={fclContainerCount}
+                    onChange={e => { setFclContainerCount(Math.max(1, parseInt(e.target.value) || 1)); setResult(null); }}
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-cyan-300"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">الافتراضي: 1 حاوية</p>
+                </div>
+              </>
+            )}
+
             <div className="relative">
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
                 ميناء التحميل / Origin Port <span className="text-red-500">*</span>
@@ -1295,6 +1443,8 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
                 ))}
               </select>
             </div>
+            {/* CBM field — hidden in FCL mode */}
+            {seaShippingMode === 'lcl' && (
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
                 الحجم (CBM) — اختياري
@@ -1311,6 +1461,7 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
               </div>
               <p className="text-[10px] text-muted-foreground mt-1">يُستخدم الأعلى بين الوزن (طن) والحجم (CBM)</p>
             </div>
+            )}
           </>
         )}
 
@@ -1391,7 +1542,7 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
             </div>
           </div>
         )}
-        {isSea && (
+        {isSea && seaShippingMode === 'lcl' && (
           <div className="grid grid-cols-3 gap-3 text-center text-xs">
             <div className="bg-white rounded-lg p-2 border border-border">
               <p className="text-muted-foreground text-[10px]">رسوم أساسية ووثائق</p>
@@ -1404,6 +1555,26 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
             <div className="bg-white rounded-lg p-2 border border-border">
               <p className="text-muted-foreground text-[10px]">الحد الأدنى (Min B/L)</p>
               <p className="font-bold text-foreground">${rates.sea_min_bl_charge}</p>
+            </div>
+          </div>
+        )}
+        {isSea && seaShippingMode === 'fcl' && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center text-xs">
+            <div className="bg-cyan-50 rounded-lg p-2 border border-cyan-200">
+              <p className="text-cyan-600 text-[10px]">20ft Standard</p>
+              <p className="font-bold text-cyan-700">${rates.sea_fcl_20ft_rate}/حاوية</p>
+            </div>
+            <div className="bg-cyan-50 rounded-lg p-2 border border-cyan-200">
+              <p className="text-cyan-600 text-[10px]">40ft Standard</p>
+              <p className="font-bold text-cyan-700">${rates.sea_fcl_40ft_rate}/حاوية</p>
+            </div>
+            <div className="bg-cyan-50 rounded-lg p-2 border border-cyan-200">
+              <p className="text-cyan-600 text-[10px]">40ft High Cube (40HQ)</p>
+              <p className="font-bold text-cyan-700">${rates.sea_fcl_40hq_rate}/حاوية</p>
+            </div>
+            <div className="bg-cyan-50 rounded-lg p-2 border border-cyan-200">
+              <p className="text-cyan-600 text-[10px]">رسوم الوثائق (Docs Fee)</p>
+              <p className="font-bold text-cyan-700">${rates.sea_fcl_docs_fee}</p>
             </div>
           </div>
         )}
