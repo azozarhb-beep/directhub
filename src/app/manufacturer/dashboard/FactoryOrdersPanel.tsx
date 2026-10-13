@@ -1,7 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Icon from '@/components/ui/AppIcon';
+import DispatchChatRoom from '@/components/DispatchChatRoom';
 
 
 interface FactoryOrdersPanelProps {
@@ -21,6 +22,7 @@ interface FactoryOrdersPanelProps {
   handleFactoryOrderStatusUpdate: (orderId: string, newStatus: string) => void;
   fetchFactoryOrders: () => void;
   md: any;
+  currentUserId?: string;
 }
 
 export default function FactoryOrdersPanel({
@@ -40,7 +42,10 @@ export default function FactoryOrdersPanel({
   handleFactoryOrderStatusUpdate,
   fetchFactoryOrders,
   md,
+  currentUserId,
 }: FactoryOrdersPanelProps) {
+  const [showDispatchChat, setShowDispatchChat] = useState<string | null>(null);
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -329,14 +334,24 @@ export default function FactoryOrdersPanel({
                         </button>
                       )}
                       {selectedFactoryOrder.status === 'processing' && (
-                        <button
-                          onClick={() => handleFactoryOrderStatusUpdate(selectedFactoryOrder.id, 'shipped')}
-                          disabled={factoryOrderStatusUpdating}
-                          className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white text-xs font-bold rounded-xl hover:bg-purple-700 transition-colors disabled:opacity-50"
-                        >
-                          <Icon name="TruckIcon" size={14} />
-                          تحديد كـ &quot;تم الشحن&quot;
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handleFactoryOrderStatusUpdate(selectedFactoryOrder.id, 'shipped')}
+                            disabled={factoryOrderStatusUpdating}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white text-xs font-bold rounded-xl hover:bg-purple-700 transition-colors disabled:opacity-50"
+                          >
+                            <Icon name="TruckIcon" size={14} />
+                            تحديد كـ &quot;تم الشحن&quot;
+                          </button>
+                          <button
+                            onClick={() => handleFactoryOrderStatusUpdate(selectedFactoryOrder.id, 'ready_for_dispatch')}
+                            disabled={factoryOrderStatusUpdating}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-sky-600 text-white text-xs font-bold rounded-xl hover:bg-sky-700 transition-colors disabled:opacity-50"
+                          >
+                            <Icon name="ChatBubbleLeftRightIcon" size={14} />
+                            البضاعة جاهزة للشحن
+                          </button>
+                        </>
                       )}
                       {selectedFactoryOrder.status === 'shipped' && (
                         <button
@@ -358,6 +373,16 @@ export default function FactoryOrdersPanel({
                           إلغاء الطلب
                         </button>
                       )}
+                      {/* Dispatch Chat button — visible when status is ready_for_dispatch or later */}
+                      {['ready_for_dispatch', 'shipped', 'delivered'].includes(selectedFactoryOrder.status) && (
+                        <button
+                          onClick={() => setShowDispatchChat(showDispatchChat === selectedFactoryOrder.id ? null : selectedFactoryOrder.id)}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-sky-50 text-sky-700 text-xs font-bold rounded-xl hover:bg-sky-100 transition-colors border border-sky-200"
+                        >
+                          <Icon name="ChatBubbleLeftRightIcon" size={14} />
+                          {showDispatchChat === selectedFactoryOrder.id ? 'إخفاء غرفة التنسيق' : 'غرفة التنسيق الميداني'}
+                        </button>
+                      )}
                       {factoryOrderStatusUpdating && (
                         <div className="flex items-center gap-1.5 text-xs text-sky-600">
                           <Icon name="ArrowPathIcon" size={14} className="animate-spin" />
@@ -373,6 +398,22 @@ export default function FactoryOrdersPanel({
                         {factoryOrderStatusMsg}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Dispatch Chat Room — shown inline when toggled */}
+                {showDispatchChat === selectedFactoryOrder.id && currentUserId && (
+                  <div className="mt-4">
+                    <DispatchChatRoom
+                      orderId={selectedFactoryOrder.id}
+                      orderNumber={selectedFactoryOrder.order_number}
+                      currentUserId={currentUserId}
+                      currentUserRole="factory"
+                      factoryId={selectedFactoryOrder.factory_user_id ?? currentUserId}
+                      agentId={selectedFactoryOrder.agent_id ?? null}
+                      logisticsId={selectedFactoryOrder.logistics_partner_id ?? null}
+                      onClose={() => setShowDispatchChat(null)}
+                    />
                   </div>
                 )}
 

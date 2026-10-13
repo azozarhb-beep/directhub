@@ -16,6 +16,7 @@ import {
 
 
 import LogisticsDocumentsPanel from './LogisticsDocumentsPanel';
+import LogisticsDispatchRoomsTab from './LogisticsDispatchRoomsTab';
 import toast from 'react-hot-toast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -3753,7 +3754,7 @@ export default function LogisticsDashboardPage() {
 
   const [partner, setPartner] = useState<LogisticsPartner | null>(null);
   const [checkLoading, setCheckLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'orders' | 'conversations' | 'stats' | 'calculator' | 'profile' | 'payments' | 'international_orders' | 'customs_docs' | 'documents'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'conversations' | 'stats' | 'calculator' | 'profile' | 'payments' | 'international_orders' | 'customs_docs' | 'documents' | 'dispatch_rooms'>('orders');
 
   useEffect(() => {
     if (authLoading) return;
@@ -3817,6 +3818,13 @@ export default function LogisticsDashboardPage() {
       tabs: [
         { key: 'customs_docs', label: '📋 وثائق التخليص', icon: 'DocumentTextIcon' },
         { key: 'documents', label: '📁 رفع المستندات', icon: 'FolderOpenIcon' },
+      ]
+    },
+    {
+      key: 'dispatch',
+      label: 'غرف التنسيق الميداني',
+      tabs: [
+        { key: 'dispatch_rooms', label: '🚚 غرف التنسيق الميداني', icon: 'ChatBubbleLeftRightIcon' },
       ]
     },
     {
@@ -3964,6 +3972,9 @@ export default function LogisticsDashboardPage() {
             <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
               <LogisticsDocumentsPanel userId={user?.id} />
             </div>
+          )}
+          {activeTab === 'dispatch_rooms' && (
+            <LogisticsDispatchRoomsTab userId={user!.id} partnerId={partner.id} />
           )}
         </div>
       </div>

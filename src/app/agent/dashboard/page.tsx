@@ -16,6 +16,7 @@ import AgentComplaintsPanel from './AgentComplaintsPanel';
 import AgentSalesDashboard from './AgentSalesDashboard';
 import AgentCommissionAccountPanel from './AgentCommissionAccountPanel';
 import AgentEarningsPanel from './AgentEarningsPanel';
+import AgentDispatchRoomsTab from './AgentDispatchRoomsTab';
 import EnhancedAgentDashboard from '@/components/agent/EnhancedAgentDashboard';
 import ReferralTrackingPanel from './ReferralTrackingPanel';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -492,7 +493,7 @@ export default function AgentDashboardPage() {
   const [factories, setFactories] = useState<AgentFactory[]>([]);
   const [products, setProducts] = useState<AgentProduct[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'accounts' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral'>('factories');
+  const [activeTab, setActiveTab] = useState<'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'accounts' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral' | 'dispatch_rooms'>('factories');
   const [reviewModal, setReviewModal] = useState<AgentFactory | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -979,6 +980,15 @@ export default function AgentDashboardPage() {
               >
                 <Icon name="ExclamationTriangleIcon" size={15} />
                 {ad.tabComplaints}
+              </button>
+              <button
+                onClick={() => setActiveTab('dispatch_rooms')}
+                className={`shrink-0 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-colors border ${
+                  activeTab === 'dispatch_rooms' ? 'bg-card text-foreground shadow-sm border-border' : 'text-muted-foreground hover:text-foreground border-transparent'
+                }`}
+              >
+                <Icon name="TruckIcon" size={15} />
+                غرف التنسيق الميداني
               </button>
             </div>
           </div>
@@ -1472,6 +1482,11 @@ export default function AgentDashboardPage() {
         {/* Enhanced Agent Dashboard Tab */}
         {activeTab === 'enhanced' && user && (
           <EnhancedAgentDashboard userId={user.id} />
+        )}
+
+        {/* Dispatch Rooms Tab */}
+        {activeTab === 'dispatch_rooms' && user && (
+          <AgentDispatchRoomsTab userId={user.id} />
         )}
 
         {/* Factories Tab */}
