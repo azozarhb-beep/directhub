@@ -591,32 +591,61 @@ const AIR_DEST_AIRPORTS = [
   { value: 'sanaa',   label: "Sana'a International (SAH)", labelAr: 'مطار صنعاء الدولي' },
 ];
 
+// ── FTL Truck types ───────────────────────────────────────────────────────────
+const FTL_TRUCKS = [
+  { value: 'dyna',     label: 'دينا (Dyna)',                    labelEn: 'Dyna — up to 5 tons',          flatRate: 120 },
+  { value: 'medium',   label: 'شاحنة متوسطة / عايدي',           labelEn: 'Medium Truck — up to 12 tons', flatRate: 250 },
+  { value: 'trailer',  label: 'قاطرة / تريلا كاملة',            labelEn: 'Full Trailer — up to 35-40 tons', flatRate: 600 },
+];
+
+// ── Route-based ton rates ─────────────────────────────────────────────────────
+// Returns the per-ton rate based on origin city (Hodeidah→Sana'a: $35, Aden→Sana'a: $60, default: rates.land_heavy_rate_per_ton)
+function getRouteTonRate(fromCity: string, toCity: string, rates: PartnerRates): number {
+  const from = fromCity.toLowerCase();
+  const to   = toCity.toLowerCase();
+  const isHodeidahSanaa =
+    (from.includes('hodeidah') || from.includes('الحديدة')) &&
+    (to.includes("sana") || to.includes('صنعاء'));
+  const isAdenSanaa =
+    (from.includes('aden') || from.includes('عدن')) &&
+    (to.includes("sana") || to.includes('صنعاء'));
+  if (isHodeidahSanaa) return 35;
+  if (isAdenSanaa)     return 60;
+  return rates.land_heavy_rate_per_ton;
+}
+
 // ── Tiered land weight pricing ────────────────────────────────────────────────
-function calcLandCost(weightKg: number, rates: PartnerRates): { cost: number; tier: string; breakdown: { label: string; amount: number }[] } {
+function calcLandCost(weightKg: number, rates: PartnerRates, tonRate?: number): { cost: number; tier: string; breakdown: { label: string; amount: number }[] } {
   let breakdown: { label: string; amount: number }[] = [];
   let cost = 0;
   let tier = '';
 
+  const effectiveTonRate = tonRate ?? rates.land_heavy_rate_per_ton;
+
   if (weightKg < 100) {
-    // Light: < 100 kg
-    cost = weightKg * rates.land_light_rate_per_kg;
-    tier = `شحنة خفيفة (< 100 كجم) — $${rates.land_light_rate_per_kg}/كجم`;
-    breakdown.push({ label: `الوزن (${weightKg} كجم × $${rates.land_light_rate_per_kg}/كجم)`, amount: cost });
-  } else if (weightKg <= 1000) {
-    // Medium: 100–1000 kg
-    cost = weightKg * rates.land_medium_rate_per_kg;
-    tier = `حمولة متوسطة (100–1,000 كجم) — $${rates.land_medium_rate_per_kg}/كجم`;
-    breakdown.push({ label: `الوزن (${weightKg} كجم × $${rates.land_medium_rate_per_kg}/كجم)`, amount: cost });
-  } else {
-    // Heavy: > 1000 kg → price per ton, capped at max trip rate
-    const tons = weightKg / 1000;
-    const rawCost = tons * rates.land_heavy_rate_per_ton;
+    // Light: < 100 kg — apply cap
+    const rawCost = weightKg * rates.land_light_rate_per_kg;
     cost = Math.min(rawCost, rates.land_max_cap_per_trip);
-    tier = `حمولة تجارية ثقيلة (> 1,000 كجم) — $${rates.land_heavy_rate_per_ton}/طن`;
-    breakdown.push({ label: `الوزن (${tons.toFixed(2)} طن × $${rates.land_heavy_rate_per_ton}/طن)`, amount: rawCost });
+    tier = `شحنة خفيفة (< 100 كجم) — $${rates.land_light_rate_per_kg}/كجم`;
+    breakdown.push({ label: `الوزن (${weightKg} كجم × $${rates.land_light_rate_per_kg}/كجم)`, amount: rawCost });
     if (rawCost > rates.land_max_cap_per_trip) {
       breakdown.push({ label: `سقف أقصى للرحلة (Max Cap)`, amount: -(rawCost - rates.land_max_cap_per_trip) });
     }
+  } else if (weightKg <= 1000) {
+    // Medium: 100–1000 kg — apply cap
+    const rawCost = weightKg * rates.land_medium_rate_per_kg;
+    cost = Math.min(rawCost, rates.land_max_cap_per_trip);
+    tier = `حمولة متوسطة (100–1,000 كجم) — $${rates.land_medium_rate_per_kg}/كجم`;
+    breakdown.push({ label: `الوزن (${weightKg} كجم × $${rates.land_medium_rate_per_kg}/كجم)`, amount: rawCost });
+    if (rawCost > rates.land_max_cap_per_trip) {
+      breakdown.push({ label: `سقف أقصى للرحلة (Max Cap)`, amount: -(rawCost - rates.land_max_cap_per_trip) });
+    }
+  } else {
+    // Heavy: > 1000 kg → price per ton — NO cap, direct rate
+    const tons = weightKg / 1000;
+    cost = tons * effectiveTonRate;
+    tier = `حمولة تجارية ثقيلة (> 1,000 كجم) — $${effectiveTonRate}/طن`;
+    breakdown.push({ label: `الوزن (${tons.toFixed(2)} طن × $${effectiveTonRate}/طن)`, amount: cost });
   }
 
   return { cost, tier, breakdown };
@@ -630,6 +659,8 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
     : 'local_land_yemen';
 
   const [shipmentType, setShipmentType] = useState<ShipmentType>(defaultShipmentType);
+  const [freightMode, setFreightMode] = useState<'ltl' | 'ftl'>('ltl');
+  const [ftlTruckType, setFtlTruckType] = useState<string>('dyna');
   const [weightKg, setWeightKg] = useState('');
   const [cbmVolume, setCbmVolume] = useState('');
   const [distanceKm, setDistanceKm] = useState('');
@@ -697,6 +728,20 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
 
   const calculate = () => {
     const weight = parseFloat(weightKg) || 0;
+
+    if (isYemen && freightMode === 'ftl') {
+      // FTL mode: flat rate per truck type
+      const truck = FTL_TRUCKS.find(t => t.value === ftlTruckType) || FTL_TRUCKS[0];
+      let total = truck.flatRate;
+      let breakdown = [
+        { label: `📦 نمط الشحن: حجز شاحنة كاملة (FTL)`, amount: 0 },
+        { label: `${truck.label} — ${truck.labelEn}`, amount: truck.flatRate },
+      ];
+      setResult({ baseCost: truck.flatRate, distanceCost: 0, weightCost: 0, fuelSurcharge: 0, total, currency: 'USD', breakdown });
+      setCalculated(true);
+      return;
+    }
+
     if (weight <= 0) return;
 
     let breakdown: { label: string; amount: number }[] = [];
@@ -707,8 +752,9 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
     let fuelSurcharge = 0;
 
     if (isYemen) {
-      // ── Tiered land pricing ──────────────────────────────────────────────────
-      const { cost, tier, breakdown: wb } = calcLandCost(weight, rates);
+      // ── Tiered land pricing (LTL) ────────────────────────────────────────────
+      const tonRate = getRouteTonRate(fromCity, toCity, rates);
+      const { cost, tier, breakdown: wb } = calcLandCost(weight, rates, tonRate);
       weightCost = cost;
       breakdown = wb;
       total = weightCost;
@@ -801,6 +847,7 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
 
   // Determine if calculate button should be enabled
   const canCalculate = (() => {
+    if (isYemen && freightMode === 'ftl') return !!ftlTruckType;
     const w = parseFloat(weightKg) || 0;
     if (w <= 0) return false;
     if (isYemen) return !!autoDistance;
@@ -991,7 +1038,7 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
         {/* Weight */}
         <div>
           <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
-            الوزن (كجم) / Weight (kg) <span className="text-red-500">*</span>
+            الوزن (كجم) / Weight (kg) <span className="text-red-500">{isYemen && freightMode === 'ftl' ? '' : '*'}</span>
           </label>
           <div className="relative">
             <input
@@ -999,62 +1046,118 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
               value={weightKg}
               onChange={e => { setWeightKg(e.target.value); setResult(null); }}
               placeholder="e.g. 500"
-              className="w-full px-3 py-2.5 pr-12 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              disabled={isYemen && freightMode === 'ftl'}
+              className="w-full px-3 py-2.5 pr-12 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-40 disabled:cursor-not-allowed"
             />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">kg</span>
           </div>
-          {/* Tier hint for Yemen land */}
-          {isYemen && weightKg && (
+          {/* Tier hint for Yemen land LTL */}
+          {isYemen && freightMode === 'ltl' && weightKg && (
             <p className="text-[10px] text-blue-600 mt-1 flex items-center gap-1">
               <Icon name="InformationCircleIcon" size={11} />
               {parseFloat(weightKg) < 100
-                ? `شحنة خفيفة → $${rates.land_light_rate_per_kg}/كجم`
+                ? `شحنة خفيفة → $${rates.land_light_rate_per_kg}/كجم (سقف $${rates.land_max_cap_per_trip})`
                 : parseFloat(weightKg) <= 1000
-                ? `حمولة متوسطة → $${rates.land_medium_rate_per_kg}/كجم`
-                : `حمولة ثقيلة → $${rates.land_heavy_rate_per_ton}/طن (سقف $${rates.land_max_cap_per_trip})`}
+                ? `حمولة متوسطة → $${rates.land_medium_rate_per_kg}/كجم (سقف $${rates.land_max_cap_per_trip})`
+                : `حمولة ثقيلة → ${getRouteTonRate(fromCity, toCity, rates)}/طن (بدون سقف)`}
             </p>
           )}
         </div>
 
         {/* Second input: depends on shipment type */}
         {isYemen && (
-          <div className="space-y-2">
-            <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
-              المسار / Route (Yemen Cities)
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] text-muted-foreground mb-1 block">From / من</label>
-                <select
-                  value={fromCity}
-                  onChange={e => { setFromCity(e.target.value); setResult(null); }}
-                  className="w-full px-2 py-2 rounded-xl border border-border bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+          <div className="space-y-3">
+            {/* Freight Mode Selector */}
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                نمط الشحن / Freight Mode
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => { setFreightMode('ltl'); setResult(null); }}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${freightMode === 'ltl' ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border bg-background hover:border-primary/40'}`}
                 >
-                  <option value="">اختر المدينة</option>
-                  {YEMEN_CITIES.map(c => (
-                    <option key={c.name} value={c.name}>{c.name} — {c.nameAr}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] text-muted-foreground mb-1 block">To / إلى</label>
-                <select
-                  value={toCity}
-                  onChange={e => { setToCity(e.target.value); setResult(null); }}
-                  className="w-full px-2 py-2 rounded-xl border border-border bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  <p className={`text-xs font-semibold ${freightMode === 'ltl' ? 'text-primary' : 'text-foreground'}`}>LTL — شحن مجزأ</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">يُحسب بالطن / الكيلو</p>
+                </button>
+                <button
+                  onClick={() => { setFreightMode('ftl'); setResult(null); }}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${freightMode === 'ftl' ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border bg-background hover:border-primary/40'}`}
                 >
-                  <option value="">اختر المدينة</option>
-                  {YEMEN_CITIES.map(c => (
-                    <option key={c.name} value={c.name}>{c.name} — {c.nameAr}</option>
-                  ))}
-                </select>
+                  <p className={`text-xs font-semibold ${freightMode === 'ftl' ? 'text-primary' : 'text-foreground'}`}>FTL — شاحنة كاملة</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">سعر مقطوع للمشوار</p>
+                </button>
               </div>
             </div>
-            {autoDistance !== null && (
-              <p className="text-xs text-blue-600 flex items-center gap-1">
-                <Icon name="MapPinIcon" size={11} />
-                المسافة التقديرية: ~{autoDistance} كم
-              </p>
+
+            {/* FTL: Truck type selector */}
+            {freightMode === 'ftl' && (
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                  نوع الشاحنة / Truck Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={ftlTruckType}
+                  onChange={e => { setFtlTruckType(e.target.value); setResult(null); }}
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  {FTL_TRUCKS.map(t => (
+                    <option key={t.value} value={t.value}>{t.label} — ${t.flatRate}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-blue-600 mt-1 flex items-center gap-1">
+                  <Icon name="InformationCircleIcon" size={11} />
+                  {FTL_TRUCKS.find(t => t.value === ftlTruckType)?.labelEn} — سعر مقطوع: ${FTL_TRUCKS.find(t => t.value === ftlTruckType)?.flatRate}
+                </p>
+              </div>
+            )}
+
+            {/* LTL: Route selector */}
+            {freightMode === 'ltl' && (
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                  المسار / Route (Yemen Cities)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-muted-foreground mb-1 block">From / من</label>
+                    <select
+                      value={fromCity}
+                      onChange={e => { setFromCity(e.target.value); setResult(null); }}
+                      className="w-full px-2 py-2 rounded-xl border border-border bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      <option value="">اختر المدينة</option>
+                      {YEMEN_CITIES.map(c => (
+                        <option key={c.name} value={c.name}>{c.name} — {c.nameAr}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground mb-1 block">To / إلى</label>
+                    <select
+                      value={toCity}
+                      onChange={e => { setToCity(e.target.value); setResult(null); }}
+                      className="w-full px-2 py-2 rounded-xl border border-border bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      <option value="">اختر المدينة</option>
+                      {YEMEN_CITIES.map(c => (
+                        <option key={c.name} value={c.name}>{c.name} — {c.nameAr}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {autoDistance !== null && (
+                  <p className="text-xs text-blue-600 flex items-center gap-1 mt-1">
+                    <Icon name="MapPinIcon" size={11} />
+                    المسافة التقديرية: ~{autoDistance} كم
+                    {fromCity && toCity && parseFloat(weightKg) > 1000 && (
+                      <span className="text-amber-600 mr-2">
+                        · سعر الطن: ${getRouteTonRate(fromCity, toCity, rates)}/طن
+                      </span>
+                    )}
+                  </p>
+                )}
+              </div>
             )}
           </div>
         )}
