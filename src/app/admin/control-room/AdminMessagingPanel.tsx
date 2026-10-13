@@ -143,11 +143,25 @@ const ROLE_COLORS: Record<string, string> = {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 interface AdminMessagingPanelProps {
-  userId: string;
+  userId?: string;
 }
 
-export default function AdminMessagingPanel({ userId }: AdminMessagingPanelProps) {
+export default function AdminMessagingPanel({ userId: propUserId }: AdminMessagingPanelProps) {
   const supabase = createClient();
+  const [resolvedUserId, setResolvedUserId] = React.useState<string>(propUserId || '');
+
+  // Resolve admin user ID if not passed as prop
+  React.useEffect(() => {
+    if (propUserId) {
+      setResolvedUserId(propUserId);
+      return;
+    }
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user?.id) setResolvedUserId(data.user.id);
+    });
+  }, [propUserId, supabase]);
+
+  const userId = resolvedUserId;
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [conversations, setConversations] = useState<AdminConversation[]>([]);
@@ -205,6 +219,47 @@ export default function AdminMessagingPanel({ userId }: AdminMessagingPanelProps
   }, [supabase]);
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
+
+  // ── Real-time subscription for conversations list (unread updates) ─────────
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-convs-realtime')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'admin_conversations',
+      }, () => { fetchConversations(); })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'admin_conversations',
+      }, (payload) => {
+        setConversations(prev => prev.map(c =>
+          c.id === payload.new.id ? { ...c, ...payload.new as AdminConversation } : c
+        ));
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'admin_messages',
+      }, (payload) => {
+        const msg = payload.new as AdminMessage;
+        // Add to messages if it belongs to the currently active conversation
+        setActiveConvId(currentConvId => {
+          if (currentConvId && msg.conversation_id === currentConvId) {
+            setMessages(prev => {
+              const exists = prev.some(m => m.id === msg.id);
+              if (exists) return prev;
+              return [...prev, msg];
+            });
+          }
+          return currentConvId;
+        });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [supabase, fetchConversations]);
 
   // ── Fetch messages ─────────────────────────────────────────────────────────
 
@@ -267,6 +322,55 @@ export default function AdminMessagingPanel({ userId }: AdminMessagingPanelProps
   const fetchPlatformUsers = useCallback(async () => {
     setUsersLoading(true);
     try {
+      // For logistics_partner tab: fetch from logistics_partners joined with user_profiles
+      if (activeTab === 'logistics_partner') {
+        const { data: lpData } = await supabase
+          .from('logistics_partners')
+          .select('id, user_id, company_name, contact_name, contact_email, contact_phone')
+          .not('user_id', 'is', null)
+          .order('company_name', { ascending: true });
+
+        if (lpData && lpData.length > 0) {
+          // Get user_profile details for each logistics partner
+          const userIds = lpData.map(lp => lp.user_id).filter(Boolean);
+          const { data: profileData } = await supabase
+            .from('user_profiles')
+            .select('id, full_name, company_name, email, role, phone, seller_category')
+            .in('id', userIds);
+
+          const profileMap = new Map((profileData || []).map(p => [p.id, p]));
+
+          let users: PlatformUser[] = lpData
+            .filter(lp => profileMap.has(lp.user_id))
+            .map(lp => {
+              const profile = profileMap.get(lp.user_id)!;
+              return {
+                id: lp.user_id,
+                full_name: profile.full_name || lp.contact_name || '',
+                company_name: lp.company_name || profile.company_name || '',
+                email: profile.email || lp.contact_email || '',
+                role: 'logistics_partner',
+                phone: profile.phone || lp.contact_phone,
+                seller_category: null,
+              };
+            });
+
+          // Also include users with role = 'logistics_partner' in user_profiles (fallback)
+          const { data: roleData } = await supabase
+            .from('user_profiles')
+            .select('id, full_name, company_name, email, role, phone, seller_category')
+            .eq('role', 'logistics_partner')
+            .order('full_name', { ascending: true });
+
+          const existingIds = new Set(users.map(u => u.id));
+          const additionalUsers = (roleData || []).filter(u => !existingIds.has(u.id)) as PlatformUser[];
+
+          setPlatformUsers([...users, ...additionalUsers]);
+          setUsersLoading(false);
+          return;
+        }
+      }
+
       const roles = getTabUserRoles(activeTab);
       let query = supabase
         .from('user_profiles')

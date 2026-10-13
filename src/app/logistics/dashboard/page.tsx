@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,6 +17,8 @@ import {
 
 import LogisticsDocumentsPanel from './LogisticsDocumentsPanel';
 import LogisticsDispatchRoomsTab from './LogisticsDispatchRoomsTab';
+import LogisticsDelayReportModal from './LogisticsDelayReportModal';
+import LogisticsDisputeTicketingPanel from './LogisticsDisputeTicketingPanel';
 import toast from 'react-hot-toast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -4574,6 +4576,563 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
   );
 }
 
+// ─── Admin Messaging Tab (Logistics Partner → Admin) ─────────────────────────
+
+function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; userId: string }) {
+  const supabase = createClient();
+  const [convId, setConvId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<{ id: string; sender_role: string; message: string; created_at: string; attachment_url?: string | null }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [input, setInput] = useState('');
+  const [error, setError] = useState('');
+  const [unreadCount, setUnreadCount] = useState(0);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Find or create admin conversation for this logistics partner
+  const initConversation = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      // Check for existing conversation where this user is participant
+      const { data: existing } = await supabase
+        .from('admin_conversations')
+        .select('id, unread_by_participant')
+        .eq('participant_id', userId)
+        .eq('participant_role', 'logistics_partner')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        setConvId(existing[0].id);
+        setUnreadCount(existing[0].unread_by_participant || 0);
+        // Load messages
+        const { data: msgs } = await supabase
+          .from('admin_messages')
+          .select('id, sender_role, message, created_at, attachment_url')
+          .eq('conversation_id', existing[0].id)
+          .order('created_at', { ascending: true });
+        setMessages(msgs || []);
+        // Mark as read
+        await supabase
+          .from('admin_conversations')
+          .update({ unread_by_participant: 0 })
+          .eq('id', existing[0].id);
+        setUnreadCount(0);
+        setLoading(false);
+        return;
+      }
+
+      // No existing conversation — find admin user to create one
+      // Get admin user from auth metadata
+      const { data: adminProfiles } = await supabase
+        .from('user_profiles')
+        .select('id, full_name, company_name')
+        .eq('role', 'admin')
+        .limit(1);
+
+      if (!adminProfiles || adminProfiles.length === 0) {
+        // Try to find admin via platform_settings
+        setError('تعذّر الاتصال بالإدارة. يرجى المحاولة لاحقاً.');
+        setLoading(false);
+        return;
+      }
+
+      const adminUser = adminProfiles[0];
+
+      // Get partner info for the conversation
+      const { data: partnerData } = await supabase
+        .from('logistics_partners')
+        .select('company_name, contact_name')
+        .eq('id', partnerId)
+        .single();
+
+      const { data: myProfile } = await supabase
+        .from('user_profiles')
+        .select('full_name, company_name')
+        .eq('id', userId)
+        .single();
+
+      const { data: newConv, error: convErr } = await supabase
+        .from('admin_conversations')
+        .insert({
+          admin_id: adminUser.id,
+          participant_id: userId,
+          participant_role: 'logistics_partner',
+          participant_name: myProfile?.full_name || partnerData?.contact_name || 'شريك لوجستي',
+          participant_company: myProfile?.company_name || partnerData?.company_name || '',
+          subject: 'مراسلة الإدارة العامة / الدعم التشغيلي',
+          last_message_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single();
+
+      if (convErr || !newConv) {
+        setError('فشل إنشاء قناة التواصل. يرجى المحاولة مجدداً.');
+        setLoading(false);
+        return;
+      }
+
+      setConvId(newConv.id);
+      setMessages([]);
+    } catch {
+      setError('حدث خطأ غير متوقع. يرجى المحاولة مجدداً.');
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase, userId, partnerId]);
+
+  useEffect(() => { initConversation(); }, [initConversation]);
+
+  useEffect(() => { scrollToBottom(); }, [messages]);
+
+  // Realtime subscription for new messages
+  useEffect(() => {
+    if (!convId) return;
+    const channel = supabase
+      .channel(`logistics-admin-msgs-${convId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'admin_messages',
+        filter: `conversation_id=eq.${convId}`,
+      }, (payload) => {
+        const newMsg = payload.new as { id: string; sender_role: string; message: string; created_at: string; attachment_url?: string | null };
+        setMessages(prev => {
+          const exists = prev.some(m => m.id === newMsg.id);
+          if (exists) return prev;
+          return [...prev, newMsg];
+        });
+        scrollToBottom();
+        // Mark as read if message is from admin
+        if (newMsg.sender_role === 'admin') {
+          supabase
+            .from('admin_conversations')
+            .update({ unread_by_participant: 0 })
+            .eq('id', convId);
+        }
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'admin_conversations',
+        filter: `id=eq.${convId}`,
+      }, (payload) => {
+        setUnreadCount((payload.new as any).unread_by_participant || 0);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [convId, supabase]);
+
+  const handleSend = async () => {
+    const text = input.trim();
+    if (!text || !convId) return;
+    setSending(true);
+    setError('');
+    try {
+      const { data: msg, error: msgErr } = await supabase
+        .from('admin_messages')
+        .insert({
+          conversation_id: convId,
+          sender_id: userId,
+          sender_role: 'participant',
+          message: text,
+          msg_type: 'text',
+          is_read_by_admin: false,
+          is_read_by_participant: true,
+        })
+        .select('id, sender_role, message, created_at, attachment_url')
+        .single();
+
+      if (!msgErr && msg) {
+        setMessages(prev => {
+          const exists = prev.some(m => m.id === msg.id);
+          return exists ? prev : [...prev, msg];
+        });
+        setInput('');
+        scrollToBottom();
+      } else {
+        setError('فشل إرسال الرسالة. يرجى المحاولة مجدداً.');
+      }
+    } catch {
+      setError('حدث خطأ أثناء الإرسال.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-slate-400">جارٍ الاتصال بالإدارة...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !convId) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center gap-4">
+        <div className="w-14 h-14 rounded-2xl bg-red-900/30 flex items-center justify-center">
+          <Icon name="ExclamationCircleIcon" size={28} className="text-red-400" />
+        </div>
+        <p className="text-sm text-red-400">{error}</p>
+        <button
+          onClick={initConversation}
+          className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl text-sm font-semibold transition-colors"
+        >
+          إعادة المحاولة
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-[580px] bg-slate-900 rounded-2xl border border-slate-700 overflow-hidden" dir="rtl">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-cyan-800 to-cyan-900 px-5 py-4 border-b border-cyan-700/50">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center border border-white/30">
+            <Icon name="BuildingOfficeIcon" size={20} className="text-white" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-bold text-white text-sm">مراسلة الإدارة العامة / الدعم التشغيلي</h3>
+            <div className="flex items-center gap-2 mt-0.5">
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <p className="text-cyan-200 text-xs">متصل · Direct Line to Admin</p>
+            </div>
+          </div>
+          {unreadCount > 0 && (
+            <span className="min-w-[22px] h-5.5 px-1.5 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center">
+              {unreadCount}
+            </span>
+          )}
+        </div>
+        <p className="text-cyan-300 text-xs mt-2 pr-13">
+          قناة تواصل مباشرة مع الإدارة العامة لمناقشة العمليات، الدعم الفني، والاستفسارات اللوجستية
+        </p>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-900">
+        {messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center gap-3 py-8">
+            <div className="w-16 h-16 rounded-2xl bg-cyan-900/50 border border-cyan-700/30 flex items-center justify-center">
+              <Icon name="ChatBubbleLeftRightIcon" size={28} className="text-cyan-400" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-300">قناة التواصل المباشر مع الإدارة</p>
+              <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                ابدأ بكتابة رسالتك. سيتلقى فريق الإدارة رسالتك فوراً ويرد عليك في أقرب وقت.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
+            {messages.map(msg => {
+              const isPartner = msg.sender_role === 'participant';
+              return (
+                <div key={msg.id} className={`flex ${isPartner ? 'justify-start' : 'justify-end'}`}>
+                  <div className={`max-w-[75%] flex flex-col gap-1 ${isPartner ? 'items-start' : 'items-end'}`}>
+                    <span className="text-[10px] text-slate-500 px-1">
+                      {isPartner ? 'أنت' : '🏢 الإدارة العامة'}
+                    </span>
+                    <div className={`rounded-2xl px-4 py-2.5 text-sm ${
+                      isPartner
+                        ? 'bg-cyan-700 text-white rounded-bl-sm' :'bg-slate-700 text-slate-100 rounded-br-sm border border-slate-600'
+                    }`}>
+                      <p className="leading-relaxed whitespace-pre-wrap">{msg.message}</p>
+                    </div>
+                    <span className="text-[10px] text-slate-500 px-1">
+                      {new Date(msg.created_at).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={messagesEndRef} />
+          </>
+        )}
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="mx-4 mb-2 px-3 py-2 bg-red-900/30 border border-red-700/50 rounded-xl text-xs text-red-400">
+          {error}
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="px-4 py-3 border-t border-slate-700 bg-slate-800 shrink-0">
+        <div className="flex gap-2 items-center">
+          <button
+            onClick={handleSend}
+            disabled={sending || !input.trim()}
+            className="w-10 h-10 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl disabled:opacity-50 transition-colors flex items-center justify-center shrink-0"
+          >
+            {sending ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Icon name="PaperAirplaneIcon" size={16} />
+            )}
+          </button>
+          <input
+            type="text"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="اكتب رسالتك للإدارة..."
+            className="flex-1 h-10 px-4 rounded-xl border border-slate-600 bg-slate-700 text-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500"
+            dir="rtl"
+          />
+        </div>
+        <p className="text-[10px] text-slate-500 mt-1.5 text-center">
+          رسائلك تصل مباشرة إلى لوحة تحكم الإدارة مع إشعار فوري
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Disputes & Delays Tab ────────────────────────────────────────────────────
+
+function DisputesAndDelaysTab({ partnerId, userId }: { partnerId: string; userId: string }) {
+  const supabase = createClient();
+  const [shipments, setShipments] = useState<any[]>([]);
+  const [delays, setDelays] = useState<any[]>([]);
+  const [loadingShipments, setLoadingShipments] = useState(true);
+  const [loadingDelays, setLoadingDelays] = useState(true);
+  const [selectedShipment, setSelectedShipment] = useState<any | null>(null);
+  const [showDelayModal, setShowDelayModal] = useState(false);
+  const [activeSection, setActiveSection] = useState<'delays' | 'disputes'>('delays');
+
+  const fetchShipments = async () => {
+    setLoadingShipments(true);
+    try {
+      const { data } = await supabase
+        .from('logistics_shipments')
+        .select('id, shipment_number, status, estimated_arrival, order_id, origin_port, destination_port')
+        .eq('partner_id', partnerId)
+        .in('status', ['in_transit', 'customs_clearance', 'processing', 'shipped'])
+        .order('created_at', { ascending: false })
+        .limit(20);
+      setShipments(data || []);
+    } catch {
+      setShipments([]);
+    } finally {
+      setLoadingShipments(false);
+    }
+  };
+
+  const fetchDelays = async () => {
+    setLoadingDelays(true);
+    try {
+      const { data } = await supabase
+        .from('logistics_operational_delays')
+        .select('*')
+        .eq('partner_id', partnerId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      setDelays(data || []);
+    } catch {
+      setDelays([]);
+    } finally {
+      setLoadingDelays(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchShipments();
+    fetchDelays();
+  }, [partnerId]);
+
+  const DELAY_REASON_LABELS: Record<string, string> = {
+    customs: 'توقف جمركي',
+    checkpoint: 'نقطة تفتيش',
+    mechanical: 'عطل ميكانيكي',
+    road_conditions: 'أحوال الطريق',
+    weather: 'أحوال جوية',
+    port_congestion: 'ازدحام الميناء',
+    other: 'سبب آخر',
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Section Header */}
+      <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-br from-slate-900 via-amber-950/20 to-slate-900 p-5">
+        <div className="flex items-center gap-3 mb-1">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
+            <Icon name="ExclamationTriangleIcon" size={20} className="text-amber-400" />
+          </div>
+          <div>
+            <h2 className="font-bold text-white">إدارة التأخير والنزاعات التشغيلية</h2>
+            <p className="text-xs text-slate-400">Disputes & Delay Management</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setActiveSection('delays')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+            activeSection === 'delays' ?'bg-amber-500 text-white' :'bg-slate-800 text-slate-300 hover:bg-slate-700'
+          }`}
+        >
+          <Icon name="ClockIcon" size={14} />
+          الإبلاغ عن التأخير
+        </button>
+        <button
+          onClick={() => setActiveSection('disputes')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+            activeSection === 'disputes' ?'bg-red-600 text-white' :'bg-slate-800 text-slate-300 hover:bg-slate-700'
+          }`}
+        >
+          <Icon name="ExclamationCircleIcon" size={14} />
+          النزاعات
+        </button>
+      </div>
+
+      {/* ── DELAYS SECTION ── */}
+      {activeSection === 'delays' && (
+        <div className="space-y-4">
+          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+            <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+              <Icon name="ClockIcon" size={16} className="text-amber-400" />
+              الإبلاغ عن تأخير طارئ
+            </h3>
+            <p className="text-xs text-slate-400 mb-4">
+              اختر الشحنة المتأثرة وسجّل سبب التأخير مع تحديث وقت الوصول المتوقع (ETA). سيتم إشعار العميل فوراً.
+            </p>
+
+            {loadingShipments ? (
+              <div className="flex items-center justify-center py-6">
+                <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : shipments.length === 0 ? (
+              <div className="text-center py-6">
+                <Icon name="TruckIcon" size={32} className="text-slate-600 mx-auto mb-2" />
+                <p className="text-slate-400 text-sm">لا توجد شحنات نشطة حالياً</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-400 mb-2">اختر الشحنة المتأثرة:</p>
+                {shipments.map(shipment => (
+                  <div
+                    key={shipment.id}
+                    className={`flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-all ${
+                      selectedShipment?.id === shipment.id
+                        ? 'border-amber-500 bg-amber-500/10' :'border-slate-700 bg-slate-800 hover:border-slate-600'
+                    }`}
+                    onClick={() => setSelectedShipment(shipment)}
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-white">
+                        {shipment.shipment_number ? `شحنة #${shipment.shipment_number}` : 'شحنة بدون رقم'}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {shipment.origin_port || '—'} → {shipment.destination_port || '—'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                        {shipment.status}
+                      </span>
+                      {shipment.estimated_arrival && (
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          ETA: {new Date(shipment.estimated_arrival).toLocaleDateString('ar-SA')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={() => {
+                    if (!selectedShipment) { toast.error('يرجى اختيار شحنة أولاً'); return; }
+                    setShowDelayModal(true);
+                  }}
+                  disabled={!selectedShipment}
+                  className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold disabled:opacity-40 transition-colors"
+                >
+                  <Icon name="ExclamationTriangleIcon" size={16} />
+                  تسجيل تأخير للشحنة المحددة
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Delay History */}
+          {delays.length > 0 && (
+            <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+              <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                <Icon name="ClockIcon" size={16} className="text-slate-400" />
+                سجل التأخيرات المسجّلة
+              </h3>
+              <div className="space-y-2">
+                {delays.map(delay => (
+                  <div key={delay.id} className="flex items-start justify-between gap-3 px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-white">
+                        {DELAY_REASON_LABELS[delay.delay_reason] || delay.delay_reason}
+                      </p>
+                      {delay.description && (
+                        <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{delay.description}</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      {delay.updated_eta && (
+                        <p className="text-[10px] text-amber-400">
+                          ETA: {new Date(delay.updated_eta).toLocaleDateString('ar-SA')}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-slate-500">
+                        {new Date(delay.created_at).toLocaleDateString('ar-SA')}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── DISPUTES SECTION ── */}
+      {activeSection === 'disputes' && (
+        <LogisticsDisputeTicketingPanel
+          partnerId={partnerId}
+          userId={userId}
+          openedBy="logistics_partner"
+        />
+      )}
+
+      {/* Delay Report Modal */}
+      {showDelayModal && selectedShipment && (
+        <LogisticsDelayReportModal
+          shipment={selectedShipment}
+          partnerId={partnerId}
+          userId={userId}
+          onClose={() => setShowDelayModal(false)}
+          onSubmitted={() => { fetchDelays(); fetchShipments(); }}
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── Main Dashboard Page ──────────────────────────────────────────────────────
 
 export default function LogisticsDashboardPage() {
@@ -4583,7 +5142,7 @@ export default function LogisticsDashboardPage() {
 
   const [partner, setPartner] = useState<LogisticsPartner | null>(null);
   const [checkLoading, setCheckLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'orders' | 'conversations' | 'stats' | 'calculator' | 'profile' | 'payments' | 'international_orders' | 'customs_docs' | 'documents' | 'dispatch_rooms'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'conversations' | 'stats' | 'calculator' | 'profile' | 'payments' | 'international_orders' | 'customs_docs' | 'documents' | 'dispatch_rooms' | 'admin_messaging' | 'disputes_delays'>('orders');
 
   useEffect(() => {
     if (authLoading) return;
@@ -4657,12 +5216,26 @@ export default function LogisticsDashboardPage() {
       ]
     },
     {
+      key: 'disputes_ops',
+      label: 'إدارة التأخير والنزاعات التشغيلية',
+      tabs: [
+        { key: 'disputes_delays', label: '⚖️ التأخير والنزاعات', icon: 'ExclamationTriangleIcon' },
+      ]
+    },
+    {
       key: 'fulfillment',
       label: 'خدمات من الباب للباب',
       tabs: [
         { key: 'conversations', label: '💬 المراسلات', icon: 'ChatBubbleLeftRightIcon' },
         { key: 'payments', label: '💰 المدفوعات', icon: 'BanknotesIcon' },
         { key: 'profile', label: '👤 الملف الشخصي', icon: 'UserCircleIcon' },
+      ]
+    },
+    {
+      key: 'admin_support',
+      label: 'التواصل مع الإدارة',
+      tabs: [
+        { key: 'admin_messaging', label: '📞 مراسلة الإدارة العامة / الدعم التشغيلي', icon: 'BuildingOfficeIcon' },
       ]
     }
   ];
@@ -4804,6 +5377,12 @@ export default function LogisticsDashboardPage() {
           )}
           {activeTab === 'dispatch_rooms' && (
             <LogisticsDispatchRoomsTab userId={user!.id} partnerId={partner.id} />
+          )}
+          {activeTab === 'admin_messaging' && (
+            <AdminDirectMessagingTab partnerId={partner.id} userId={user!.id} />
+          )}
+          {activeTab === 'disputes_delays' && (
+            <DisputesAndDelaysTab partnerId={partner.id} userId={user!.id} />
           )}
         </div>
       </div>
