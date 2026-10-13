@@ -2019,8 +2019,8 @@ export default function LogisticsDashboardPage() {
         <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <Link href="/logistics" className="text-muted-foreground hover:text-foreground transition-colors">
-                <Icon name="ArrowLeftIcon" size={16} />
+              <Link href="/my-account" className="text-muted-foreground hover:text-foreground transition-colors">
+                <Icon name="ArrowRightIcon" size={16} />
               </Link>
               <h1 className="text-2xl font-bold text-foreground">بوابة الشريك اللوجستي</h1>
             </div>
