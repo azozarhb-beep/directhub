@@ -40,6 +40,7 @@ import EscrowOrdersPanel from './EscrowOrdersPanel';
 import AnalyticsPanel from './AnalyticsPanel';
 import DisputesPanel from './DisputesPanel';
 import FinancialHubPanel from './FinancialHubPanel';
+import SellerFulfillmentPanel from './SellerFulfillmentPanel';
 
 // ── Sales Rep interfaces ─────────────────────────────────────────────────────
 interface SalesRep {
@@ -257,7 +258,7 @@ const EMPTY_PAYMENT_SETTINGS: PaymentSettings = {
   kuraimi_pos_name: '',
 };
 
-type DashboardTab = 'products' | 'financial_hub' | 'escrow_orders' | 'disputes' | 'analytics' | 'admin_messaging' | 'finance' | 'inventory' | 'archive' | 'sales_team' | 'factory_orders';
+type DashboardTab = 'products' | 'financial_hub' | 'escrow_orders' | 'disputes' | 'analytics' | 'admin_messaging' | 'finance' | 'inventory' | 'archive' | 'sales_team' | 'factory_orders' | 'seller_fulfillment';
 
 export default function ManufacturerDashboard() {
   const router = useRouter();
@@ -1968,6 +1969,7 @@ export default function ManufacturerDashboard() {
             { key: 'financial_hub', label: 'الحسابات المالية وطرق الدفع', icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#10B981,#059669)', shadow: 'shadow-emerald-100', show: !isSalesRep },
             { key: 'finance', label: md.tabFinance, icon: 'ChartBarIcon', gradient: 'linear-gradient(135deg,#16A34A,#15803D)', shadow: 'shadow-green-100', show: !isSalesRep },
             { key: 'escrow_orders', label: t.manufacturerDashboard.escrowOrders, icon: 'ShieldCheckIcon', gradient: 'linear-gradient(135deg,#6366F1,#4F46E5)', shadow: 'shadow-indigo-100', show: true, badge: escrowOrders.filter((o: any) => o.escrow_status === 'funds_secured').length || undefined },
+            { key: 'seller_fulfillment', label: 'الشحن الشامل', icon: 'TruckIcon', gradient: 'linear-gradient(135deg,#059669,#047857)', shadow: 'shadow-emerald-100', show: true },
             { key: 'factory_orders', label: 'Order Queue', icon: 'ClipboardDocumentListIcon', gradient: 'linear-gradient(135deg,#0EA5E9,#0284C7)', shadow: 'shadow-sky-100', show: true, badge: factoryOrders.filter((o: any) => o.status === 'pending').length || undefined },
             { key: 'disputes', label: t.manufacturerDashboard.disputesAndComplaints, icon: 'FlagIcon', gradient: 'linear-gradient(135deg,#EF4444,#DC2626)', shadow: 'shadow-red-100', show: true, badge: factoryDisputes.filter((o: any) => ['open', 'factory_reviewing'].includes(o.dispute_status)).length || undefined },
             { key: 'analytics', label: t.manufacturerDashboard.analytics, icon: 'PresentationChartLineIcon', gradient: 'linear-gradient(135deg,#F97316,#EA580C)', shadow: 'shadow-orange-100', show: true },
@@ -1988,6 +1990,7 @@ export default function ManufacturerDashboard() {
                     else if (tab.key === 'financial_hub') { setActiveTab('financial_hub'); fetchBankAccounts(); fetchPaymentSettings(); }
                     else if (tab.key === 'finance') { setActiveTab('finance'); fetchFinanceRecords(); }
                     else if (tab.key === 'escrow_orders') { setActiveTab('escrow_orders'); fetchEscrowOrders(); }
+                    else if (tab.key === 'seller_fulfillment') { setActiveTab('seller_fulfillment'); }
                     else if (tab.key === 'factory_orders') { setActiveTab('factory_orders'); fetchFactoryOrders(); }
                     else if (tab.key === 'disputes') { setActiveTab('disputes'); fetchFactoryDisputes(); }
                     else if (tab.key === 'analytics') { setActiveTab('analytics'); fetchAnalytics(); }
@@ -2499,6 +2502,11 @@ export default function ManufacturerDashboard() {
             user={user}
             md={md}
           />
+        )}
+
+        {/* ── SELLER FULFILLMENT TAB ── */}
+        {activeTab === 'seller_fulfillment' && (
+          <SellerFulfillmentPanel user={user} />
         )}
 
         {/* ── FACTORY ORDER QUEUE TAB ── */}

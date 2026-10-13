@@ -19,6 +19,7 @@ import CFOApprovalWidget from '@/components/CFOApprovalWidget';
 import { Truck, ShieldCheck, AlertTriangle } from 'lucide-react';
 import BuyerEscrowTrackingPanel from './BuyerEscrowTrackingPanel';
 import BuyerArchivePanel from './BuyerArchivePanel';
+import BuyerSellerFulfillmentPanel from './BuyerSellerFulfillmentPanel';
 
 interface BuyerStats {
   totalOrders: number;
@@ -88,7 +89,7 @@ export default function BuyerDashboard() {
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
   const [recentRFQs, setRecentRFQs] = useState<RecentRFQ[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'rfqs' | 'escrow' | 'escrow_tracking' | 'archive'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'rfqs' | 'escrow' | 'escrow_tracking' | 'seller_fulfillment' | 'archive'>('overview');
   const [showCreateRFQ, setShowCreateRFQ] = useState(false);
   const [rfqSuccessMsg, setRfqSuccessMsg] = useState('');
 
@@ -360,7 +361,7 @@ export default function BuyerDashboard() {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-muted/50 p-1 rounded-xl mb-5 w-fit overflow-x-auto">
-          {(['overview', 'orders', 'rfqs', 'escrow', 'escrow_tracking', 'archive'] as const).map((tab) => (
+          {(['overview', 'orders', 'rfqs', 'escrow', 'escrow_tracking', 'seller_fulfillment', 'archive'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -373,6 +374,7 @@ export default function BuyerDashboard() {
                 : tab === 'rfqs' ? b.myRFQs
                 : tab === 'escrow' ? (language === 'ar' ? '🏦 اعتماد CFO' : '🏦 CFO Escrow')
                 : tab === 'escrow_tracking' ? (language === 'ar' ? '📦 متابعة الضمان المالي' : '📦 Escrow Tracking')
+                : tab === 'seller_fulfillment' ? (language === 'ar' ? '🚢 الشحن الشامل' : '🚢 Seller Shipping')
                 : (language === 'ar' ? '🗂 المستندات' : '🗂 Documents')}
               {tab === 'rfqs' && stats.activeRFQs > 0 && (
                 <span className="ms-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] bg-primary text-primary-foreground text-[9px] font-bold rounded-full px-1">
@@ -638,6 +640,11 @@ export default function BuyerDashboard() {
           <div className="bg-card border border-border rounded-xl p-5">
             <BuyerEscrowTrackingPanel userId={user?.id} />
           </div>
+        )}
+
+        {/* Seller Fulfillment Tab */}
+        {activeTab === 'seller_fulfillment' && user?.id && (
+          <BuyerSellerFulfillmentPanel userId={user.id} />
         )}
 
         {/* Archive Tab */}

@@ -13,6 +13,7 @@ import Icon from '@/components/ui/AppIcon';
 import AppImage from '@/components/ui/AppImage';
 import { useCart } from '@/contexts/CartContext';
 import PaymentGatewaySelector, { PaymentGatewayState } from './components/PaymentGatewaySelector';
+import SellerFulfillmentSelector, { SellerFulfillmentState, FulfillmentType, IncotermType } from './components/SellerFulfillmentSelector';
 import { signRequest } from '@/lib/securitySigner';
 
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -1014,6 +1015,13 @@ export default function CheckoutPage() {
   const [wireOcrVerified, setWireOcrVerified] = useState(false);
   const [wireOcrResult, setWireOcrResult] = useState<WireOCRResult | null>(null);
 
+  // Seller Fulfillment state
+  const [sellerFulfillment, setSellerFulfillment] = useState<SellerFulfillmentState>({
+    fulfillmentType: 'directhub_logistics',
+    incotermType: '',
+    localClearanceRequired: false,
+  });
+
   // Determine if order is international (not Saudi Arabia)
   const isInternationalOrder = shipping.country && shipping.country !== 'Saudi Arabia' && shipping.country !== 'Yemen' && shipping.country !== '';
 
@@ -1212,6 +1220,10 @@ export default function CheckoutPage() {
           platform_commission_rate_label: commission.rateLabel,
           wire_transfer_verified: wireOcrVerified,
           wire_transfer_ocr_result: wireOcrResult || null,
+          // Seller Fulfillment fields
+          fulfillment_type: sellerFulfillment.fulfillmentType,
+          incoterm_type: sellerFulfillment.incotermType || null,
+          local_clearance_required: sellerFulfillment.localClearanceRequired,
           ...(deliveryDeadlineDate ? {
             agreed_delivery_days: Number(agreedDeliveryDays),
             expected_delivery_date: deliveryDeadlineDate,
@@ -1483,7 +1495,28 @@ export default function CheckoutPage() {
                       <input type="tel" required value={shipping.phone} onChange={(e) => setShipping({ ...shipping, phone: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
                     </div>
                   </div>
-                  <button type="submit" className="w-full h-11 bg-primary text-primary-foreground font-semibold rounded-lg text-sm transition-opacity active:opacity-80 flex items-center justify-center gap-2">
+
+                  {/* ── Seller Fulfillment Selector ── */}
+                  <div className="border-t border-border pt-4">
+                    <SellerFulfillmentSelector
+                      value={sellerFulfillment}
+                      onChange={setSellerFulfillment}
+                    />
+                  </div>
+
+                  {/* Validation: require incoterm if seller_fulfilled */}
+                  {sellerFulfillment.fulfillmentType === 'seller_fulfilled' && !sellerFulfillment.incotermType && (
+                    <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      <Icon name="ExclamationTriangleIcon" size={14} className="shrink-0" />
+                      يرجى تحديد شرط التسليم (Incoterm) للمتابعة
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={sellerFulfillment.fulfillmentType === 'seller_fulfilled' && !sellerFulfillment.incotermType}
+                    className="w-full h-11 bg-primary text-primary-foreground font-semibold rounded-lg text-sm transition-opacity active:opacity-80 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     {C.continueToPayment} <Icon name="ArrowRightIcon" size={16} />
                   </button>
                 </form>
