@@ -7289,7 +7289,7 @@ export default function AdminControlRoomPage() {
             TAB: ADMIN MESSAGING — Integrated Messaging Panel
         ══════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'admin_messaging' && (
-          <AdminMessagingPanel />
+          <AdminMessagingPanel userId={user?.id || ''} />
         )}
 
         {/* ══════════════════════════════════════════════════════════════════════
