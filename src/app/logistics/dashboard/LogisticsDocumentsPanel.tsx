@@ -20,12 +20,12 @@ interface LogisticsDocument {
 }
 
 const DOCUMENT_TYPE_OPTIONS = [
-  { value: 'bill_of_lading',       label: 'بوليصة الشحن (Bill of Lading)' },
-  { value: 'commercial_invoice',   label: 'الفاتورة التجارية (Commercial Invoice)' },
-  { value: 'packing_list',         label: 'قائمة التعبئة (Packing List)' },
-  { value: 'certificate_of_origin',label: 'شهادة المنشأ (Certificate of Origin)' },
-  { value: 'customs_declaration',  label: 'إقرار جمركي (Customs Declaration)' },
-  { value: 'inspection_cert',      label: 'شهادة الفحص (Inspection Certificate)' },
+  { value: 'bill_of_lading',        label: 'بوليصة الشحن (Bill of Lading / AWB)' },
+  { value: 'commercial_invoice',    label: 'الفاتورة التجارية (Commercial Invoice)' },
+  { value: 'packing_list',          label: 'قائمة التعبئة (Packing List)' },
+  { value: 'certificate_of_origin', label: 'شهادة المنشأ (Certificate of Origin)' },
+  { value: 'inspection_cert',       label: 'شهادة المطابقة / التفتيش (SASO / CoC)' },
+  { value: 'customs_declaration',   label: 'البيان الجمركي (Customs Declaration)' },
 ];
 
 const DOC_TYPE_LABELS: Record<string, string> = Object.fromEntries(
@@ -98,7 +98,7 @@ function UploadModal({
       // Build storage path: userId/timestamp_filename
       const timestamp = Date.now();
       const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const storagePath = `${userId}/${timestamp}_${safeFileName}`;
+      let storagePath = `${userId}/${timestamp}_${safeFileName}`;
 
       setProgress(30);
 
@@ -197,13 +197,13 @@ function UploadModal({
           {/* Tracking Number (optional) */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              رقم التتبع (اختياري)
+              رقم الشحنة أو الحاوية المرتبطة (اختياري)
             </label>
             <input
               type="text"
               value={trackingNumber}
               onChange={e => setTrackingNumber(e.target.value)}
-              placeholder="مثال: TRK-2024-001234"
+              placeholder="مثال: CONT-2024-001234 أو TRK-2024-001"
               className="w-full px-3 py-2.5 bg-slate-800 border border-slate-600 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
             />
           </div>
@@ -340,6 +340,30 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
     setDocuments(prev => [doc, ...prev]);
   };
 
+  const handleDelete = async (doc: LogisticsDocument) => {
+    if (!confirm(`هل تريد حذف المستند "${doc.file_name}"؟`)) return;
+
+    // Extract storage path from file_url
+    let storagePath = doc.file_url;
+    if (doc.file_url.startsWith('http')) {
+      const match = doc.file_url.match(/logistics-documents\/([^?]+)/);
+      if (match) storagePath = decodeURIComponent(match[1]);
+    }
+
+    // Delete from storage (best effort)
+    await supabase.storage.from('logistics-documents').remove([storagePath]);
+
+    // Delete from database
+    const { error: deleteErr } = await supabase
+      .from('logistics_documents')
+      .delete()
+      .eq('id', doc.id);
+
+    if (!deleteErr) {
+      setDocuments(prev => prev.filter(d => d.id !== doc.id));
+    }
+  };
+
   const getSignedUrl = async (doc: LogisticsDocument) => {
     // If already have a signed URL, use it
     if (signedUrls[doc.id]) {
@@ -391,7 +415,7 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
           className="flex items-center gap-2 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-semibold transition-colors"
         >
           <Icon name="PlusIcon" size={16} />
-          + رفع مستند جمركي
+          + رفع مستند جديد
         </button>
       </div>
 
@@ -430,19 +454,19 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
       ) : documents.length === 0 ? (
         /* Empty State */
         <div className="text-center py-16 border-2 border-dashed border-slate-700 rounded-2xl">
-          <div className="w-14 h-14 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Icon name="DocumentArrowUpIcon" size={28} className="text-slate-500" />
+          <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Icon name="DocumentArrowUpIcon" size={32} className="text-slate-500" />
           </div>
-          <h3 className="text-base font-semibold text-white mb-2">لا توجد مستندات بعد</h3>
-          <p className="text-sm text-slate-400 mb-5 max-w-xs mx-auto">
-            ارفع مستنداتك الجمركية واللوجستية لتسهيل عمليات التخليص والشحن
+          <h3 className="text-base font-semibold text-white mb-2">لا توجد وثائق جمركية مرفوعة حالياً</h3>
+          <p className="text-sm text-slate-400 mb-6 max-w-sm mx-auto leading-relaxed">
+            اضغط أدناه لرفع مستندات الشحنة والتخليص الجمركي
           </p>
           <button
             onClick={() => setShowUpload(true)}
             className="inline-flex items-center gap-2 px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-semibold transition-colors"
           >
             <Icon name="PlusIcon" size={16} />
-            رفع أول مستند
+            + رفع مستند جديد
           </button>
         </div>
       ) : (
@@ -454,7 +478,7 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
             <div className="col-span-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">النوع</div>
             <div className="col-span-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">التاريخ</div>
             <div className="col-span-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">الحالة</div>
-            <div className="col-span-1 text-xs font-semibold text-slate-400 uppercase tracking-wide text-center">عرض</div>
+            <div className="col-span-1 text-xs font-semibold text-slate-400 uppercase tracking-wide text-center">خيارات</div>
           </div>
 
           {/* Table Rows */}
@@ -504,14 +528,21 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
                     </span>
                   </div>
 
-                  {/* Preview/Download Button */}
-                  <div className="col-span-1 flex justify-center">
+                  {/* Actions: Preview/Download + Delete */}
+                  <div className="col-span-1 flex justify-center items-center gap-1">
                     <button
                       onClick={() => getSignedUrl(doc)}
-                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-cyan-600 text-slate-400 hover:text-white transition-colors"
+                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-cyan-600 text-slate-400 hover:text-white transition-colors"
                       title="معاينة / تحميل"
                     >
-                      <Icon name="ArrowDownTrayIcon" size={14} />
+                      <Icon name="ArrowDownTrayIcon" size={13} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(doc)}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-red-600 text-slate-400 hover:text-white transition-colors"
+                      title="حذف"
+                    >
+                      <Icon name="TrashIcon" size={13} />
                     </button>
                   </div>
                 </div>
