@@ -162,7 +162,7 @@ FOR SELECT
 TO authenticated
 USING (
   order_id IN (
-    SELECT id FROM public.orders WHERE buyer_id = auth.uid()
+    SELECT id FROM public.orders WHERE user_id = auth.uid()
   )
 );
 
