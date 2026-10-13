@@ -1,0 +1,565 @@
+'use client';
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import Icon from '@/components/ui/AppIcon';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface LogisticsDocument {
+  id: string;
+  partner_id: string;
+  shipment_id: string | null;
+  document_type: string;
+  file_name: string;
+  file_url: string;
+  file_size: number;
+  tracking_number: string | null;
+  status: 'pending_review' | 'approved' | 'rejected';
+  created_at: string;
+}
+
+const DOCUMENT_TYPE_OPTIONS = [
+  { value: 'bill_of_lading',        label: 'بوليصة الشحن (Bill of Lading / AWB)' },
+  { value: 'commercial_invoice',    label: 'الفاتورة التجارية (Commercial Invoice)' },
+  { value: 'packing_list',          label: 'قائمة التعبئة (Packing List)' },
+  { value: 'certificate_of_origin', label: 'شهادة المنشأ (Certificate of Origin)' },
+  { value: 'inspection_cert',       label: 'شهادة المطابقة / التفتيش (SASO / CoC)' },
+  { value: 'customs_declaration',   label: 'البيان الجمركي (Customs Declaration)' },
+];
+
+const DOC_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+  DOCUMENT_TYPE_OPTIONS.map(o => [o.value, o.label])
+);
+
+const STATUS_META: Record<string, { label: string; color: string; icon: string }> = {
+  pending_review: { label: 'قيد المراجعة', color: 'bg-amber-50 text-amber-700 border-amber-200',   icon: 'ClockIcon' },
+  approved:       { label: 'معتمد',         color: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: 'CheckBadgeIcon' },
+  rejected:       { label: 'مرفوض',         color: 'bg-red-50 text-red-700 border-red-200',         icon: 'XCircleIcon' },
+};
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('ar-YE', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+// ─── Upload Modal ─────────────────────────────────────────────────────────────
+
+function UploadModal({
+  userId,
+  onClose,
+  onUploaded,
+}: {
+  userId: string;
+  onClose: () => void;
+  onUploaded: (doc: LogisticsDocument) => void;
+}) {
+  const supabase = createClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [file, setFile] = useState<File | null>(null);
+  const [docType, setDocType] = useState('');
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 26 * 1024 * 1024) {
+      setError('حجم الملف يتجاوز الحد المسموح (26 MB)');
+      return;
+    }
+    setFile(f);
+    setError(null);
+  };
+
+  const handleUpload = async () => {
+    if (!file || !docType) {
+      setError('يرجى اختيار الملف ونوع المستند');
+      return;
+    }
+
+    setUploading(true);
+    setError(null);
+    setProgress(10);
+
+    try {
+      // Build storage path: userId/timestamp_filename
+      const timestamp = Date.now();
+      const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      let storagePath = `${userId}/${timestamp}_${safeFileName}`;
+
+      setProgress(30);
+
+      // Upload to Supabase Storage
+      const { error: storageError } = await supabase.storage
+        .from('logistics-documents')
+        .upload(storagePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (storageError) {
+        setError(`فشل رفع الملف: ${storageError.message}`);
+        return;
+      }
+
+      setProgress(70);
+
+      // Get signed URL for the uploaded file
+      const { data: urlData } = await supabase.storage
+        .from('logistics-documents')
+        .createSignedUrl(storagePath, 60 * 60 * 24 * 365); // 1 year
+
+      const fileUrl = urlData?.signedUrl || storagePath;
+
+      setProgress(85);
+
+      // Insert record into logistics_documents
+      const { data: docData, error: insertError } = await supabase
+        .from('logistics_documents')
+        .insert({
+          partner_id: userId,
+          document_type: docType,
+          file_name: file.name,
+          file_url: fileUrl,
+          file_size: file.size,
+          tracking_number: trackingNumber.trim() || null,
+          status: 'pending_review',
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        setError(`فشل حفظ بيانات المستند: ${insertError.message}`);
+        return;
+      }
+
+      setProgress(100);
+      onUploaded(docData as LogisticsDocument);
+      onClose();
+    } catch (err: any) {
+      setError(`حدث خطأ غير متوقع: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-slate-700">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-cyan-500/20 rounded-lg flex items-center justify-center">
+              <Icon name="ArrowUpTrayIcon" size={16} className="text-cyan-400" />
+            </div>
+            <h3 className="text-base font-bold text-white">رفع مستند جمركي</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+          >
+            <Icon name="XMarkIcon" size={18} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-5 space-y-4">
+          {/* Document Type */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+              نوع المستند <span className="text-red-400">*</span>
+            </label>
+            <select
+              value={docType}
+              onChange={e => setDocType(e.target.value)}
+              className="w-full px-3 py-2.5 bg-slate-800 border border-slate-600 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            >
+              <option value="">-- اختر نوع المستند --</option>
+              {DOCUMENT_TYPE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Tracking Number (optional) */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+              رقم الشحنة أو الحاوية المرتبطة (اختياري)
+            </label>
+            <input
+              type="text"
+              value={trackingNumber}
+              onChange={e => setTrackingNumber(e.target.value)}
+              placeholder="مثال: CONT-2024-001234 أو TRK-2024-001"
+              className="w-full px-3 py-2.5 bg-slate-800 border border-slate-600 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            />
+          </div>
+
+          {/* File Upload */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+              الملف <span className="text-red-400">*</span>
+            </label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className={`w-full border-2 border-dashed rounded-xl p-4 text-center transition-colors ${
+                file
+                  ? 'border-cyan-500 bg-cyan-500/10' :'border-slate-600 hover:border-slate-500 bg-slate-800/50'
+              }`}
+            >
+              {file ? (
+                <div className="flex items-center justify-center gap-2">
+                  <Icon name="DocumentCheckIcon" size={18} className="text-cyan-400" />
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-cyan-300 truncate max-w-[200px]">{file.name}</p>
+                    <p className="text-xs text-slate-400">{formatFileSize(file.size)}</p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <Icon name="ArrowUpTrayIcon" size={24} className="text-slate-500 mx-auto mb-2" />
+                  <p className="text-sm text-slate-400">اضغط لاختيار الملف</p>
+                  <p className="text-xs text-slate-500 mt-1">PDF, JPG, PNG, DOCX — حتى 26 MB</p>
+                </div>
+              )}
+            </button>
+          </div>
+
+          {/* Progress */}
+          {uploading && (
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs text-slate-400">
+                <span>جاري الرفع…</span>
+                <span>{progress}%</span>
+              </div>
+              <div className="w-full bg-slate-700 rounded-full h-2">
+                <div
+                  className="bg-cyan-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Error */}
+          {error && (
+            <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-xl">
+              <Icon name="ExclamationCircleIcon" size={16} className="text-red-400 mt-0.5 shrink-0" />
+              <p className="text-xs text-red-300">{error}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center gap-3 p-5 border-t border-slate-700">
+          <button
+            onClick={onClose}
+            disabled={uploading}
+            className="flex-1 px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
+          >
+            إلغاء
+          </button>
+          <button
+            onClick={handleUpload}
+            disabled={uploading || !file || !docType}
+            className="flex-1 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {uploading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                جاري الرفع…
+              </>
+            ) : (
+              <>
+                <Icon name="ArrowUpTrayIcon" size={15} />
+                رفع المستند
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Panel ───────────────────────────────────────────────────────────────
+
+export default function LogisticsDocumentsPanel({ userId }: { userId?: string }) {
+  const supabase = createClient();
+  const [documents, setDocuments] = useState<LogisticsDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showUpload, setShowUpload] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+
+  const fetchDocuments = useCallback(async () => {
+    if (!userId) return;
+    setLoading(true);
+    setError(null);
+
+    const { data, error: fetchErr } = await supabase
+      .from('logistics_documents')
+      .select('*')
+      .eq('partner_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (fetchErr) {
+      setError(`فشل تحميل المستندات: ${fetchErr.message}`);
+    } else {
+      setDocuments((data as LogisticsDocument[]) || []);
+    }
+    setLoading(false);
+  }, [userId, supabase]);
+
+  useEffect(() => {
+    fetchDocuments();
+  }, [fetchDocuments]);
+
+  const handleUploaded = (doc: LogisticsDocument) => {
+    setDocuments(prev => [doc, ...prev]);
+  };
+
+  const handleDelete = async (doc: LogisticsDocument) => {
+    if (!confirm(`هل تريد حذف المستند "${doc.file_name}"؟`)) return;
+
+    // Extract storage path from file_url
+    let storagePath = doc.file_url;
+    if (doc.file_url.startsWith('http')) {
+      const match = doc.file_url.match(/logistics-documents\/([^?]+)/);
+      if (match) storagePath = decodeURIComponent(match[1]);
+    }
+
+    // Delete from storage (best effort)
+    await supabase.storage.from('logistics-documents').remove([storagePath]);
+
+    // Delete from database
+    const { error: deleteErr } = await supabase
+      .from('logistics_documents')
+      .delete()
+      .eq('id', doc.id);
+
+    if (!deleteErr) {
+      setDocuments(prev => prev.filter(d => d.id !== doc.id));
+    }
+  };
+
+  const getSignedUrl = async (doc: LogisticsDocument) => {
+    // If already have a signed URL, use it
+    if (signedUrls[doc.id]) {
+      window.open(signedUrls[doc.id], '_blank');
+      return;
+    }
+
+    // Extract storage path from file_url or use file_name fallback
+    // The stored URL is a signed URL — open directly
+    if (doc.file_url.startsWith('http')) {
+      window.open(doc.file_url, '_blank');
+      return;
+    }
+
+    // Fallback: generate new signed URL from path
+    const { data } = await supabase.storage
+      .from('logistics-documents')
+      .createSignedUrl(doc.file_url, 3600);
+
+    if (data?.signedUrl) {
+      setSignedUrls(prev => ({ ...prev, [doc.id]: data.signedUrl }));
+      window.open(data.signedUrl, '_blank');
+    }
+  };
+
+  if (!userId) {
+    return (
+      <div className="text-center py-12 text-slate-400 text-sm">
+        يرجى تسجيل الدخول لعرض المستندات
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <Icon name="FolderOpenIcon" size={20} className="text-cyan-400" />
+            المستندات الجمركية واللوجستية
+          </h2>
+          <p className="text-slate-400 text-sm mt-0.5">
+            رفع وإدارة وثائق التخليص الجمركي والشحن
+          </p>
+        </div>
+        <button
+          onClick={() => setShowUpload(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-semibold transition-colors"
+        >
+          <Icon name="PlusIcon" size={16} />
+          + رفع مستند جديد
+        </button>
+      </div>
+
+      {/* Stats Row */}
+      {documents.length > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: 'إجمالي المستندات', value: documents.length, color: 'text-white', bg: 'bg-slate-800 border-slate-700' },
+            { label: 'قيد المراجعة', value: documents.filter(d => d.status === 'pending_review').length, color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30' },
+            { label: 'معتمدة', value: documents.filter(d => d.status === 'approved').length, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30' },
+          ].map(stat => (
+            <div key={stat.label} className={`rounded-xl border p-3 text-center ${stat.bg}`}>
+              <p className={`text-2xl font-black ${stat.color}`}>{stat.value}</p>
+              <p className="text-xs text-slate-400 mt-0.5">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-xl">
+          <Icon name="ExclamationCircleIcon" size={16} className="text-red-400 mt-0.5 shrink-0" />
+          <p className="text-sm text-red-300">{error}</p>
+        </div>
+      )}
+
+      {/* Loading */}
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-6 h-6 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-slate-400">جاري تحميل المستندات…</p>
+          </div>
+        </div>
+      ) : documents.length === 0 ? (
+        /* Empty State */
+        <div className="text-center py-16 border-2 border-dashed border-slate-700 rounded-2xl">
+          <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Icon name="DocumentArrowUpIcon" size={32} className="text-slate-500" />
+          </div>
+          <h3 className="text-base font-semibold text-white mb-2">لا توجد وثائق جمركية مرفوعة حالياً</h3>
+          <p className="text-sm text-slate-400 mb-6 max-w-sm mx-auto leading-relaxed">
+            اضغط أدناه لرفع مستندات الشحنة والتخليص الجمركي
+          </p>
+          <button
+            onClick={() => setShowUpload(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-semibold transition-colors"
+          >
+            <Icon name="PlusIcon" size={16} />
+            + رفع مستند جديد
+          </button>
+        </div>
+      ) : (
+        /* Documents Table */
+        <div className="bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden">
+          {/* Table Header */}
+          <div className="grid grid-cols-12 gap-2 px-4 py-3 border-b border-slate-700 bg-slate-800">
+            <div className="col-span-4 text-xs font-semibold text-slate-400 uppercase tracking-wide">المستند</div>
+            <div className="col-span-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">النوع</div>
+            <div className="col-span-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">التاريخ</div>
+            <div className="col-span-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">الحالة</div>
+            <div className="col-span-1 text-xs font-semibold text-slate-400 uppercase tracking-wide text-center">خيارات</div>
+          </div>
+
+          {/* Table Rows */}
+          <div className="divide-y divide-slate-700/50">
+            {documents.map(doc => {
+              const statusMeta = STATUS_META[doc.status] || STATUS_META.pending_review;
+              const docTypeLabel = DOC_TYPE_LABELS[doc.document_type] || doc.document_type;
+
+              return (
+                <div
+                  key={doc.id}
+                  className="grid grid-cols-12 gap-2 px-4 py-3.5 items-center hover:bg-slate-700/30 transition-colors"
+                >
+                  {/* File Name */}
+                  <div className="col-span-4 flex items-center gap-2 min-w-0">
+                    <div className="w-8 h-8 bg-slate-700 rounded-lg flex items-center justify-center shrink-0">
+                      <Icon name="DocumentTextIcon" size={15} className="text-cyan-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white truncate" title={doc.file_name}>
+                        {doc.file_name}
+                      </p>
+                      <p className="text-xs text-slate-500">{formatFileSize(doc.file_size)}</p>
+                    </div>
+                  </div>
+
+                  {/* Document Type */}
+                  <div className="col-span-3">
+                    <p className="text-xs text-slate-300 leading-tight">{docTypeLabel}</p>
+                    {doc.tracking_number && (
+                      <p className="text-xs text-slate-500 mt-0.5 font-mono">
+                        {doc.tracking_number}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Date */}
+                  <div className="col-span-2">
+                    <p className="text-xs text-slate-400">{formatDate(doc.created_at)}</p>
+                  </div>
+
+                  {/* Status Badge */}
+                  <div className="col-span-2">
+                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border ${statusMeta.color}`}>
+                      <Icon name={statusMeta.icon as any} size={11} />
+                      {statusMeta.label}
+                    </span>
+                  </div>
+
+                  {/* Actions: Preview/Download + Delete */}
+                  <div className="col-span-1 flex justify-center items-center gap-1">
+                    <button
+                      onClick={() => getSignedUrl(doc)}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-cyan-600 text-slate-400 hover:text-white transition-colors"
+                      title="معاينة / تحميل"
+                    >
+                      <Icon name="ArrowDownTrayIcon" size={13} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(doc)}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-red-600 text-slate-400 hover:text-white transition-colors"
+                      title="حذف"
+                    >
+                      <Icon name="TrashIcon" size={13} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Upload Modal */}
+      {showUpload && (
+        <UploadModal
+          userId={userId}
+          onClose={() => setShowUpload(false)}
+          onUploaded={handleUploaded}
+        />
+      )}
+    </div>
+  );
+}

@@ -14,7 +14,8 @@ import {
   getHomeRoomForRole,
 } from '@/lib/roomIsolation';
 import ShipmentTimeline from '@/components/ShipmentTimeline';
-import LogisticsArchivePanel from './LogisticsArchivePanel';
+
+import LogisticsDocumentsPanel from './LogisticsDocumentsPanel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -2267,8 +2268,7 @@ export default function LogisticsDashboardPage() {
           )}
           {activeTab === 'documents' && (
             <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-              <h2 className="text-lg font-semibold text-white mb-4">رفع المستندات</h2>
-              <LogisticsArchivePanel userId={user?.id} />
+              <LogisticsDocumentsPanel userId={user?.id} />
             </div>
           )}
         </div>
