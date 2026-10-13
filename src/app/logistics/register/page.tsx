@@ -9,6 +9,7 @@ import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
+import toast from 'react-hot-toast';
 
 type PartnerType =
   | 'international_shipping_office' |'local_shipping_distribution' |'customs_broker' |'freight_forwarder' |'logistics_company';
@@ -419,7 +420,9 @@ export default function LogisticsRegisterPage() {
       // Redirect to dashboard after short delay so user sees success message
       setTimeout(() => router.replace('/logistics/dashboard'), 2000);
     } catch (err: any) {
-      setError(err.message || 'حدث خطأ أثناء التسجيل');
+      const msg = err?.message || 'حدث خطأ أثناء التسجيل. يرجى المحاولة مرة أخرى.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
