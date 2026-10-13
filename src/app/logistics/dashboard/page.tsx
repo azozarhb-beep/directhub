@@ -561,12 +561,39 @@ const YEMEN_CITIES: { name: string; nameAr: string; distanceFromSanaa: number }[
 
 // ── Sea freight ports ─────────────────────────────────────────────────────────
 const SEA_ORIGIN_PORTS = [
-  { value: 'shanghai',     label: 'Shanghai (CNSHA)',       labelAr: 'شنغهاي' },
-  { value: 'ningbo',       label: 'Ningbo (CNNGB)',         labelAr: 'نينغبو' },
-  { value: 'shenzhen',     label: 'Shenzhen (CNSZX)',       labelAr: 'شنزن' },
-  { value: 'guangzhou',    label: 'Guangzhou (CNGZH)',      labelAr: 'غوانغتشو' },
-  { value: 'istanbul',     label: 'Istanbul (TRIST)',       labelAr: 'إسطنبول' },
-  { value: 'jebel_ali',   label: 'Jebel Ali (AEJEA)',      labelAr: 'جبل علي' },
+  // China & East Asia
+  { value: 'shanghai',     label: 'Shanghai (CNSHA)',          labelAr: 'شنغهاي',           country: 'China' },
+  { value: 'ningbo',       label: 'Ningbo (CNNGB)',            labelAr: 'نينغبو',            country: 'China' },
+  { value: 'shenzhen',     label: 'Shenzhen (CNSZX)',          labelAr: 'شنزن',              country: 'China' },
+  { value: 'guangzhou',    label: 'Guangzhou (CNGZH)',         labelAr: 'غوانغتشو',          country: 'China' },
+  { value: 'qingdao',      label: 'Qingdao (CNTAO)',           labelAr: 'تشينغداو',          country: 'China' },
+  { value: 'tianjin',      label: 'Tianjin (CNTXG)',           labelAr: 'تيانجين',           country: 'China' },
+  { value: 'singapore',    label: 'Singapore (SGSIN)',         labelAr: 'سنغافورة',          country: 'Singapore' },
+  // India
+  { value: 'nhava_sheva',  label: 'Nhava Sheva / Mumbai (INNSA)', labelAr: 'نهافا شيفا / مومباي', country: 'India' },
+  { value: 'mundra',       label: 'Mundra (INMUN)',            labelAr: 'موندرا',            country: 'India' },
+  { value: 'chennai',      label: 'Chennai (INMAA)',           labelAr: 'تشيناي',            country: 'India' },
+  // South Korea
+  { value: 'busan',        label: 'Busan (KRPUS)',             labelAr: 'بوسان',             country: 'South Korea' },
+  { value: 'incheon',      label: 'Incheon (KRINC)',           labelAr: 'إنتشون',            country: 'South Korea' },
+  // Iran
+  { value: 'bandar_abbas', label: 'Bandar Abbas (IRBND)',      labelAr: 'بندر عباس',         country: 'Iran' },
+  { value: 'chabahar',     label: 'Chabahar (IRZBR)',          labelAr: 'تشابهار',           country: 'Iran' },
+  // Europe
+  { value: 'rotterdam',    label: 'Rotterdam (NLRTM)',         labelAr: 'روتردام',           country: 'Netherlands' },
+  { value: 'hamburg',      label: 'Hamburg (DEHAM)',           labelAr: 'هامبورغ',           country: 'Germany' },
+  { value: 'antwerp',      label: 'Antwerp (BEANR)',           labelAr: 'أنتويرب',           country: 'Belgium' },
+  { value: 'valencia',     label: 'Valencia (ESVLC)',          labelAr: 'فالنسيا',           country: 'Spain' },
+  { value: 'genoa',        label: 'Genoa (ITGOA)',             labelAr: 'جنوة',              country: 'Italy' },
+  // Turkey & Regional
+  { value: 'istanbul',     label: 'Istanbul (TRIST)',          labelAr: 'إسطنبول',           country: 'Turkey' },
+  { value: 'mersin',       label: 'Mersin (TRMER)',            labelAr: 'مرسين',             country: 'Turkey' },
+  { value: 'izmir',        label: 'Izmir (TRIZM)',             labelAr: 'إزمير',             country: 'Turkey' },
+  // Gulf & Middle East
+  { value: 'jebel_ali',   label: 'Jebel Ali (AEJEA)',         labelAr: 'جبل علي',           country: 'UAE' },
+  { value: 'jeddah',       label: 'Jeddah Islamic Port (SAJED)', labelAr: 'ميناء جدة الإسلامي', country: 'Saudi Arabia' },
+  { value: 'dammam',       label: 'Dammam (SADMM)',            labelAr: 'الدمام',            country: 'Saudi Arabia' },
+  { value: 'salalah',      label: 'Salalah (OMSLL)',           labelAr: 'صلالة',             country: 'Oman' },
 ];
 
 const SEA_DEST_PORTS = [
@@ -668,6 +695,8 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
   const [toCity, setToCity] = useState('');
   const [seaOriginPort, setSeaOriginPort] = useState('');
   const [seaDestPort, setSeaDestPort] = useState('');
+  const [seaOriginSearch, setSeaOriginSearch] = useState('');
+  const [showSeaOriginDropdown, setShowSeaOriginDropdown] = useState(false);
   const [airOriginAirport, setAirOriginAirport] = useState('');
   const [airDestAirport, setAirDestAirport] = useState('');
   const [result, setResult] = useState<CalcResult | null>(null);
@@ -825,6 +854,8 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
     setToCity('');
     setSeaOriginPort('');
     setSeaDestPort('');
+    setSeaOriginSearch('');
+    setShowSeaOriginDropdown(false);
     setAirOriginAirport('');
     setAirDestAirport('');
   };
@@ -1164,20 +1195,90 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
 
         {isSea && (
           <>
-            <div>
+            <div className="relative">
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
                 ميناء التحميل / Origin Port <span className="text-red-500">*</span>
               </label>
-              <select
-                value={seaOriginPort}
-                onChange={e => { setSeaOriginPort(e.target.value); setResult(null); }}
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              >
-                <option value="">اختر ميناء التحميل</option>
-                {SEA_ORIGIN_PORTS.map(p => (
-                  <option key={p.value} value={p.value}>{p.label} — {p.labelAr}</option>
-                ))}
-              </select>
+              {/* Searchable origin port input */}
+              <div className="relative">
+                <div className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl border border-border bg-background focus-within:ring-2 focus-within:ring-primary/30">
+                  <Icon name="MagnifyingGlassIcon" size={14} className="text-muted-foreground shrink-0" />
+                  <input
+                    type="text"
+                    value={seaOriginSearch}
+                    onChange={e => {
+                      setSeaOriginSearch(e.target.value);
+                      setShowSeaOriginDropdown(true);
+                      if (!e.target.value) { setSeaOriginPort(''); setResult(null); }
+                    }}
+                    onFocus={() => setShowSeaOriginDropdown(true)}
+                    placeholder={seaOriginPort ? (SEA_ORIGIN_PORTS.find(p => p.value === seaOriginPort)?.label ?? 'ابحث باسم الميناء أو الدولة أو الرمز…') : 'ابحث باسم الميناء أو الدولة أو الرمز…'}
+                    className="flex-1 bg-transparent text-sm focus:outline-none"
+                  />
+                  {seaOriginPort && (
+                    <button
+                      onClick={() => { setSeaOriginPort(''); setSeaOriginSearch(''); setResult(null); }}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <Icon name="XMarkIcon" size={14} />
+                    </button>
+                  )}
+                </div>
+                {showSeaOriginDropdown && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border border-border rounded-xl shadow-lg max-h-64 overflow-y-auto">
+                    {(() => {
+                      const q = seaOriginSearch.toLowerCase();
+                      const filtered = SEA_ORIGIN_PORTS.filter(p =>
+                        !q ||
+                        p.label.toLowerCase().includes(q) ||
+                        p.labelAr.includes(seaOriginSearch) ||
+                        p.country.toLowerCase().includes(q) ||
+                        p.value.toLowerCase().includes(q)
+                      );
+                      // Group by country
+                      const groups: Record<string, typeof SEA_ORIGIN_PORTS> = {};
+                      filtered.forEach(p => {
+                        if (!groups[p.country]) groups[p.country] = [];
+                        groups[p.country].push(p);
+                      });
+                      if (filtered.length === 0) {
+                        return <p className="px-3 py-3 text-sm text-muted-foreground text-center">لا توجد نتائج</p>;
+                      }
+                      return Object.entries(groups).map(([country, ports]) => (
+                        <div key={country}>
+                          <p className="px-3 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wide bg-muted/40 sticky top-0">{country}</p>
+                          {ports.map(p => (
+                            <button
+                              key={p.value}
+                              onMouseDown={e => e.preventDefault()}
+                              onClick={() => {
+                                setSeaOriginPort(p.value);
+                                setSeaOriginSearch('');
+                                setShowSeaOriginDropdown(false);
+                                setResult(null);
+                              }}
+                              className={`w-full text-left px-3 py-2 text-sm hover:bg-primary/5 flex items-center justify-between gap-2 ${seaOriginPort === p.value ? 'bg-primary/10 font-semibold text-primary' : 'text-foreground'}`}
+                            >
+                              <span>{p.label}</span>
+                              <span className="text-xs text-muted-foreground">{p.labelAr}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                )}
+              </div>
+              {seaOriginPort && (
+                <p className="text-[10px] text-primary mt-1 flex items-center gap-1">
+                  <Icon name="CheckCircleIcon" size={11} />
+                  {SEA_ORIGIN_PORTS.find(p => p.value === seaOriginPort)?.label} — {SEA_ORIGIN_PORTS.find(p => p.value === seaOriginPort)?.labelAr}
+                </p>
+              )}
+              {/* Click outside to close */}
+              {showSeaOriginDropdown && (
+                <div className="fixed inset-0 z-40" onClick={() => setShowSeaOriginDropdown(false)} />
+              )}
             </div>
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
