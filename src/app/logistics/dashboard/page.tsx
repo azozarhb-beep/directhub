@@ -82,6 +82,7 @@ interface Conversation {
   is_active: boolean;
   created_at: string;
   buyer?: { full_name: string; email: string };
+  order?: { order_number: string | null } | null;
 }
 
 interface Message {
@@ -876,7 +877,7 @@ function ConversationsTab({ partnerId, userId }: { partnerId: string; userId: st
     setLoading(true);
     const { data } = await supabase
       .from('logistics_conversations')
-      .select('*, buyer:buyer_id(full_name, email)')
+      .select('*, buyer:buyer_id(full_name, email), order:order_id(order_number)')
       .eq('partner_id', partnerId)
       .order('last_message_at', { ascending: false, nullsFirst: false });
     setConversations((data as any[]) || []);
@@ -884,6 +885,29 @@ function ConversationsTab({ partnerId, userId }: { partnerId: string; userId: st
   }, [partnerId, supabase]);
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
+
+  // Realtime subscription for new messages
+  useEffect(() => {
+    const channel = supabase
+      .channel(`logistics-conv-${partnerId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'logistics_messages',
+      }, () => {
+        fetchConversations();
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'logistics_conversations',
+        filter: `partner_id=eq.${partnerId}`,
+      }, () => {
+        fetchConversations();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [partnerId, supabase, fetchConversations]);
 
   const openConversation = async (conv: Conversation) => {
     setActiveConvId(conv.id);
@@ -925,6 +949,9 @@ function ConversationsTab({ partnerId, userId }: { partnerId: string; userId: st
 
   const activeConv = conversations.find(c => c.id === activeConvId);
 
+  // Total unread for this partner
+  const totalUnread = conversations.reduce((sum, c) => sum + (c.partner_unread || 0), 0);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -935,41 +962,60 @@ function ConversationsTab({ partnerId, userId }: { partnerId: string; userId: st
 
   if (conversations.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="flex flex-col items-center justify-center py-16 text-center" dir="rtl">
         <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
           <Icon name="ChatBubbleLeftRightIcon" size={28} className="text-muted-foreground" />
         </div>
-        <p className="font-semibold text-foreground">No conversations yet</p>
-        <p className="text-sm text-muted-foreground mt-1">Buyers who contact you will appear here.</p>
+        <p className="font-semibold text-foreground">لا توجد محادثات نشطة حالياً</p>
+        <p className="text-sm text-muted-foreground mt-1 max-w-xs">ستظهر هنا رسائل واستفسارات المصانع، المستوردين، وفرق العمليات فور بدء المحادثة معك.</p>
       </div>
     );
   }
 
   return (
-    <div className="flex gap-4 h-[520px]">
+    <div className="flex gap-4 h-[520px]" dir="rtl">
       {/* Conversation list */}
-      <div className="w-72 shrink-0 border border-border rounded-xl overflow-y-auto bg-background">
+      <div className="w-80 shrink-0 border border-border rounded-xl overflow-y-auto bg-background">
+        {/* Header with total unread */}
+        <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center justify-between">
+          <span className="font-semibold text-sm text-foreground">المحادثات</span>
+          {totalUnread > 0 && (
+            <span className="min-w-[20px] h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold px-1">
+              {totalUnread > 99 ? '99+' : totalUnread}
+            </span>
+          )}
+        </div>
         {conversations.map(conv => {
           const buyer = conv.buyer as any;
+          const order = conv.order as any;
           const isActive = conv.id === activeConvId;
           return (
             <button
               key={conv.id}
               onClick={() => openConversation(conv)}
-              className={`w-full text-left px-4 py-3.5 border-b border-border last:border-b-0 transition-colors ${isActive ? 'bg-primary/5' : 'hover:bg-muted/50'}`}
+              className={`w-full text-right px-4 py-3.5 border-b border-border last:border-b-0 transition-colors ${isActive ? 'bg-primary/5' : 'hover:bg-muted/50'}`}
             >
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="font-semibold text-sm text-foreground truncate">
-                  {buyer?.full_name || buyer?.email || 'Buyer'}
-                </span>
-                {conv.partner_unread > 0 && (
-                  <span className="shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">
-                    {conv.partner_unread}
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="font-semibold text-sm text-foreground truncate">
+                    {buyer?.full_name || buyer?.email || 'مرسل'}
                   </span>
-                )}
+                  {order?.order_number && (
+                    <span className="shrink-0 text-[10px] bg-blue-50 text-blue-600 border border-blue-200 rounded px-1.5 py-0.5 font-mono">
+                      #{order.order_number}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-[10px] text-muted-foreground">{formatDateTime(conv.last_message_at)}</span>
+                  {conv.partner_unread > 0 && (
+                    <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">
+                      {conv.partner_unread}
+                    </span>
+                  )}
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground truncate">{conv.last_message || 'No messages yet'}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{formatDateTime(conv.last_message_at)}</p>
+              <p className="text-xs text-muted-foreground truncate text-right">{conv.last_message || 'لا توجد رسائل بعد'}</p>
             </button>
           );
         })}
@@ -979,7 +1025,7 @@ function ConversationsTab({ partnerId, userId }: { partnerId: string; userId: st
       <div className="flex-1 border border-border rounded-xl flex flex-col overflow-hidden bg-background">
         {!activeConvId ? (
           <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-            Select a conversation to view messages
+            اختر محادثة لعرض الرسائل
           </div>
         ) : (
           <>
@@ -987,11 +1033,18 @@ function ConversationsTab({ partnerId, userId }: { partnerId: string; userId: st
               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
                 <Icon name="UserIcon" size={16} className="text-primary" />
               </div>
-              <div>
-                <p className="font-semibold text-sm text-foreground">
-                  {(activeConv?.buyer as any)?.full_name || (activeConv?.buyer as any)?.email || 'Buyer'}
-                </p>
-                <p className="text-xs text-muted-foreground">Buyer</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold text-sm text-foreground">
+                    {(activeConv?.buyer as any)?.full_name || (activeConv?.buyer as any)?.email || 'مرسل'}
+                  </p>
+                  {(activeConv?.order as any)?.order_number && (
+                    <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 rounded px-1.5 py-0.5 font-mono">
+                      شحنة #{(activeConv?.order as any)?.order_number}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">مرسل / مشتري</p>
               </div>
             </div>
 
@@ -1001,13 +1054,13 @@ function ConversationsTab({ partnerId, userId }: { partnerId: string; userId: st
                   <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : messages.length === 0 ? (
-                <p className="text-center text-sm text-muted-foreground py-8">No messages in this conversation.</p>
+                <p className="text-center text-sm text-muted-foreground py-8">لا توجد رسائل في هذه المحادثة.</p>
               ) : (
                 messages.map(msg => {
                   const isPartner = msg.sender_role === 'partner';
                   return (
-                    <div key={msg.id} className={`flex ${isPartner ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${isPartner ? 'bg-primary text-primary-foreground rounded-br-sm' : 'bg-muted text-foreground rounded-bl-sm'}`}>
+                    <div key={msg.id} className={`flex ${isPartner ? 'justify-start' : 'justify-end'}`}>
+                      <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${isPartner ? 'bg-primary text-primary-foreground rounded-bl-sm' : 'bg-muted text-foreground rounded-br-sm'}`}>
                         <p>{msg.content}</p>
                         <p className={`text-xs mt-1 ${isPartner ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
                           {formatDateTime(msg.created_at)}
@@ -1020,14 +1073,6 @@ function ConversationsTab({ partnerId, userId }: { partnerId: string; userId: st
             </div>
 
             <div className="p-3 border-t border-border flex gap-2">
-              <input
-                type="text"
-                value={replyText}
-                onChange={e => setReplyText(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendReply()}
-                placeholder="Type a reply..."
-                className="flex-1 px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
               <button
                 onClick={sendReply}
                 disabled={sending || !replyText.trim()}
@@ -1039,6 +1084,15 @@ function ConversationsTab({ partnerId, userId }: { partnerId: string; userId: st
                   <Icon name="PaperAirplaneIcon" size={16} />
                 )}
               </button>
+              <input
+                type="text"
+                value={replyText}
+                onChange={e => setReplyText(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendReply()}
+                placeholder="اكتب ردك هنا..."
+                className="flex-1 px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-right"
+                dir="rtl"
+              />
             </div>
           </>
         )}
@@ -2131,12 +2185,12 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
   const maxMonthly = Math.max(...monthlyData.map(m => m.total), 1);
 
   const statCards = [
-    { label: 'Total Orders', value: total, icon: 'ClipboardDocumentListIcon', color: 'text-gray-700', bg: 'bg-gray-50 border-gray-200' },
-    { label: 'Delivered', value: delivered, icon: 'CheckBadgeIcon', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
-    { label: 'In Transit', value: inTransit, icon: 'TruckIcon', color: 'text-sky-700', bg: 'bg-sky-50 border-sky-200' },
-    { label: 'Pending', value: pending, icon: 'ClockIcon', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' },
-    { label: 'Cancelled', value: cancelled, icon: 'XCircleIcon', color: 'text-red-700', bg: 'bg-red-50 border-red-200' },
-    { label: 'Disputed', value: disputed, icon: 'ExclamationTriangleIcon', color: 'text-rose-700', bg: 'bg-rose-50 border-rose-200' },
+    { label: 'إجمالي الطلبات', value: total, icon: 'ClipboardDocumentListIcon', color: 'text-gray-700', bg: 'bg-gray-50 border-gray-200' },
+    { label: 'تم التسليم', value: delivered, icon: 'CheckBadgeIcon', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
+    { label: 'قيد النقل', value: inTransit, icon: 'TruckIcon', color: 'text-sky-700', bg: 'bg-sky-50 border-sky-200' },
+    { label: 'قيد الانتظار', value: pending, icon: 'ClockIcon', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' },
+    { label: 'ملغاة', value: cancelled, icon: 'XCircleIcon', color: 'text-red-700', bg: 'bg-red-50 border-red-200' },
+    { label: 'نزاعات', value: disputed, icon: 'ExclamationTriangleIcon', color: 'text-rose-700', bg: 'bg-rose-50 border-rose-200' },
   ];
 
   return (
@@ -2148,26 +2202,26 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
             <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e5e7eb" strokeWidth="3" />
             <circle
               cx="18" cy="18" r="15.9" fill="none"
-              stroke={deliveryRate >= 80 ? '#10b981' : deliveryRate >= 50 ? '#f59e0b' : '#ef4444'}
+              stroke={total === 0 ? '#9ca3af' : deliveryRate >= 80 ? '#10b981' : deliveryRate >= 50 ? '#f59e0b' : '#ef4444'}
               strokeWidth="3"
-              strokeDasharray={`${deliveryRate} ${100 - deliveryRate}`}
+              strokeDasharray={`${total === 0 ? 0 : deliveryRate} ${total === 0 ? 100 : 100 - deliveryRate}`}
               strokeLinecap="round"
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className={`text-xl font-black ${deliveryRate >= 80 ? 'text-emerald-700' : deliveryRate >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
-              {deliveryRate}%
+            <span className={`text-xl font-black ${total === 0 ? 'text-gray-400' : deliveryRate >= 80 ? 'text-emerald-700' : deliveryRate >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
+              {total === 0 ? '—' : `${deliveryRate}%`}
             </span>
           </div>
         </div>
         <div>
-          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-1">Delivery Success Rate</p>
-          <p className="text-3xl font-black text-emerald-800">{deliveryRate}%</p>
+          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-1">معدل نجاح التسليم</p>
+          <p className="text-3xl font-black text-emerald-800">{total === 0 ? '—' : `${deliveryRate}%`}</p>
           <p className="text-sm text-emerald-700 mt-1">
-            {delivered} of {total} orders delivered successfully
+            تم تسليم {delivered} من أصل {total} طلبات بنجاح
           </p>
-          <p className={`text-xs mt-1 font-medium ${deliveryRate >= 80 ? 'text-emerald-600' : deliveryRate >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
-            {deliveryRate >= 80 ? '✓ Excellent performance' : deliveryRate >= 50 ? '⚠ Needs improvement' : '✗ Below target'}
+          <p className={`text-xs mt-1 font-medium ${total === 0 ? 'text-gray-500' : deliveryRate >= 80 ? 'text-emerald-600' : deliveryRate >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
+            {total === 0 ? '— حساب جديد' : deliveryRate >= 80 ? '✓ أداء ممتاز' : deliveryRate >= 50 ? '⚠ يحتاج تحسين' : '✗ دون المستهدف'}
           </p>
         </div>
       </div>
@@ -2190,22 +2244,22 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-1">
             <Icon name="BanknotesIcon" size={16} className="text-emerald-600" />
-            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Total Revenue Released</p>
+            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">إجمالي الأرباح المحررة</p>
           </div>
           <p className="text-3xl font-black text-emerald-800">
             ${totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
-          <p className="text-xs text-emerald-600 mt-1">{releasedPayments.length} payments released from escrow</p>
+          <p className="text-xs text-emerald-600 mt-1">{releasedPayments.length} مستحقات تم تحريرها من الضمان</p>
         </div>
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-1">
             <Icon name="LockClosedIcon" size={16} className="text-blue-600" />
-            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Pending in Escrow</p>
+            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">رصيد معلق في الضمان</p>
           </div>
           <p className="text-3xl font-black text-blue-800">
             ${pendingRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
-          <p className="text-xs text-blue-600 mt-1">{heldPayments.length} payments awaiting delivery confirmation</p>
+          <p className="text-xs text-blue-600 mt-1">{heldPayments.length} مستحقات بانتظار تأكيد التسليم</p>
         </div>
       </div>
 
@@ -2213,7 +2267,7 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
       <div className="bg-card border border-border rounded-xl p-5">
         <p className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
           <Icon name="ChartBarIcon" size={16} className="text-primary" />
-          Monthly Orders — Last 6 Months
+          الطلبات الشهرية — آخر 6 أشهر
         </p>
         <div className="flex items-end gap-3 h-32">
           {monthlyData.map((m, i) => (
@@ -2223,13 +2277,13 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
                 <div
                   className="w-full rounded-t-md bg-emerald-400 transition-all"
                   style={{ height: `${m.total > 0 ? (m.delivered / maxMonthly) * 80 : 0}px`, minHeight: m.delivered > 0 ? '4px' : '0' }}
-                  title={`${m.delivered} delivered`}
+                  title={`${m.delivered} تم التسليم`}
                 />
                 {/* Total bar background */}
                 <div
                   className="w-full bg-sky-200 rounded-b-md"
                   style={{ height: `${((m.total - m.delivered) / maxMonthly) * 80}px`, minHeight: m.total > m.delivered ? '4px' : '0' }}
-                  title={`${m.total - m.delivered} other`}
+                  title={`${m.total - m.delivered} أخرى`}
                 />
               </div>
               <p className="text-[10px] text-muted-foreground font-medium">{m.label}</p>
@@ -2240,11 +2294,11 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
         <div className="flex items-center gap-4 mt-3">
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded-sm bg-emerald-400" />
-            <span className="text-xs text-muted-foreground">Delivered</span>
+            <span className="text-xs text-muted-foreground">تم التسليم</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded-sm bg-sky-200" />
-            <span className="text-xs text-muted-foreground">Other</span>
+            <span className="text-xs text-muted-foreground">أخرى</span>
           </div>
         </div>
       </div>
@@ -2253,7 +2307,7 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
       <div className="bg-card border border-border rounded-xl p-5">
         <p className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
           <Icon name="AdjustmentsHorizontalIcon" size={16} className="text-primary" />
-          Order Status Breakdown
+          تفصيل حالات الطلبات
         </p>
         <div className="space-y-2.5">
           {ORDER_STATUS_OPTIONS.filter(opt => orders.some(o => o.status === opt.value)).map(opt => {
@@ -2276,7 +2330,7 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
             );
           })}
           {total === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">No orders yet — stats will appear once orders are assigned.</p>
+            <p className="text-sm text-muted-foreground text-center py-4">لا توجد طلبات بعد — ستظهر الإحصائيات فور إسناد الشحنات لحسابك.</p>
           )}
         </div>
       </div>

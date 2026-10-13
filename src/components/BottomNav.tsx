@@ -51,22 +51,38 @@ const BottomNav: React.FC = () => {
 
     const fetchUnread = async () => {
       try {
+        let total = 0;
+
+        // Count unread from chat_messages (buyer/manufacturer conversations)
         const { data: convData, error: convErr } = await supabase
           .from('chat_conversations')
           .select('id')
           .or(`buyer_id.eq.${user.id},manufacturer_id.eq.${user.id}`);
-        if (convErr || !convData || convData.length === 0) {
-          setUnreadMessages(0);
-          return;
+        if (!convErr && convData && convData.length > 0) {
+          const convIds = convData.map((c: { id: string }) => c.id);
+          const { count: chatCount } = await supabase
+            .from('chat_messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('is_read', false)
+            .neq('sender_id', user.id)
+            .in('conversation_id', convIds);
+          total += chatCount || 0;
         }
-        const convIds = convData.map((c: { id: string }) => c.id);
-        const { count } = await supabase
-          .from('chat_messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('is_read', false)
-          .neq('sender_id', user.id)
-          .in('conversation_id', convIds);
-        setUnreadMessages(count || 0);
+
+        // Count unread from logistics_conversations (logistics partner)
+        const { data: logisticsConvData } = await supabase
+          .from('logistics_conversations')
+          .select('partner_unread')
+          .eq('partner_id', user.id);
+        if (logisticsConvData && logisticsConvData.length > 0) {
+          const logisticsUnread = logisticsConvData.reduce(
+            (sum: number, c: { partner_unread: number }) => sum + (c.partner_unread || 0),
+            0
+          );
+          total += logisticsUnread;
+        }
+
+        setUnreadMessages(total);
       } catch {
         setUnreadMessages(0);
       }
@@ -90,6 +106,21 @@ const BottomNav: React.FC = () => {
         event: 'UPDATE',
         schema: 'public',
         table: 'chat_messages',
+      }, () => fetchUnread())
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'logistics_messages',
+      }, (payload) => {
+        const msg = payload.new as { sender_id: string; is_read: boolean };
+        if (msg.sender_id !== user.id && !msg.is_read) {
+          setUnreadMessages(prev => prev + 1);
+        }
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'logistics_conversations',
       }, () => fetchUnread())
       .subscribe();
 
