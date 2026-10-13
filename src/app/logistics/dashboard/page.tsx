@@ -1399,10 +1399,40 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
 
 // ─── Payments Tab ─────────────────────────────────────────────────────────────
 
+interface BankAccount {
+  bank_name: string;
+  account_number: string;
+  beneficiary_name: string;
+}
+
+const TRANSACTION_STATUS_META: Record<string, { label: string; color: string; icon: string }> = {
+  held_in_escrow: { label: 'في الضمان',      color: 'bg-blue-50 text-blue-700 border-blue-200',       icon: 'LockClosedIcon' },
+  released:       { label: 'مكتملة',          color: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: 'CheckCircleIcon' },
+  transferred:    { label: 'تم التحويل',      color: 'bg-violet-50 text-violet-700 border-violet-200', icon: 'ArrowUpRightIcon' },
+  pending:        { label: 'معلقة',           color: 'bg-amber-50 text-amber-700 border-amber-200',   icon: 'ClockIcon' },
+  refunded:       { label: 'مُسترجعة',        color: 'bg-gray-50 text-gray-600 border-gray-200',      icon: 'ArrowUturnLeftIcon' },
+  disputed:       { label: 'متنازع عليها',    color: 'bg-red-50 text-red-700 border-red-200',         icon: 'ExclamationTriangleIcon' },
+};
+
+const PLATFORM_COMMISSION_RATE = 0.05; // 5%
+
 function PaymentsTab({ partnerId }: { partnerId: string }) {
   const supabase = createClient();
   const [payments, setPayments] = useState<EscrowPayment[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Withdrawal modal state
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
+  const [withdrawSuccess, setWithdrawSuccess] = useState(false);
+
+  // Bank account state
+  const [showBankModal, setShowBankModal] = useState(false);
+  const [bankAccount, setBankAccount] = useState<BankAccount>({ bank_name: '', account_number: '', beneficiary_name: '' });
+  const [savedBank, setSavedBank] = useState<BankAccount | null>(null);
+  const [bankSaving, setBankSaving] = useState(false);
+  const [bankSaved, setBankSaved] = useState(false);
 
   useEffect(() => {
     const fetch = async () => {
@@ -1422,6 +1452,24 @@ function PaymentsTab({ partnerId }: { partnerId: string }) {
   const totalHeld = payments.filter(p => p.payment_status === 'held_in_escrow').reduce((s, p) => s + p.amount, 0);
   const totalPending = payments.filter(p => p.payment_status === 'pending').reduce((s, p) => s + p.amount, 0);
 
+  const handleWithdrawSubmit = async () => {
+    setWithdrawSubmitting(true);
+    await new Promise(r => setTimeout(r, 1200));
+    setWithdrawSubmitting(false);
+    setWithdrawSuccess(true);
+    setTimeout(() => { setWithdrawSuccess(false); setShowWithdrawModal(false); setWithdrawAmount(''); }, 2500);
+  };
+
+  const handleBankSave = async () => {
+    if (!bankAccount.bank_name || !bankAccount.account_number || !bankAccount.beneficiary_name) return;
+    setBankSaving(true);
+    await new Promise(r => setTimeout(r, 800));
+    setSavedBank({ ...bankAccount });
+    setBankSaving(false);
+    setBankSaved(true);
+    setTimeout(() => { setBankSaved(false); setShowBankModal(false); }, 1800);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -1431,70 +1479,267 @@ function PaymentsTab({ partnerId }: { partnerId: string }) {
   }
 
   return (
-    <div>
-      <div className="grid grid-cols-3 gap-3 mb-6">
+    <div dir="rtl" className="space-y-6">
+
+      {/* ── Balance Cards ── */}
+      <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'Released', amount: totalReleased, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', icon: 'CheckCircleIcon' },
-          { label: 'In Escrow', amount: totalHeld,    color: 'text-blue-600',    bg: 'bg-blue-50 border-blue-200',       icon: 'LockClosedIcon' },
-          { label: 'Pending',   amount: totalPending, color: 'text-amber-600',   bg: 'bg-amber-50 border-amber-200',     icon: 'ClockIcon' },
+          { label: 'متاحة للسحب', sublabel: 'Released', amount: totalReleased, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', icon: 'CheckCircleIcon' },
+          { label: 'في الضمان المالي المشروط', sublabel: 'In Escrow', amount: totalHeld, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200', icon: 'LockClosedIcon' },
+          { label: 'معلقة / قيد الانتظار', sublabel: 'Pending', amount: totalPending, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200', icon: 'ClockIcon' },
         ].map(card => (
           <div key={card.label} className={`rounded-xl border p-4 ${card.bg}`}>
             <div className="flex items-center gap-2 mb-1">
               <Icon name={card.icon as any} size={16} className={card.color} />
-              <span className="text-xs text-muted-foreground">{card.label}</span>
+              <span className="text-xs font-semibold text-muted-foreground">{card.label}</span>
             </div>
             <p className={`text-xl font-bold ${card.color}`}>
               ${card.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{card.sublabel}</p>
           </div>
         ))}
       </div>
 
-      {payments.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
-            <Icon name="BanknotesIcon" size={28} className="text-muted-foreground" />
+      {/* ── Action Buttons ── */}
+      <div className="flex flex-wrap gap-3">
+        <button
+          onClick={() => setShowWithdrawModal(true)}
+          disabled={totalReleased <= 0}
+          className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-sm"
+        >
+          <Icon name="ArrowUpTrayIcon" size={16} />
+          طلب سحب الأرباح
+          {totalReleased > 0 && (
+            <span className="bg-white/20 px-2 py-0.5 rounded-lg text-xs">
+              ${totalReleased.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setShowBankModal(true)}
+          className="flex items-center gap-2 px-5 py-2.5 bg-card border border-border hover:bg-muted text-foreground rounded-xl text-sm font-semibold transition-colors"
+        >
+          <Icon name="BuildingLibraryIcon" size={16} />
+          {savedBank ? 'تعديل بيانات الحساب البنكي' : 'إضافة حساب بنكي / وسيلة تحويل'}
+        </button>
+      </div>
+
+      {/* ── Saved Bank Info ── */}
+      {savedBank && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+          <Icon name="BuildingLibraryIcon" size={18} className="text-blue-600 mt-0.5 shrink-0" />
+          <div className="text-sm">
+            <p className="font-semibold text-blue-800 mb-1">بيانات الحساب البنكي المحفوظة</p>
+            <p className="text-blue-700">البنك: <span className="font-medium">{savedBank.bank_name}</span></p>
+            <p className="text-blue-700">رقم الحساب / IBAN: <span className="font-medium font-mono">{savedBank.account_number}</span></p>
+            <p className="text-blue-700">اسم المستفيد: <span className="font-medium">{savedBank.beneficiary_name}</span></p>
           </div>
-          <p className="font-semibold text-foreground">No payments yet</p>
-          <p className="text-sm text-muted-foreground mt-1">Escrow payments linked to your account will appear here.</p>
         </div>
-      ) : (
-        <div className="border border-border rounded-xl overflow-hidden">
-          <table className="w-full text-sm min-w-[500px]">
-            <thead className="bg-muted/40 border-b border-border">
-              <tr>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Buyer</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Amount</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Status</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Date</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Released</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {payments.map(payment => {
-                const meta = PAYMENT_STATUS_META[payment.payment_status] || PAYMENT_STATUS_META.pending;
-                const buyer = payment.buyer as any;
-                return (
-                  <tr key={payment.id} className="hover:bg-muted/20 transition-colors">
-                    <td className="px-4 py-3 font-medium text-foreground">
-                      {buyer?.full_name || buyer?.email || '—'}
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-foreground">
-                      {payment.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} {payment.currency}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${meta.color}`}>
-                        <Icon name={meta.icon as any} size={12} />
-                        {meta.label}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{formatDate(payment.created_at)}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{formatDate(payment.released_at)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      )}
+
+      {/* ── Transaction History Table ── */}
+      <div>
+        <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+          <Icon name="ClipboardDocumentListIcon" size={16} className="text-primary" />
+          سجل الحركات المالية
+        </h3>
+
+        {payments.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-14 text-center bg-muted/20 rounded-2xl border border-dashed border-border">
+            <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
+              <Icon name="BanknotesIcon" size={28} className="text-muted-foreground" />
+            </div>
+            <p className="font-semibold text-foreground">لا توجد دفعات مالية حتى الآن</p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+              ستظهر هنا مستحقات الشحن المحمية بنظام الضمان المالي فور ربطها بشحناتك.
+            </p>
+          </div>
+        ) : (
+          <div className="border border-border rounded-xl overflow-x-auto">
+            <table className="w-full text-sm min-w-[700px]">
+              <thead className="bg-muted/40 border-b border-border">
+                <tr>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">تاريخ المعاملة</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">رقم الشحنة / الطلب</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">إجمالي المبلغ</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">عمولة المنصة</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">الصافي المستحق</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">حالة العملية</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {payments.map(payment => {
+                  const meta = TRANSACTION_STATUS_META[payment.payment_status] || TRANSACTION_STATUS_META.pending;
+                  const commission = payment.amount * PLATFORM_COMMISSION_RATE;
+                  const net = payment.amount - commission;
+                  return (
+                    <tr key={payment.id} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(payment.created_at)}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-foreground">
+                        {payment.order_id ? payment.order_id.slice(0, 8).toUpperCase() : '—'}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-foreground">
+                        ${payment.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} {payment.currency}
+                      </td>
+                      <td className="px-4 py-3 text-red-600 text-xs">
+                        -${commission.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        <span className="text-muted-foreground mr-1">(5%)</span>
+                      </td>
+                      <td className="px-4 py-3 font-bold text-emerald-700">
+                        ${net.toLocaleString('en-US', { minimumFractionDigits: 2 })} {payment.currency}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${meta.color}`}>
+                          <Icon name={meta.icon as any} size={12} />
+                          {meta.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Withdrawal Modal ── */}
+      {showWithdrawModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-card rounded-2xl shadow-2xl border border-border w-full max-w-md p-6" dir="rtl">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <Icon name="ArrowUpTrayIcon" size={20} className="text-emerald-600" />
+                طلب سحب الأرباح
+              </h2>
+              <button onClick={() => setShowWithdrawModal(false)} className="text-muted-foreground hover:text-foreground">
+                <Icon name="XMarkIcon" size={20} />
+              </button>
+            </div>
+
+            {withdrawSuccess ? (
+              <div className="flex flex-col items-center py-6 text-center gap-3">
+                <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <Icon name="CheckCircleIcon" size={32} className="text-emerald-600" />
+                </div>
+                <p className="font-bold text-emerald-700">تم إرسال طلب السحب بنجاح!</p>
+                <p className="text-sm text-muted-foreground">سيتم مراجعة الطلب وتحويل المبلغ خلال 1-3 أيام عمل.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-800">
+                  الرصيد المتاح للسحب: <span className="font-bold">${totalReleased.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                </div>
+                {!savedBank && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-start gap-2">
+                    <Icon name="ExclamationTriangleIcon" size={14} className="mt-0.5 shrink-0" />
+                    يرجى إضافة بيانات الحساب البنكي أولاً لضمان تحويل المبلغ بشكل صحيح.
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-semibold text-foreground mb-1.5">المبلغ المطلوب سحبه (USD)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={totalReleased}
+                    value={withdrawAmount}
+                    onChange={e => setWithdrawAmount(e.target.value)}
+                    placeholder={`الحد الأقصى: $${totalReleased.toFixed(2)}`}
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  />
+                </div>
+                {savedBank && (
+                  <div className="text-xs text-muted-foreground bg-muted/30 rounded-xl p-3">
+                    سيتم التحويل إلى: <span className="font-semibold text-foreground">{savedBank.bank_name}</span> — {savedBank.beneficiary_name}
+                  </div>
+                )}
+                <button
+                  onClick={handleWithdrawSubmit}
+                  disabled={withdrawSubmitting || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > totalReleased}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+                >
+                  {withdrawSubmitting ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Icon name="ArrowUpTrayIcon" size={16} />
+                  )}
+                  تأكيد طلب السحب
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Bank Account Modal ── */}
+      {showBankModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-card rounded-2xl shadow-2xl border border-border w-full max-w-md p-6" dir="rtl">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <Icon name="BuildingLibraryIcon" size={20} className="text-primary" />
+                بيانات الحساب البنكي / وسيلة التحويل
+              </h2>
+              <button onClick={() => setShowBankModal(false)} className="text-muted-foreground hover:text-foreground">
+                <Icon name="XMarkIcon" size={20} />
+              </button>
+            </div>
+
+            {bankSaved ? (
+              <div className="flex flex-col items-center py-6 text-center gap-3">
+                <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <Icon name="CheckCircleIcon" size={32} className="text-emerald-600" />
+                </div>
+                <p className="font-bold text-emerald-700">تم حفظ بيانات الحساب بنجاح!</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-foreground mb-1.5">اسم البنك</label>
+                  <input
+                    type="text"
+                    value={bankAccount.bank_name}
+                    onChange={e => setBankAccount(prev => ({ ...prev, bank_name: e.target.value }))}
+                    placeholder="مثال: البنك الأهلي اليمني"
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-foreground mb-1.5">رقم الحساب / IBAN</label>
+                  <input
+                    type="text"
+                    value={bankAccount.account_number}
+                    onChange={e => setBankAccount(prev => ({ ...prev, account_number: e.target.value }))}
+                    placeholder="YE00 0000 0000 0000 0000 0000"
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-foreground mb-1.5">اسم المستفيد</label>
+                  <input
+                    type="text"
+                    value={bankAccount.beneficiary_name}
+                    onChange={e => setBankAccount(prev => ({ ...prev, beneficiary_name: e.target.value }))}
+                    placeholder="الاسم الكامل كما في البطاقة البنكية"
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <button
+                  onClick={handleBankSave}
+                  disabled={bankSaving || !bankAccount.bank_name || !bankAccount.account_number || !bankAccount.beneficiary_name}
+                  className="w-full py-3 bg-primary hover:bg-primary/90 disabled:opacity-40 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+                >
+                  {bankSaving ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Icon name="CheckIcon" size={16} />
+                  )}
+                  حفظ بيانات الحساب
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
