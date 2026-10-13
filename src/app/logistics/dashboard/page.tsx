@@ -489,59 +489,54 @@ interface CalcResult {
   breakdown: { label: string; amount: number }[];
 }
 
+// ── Default rate constants (used when no partner rates are loaded) ─────────────
+const DEFAULT_RATES = {
+  land_light_rate_per_kg:  0.15,
+  land_medium_rate_per_kg: 0.08,
+  land_heavy_rate_per_ton: 35.00,
+  land_max_cap_per_trip:   350.00,
+  sea_base_docs_fee:       300.00,
+  sea_min_bl_charge:       500.00,
+  sea_rate_per_cbm_ton:    150.00,
+  air_rate_per_kg:         6.50,
+  air_handling_fee:        80.00,
+  air_min_charge:          150.00,
+  intl_land_rate_per_km:   0.004,
+  intl_land_rate_per_kg:   0.12,
+  intl_land_base_charge:   60.00,
+  intl_land_fuel_pct:      0.15,
+};
+
+type PartnerRates = typeof DEFAULT_RATES;
+
 const SHIPMENT_TYPE_CONFIG: Record<ShipmentType, {
   label: string;
   labelAr: string;
   icon: string;
-  ratePerKm: number;
-  ratePerKg: number;
-  baseCharge: number;
-  fuelPct: number;
-  currency: string;
   description: string;
 }> = {
   local_land_yemen: {
     label: 'Local Land (Yemen)',
     labelAr: 'شحن بري محلي (اليمن)',
     icon: 'TruckIcon',
-    ratePerKm: 0.08,   // USD per km
-    ratePerKg: 0.15,   // USD per kg
-    baseCharge: 5,
-    fuelPct: 0.12,
-    currency: 'USD',
-    description: 'Land freight within Yemen governorates',
+    description: 'Land freight within Yemen governorates — tiered weight pricing',
   },
   international_sea: {
     label: 'International Sea Freight',
     labelAr: 'شحن بحري دولي',
     icon: 'GlobeAltIcon',
-    ratePerKm: 0.002,
-    ratePerKg: 0.05,
-    baseCharge: 150,
-    fuelPct: 0.18,
-    currency: 'USD',
-    description: 'Ocean freight — FCL / LCL',
+    description: 'Ocean freight — FCL / LCL — port to port',
   },
   international_air: {
     label: 'International Air Freight',
     labelAr: 'شحن جوي دولي',
     icon: 'PaperAirplaneIcon',
-    ratePerKm: 0.008,
-    ratePerKg: 3.5,
-    baseCharge: 80,
-    fuelPct: 0.22,
-    currency: 'USD',
-    description: 'Express air cargo — door to airport',
+    description: 'Express air cargo — airport to airport',
   },
   international_land: {
     label: 'International Land Freight',
     labelAr: 'شحن بري دولي',
     icon: 'TruckIcon',
-    ratePerKm: 0.004,
-    ratePerKg: 0.12,
-    baseCharge: 60,
-    fuelPct: 0.15,
-    currency: 'USD',
     description: 'Cross-border land transport',
   },
 };
@@ -564,27 +559,132 @@ const YEMEN_CITIES: { name: string; nameAr: string; distanceFromSanaa: number }[
   { name: 'Al-Mahwit', nameAr: 'المحويت', distanceFromSanaa: 120 },
 ];
 
+// ── Sea freight ports ─────────────────────────────────────────────────────────
+const SEA_ORIGIN_PORTS = [
+  { value: 'shanghai',     label: 'Shanghai (CNSHA)',       labelAr: 'شنغهاي' },
+  { value: 'ningbo',       label: 'Ningbo (CNNGB)',         labelAr: 'نينغبو' },
+  { value: 'shenzhen',     label: 'Shenzhen (CNSZX)',       labelAr: 'شنزن' },
+  { value: 'guangzhou',    label: 'Guangzhou (CNGZH)',      labelAr: 'غوانغتشو' },
+  { value: 'istanbul',     label: 'Istanbul (TRIST)',       labelAr: 'إسطنبول' },
+  { value: 'jebel_ali',   label: 'Jebel Ali (AEJEA)',      labelAr: 'جبل علي' },
+];
+
+const SEA_DEST_PORTS = [
+  { value: 'aden',         label: 'Port of Aden (YEPOD)',   labelAr: 'ميناء عدن' },
+  { value: 'hodeidah',     label: 'Port of Hodeidah (YEHOD)', labelAr: 'ميناء الحديدة' },
+];
+
+// ── Air freight airports ──────────────────────────────────────────────────────
+const AIR_ORIGIN_AIRPORTS = [
+  { value: 'pvg',  label: 'Shanghai Pudong (PVG)',   labelAr: 'شنغهاي بودونغ' },
+  { value: 'can',  label: 'Guangzhou Baiyun (CAN)',  labelAr: 'غوانغتشو' },
+  { value: 'szx',  label: 'Shenzhen Bao\'an (SZX)',  labelAr: 'شنزن' },
+  { value: 'ist',  label: 'Istanbul Airport (IST)',  labelAr: 'إسطنبول' },
+  { value: 'dxb',  label: 'Dubai International (DXB)', labelAr: 'دبي' },
+  { value: 'auh',  label: 'Abu Dhabi (AUH)',          labelAr: 'أبوظبي' },
+  { value: 'doh',  label: 'Doha Hamad (DOH)',         labelAr: 'الدوحة' },
+  { value: 'ruh',  label: 'Riyadh King Khalid (RUH)', labelAr: 'الرياض' },
+];
+
+const AIR_DEST_AIRPORTS = [
+  { value: 'aden',    label: 'Aden International (ADE)',   labelAr: 'مطار عدن الدولي' },
+  { value: 'sanaa',   label: "Sana'a International (SAH)", labelAr: 'مطار صنعاء الدولي' },
+];
+
+// ── Tiered land weight pricing ────────────────────────────────────────────────
+function calcLandCost(weightKg: number, rates: PartnerRates): { cost: number; tier: string; breakdown: { label: string; amount: number }[] } {
+  let breakdown: { label: string; amount: number }[] = [];
+  let cost = 0;
+  let tier = '';
+
+  if (weightKg < 100) {
+    // Light: < 100 kg
+    cost = weightKg * rates.land_light_rate_per_kg;
+    tier = `شحنة خفيفة (< 100 كجم) — $${rates.land_light_rate_per_kg}/كجم`;
+    breakdown.push({ label: `الوزن (${weightKg} كجم × $${rates.land_light_rate_per_kg}/كجم)`, amount: cost });
+  } else if (weightKg <= 1000) {
+    // Medium: 100–1000 kg
+    cost = weightKg * rates.land_medium_rate_per_kg;
+    tier = `حمولة متوسطة (100–1,000 كجم) — $${rates.land_medium_rate_per_kg}/كجم`;
+    breakdown.push({ label: `الوزن (${weightKg} كجم × $${rates.land_medium_rate_per_kg}/كجم)`, amount: cost });
+  } else {
+    // Heavy: > 1000 kg → price per ton, capped at max trip rate
+    const tons = weightKg / 1000;
+    const rawCost = tons * rates.land_heavy_rate_per_ton;
+    cost = Math.min(rawCost, rates.land_max_cap_per_trip);
+    tier = `حمولة تجارية ثقيلة (> 1,000 كجم) — $${rates.land_heavy_rate_per_ton}/طن`;
+    breakdown.push({ label: `الوزن (${tons.toFixed(2)} طن × $${rates.land_heavy_rate_per_ton}/طن)`, amount: rawCost });
+    if (rawCost > rates.land_max_cap_per_trip) {
+      breakdown.push({ label: `سقف أقصى للرحلة (Max Cap)`, amount: -(rawCost - rates.land_max_cap_per_trip) });
+    }
+  }
+
+  return { cost, tier, breakdown };
+}
+
 function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null }) {
-  // Auto-derive defaults from partner profile
+  const supabase = createClient();
+
   const defaultShipmentType: ShipmentType = partner?.services_offered?.length
     ? deriveShipmentType(partner.services_offered)
     : 'local_land_yemen';
 
-  const defaultOrigin = partner?.origin_countries?.[0] || '';
-  const defaultDestination = partner?.destination_countries?.[0] || '';
-
   const [shipmentType, setShipmentType] = useState<ShipmentType>(defaultShipmentType);
   const [weightKg, setWeightKg] = useState('');
+  const [cbmVolume, setCbmVolume] = useState('');
   const [distanceKm, setDistanceKm] = useState('');
   const [fromCity, setFromCity] = useState('');
   const [toCity, setToCity] = useState('');
-  const [originCountry, setOriginCountry] = useState(defaultOrigin);
-  const [destCountry, setDestCountry] = useState(defaultDestination);
+  const [seaOriginPort, setSeaOriginPort] = useState('');
+  const [seaDestPort, setSeaDestPort] = useState('');
+  const [airOriginAirport, setAirOriginAirport] = useState('');
+  const [airDestAirport, setAirDestAirport] = useState('');
   const [result, setResult] = useState<CalcResult | null>(null);
   const [calculated, setCalculated] = useState(false);
+  const [rates, setRates] = useState<PartnerRates>(DEFAULT_RATES);
+  const [ratesLoading, setRatesLoading] = useState(false);
+  const [savingRates, setSavingRates] = useState(false);
+  const [showRatesEditor, setShowRatesEditor] = useState(false);
+  const [editRates, setEditRates] = useState<PartnerRates>(DEFAULT_RATES);
 
-  const config = SHIPMENT_TYPE_CONFIG[shipmentType];
   const isYemen = shipmentType === 'local_land_yemen';
+  const isSea = shipmentType === 'international_sea';
+  const isAir = shipmentType === 'international_air';
+  const isIntlLand = shipmentType === 'international_land';
+
+  // Load partner custom rates from DB
+  useEffect(() => {
+    if (!partner?.id) return;
+    setRatesLoading(true);
+    supabase
+      .from('partner_shipping_rates')
+      .select('*')
+      .eq('partner_id', partner.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          const loaded: PartnerRates = {
+            land_light_rate_per_kg:  Number(data.land_light_rate_per_kg)  || DEFAULT_RATES.land_light_rate_per_kg,
+            land_medium_rate_per_kg: Number(data.land_medium_rate_per_kg) || DEFAULT_RATES.land_medium_rate_per_kg,
+            land_heavy_rate_per_ton: Number(data.land_heavy_rate_per_ton) || DEFAULT_RATES.land_heavy_rate_per_ton,
+            land_max_cap_per_trip:   Number(data.land_max_cap_per_trip)   || DEFAULT_RATES.land_max_cap_per_trip,
+            sea_base_docs_fee:       Number(data.sea_base_docs_fee)       || DEFAULT_RATES.sea_base_docs_fee,
+            sea_min_bl_charge:       Number(data.sea_min_bl_charge)       || DEFAULT_RATES.sea_min_bl_charge,
+            sea_rate_per_cbm_ton:    Number(data.sea_rate_per_cbm_ton)    || DEFAULT_RATES.sea_rate_per_cbm_ton,
+            air_rate_per_kg:         Number(data.air_rate_per_kg)         || DEFAULT_RATES.air_rate_per_kg,
+            air_handling_fee:        Number(data.air_handling_fee)        || DEFAULT_RATES.air_handling_fee,
+            air_min_charge:          Number(data.air_min_charge)          || DEFAULT_RATES.air_min_charge,
+            intl_land_rate_per_km:   Number(data.intl_land_rate_per_km)   || DEFAULT_RATES.intl_land_rate_per_km,
+            intl_land_rate_per_kg:   Number(data.intl_land_rate_per_kg)   || DEFAULT_RATES.intl_land_rate_per_kg,
+            intl_land_base_charge:   Number(data.intl_land_base_charge)   || DEFAULT_RATES.intl_land_base_charge,
+            intl_land_fuel_pct:      Number(data.intl_land_fuel_pct)      || DEFAULT_RATES.intl_land_fuel_pct,
+          };
+          setRates(loaded);
+          setEditRates(loaded);
+        }
+        setRatesLoading(false);
+      });
+  }, [partner?.id]);
 
   // Auto-calculate distance for Yemen city pairs
   const autoDistance = (() => {
@@ -592,39 +692,80 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
     const from = YEMEN_CITIES.find(c => c.name === fromCity);
     const to = YEMEN_CITIES.find(c => c.name === toCity);
     if (!from || !to) return null;
-    return Math.abs(from.distanceFromSanaa - to.distanceFromSanaa) + 50; // +50 for routing
+    return Math.abs(from.distanceFromSanaa - to.distanceFromSanaa) + 50;
   })();
-
-  const effectiveDistance = isYemen && autoDistance !== null
-    ? autoDistance
-    : parseFloat(distanceKm) || 0;
 
   const calculate = () => {
     const weight = parseFloat(weightKg) || 0;
-    const distance = effectiveDistance;
-
     if (weight <= 0) return;
 
-    const distanceCost = distance * config.ratePerKm;
-    const weightCost = weight * config.ratePerKg;
-    const subtotal = config.baseCharge + distanceCost + weightCost;
-    const fuelSurcharge = subtotal * config.fuelPct;
-    const total = subtotal + fuelSurcharge;
+    let breakdown: { label: string; amount: number }[] = [];
+    let total = 0;
+    let baseCost = 0;
+    let distanceCost = 0;
+    let weightCost = 0;
+    let fuelSurcharge = 0;
 
-    setResult({
-      baseCost: config.baseCharge,
-      distanceCost,
-      weightCost,
-      fuelSurcharge,
-      total,
-      currency: config.currency,
-      breakdown: [
-        { label: 'الرسوم الأساسية / Base Charge', amount: config.baseCharge },
-        { label: `المسافة (${distance.toFixed(0)} كم × $${config.ratePerKm}/كم)`, amount: distanceCost },
-        { label: `الوزن (${weight} كجم × $${config.ratePerKg}/كجم)`, amount: weightCost },
-        { label: `رسوم الوقود (${(config.fuelPct * 100).toFixed(0)}%)`, amount: fuelSurcharge },
-      ],
-    });
+    if (isYemen) {
+      // ── Tiered land pricing ──────────────────────────────────────────────────
+      const { cost, tier, breakdown: wb } = calcLandCost(weight, rates);
+      weightCost = cost;
+      breakdown = wb;
+      total = weightCost;
+      // Add tier label as info
+      breakdown.unshift({ label: `📦 ${tier}`, amount: 0 });
+
+    } else if (isSea) {
+      // ── Sea freight ──────────────────────────────────────────────────────────
+      const cbm = parseFloat(cbmVolume) || 0;
+      const chargeable = Math.max(weight / 1000, cbm); // ton or CBM, whichever is greater
+      baseCost = rates.sea_base_docs_fee;
+      weightCost = chargeable * rates.sea_rate_per_cbm_ton;
+      const subtotal = baseCost + weightCost;
+      total = Math.max(subtotal, rates.sea_min_bl_charge);
+
+      breakdown = [
+        { label: `رسوم أساسية ووثائق (Base & Docs)`, amount: baseCost },
+        { label: `الشحن (${chargeable.toFixed(2)} طن/CBM × $${rates.sea_rate_per_cbm_ton})`, amount: weightCost },
+      ];
+      if (total > subtotal) {
+        breakdown.push({ label: `الحد الأدنى لبوليصة الشحن (Min B/L)`, amount: total - subtotal });
+      }
+
+    } else if (isAir) {
+      // ── Air freight ──────────────────────────────────────────────────────────
+      baseCost = rates.air_handling_fee;
+      weightCost = weight * rates.air_rate_per_kg;
+      const subtotal = baseCost + weightCost;
+      total = Math.max(subtotal, rates.air_min_charge);
+
+      breakdown = [
+        { label: `رسوم مناولة ومطار (Handling)`, amount: baseCost },
+        { label: `الوزن (${weight} كجم × $${rates.air_rate_per_kg}/كجم)`, amount: weightCost },
+      ];
+      if (total > subtotal) {
+        breakdown.push({ label: `الحد الأدنى للشحنة الجوية (Min Charge)`, amount: total - subtotal });
+      }
+
+    } else {
+      // ── International land ───────────────────────────────────────────────────
+      const distance = parseFloat(distanceKm) || 0;
+      baseCost = rates.intl_land_base_charge;
+      distanceCost = distance * rates.intl_land_rate_per_km;
+      weightCost = weight * rates.intl_land_rate_per_kg;
+      const subtotal = baseCost + distanceCost + weightCost;
+      fuelSurcharge = subtotal * rates.intl_land_fuel_pct;
+      total = subtotal + fuelSurcharge;
+
+      breakdown = [
+        { label: 'الرسوم الأساسية / Base Charge', amount: baseCost },
+        { label: `المسافة (${distance.toFixed(0)} كم × $${rates.intl_land_rate_per_km}/كم)`, amount: distanceCost },
+        { label: `الوزن (${weight} كجم × $${rates.intl_land_rate_per_kg}/كجم)`, amount: weightCost },
+        { label: `رسوم الوقود (${(rates.intl_land_fuel_pct * 100).toFixed(0)}%)`, amount: fuelSurcharge },
+      ];
+    }
+
+    setResult({ baseCost, distanceCost, weightCost, fuelSurcharge, total, currency: 'USD', breakdown });
     setCalculated(true);
   };
 
@@ -632,29 +773,167 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
     setResult(null);
     setCalculated(false);
     setWeightKg('');
+    setCbmVolume('');
     setDistanceKm('');
     setFromCity('');
     setToCity('');
+    setSeaOriginPort('');
+    setSeaDestPort('');
+    setAirOriginAirport('');
+    setAirDestAirport('');
   };
+
+  const saveRates = async () => {
+    if (!partner?.id) return;
+    setSavingRates(true);
+    const { error } = await supabase
+      .from('partner_shipping_rates')
+      .upsert({ partner_id: partner.id, ...editRates }, { onConflict: 'partner_id' });
+    if (!error) {
+      setRates(editRates);
+      setShowRatesEditor(false);
+      toast.success('تم حفظ التسعيرة المخصصة بنجاح');
+    } else {
+      toast.error('فشل حفظ التسعيرة: ' + error.message);
+    }
+    setSavingRates(false);
+  };
+
+  // Determine if calculate button should be enabled
+  const canCalculate = (() => {
+    const w = parseFloat(weightKg) || 0;
+    if (w <= 0) return false;
+    if (isYemen) return !!autoDistance;
+    if (isSea) return !!seaOriginPort && !!seaDestPort;
+    if (isAir) return !!airOriginAirport && !!airDestAirport;
+    if (isIntlLand) return (parseFloat(distanceKm) || 0) > 0;
+    return false;
+  })();
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
-          <Icon name="CalculatorIcon" size={20} className="text-blue-600" />
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
+            <Icon name="CalculatorIcon" size={20} className="text-blue-600" />
+          </div>
+          <div>
+            <h2 className="font-bold text-foreground text-lg">حاسبة تكاليف الشحن الذكية</h2>
+            <p className="text-sm text-muted-foreground">Dynamic Shipping Cost Calculator — realistic supply-chain pricing</p>
+            {partner && (
+              <p className="text-xs text-primary mt-0.5 flex items-center gap-1">
+                <Icon name="LinkIcon" size={11} />
+                مرتبطة بملف الشريك: {partner.company_name}
+              </p>
+            )}
+          </div>
         </div>
-        <div>
-          <h2 className="font-bold text-foreground text-lg">حاسبة تكاليف الشحن الذكية</h2>
-          <p className="text-sm text-muted-foreground">Dynamic Shipping Cost Calculator — based on distance, weight & shipment type</p>
-          {partner && (
-            <p className="text-xs text-primary mt-0.5 flex items-center gap-1">
-              <Icon name="LinkIcon" size={11} />
-              مرتبطة بملف الشريك: {partner.company_name}
-            </p>
-          )}
-        </div>
+        {partner && (
+          <button
+            onClick={() => { setShowRatesEditor(v => !v); setEditRates(rates); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border text-xs font-semibold text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+          >
+            <Icon name="AdjustmentsHorizontalIcon" size={13} />
+            تخصيص التسعيرة
+          </button>
+        )}
       </div>
+
+      {/* Partner Rates Editor */}
+      {showRatesEditor && partner && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-bold text-amber-800 flex items-center gap-2">
+              <Icon name="AdjustmentsHorizontalIcon" size={15} />
+              تخصيص تسعيرة الشريك اللوجستي
+            </p>
+            <button onClick={() => setShowRatesEditor(false)} className="text-amber-600 hover:text-amber-800">
+              <Icon name="XMarkIcon" size={16} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+            {/* Land rates */}
+            <div className="col-span-2 md:col-span-3">
+              <p className="font-semibold text-amber-700 mb-2 uppercase tracking-wide text-[10px]">🚛 الشحن البري المحلي (اليمن)</p>
+            </div>
+            {[
+              { key: 'land_light_rate_per_kg',  label: 'سعر الكجم الخفيف (< 100 كجم) $' },
+              { key: 'land_medium_rate_per_kg', label: 'سعر الكجم المتوسط (100–1000 كجم) $' },
+              { key: 'land_heavy_rate_per_ton', label: 'سعر الطن الثقيل (> 1000 كجم) $' },
+              { key: 'land_max_cap_per_trip',   label: 'سقف أقصى للرحلة (Max Cap) $' },
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <label className="block text-[10px] text-amber-700 mb-1">{label}</label>
+                <input
+                  type="number" step="0.01" min="0"
+                  value={(editRates as any)[key]}
+                  onChange={e => setEditRates(r => ({ ...r, [key]: parseFloat(e.target.value) || 0 }))}
+                  className="w-full px-2 py-1.5 rounded-lg border border-amber-300 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-300"
+                />
+              </div>
+            ))}
+
+            {/* Sea rates */}
+            <div className="col-span-2 md:col-span-3 mt-2">
+              <p className="font-semibold text-amber-700 mb-2 uppercase tracking-wide text-[10px]">🚢 الشحن البحري الدولي</p>
+            </div>
+            {[
+              { key: 'sea_base_docs_fee',    label: 'رسوم أساسية ووثائق $' },
+              { key: 'sea_min_bl_charge',    label: 'الحد الأدنى لبوليصة الشحن $' },
+              { key: 'sea_rate_per_cbm_ton', label: 'سعر الطن / CBM $' },
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <label className="block text-[10px] text-amber-700 mb-1">{label}</label>
+                <input
+                  type="number" step="0.01" min="0"
+                  value={(editRates as any)[key]}
+                  onChange={e => setEditRates(r => ({ ...r, [key]: parseFloat(e.target.value) || 0 }))}
+                  className="w-full px-2 py-1.5 rounded-lg border border-amber-300 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-300"
+                />
+              </div>
+            ))}
+
+            {/* Air rates */}
+            <div className="col-span-2 md:col-span-3 mt-2">
+              <p className="font-semibold text-amber-700 mb-2 uppercase tracking-wide text-[10px]">✈️ الشحن الجوي الدولي</p>
+            </div>
+            {[
+              { key: 'air_rate_per_kg',   label: 'سعر الكجم الجوي $' },
+              { key: 'air_handling_fee',  label: 'رسوم مناولة ومطار $' },
+              { key: 'air_min_charge',    label: 'الحد الأدنى للشحنة الجوية $' },
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <label className="block text-[10px] text-amber-700 mb-1">{label}</label>
+                <input
+                  type="number" step="0.01" min="0"
+                  value={(editRates as any)[key]}
+                  onChange={e => setEditRates(r => ({ ...r, [key]: parseFloat(e.target.value) || 0 }))}
+                  className="w-full px-2 py-1.5 rounded-lg border border-amber-300 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-amber-300"
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={saveRates}
+              disabled={savingRates}
+              className="flex-1 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
+            >
+              {savingRates ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Icon name="CheckIcon" size={13} />}
+              حفظ التسعيرة المخصصة
+            </button>
+            <button
+              onClick={() => { setEditRates(DEFAULT_RATES); }}
+              className="px-3 py-2 border border-amber-300 rounded-xl text-xs text-amber-700 hover:bg-amber-100 transition-colors"
+            >
+              إعادة الضبط
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Shipment Type Selector */}
       <div>
@@ -677,11 +956,11 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
         </div>
         <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
           <Icon name="InformationCircleIcon" size={12} />
-          {config.description}
+          {SHIPMENT_TYPE_CONFIG[shipmentType].description}
         </p>
       </div>
 
-      {/* Partner origin/destination info banner */}
+      {/* Geographic scope badge */}
       {isYemen ? (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2 text-xs">
           <span className="text-emerald-600 text-base">🇾🇪</span>
@@ -716,9 +995,7 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
           </label>
           <div className="relative">
             <input
-              type="number"
-              min="0.1"
-              step="0.1"
+              type="number" min="0.1" step="0.1"
               value={weightKg}
               onChange={e => { setWeightKg(e.target.value); setResult(null); }}
               placeholder="e.g. 500"
@@ -726,10 +1003,21 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
             />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">kg</span>
           </div>
+          {/* Tier hint for Yemen land */}
+          {isYemen && weightKg && (
+            <p className="text-[10px] text-blue-600 mt-1 flex items-center gap-1">
+              <Icon name="InformationCircleIcon" size={11} />
+              {parseFloat(weightKg) < 100
+                ? `شحنة خفيفة → $${rates.land_light_rate_per_kg}/كجم`
+                : parseFloat(weightKg) <= 1000
+                ? `حمولة متوسطة → $${rates.land_medium_rate_per_kg}/كجم`
+                : `حمولة ثقيلة → $${rates.land_heavy_rate_per_ton}/طن (سقف $${rates.land_max_cap_per_trip})`}
+            </p>
+          )}
         </div>
 
-        {/* Distance — manual for international, city picker for Yemen */}
-        {isYemen ? (
+        {/* Second input: depends on shipment type */}
+        {isYemen && (
           <div className="space-y-2">
             <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
               المسار / Route (Yemen Cities)
@@ -742,7 +1030,7 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
                   onChange={e => { setFromCity(e.target.value); setResult(null); }}
                   className="w-full px-2 py-2 rounded-xl border border-border bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
                 >
-                  <option value="">Select city</option>
+                  <option value="">اختر المدينة</option>
                   {YEMEN_CITIES.map(c => (
                     <option key={c.name} value={c.name}>{c.name} — {c.nameAr}</option>
                   ))}
@@ -755,7 +1043,7 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
                   onChange={e => { setToCity(e.target.value); setResult(null); }}
                   className="w-full px-2 py-2 rounded-xl border border-border bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
                 >
-                  <option value="">Select city</option>
+                  <option value="">اختر المدينة</option>
                   {YEMEN_CITIES.map(c => (
                     <option key={c.name} value={c.name}>{c.name} — {c.nameAr}</option>
                   ))}
@@ -765,19 +1053,106 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
             {autoDistance !== null && (
               <p className="text-xs text-blue-600 flex items-center gap-1">
                 <Icon name="MapPinIcon" size={11} />
-                Estimated distance: ~{autoDistance} km
+                المسافة التقديرية: ~{autoDistance} كم
               </p>
             )}
           </div>
-        ) : (
+        )}
+
+        {isSea && (
+          <>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                ميناء التحميل / Origin Port <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={seaOriginPort}
+                onChange={e => { setSeaOriginPort(e.target.value); setResult(null); }}
+                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">اختر ميناء التحميل</option>
+                {SEA_ORIGIN_PORTS.map(p => (
+                  <option key={p.value} value={p.value}>{p.label} — {p.labelAr}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                ميناء الوصول / Destination Port <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={seaDestPort}
+                onChange={e => { setSeaDestPort(e.target.value); setResult(null); }}
+                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">اختر ميناء الوصول</option>
+                {SEA_DEST_PORTS.map(p => (
+                  <option key={p.value} value={p.value}>{p.label} — {p.labelAr}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                الحجم (CBM) — اختياري
+              </label>
+              <div className="relative">
+                <input
+                  type="number" min="0" step="0.01"
+                  value={cbmVolume}
+                  onChange={e => { setCbmVolume(e.target.value); setResult(null); }}
+                  placeholder="e.g. 5.5"
+                  className="w-full px-3 py-2.5 pr-14 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">CBM</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">يُستخدم الأعلى بين الوزن (طن) والحجم (CBM)</p>
+            </div>
+          </>
+        )}
+
+        {isAir && (
+          <>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                مطار المنشأ / Origin Airport <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={airOriginAirport}
+                onChange={e => { setAirOriginAirport(e.target.value); setResult(null); }}
+                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">اختر مطار المنشأ</option>
+                {AIR_ORIGIN_AIRPORTS.map(a => (
+                  <option key={a.value} value={a.value}>{a.label} — {a.labelAr}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                مطار الوصول / Destination Airport <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={airDestAirport}
+                onChange={e => { setAirDestAirport(e.target.value); setResult(null); }}
+                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">اختر مطار الوصول</option>
+                {AIR_DEST_AIRPORTS.map(a => (
+                  <option key={a.value} value={a.value}>{a.label} — {a.labelAr}</option>
+                ))}
+              </select>
+            </div>
+          </>
+        )}
+
+        {isIntlLand && (
           <div>
             <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
-              المسافة (كم) / Distance (km)
+              المسافة (كم) / Distance (km) <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <input
-                type="number"
-                min="1"
+                type="number" min="1"
                 value={distanceKm}
                 onChange={e => { setDistanceKm(e.target.value); setResult(null); }}
                 placeholder="e.g. 5000"
@@ -789,30 +1164,90 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
         )}
       </div>
 
-      {/* Rate Info */}
+      {/* Rate Info Card */}
       <div className="bg-muted/30 rounded-xl border border-border p-4">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Rate Structure</p>
-        <div className="grid grid-cols-3 gap-3 text-center">
-          <div>
-            <p className="text-xs text-muted-foreground">Base Charge</p>
-            <p className="font-bold text-foreground text-sm">${config.baseCharge}</p>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">هيكل التسعيرة / Rate Structure</p>
+        {isYemen && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center text-xs">
+            <div className="bg-white rounded-lg p-2 border border-border">
+              <p className="text-muted-foreground text-[10px]">خفيف (&lt; 100 كجم)</p>
+              <p className="font-bold text-foreground">${rates.land_light_rate_per_kg}/كجم</p>
+            </div>
+            <div className="bg-white rounded-lg p-2 border border-border">
+              <p className="text-muted-foreground text-[10px]">متوسط (100–1000 كجم)</p>
+              <p className="font-bold text-foreground">${rates.land_medium_rate_per_kg}/كجم</p>
+            </div>
+            <div className="bg-white rounded-lg p-2 border border-border">
+              <p className="text-muted-foreground text-[10px]">ثقيل (&gt; 1000 كجم)</p>
+              <p className="font-bold text-foreground">${rates.land_heavy_rate_per_ton}/طن</p>
+            </div>
+            <div className="bg-white rounded-lg p-2 border border-border">
+              <p className="text-muted-foreground text-[10px]">سقف الرحلة (Max Cap)</p>
+              <p className="font-bold text-foreground">${rates.land_max_cap_per_trip}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Per km</p>
-            <p className="font-bold text-foreground text-sm">${config.ratePerKm}</p>
+        )}
+        {isSea && (
+          <div className="grid grid-cols-3 gap-3 text-center text-xs">
+            <div className="bg-white rounded-lg p-2 border border-border">
+              <p className="text-muted-foreground text-[10px]">رسوم أساسية ووثائق</p>
+              <p className="font-bold text-foreground">${rates.sea_base_docs_fee}</p>
+            </div>
+            <div className="bg-white rounded-lg p-2 border border-border">
+              <p className="text-muted-foreground text-[10px]">سعر الطن / CBM</p>
+              <p className="font-bold text-foreground">${rates.sea_rate_per_cbm_ton}</p>
+            </div>
+            <div className="bg-white rounded-lg p-2 border border-border">
+              <p className="text-muted-foreground text-[10px]">الحد الأدنى (Min B/L)</p>
+              <p className="font-bold text-foreground">${rates.sea_min_bl_charge}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Per kg</p>
-            <p className="font-bold text-foreground text-sm">${config.ratePerKg}</p>
+        )}
+        {isAir && (
+          <div className="grid grid-cols-3 gap-3 text-center text-xs">
+            <div className="bg-white rounded-lg p-2 border border-border">
+              <p className="text-muted-foreground text-[10px]">سعر الكجم الجوي</p>
+              <p className="font-bold text-foreground">${rates.air_rate_per_kg}/كجم</p>
+            </div>
+            <div className="bg-white rounded-lg p-2 border border-border">
+              <p className="text-muted-foreground text-[10px]">رسوم مناولة ومطار</p>
+              <p className="font-bold text-foreground">${rates.air_handling_fee}</p>
+            </div>
+            <div className="bg-white rounded-lg p-2 border border-border">
+              <p className="text-muted-foreground text-[10px]">الحد الأدنى للشحنة</p>
+              <p className="font-bold text-foreground">${rates.air_min_charge}</p>
+            </div>
           </div>
-        </div>
+        )}
+        {isIntlLand && (
+          <div className="grid grid-cols-3 gap-3 text-center text-xs">
+            <div className="bg-white rounded-lg p-2 border border-border">
+              <p className="text-muted-foreground text-[10px]">رسوم أساسية</p>
+              <p className="font-bold text-foreground">${rates.intl_land_base_charge}</p>
+            </div>
+            <div className="bg-white rounded-lg p-2 border border-border">
+              <p className="text-muted-foreground text-[10px]">سعر الكم</p>
+              <p className="font-bold text-foreground">${rates.intl_land_rate_per_km}/كم</p>
+            </div>
+            <div className="bg-white rounded-lg p-2 border border-border">
+              <p className="text-muted-foreground text-[10px]">سعر الكجم</p>
+              <p className="font-bold text-foreground">${rates.intl_land_rate_per_kg}/كجم</p>
+            </div>
+          </div>
+        )}
+        {ratesLoading && (
+          <p className="text-[10px] text-muted-foreground mt-2 flex items-center gap-1">
+            <div className="w-3 h-3 border border-muted-foreground border-t-transparent rounded-full animate-spin" />
+            جارٍ تحميل تسعيرة الشريك…
+          </p>
+        )}
       </div>
 
       {/* Action Buttons */}
       <div className="flex gap-3">
         <button
           onClick={calculate}
-          disabled={!weightKg || parseFloat(weightKg) <= 0 || (isYemen ? !autoDistance : !distanceKm)}
+          disabled={!canCalculate}
           className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl font-semibold text-sm disabled:opacity-50 hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
         >
           <Icon name="CalculatorIcon" size={16} />
@@ -838,9 +1273,22 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
               <p className="text-3xl font-black text-blue-700 mt-1">
                 ${result.total.toFixed(2)} <span className="text-base font-semibold">{result.currency}</span>
               </p>
+              {/* Route summary */}
+              {isSea && seaOriginPort && seaDestPort && (
+                <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                  <Icon name="ArrowRightIcon" size={11} />
+                  {SEA_ORIGIN_PORTS.find(p => p.value === seaOriginPort)?.labelAr} ➔ {SEA_DEST_PORTS.find(p => p.value === seaDestPort)?.labelAr}
+                </p>
+              )}
+              {isAir && airOriginAirport && airDestAirport && (
+                <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                  <Icon name="ArrowRightIcon" size={11} />
+                  {AIR_ORIGIN_AIRPORTS.find(a => a.value === airOriginAirport)?.labelAr} ➔ {AIR_DEST_AIRPORTS.find(a => a.value === airDestAirport)?.labelAr}
+                </p>
+              )}
             </div>
             <div className="w-14 h-14 rounded-2xl bg-blue-100 flex items-center justify-center">
-              <Icon name="TruckIcon" size={28} className="text-blue-600" />
+              <Icon name={isAir ? 'PaperAirplaneIcon' : 'TruckIcon'} size={28} className="text-blue-600" />
             </div>
           </div>
 
@@ -849,10 +1297,16 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
             <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">تفاصيل التكلفة / Cost Breakdown</p>
             <div className="space-y-1.5">
               {result.breakdown.map((item, i) => (
-                <div key={i} className="flex items-center justify-between text-sm">
-                  <span className="text-blue-700/80">{item.label}</span>
-                  <span className="font-semibold text-blue-800">${item.amount.toFixed(2)}</span>
-                </div>
+                item.amount === 0 ? (
+                  <div key={i} className="text-xs text-blue-600/80 italic">{item.label}</div>
+                ) : (
+                  <div key={i} className="flex items-center justify-between text-sm">
+                    <span className="text-blue-700/80">{item.label}</span>
+                    <span className={`font-semibold ${item.amount < 0 ? 'text-emerald-700' : 'text-blue-800'}`}>
+                      {item.amount < 0 ? '-' : ''}${Math.abs(item.amount).toFixed(2)}
+                    </span>
+                  </div>
+                )
               ))}
               <div className="border-t border-blue-200 pt-2 flex items-center justify-between">
                 <span className="font-bold text-blue-800">الإجمالي / Total</span>
@@ -2749,7 +3203,7 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
     );
   }
 
-  const total = orders.length;
+  let total = orders.length;
   const delivered = orders.filter(o => o.status === 'delivered').length;
   const inTransit = orders.filter(o => ['shipped', 'in_transit', 'out_for_delivery'].includes(o.status)).length;
   const pending = orders.filter(o => ['pending', 'confirmed', 'processing'].includes(o.status)).length;
