@@ -166,6 +166,105 @@ const ORDER_STATUS_OPTIONS = [
   { value: 'disputed',         label: 'Disputed',           color: 'bg-rose-50 text-rose-700 border-rose-200' },
 ];
 
+// ─── Arabic translations for profile fields ───────────────────────────────────
+
+const SERVICES_AR: Record<string, string> = {
+  'Sea Freight (FCL)': 'شحن بحري كامل (FCL)',
+  'Sea Freight (LCL)': 'شحن بحري مجزأ (LCL)',
+  'Air Freight': 'شحن جوي',
+  'Express Air Freight': 'شحن جوي سريع (إكسبريس)',
+  'Port Handling': 'مناولة وتخليص موانئ',
+  'Document Preparation': 'إعداد وتجهيز الوثائق الجمركية',
+  'Cargo Insurance': 'تأمين الشحنات والبضائع',
+  'Packaging & Labeling': 'التغليف والوسم',
+  'Inspection Services': 'فحص ومعاينة الشحنات',
+  'Consolidation (LCL)': 'تجميع الشحنات المجزأة',
+  'Dangerous Goods Handling': 'مناولة البضائع الخطرة',
+  'Port Pickup': 'استلام من الميناء',
+  'Warehouse Storage': 'تخزين في المستودعات',
+  'Door-to-Door Delivery': 'توصيل من الباب للباب',
+  'Last-Mile Delivery': 'التوصيل الأخير',
+  'Cold Chain Logistics': 'سلسلة التبريد اللوجستية',
+  'Heavy Cargo Transport': 'نقل البضائع الثقيلة',
+  'Express Delivery': 'توصيل سريع',
+  'Distribution Network': 'شبكة التوزيع',
+  'Return Logistics': 'لوجستيات الإرجاع',
+  'Tracking & Reporting': 'التتبع والتقارير',
+  'Import Clearance': 'تخليص الاستيراد',
+  'Export Clearance': 'تخليص التصدير',
+  'Tariff Classification': 'تصنيف التعريفات الجمركية',
+  'Duty Calculation': 'حساب الرسوم الجمركية',
+  'Compliance Consulting': 'استشارات الامتثال',
+  'Bond Management': 'إدارة الكفالات',
+  'Duty Drawback': 'استرداد الرسوم الجمركية',
+  'Free Zone Services': 'خدمات المناطق الحرة',
+  'Land Transport': 'نقل بري',
+  'Customs Clearance': 'تخليص جمركي',
+  'Warehousing': 'تخزين',
+  'Insurance': 'تأمين',
+};
+
+const INCOTERMS_AR: Record<string, string> = {
+  'EXW': 'EXW - تسليم أرض المصنع',
+  'FCA': 'FCA - تسليم للناقل',
+  'CPT': 'CPT - الشحن مدفوع حتى',
+  'CIP': 'CIP - الشحن والتأمين مدفوعان حتى',
+  'DAP': 'DAP - تسليم في المكان المحدد',
+  'DPU': 'DPU - تسليم وتفريغ في المكان المحدد',
+  'DDP': 'DDP - واصل مع الرسوم',
+  'FAS': 'FAS - تسليم بجانب السفينة',
+  'FOB': 'FOB - تسليم ظهر السفينة',
+  'CFR': 'CFR - التكلفة والشحن',
+  'CIF': 'CIF - شامل التأمين والشحن',
+};
+
+const COUNTRIES_AR: Record<string, string> = {
+  'Saudi Arabia': 'المملكة العربية السعودية',
+  'UAE': 'الإمارات العربية المتحدة',
+  'Kuwait': 'الكويت',
+  'Qatar': 'قطر',
+  'Bahrain': 'البحرين',
+  'Oman': 'عُمان',
+  'Egypt': 'مصر',
+  'Jordan': 'الأردن',
+  'Iraq': 'العراق',
+  'China': 'الصين',
+  'India': 'الهند',
+  'Turkey': 'تركيا',
+  'Germany': 'ألمانيا',
+  'USA': 'الولايات المتحدة الأمريكية',
+  'UK': 'المملكة المتحدة',
+  'France': 'فرنسا',
+  'Italy': 'إيطاليا',
+  'Spain': 'إسبانيا',
+  'South Korea': 'كوريا الجنوبية',
+  'Japan': 'اليابان',
+  'Malaysia': 'ماليزيا',
+  'Indonesia': 'إندونيسيا',
+  'Vietnam': 'فيتنام',
+  'Thailand': 'تايلاند',
+  'Pakistan': 'باكستان',
+  'Bangladesh': 'بنغلاديش',
+  'Morocco': 'المغرب',
+  'Tunisia': 'تونس',
+  'Algeria': 'الجزائر',
+  'Libya': 'ليبيا',
+  'Sudan': 'السودان',
+  'Ethiopia': 'إثيوبيا',
+  'Kenya': 'كينيا',
+  'Nigeria': 'نيجيريا',
+  'South Africa': 'جنوب أفريقيا',
+  'Brazil': 'البرازيل',
+  'Mexico': 'المكسيك',
+  'Canada': 'كندا',
+  'Australia': 'أستراليا',
+  'Yemen': 'اليمن',
+};
+
+function arCountry(c: string) {
+  return COUNTRIES_AR[c] ? `${COUNTRIES_AR[c]} (${c})` : c;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string | null) {
@@ -180,6 +279,15 @@ function formatDateTime(iso: string | null) {
 
 function getStatusMeta(status: string) {
   return ORDER_STATUS_OPTIONS.find(o => o.value === status) || { value: status, label: status, color: 'bg-gray-50 text-gray-600 border-gray-200' };
+}
+
+// Helper: derive best shipment type from partner services
+function deriveShipmentType(services: string[]): ShipmentType {
+  const s = services.map(x => x.toLowerCase());
+  if (s.some(x => x.includes('air'))) return 'international_air';
+  if (s.some(x => x.includes('sea') || x.includes('fcl') || x.includes('lcl'))) return 'international_sea';
+  if (s.some(x => x.includes('land') || x.includes('local'))) return 'local_land_yemen';
+  return 'international_sea';
 }
 
 // ─── Status Banner ────────────────────────────────────────────────────────────
@@ -452,12 +560,22 @@ const YEMEN_CITIES: { name: string; nameAr: string; distanceFromSanaa: number }[
   { name: 'Al-Mahwit', nameAr: 'المحويت', distanceFromSanaa: 120 },
 ];
 
-function ShippingCalculatorTab() {
-  const [shipmentType, setShipmentType] = useState<ShipmentType>('local_land_yemen');
+function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null }) {
+  // Auto-derive defaults from partner profile
+  const defaultShipmentType: ShipmentType = partner?.services_offered?.length
+    ? deriveShipmentType(partner.services_offered)
+    : 'local_land_yemen';
+
+  const defaultOrigin = partner?.origin_countries?.[0] || '';
+  const defaultDestination = partner?.destination_countries?.[0] || '';
+
+  const [shipmentType, setShipmentType] = useState<ShipmentType>(defaultShipmentType);
   const [weightKg, setWeightKg] = useState('');
   const [distanceKm, setDistanceKm] = useState('');
   const [fromCity, setFromCity] = useState('');
   const [toCity, setToCity] = useState('');
+  const [originCountry, setOriginCountry] = useState(defaultOrigin);
+  const [destCountry, setDestCountry] = useState(defaultDestination);
   const [result, setResult] = useState<CalcResult | null>(null);
   const [calculated, setCalculated] = useState(false);
 
@@ -497,10 +615,10 @@ function ShippingCalculatorTab() {
       total,
       currency: config.currency,
       breakdown: [
-        { label: 'Base Charge', amount: config.baseCharge },
-        { label: `Distance (${distance.toFixed(0)} km × $${config.ratePerKm}/km)`, amount: distanceCost },
-        { label: `Weight (${weight} kg × $${config.ratePerKg}/kg)`, amount: weightCost },
-        { label: `Fuel Surcharge (${(config.fuelPct * 100).toFixed(0)}%)`, amount: fuelSurcharge },
+        { label: 'الرسوم الأساسية / Base Charge', amount: config.baseCharge },
+        { label: `المسافة (${distance.toFixed(0)} كم × $${config.ratePerKm}/كم)`, amount: distanceCost },
+        { label: `الوزن (${weight} كجم × $${config.ratePerKg}/كجم)`, amount: weightCost },
+        { label: `رسوم الوقود (${(config.fuelPct * 100).toFixed(0)}%)`, amount: fuelSurcharge },
       ],
     });
     setCalculated(true);
@@ -525,6 +643,12 @@ function ShippingCalculatorTab() {
         <div>
           <h2 className="font-bold text-foreground text-lg">حاسبة تكاليف الشحن الذكية</h2>
           <p className="text-sm text-muted-foreground">Dynamic Shipping Cost Calculator — based on distance, weight & shipment type</p>
+          {partner && (
+            <p className="text-xs text-primary mt-0.5 flex items-center gap-1">
+              <Icon name="LinkIcon" size={11} />
+              مرتبطة بملف الشريك: {partner.company_name}
+            </p>
+          )}
         </div>
       </div>
 
@@ -552,6 +676,24 @@ function ShippingCalculatorTab() {
           {config.description}
         </p>
       </div>
+
+      {/* Partner origin/destination info banner */}
+      {partner && (partner.origin_countries?.length > 0 || partner.destination_countries?.length > 0) && (
+        <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex flex-wrap gap-3 text-xs">
+          {partner.origin_countries?.length > 0 && (
+            <div>
+              <span className="font-semibold text-primary">دول المنشأ: </span>
+              <span className="text-foreground">{partner.origin_countries.slice(0, 3).map(c => COUNTRIES_AR[c] || c).join('، ')}{partner.origin_countries.length > 3 ? ` +${partner.origin_countries.length - 3}` : ''}</span>
+            </div>
+          )}
+          {partner.destination_countries?.length > 0 && (
+            <div>
+              <span className="font-semibold text-emerald-600">دول الوصول: </span>
+              <span className="text-foreground">{partner.destination_countries.slice(0, 3).map(c => COUNTRIES_AR[c] || c).join('، ')}{partner.destination_countries.length > 3 ? ` +${partner.destination_countries.length - 3}` : ''}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Input Fields */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -692,7 +834,7 @@ function ShippingCalculatorTab() {
 
           {/* Breakdown */}
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Cost Breakdown</p>
+            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">تفاصيل التكلفة / Cost Breakdown</p>
             <div className="space-y-1.5">
               {result.breakdown.map((item, i) => (
                 <div key={i} className="flex items-center justify-between text-sm">
@@ -701,7 +843,7 @@ function ShippingCalculatorTab() {
                 </div>
               ))}
               <div className="border-t border-blue-200 pt-2 flex items-center justify-between">
-                <span className="font-bold text-blue-800">Total</span>
+                <span className="font-bold text-blue-800">الإجمالي / Total</span>
                 <span className="font-black text-blue-900 text-lg">${result.total.toFixed(2)} {result.currency}</span>
               </div>
             </div>
@@ -978,7 +1120,7 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
       setEditing(false);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: any) {
-      setSaveError(err.message || 'Failed to save changes.');
+      setSaveError(err.message || 'فشل حفظ التعديلات.');
     } finally {
       setSaving(false);
     }
@@ -996,7 +1138,7 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
       {saveSuccess && (
         <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-3 mb-4 text-sm font-medium">
           <Icon name="CheckCircleIcon" size={16} />
-          Profile updated successfully.
+          تم تحديث الملف الشخصي بنجاح.
         </div>
       )}
       {saveError && (
@@ -1008,7 +1150,7 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
 
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h3 className="font-semibold text-foreground">Partner Profile</h3>
+          <h3 className="font-semibold text-foreground">ملف الشريك اللوجستي</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
             {PARTNER_TYPE_LABELS[partner.partner_type] || partner.partner_type}
             {' · '}
@@ -1023,7 +1165,7 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
             className="flex items-center gap-2 px-4 py-2 border border-border rounded-xl text-sm font-semibold hover:bg-muted/50 transition-colors"
           >
             <Icon name="PencilSquareIcon" size={15} />
-            Edit Profile
+            تعديل الملف
           </button>
         ) : (
           <div className="flex gap-2">
@@ -1031,7 +1173,7 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
               onClick={() => { setEditing(false); setSaveError(''); }}
               className="px-4 py-2 border border-border rounded-xl text-sm font-semibold hover:bg-muted/50 transition-colors"
             >
-              Cancel
+              إلغاء
             </button>
             <button
               onClick={handleSave}
@@ -1039,7 +1181,7 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
               className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-60 hover:opacity-90 transition-opacity"
             >
               {saving ? <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" /> : <Icon name="CheckIcon" size={15} />}
-              Save Changes
+              حفظ التعديلات
             </button>
           </div>
         )}
@@ -1048,23 +1190,23 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
       {!editing ? (
         <div className="space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-4 bg-muted/30 rounded-xl border border-border">
-            <Field label="Company Name" value={partner.company_name} />
-            <Field label="Contact Name" value={partner.contact_name} />
-            <Field label="Email" value={partner.contact_email} />
-            <Field label="Phone" value={partner.contact_phone} />
-            <Field label="Country" value={partner.country} />
-            <Field label="City" value={partner.city} />
-            <Field label="Address" value={partner.address} />
-            {partner.postal_code && <Field label="Postal Code" value={partner.postal_code} />}
-            {partner.website && <Field label="Website" value={partner.website} />}
-            {partner.operating_hub && <Field label="Operating Hub" value={partner.operating_hub} />}
-            {partner.local_coverage_country && <Field label="Local Coverage" value={partner.local_coverage_country} />}
-            {partner.base_rate_usd != null && <Field label="Base Rate (USD)" value={`$${partner.base_rate_usd}`} />}
+            <Field label="اسم المنشأة / الشركة" value={partner.company_name} />
+            <Field label="مسؤول التواصل" value={partner.contact_name} />
+            <Field label="البريد الإلكتروني" value={partner.contact_email} />
+            <Field label="رقم الهاتف" value={partner.contact_phone} />
+            <Field label="دولة المقر" value={partner.country ? (COUNTRIES_AR[partner.country] || partner.country) : null} />
+            <Field label="المدينة" value={partner.city} />
+            <Field label="العنوان" value={partner.address} />
+            {partner.postal_code && <Field label="الرمز البريدي" value={partner.postal_code} />}
+            {partner.website && <Field label="الموقع الإلكتروني" value={partner.website} />}
+            {partner.operating_hub && <Field label="مركز العمليات اللوجستي" value={partner.operating_hub} />}
+            {partner.local_coverage_country && <Field label="دولة التغطية المحلية" value={COUNTRIES_AR[partner.local_coverage_country] || partner.local_coverage_country} />}
+            {partner.base_rate_usd != null && <Field label="السعر الأساسي الافتراضي (دولار)" value={`$${partner.base_rate_usd}`} />}
           </div>
 
           {partner.rate_description && (
             <div className="p-4 bg-muted/30 rounded-xl border border-border">
-              <p className="text-xs text-muted-foreground mb-1">Rate Description</p>
+              <p className="text-xs text-muted-foreground mb-1">وصف وآلية التسعير</p>
               <p className="text-sm text-foreground">{partner.rate_description}</p>
             </div>
           )}
@@ -1072,40 +1214,48 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {partner.services_offered?.length > 0 && (
               <div className="p-4 bg-muted/30 rounded-xl border border-border">
-                <p className="text-xs text-muted-foreground mb-2">Services Offered</p>
+                <p className="text-xs text-muted-foreground mb-2">الخدمات المتاحة</p>
                 <div className="flex flex-wrap gap-1.5">
                   {partner.services_offered.map(s => (
-                    <span key={s} className="px-2.5 py-1 bg-primary/10 text-primary rounded-lg text-xs font-medium">{s}</span>
+                    <span key={s} className="px-2.5 py-1 bg-primary/10 text-primary rounded-lg text-xs font-medium">
+                      {SERVICES_AR[s] || s}
+                    </span>
                   ))}
                 </div>
               </div>
             )}
             {partner.incoterms_supported?.length > 0 && (
               <div className="p-4 bg-muted/30 rounded-xl border border-border">
-                <p className="text-xs text-muted-foreground mb-2">Incoterms Supported</p>
+                <p className="text-xs text-muted-foreground mb-2">شروط التجارة الدولية المدعومة</p>
                 <div className="flex flex-wrap gap-1.5">
                   {partner.incoterms_supported.map(t => (
-                    <span key={t} className="px-2.5 py-1 bg-violet-50 text-violet-700 border border-violet-200 rounded-lg text-xs font-semibold">{t}</span>
+                    <span key={t} className="px-2.5 py-1 bg-violet-50 text-violet-700 border border-violet-200 rounded-lg text-xs font-semibold">
+                      {INCOTERMS_AR[t] || t}
+                    </span>
                   ))}
                 </div>
               </div>
             )}
             {partner.origin_countries?.length > 0 && (
               <div className="p-4 bg-muted/30 rounded-xl border border-border">
-                <p className="text-xs text-muted-foreground mb-2">Origin Countries</p>
+                <p className="text-xs text-muted-foreground mb-2">دول المنشأ</p>
                 <div className="flex flex-wrap gap-1.5">
                   {partner.origin_countries.map(c => (
-                    <span key={c} className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs">{c}</span>
+                    <span key={c} className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs">
+                      {COUNTRIES_AR[c] ? `${COUNTRIES_AR[c]}` : c}
+                    </span>
                   ))}
                 </div>
               </div>
             )}
             {partner.destination_countries?.length > 0 && (
               <div className="p-4 bg-muted/30 rounded-xl border border-border">
-                <p className="text-xs text-muted-foreground mb-2">Destination Countries</p>
+                <p className="text-xs text-muted-foreground mb-2">دول الوصول</p>
                 <div className="flex flex-wrap gap-1.5">
                   {partner.destination_countries.map(c => (
-                    <span key={c} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs">{c}</span>
+                    <span key={c} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs">
+                      {COUNTRIES_AR[c] ? `${COUNTRIES_AR[c]}` : c}
+                    </span>
                   ))}
                 </div>
               </div>
@@ -1116,19 +1266,19 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
         <div className="space-y-5">
           {/* Basic Info */}
           <div className="p-4 border border-border rounded-xl space-y-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Basic Information</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">البيانات الأساسية</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {[
-                { key: 'company_name', label: 'Company Name' },
-                { key: 'contact_name', label: 'Contact Name' },
-                { key: 'contact_email', label: 'Email' },
-                { key: 'contact_phone', label: 'Phone' },
-                { key: 'city', label: 'City' },
-                { key: 'address', label: 'Address' },
-                { key: 'postal_code', label: 'Postal Code' },
-                { key: 'website', label: 'Website' },
-                { key: 'operating_hub', label: 'Operating Hub' },
-                { key: 'base_rate_usd', label: 'Base Rate (USD)' },
+                { key: 'company_name', label: 'اسم المنشأة / الشركة' },
+                { key: 'contact_name', label: 'مسؤول التواصل' },
+                { key: 'contact_email', label: 'البريد الإلكتروني' },
+                { key: 'contact_phone', label: 'رقم الهاتف' },
+                { key: 'city', label: 'المدينة' },
+                { key: 'address', label: 'العنوان' },
+                { key: 'postal_code', label: 'الرمز البريدي' },
+                { key: 'website', label: 'الموقع الإلكتروني' },
+                { key: 'operating_hub', label: 'مركز العمليات اللوجستي' },
+                { key: 'base_rate_usd', label: 'السعر الأساسي الافتراضي (دولار)' },
               ].map(({ key, label }) => (
                 <div key={key}>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">{label}</label>
@@ -1141,29 +1291,29 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
                 </div>
               ))}
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Country</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">دولة المقر</label>
                 <select
                   value={form.country}
                   onChange={e => setForm(prev => ({ ...prev, country: e.target.value }))}
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 >
-                  {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  {COUNTRIES.map(c => <option key={c} value={c}>{COUNTRIES_AR[c] ? `${COUNTRIES_AR[c]} (${c})` : c}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Local Coverage Country</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">دولة التغطية المحلية</label>
                 <select
                   value={form.local_coverage_country}
                   onChange={e => setForm(prev => ({ ...prev, local_coverage_country: e.target.value }))}
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 >
-                  <option value="">— None —</option>
-                  {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  <option value="">— لا يوجد —</option>
+                  {COUNTRIES.map(c => <option key={c} value={c}>{COUNTRIES_AR[c] ? `${COUNTRIES_AR[c]} (${c})` : c}</option>)}
                 </select>
               </div>
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Rate Description</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">وصف وآلية التسعير</label>
               <textarea
                 value={form.rate_description}
                 onChange={e => setForm(prev => ({ ...prev, rate_description: e.target.value }))}
@@ -1175,7 +1325,7 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
 
           {/* Services */}
           <div className="p-4 border border-border rounded-xl">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Services Offered</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">الخدمات المتاحة</p>
             <div className="flex flex-wrap gap-2">
               {SERVICES_ALL.map(s => (
                 <button
@@ -1188,7 +1338,7 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
                       : 'bg-background text-foreground border-border hover:border-primary/50'
                   }`}
                 >
-                  {s}
+                  {SERVICES_AR[s] || s}
                 </button>
               ))}
             </div>
@@ -1196,7 +1346,7 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
 
           {/* Incoterms */}
           <div className="p-4 border border-border rounded-xl">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Incoterms Supported</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">شروط التجارة الدولية المدعومة</p>
             <div className="flex flex-wrap gap-2">
               {INCOTERMS.map(t => (
                 <button
@@ -1209,7 +1359,7 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
                       : 'bg-background text-foreground border-border hover:border-violet-300'
                   }`}
                 >
-                  {t}
+                  {INCOTERMS_AR[t] || t}
                 </button>
               ))}
             </div>
@@ -1220,7 +1370,7 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
             {(['origin_countries', 'destination_countries'] as const).map(field => (
               <div key={field} className="p-4 border border-border rounded-xl">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                  {field === 'origin_countries' ? 'Origin Countries' : 'Destination Countries'}
+                  {field === 'origin_countries' ? 'دول المنشأ' : 'دول الوصول'}
                 </p>
                 <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
                   {COUNTRIES.map(c => (
@@ -1233,7 +1383,7 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
                           ? field === 'origin_countries' ? 'bg-blue-600 text-white border-blue-600' : 'bg-emerald-600 text-white border-emerald-600' :'bg-background text-foreground border-border hover:border-primary/40'
                       }`}
                     >
-                      {c}
+                      {COUNTRIES_AR[c] || c}
                     </button>
                   ))}
                 </div>
@@ -2088,7 +2238,7 @@ export default function LogisticsDashboardPage() {
             <ConversationsTab partnerId={partner.id} userId={user!.id} />
           )}
           {activeTab === 'calculator' && (
-            <ShippingCalculatorTab />
+            <ShippingCalculatorTab partner={partner} />
           )}
           {activeTab === 'profile' && (
             <ProfileTab partner={partner} onSaved={updated => setPartner(updated)} />
