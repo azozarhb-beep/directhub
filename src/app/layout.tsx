@@ -15,7 +15,7 @@ import ToasterProvider from '@/components/ToasterProvider';
 import AssistantsLoader from '@/components/AssistantsLoader';
 import PushSubscriptionManager from '@/components/PushSubscriptionManager';
 
-// cache-bust: 20261007-v2
+// cache-bust: 20261013-v3
 
 export const viewport: Viewport = {
   width: 'device-width',
