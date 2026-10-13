@@ -1077,10 +1077,24 @@ export default function LogisticsMarketplacePage() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatSuccess, setChatSuccess] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState<'partners' | 'calculator' | 'documents'>('partners');
+  const [isLogisticsUser, setIsLogisticsUser] = useState(false);
 
   useEffect(() => {
     fetchPartners();
   }, []);
+
+  useEffect(() => {
+    if (!user) { setIsLogisticsUser(false); return; }
+    supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        const role = data?.role || '';
+        setIsLogisticsUser(role === 'logistics_rep' || role === 'partner');
+      });
+  }, [user]);
 
   const fetchPartners = async () => {
     setLoading(true);
@@ -1170,13 +1184,23 @@ export default function LogisticsMarketplacePage() {
             <h1 className="text-2xl font-bold text-foreground">{lp.title}</h1>
             <p className="text-muted-foreground text-sm mt-1">{lp.subtitle}</p>
           </div>
-          <Link
-            href="/logistics/register"
-            className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
-          >
-            <Icon name="UserPlusIcon" size={16} />
-            {lp.registerCta}
-          </Link>
+          {isLogisticsUser ? (
+            <Link
+              href="/logistics/dashboard"
+              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
+            >
+              <Icon name="ChartBarIcon" size={16} />
+              الذهاب إلى لوحة التحكم اللوجستية
+            </Link>
+          ) : (
+            <Link
+              href="/logistics/register"
+              className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
+            >
+              <Icon name="UserPlusIcon" size={16} />
+              {lp.registerCta}
+            </Link>
+          )}
         </div>
 
         {/* Main Tabs */}
@@ -1214,7 +1238,7 @@ export default function LogisticsMarketplacePage() {
                   }`}
                 >
                   <Icon name={grp.icon as any} size={15} />
-                  {grp.labelKey}
+                  {lp[grp.labelKey]}
                   <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
                     activeCategoryGroup === grp.key ? 'bg-white/20 text-white' : 'bg-muted text-muted-foreground'
                   }`}>
