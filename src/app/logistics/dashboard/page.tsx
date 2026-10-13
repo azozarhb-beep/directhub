@@ -2131,12 +2131,12 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
   const maxMonthly = Math.max(...monthlyData.map(m => m.total), 1);
 
   const statCards = [
-    { label: 'Total Orders', value: total, icon: 'ClipboardDocumentListIcon', color: 'text-gray-700', bg: 'bg-gray-50 border-gray-200' },
-    { label: 'Delivered', value: delivered, icon: 'CheckBadgeIcon', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
-    { label: 'In Transit', value: inTransit, icon: 'TruckIcon', color: 'text-sky-700', bg: 'bg-sky-50 border-sky-200' },
-    { label: 'Pending', value: pending, icon: 'ClockIcon', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' },
-    { label: 'Cancelled', value: cancelled, icon: 'XCircleIcon', color: 'text-red-700', bg: 'bg-red-50 border-red-200' },
-    { label: 'Disputed', value: disputed, icon: 'ExclamationTriangleIcon', color: 'text-rose-700', bg: 'bg-rose-50 border-rose-200' },
+    { label: 'إجمالي الطلبات', value: total, icon: 'ClipboardDocumentListIcon', color: 'text-gray-700', bg: 'bg-gray-50 border-gray-200' },
+    { label: 'تم التسليم', value: delivered, icon: 'CheckBadgeIcon', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
+    { label: 'قيد النقل', value: inTransit, icon: 'TruckIcon', color: 'text-sky-700', bg: 'bg-sky-50 border-sky-200' },
+    { label: 'قيد الانتظار', value: pending, icon: 'ClockIcon', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' },
+    { label: 'ملغاة', value: cancelled, icon: 'XCircleIcon', color: 'text-red-700', bg: 'bg-red-50 border-red-200' },
+    { label: 'نزاعات', value: disputed, icon: 'ExclamationTriangleIcon', color: 'text-rose-700', bg: 'bg-rose-50 border-rose-200' },
   ];
 
   return (
@@ -2148,26 +2148,26 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
             <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e5e7eb" strokeWidth="3" />
             <circle
               cx="18" cy="18" r="15.9" fill="none"
-              stroke={deliveryRate >= 80 ? '#10b981' : deliveryRate >= 50 ? '#f59e0b' : '#ef4444'}
+              stroke={total === 0 ? '#9ca3af' : deliveryRate >= 80 ? '#10b981' : deliveryRate >= 50 ? '#f59e0b' : '#ef4444'}
               strokeWidth="3"
-              strokeDasharray={`${deliveryRate} ${100 - deliveryRate}`}
+              strokeDasharray={`${total === 0 ? 0 : deliveryRate} ${total === 0 ? 100 : 100 - deliveryRate}`}
               strokeLinecap="round"
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className={`text-xl font-black ${deliveryRate >= 80 ? 'text-emerald-700' : deliveryRate >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
-              {deliveryRate}%
+            <span className={`text-xl font-black ${total === 0 ? 'text-gray-400' : deliveryRate >= 80 ? 'text-emerald-700' : deliveryRate >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
+              {total === 0 ? '—' : `${deliveryRate}%`}
             </span>
           </div>
         </div>
         <div>
-          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-1">Delivery Success Rate</p>
-          <p className="text-3xl font-black text-emerald-800">{deliveryRate}%</p>
+          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-1">معدل نجاح التسليم</p>
+          <p className="text-3xl font-black text-emerald-800">{total === 0 ? '—' : `${deliveryRate}%`}</p>
           <p className="text-sm text-emerald-700 mt-1">
-            {delivered} of {total} orders delivered successfully
+            تم تسليم {delivered} من أصل {total} طلبات بنجاح
           </p>
-          <p className={`text-xs mt-1 font-medium ${deliveryRate >= 80 ? 'text-emerald-600' : deliveryRate >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
-            {deliveryRate >= 80 ? '✓ Excellent performance' : deliveryRate >= 50 ? '⚠ Needs improvement' : '✗ Below target'}
+          <p className={`text-xs mt-1 font-medium ${total === 0 ? 'text-gray-500' : deliveryRate >= 80 ? 'text-emerald-600' : deliveryRate >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
+            {total === 0 ? '— حساب جديد' : deliveryRate >= 80 ? '✓ أداء ممتاز' : deliveryRate >= 50 ? '⚠ يحتاج تحسين' : '✗ دون المستهدف'}
           </p>
         </div>
       </div>
@@ -2190,22 +2190,22 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-1">
             <Icon name="BanknotesIcon" size={16} className="text-emerald-600" />
-            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Total Revenue Released</p>
+            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">إجمالي الأرباح المحررة</p>
           </div>
           <p className="text-3xl font-black text-emerald-800">
             ${totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
-          <p className="text-xs text-emerald-600 mt-1">{releasedPayments.length} payments released from escrow</p>
+          <p className="text-xs text-emerald-600 mt-1">{releasedPayments.length} مستحقات تم تحريرها من الضمان</p>
         </div>
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-1">
             <Icon name="LockClosedIcon" size={16} className="text-blue-600" />
-            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Pending in Escrow</p>
+            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">رصيد معلق في الضمان</p>
           </div>
           <p className="text-3xl font-black text-blue-800">
             ${pendingRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
-          <p className="text-xs text-blue-600 mt-1">{heldPayments.length} payments awaiting delivery confirmation</p>
+          <p className="text-xs text-blue-600 mt-1">{heldPayments.length} مستحقات بانتظار تأكيد التسليم</p>
         </div>
       </div>
 
@@ -2213,7 +2213,7 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
       <div className="bg-card border border-border rounded-xl p-5">
         <p className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
           <Icon name="ChartBarIcon" size={16} className="text-primary" />
-          Monthly Orders — Last 6 Months
+          الطلبات الشهرية — آخر 6 أشهر
         </p>
         <div className="flex items-end gap-3 h-32">
           {monthlyData.map((m, i) => (
@@ -2223,13 +2223,13 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
                 <div
                   className="w-full rounded-t-md bg-emerald-400 transition-all"
                   style={{ height: `${m.total > 0 ? (m.delivered / maxMonthly) * 80 : 0}px`, minHeight: m.delivered > 0 ? '4px' : '0' }}
-                  title={`${m.delivered} delivered`}
+                  title={`${m.delivered} تم التسليم`}
                 />
                 {/* Total bar background */}
                 <div
                   className="w-full bg-sky-200 rounded-b-md"
                   style={{ height: `${((m.total - m.delivered) / maxMonthly) * 80}px`, minHeight: m.total > m.delivered ? '4px' : '0' }}
-                  title={`${m.total - m.delivered} other`}
+                  title={`${m.total - m.delivered} أخرى`}
                 />
               </div>
               <p className="text-[10px] text-muted-foreground font-medium">{m.label}</p>
@@ -2240,11 +2240,11 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
         <div className="flex items-center gap-4 mt-3">
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded-sm bg-emerald-400" />
-            <span className="text-xs text-muted-foreground">Delivered</span>
+            <span className="text-xs text-muted-foreground">تم التسليم</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded-sm bg-sky-200" />
-            <span className="text-xs text-muted-foreground">Other</span>
+            <span className="text-xs text-muted-foreground">أخرى</span>
           </div>
         </div>
       </div>
@@ -2253,7 +2253,7 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
       <div className="bg-card border border-border rounded-xl p-5">
         <p className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
           <Icon name="AdjustmentsHorizontalIcon" size={16} className="text-primary" />
-          Order Status Breakdown
+          تفصيل حالات الطلبات
         </p>
         <div className="space-y-2.5">
           {ORDER_STATUS_OPTIONS.filter(opt => orders.some(o => o.status === opt.value)).map(opt => {
@@ -2276,7 +2276,7 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
             );
           })}
           {total === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">No orders yet — stats will appear once orders are assigned.</p>
+            <p className="text-sm text-muted-foreground text-center py-4">لا توجد طلبات بعد — ستظهر الإحصائيات فور إسناد الشحنات لحسابك.</p>
           )}
         </div>
       </div>
