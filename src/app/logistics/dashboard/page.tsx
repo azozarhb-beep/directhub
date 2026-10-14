@@ -697,7 +697,7 @@ function calcLandCost(weightKg: number, rates: PartnerRates, tonRate?: number): 
   return { cost, tier, breakdown };
 }
 
-function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null }) {
+function ShippingCalculatorTab({ partner, onRequestSpecialQuote }: { partner?: LogisticsPartner | null; onRequestSpecialQuote?: () => void }) {
   const supabase = createClient();
 
   const defaultShipmentType: ShipmentType = partner?.services_offered?.length
@@ -710,6 +710,8 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
   const [seaShippingMode, setSeaShippingMode] = useState<'lcl' | 'fcl'>('lcl');
   const [fclContainerType, setFclContainerType] = useState<string>('40hq');
   const [fclContainerCount, setFclContainerCount] = useState<number>(1);
+  const [fclCountInput, setFclCountInput] = useState<string>('1');
+  const [showSeaModeTip, setShowSeaModeTip] = useState(false);
   const [weightKg, setWeightKg] = useState('');
   const [cbmVolume, setCbmVolume] = useState('');
   const [distanceKm, setDistanceKm] = useState('');
@@ -780,6 +782,24 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
     if (!from || !to) return null;
     return Math.abs(from.distanceFromSanaa - to.distanceFromSanaa) + 50;
   })();
+
+  const updateFclCount = (n: number) => {
+    const safe = Math.max(1, Math.floor(Number.isFinite(n) ? n : 1));
+    setFclContainerCount(safe);
+    setFclCountInput(String(safe));
+  };
+
+  const handleFclCountChange = (raw: string) => {
+    if (raw === '') {
+      setFclCountInput('');
+      return;
+    }
+    const n = Math.floor(Number(raw));
+    if (!Number.isFinite(n)) return;
+    const safe = Math.max(1, n);
+    setFclContainerCount(safe);
+    setFclCountInput(String(safe));
+  };
 
   const calculate = () => {
     const weight = parseFloat(weightKg) || 0;
@@ -903,6 +923,7 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
     setAirOriginAirport('');
     setAirDestAirport('');
     setFclContainerCount(1);
+    setFclCountInput('1');
   };
 
   const saveRates = async () => {
@@ -933,6 +954,14 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
     if (isIntlLand) return (parseFloat(distanceKm) || 0) > 0;
     return false;
   })();
+
+  // Auto-recalculate FCL total when container count or type changes after a result exists
+  useEffect(() => {
+    if (isSea && seaShippingMode === 'fcl' && calculated && canCalculate) {
+      calculate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fclContainerCount, fclContainerType]);
 
   return (
     <div className="space-y-6">
@@ -1108,28 +1137,32 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
       {/* Sea Shipping Mode Toggle (LCL / FCL) — shown only for international_sea */}
       {isSea && (
         <div>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">نمط الشحن البحري / Sea Shipping Mode</p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="flex items-center gap-2 mb-2 relative">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">نمط الشحن البحري / Sea Shipping Mode</p>
             <button
-              onClick={() => { setSeaShippingMode('lcl'); setResult(null); setCalculated(false); }}
-              className={`p-3 rounded-xl border text-left transition-all ${seaShippingMode === 'lcl' ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-border bg-background hover:border-primary/40'}`}
+              type="button"
+              aria-label="معلومات عن أنماط الشحن البحري"
+              onClick={() => setShowSeaModeTip(v => !v)}
+              onMouseEnter={() => setShowSeaModeTip(true)}
+              onMouseLeave={() => setShowSeaModeTip(false)}
+              className="text-muted-foreground hover:text-primary transition-colors"
             >
-              <div className="flex items-center gap-2 mb-1">
-                <Icon name="CubeIcon" size={16} className={seaShippingMode === 'lcl' ? 'text-primary' : 'text-muted-foreground'} />
-                <p className={`text-xs font-bold ${seaShippingMode === 'lcl' ? 'text-primary' : 'text-foreground'}`}>LCL — شحن مجزأ</p>
-              </div>
-              <p className="text-[10px] text-muted-foreground">Shared Cargo — يُحسب بالطن و CBM</p>
+              <Icon name="InformationCircleIcon" size={16} />
             </button>
-            <button
-              onClick={() => { setSeaShippingMode('fcl'); setResult(null); setCalculated(false); }}
-              className={`p-3 rounded-xl border text-left transition-all ${seaShippingMode === 'fcl' ? 'border-cyan-600 bg-cyan-50 ring-2 ring-cyan-200' : 'border-border bg-background hover:border-cyan-400/60'}`}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <Icon name="RectangleStackIcon" size={16} className={seaShippingMode === 'fcl' ? 'text-cyan-600' : 'text-muted-foreground'} />
-                <p className={`text-xs font-bold ${seaShippingMode === 'fcl' ? 'text-cyan-700' : 'text-foreground'}`}>FCL — حاوية كاملة</p>
+            {showSeaModeTip && (
+              <div
+                role="tooltip"
+                dir="rtl"
+                className="absolute z-50 top-full right-0 mt-2 w-72 max-w-[90vw] bg-slate-900 text-white text-xs rounded-xl shadow-xl p-3 space-y-2 normal-case tracking-normal"
+              >
+                <p>
+                  <span className="font-bold text-cyan-300">FCL (حاوية كاملة):</span> حجز حاوية خاصة ومستقلة بالكامل لشحنتك (20 قدم / 40 قدم / 40HQ).
+                </p>
+                <p>
+                  <span className="font-bold text-amber-300">LCL (شحن مجزأ):</span> شحن مشترك مع بضائع أخرى داخل نفس الحاوية ويُحاسب على الحجم (CBM) أو الوزن.
+                </p>
               </div>
-              <p className="text-[10px] text-muted-foreground">Full Container Load — سعر الحاوية الكاملة</p>
-            </button>
+            )}
           </div>
         </div>
       )}
@@ -1322,13 +1355,33 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
                   <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
                     عدد الحاويات / Container Count <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="number" min="1" step="1"
-                    value={fclContainerCount}
-                    onChange={e => { setFclContainerCount(Math.max(1, parseInt(e.target.value) || 1)); setResult(null); }}
-                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-cyan-300"
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-1">الافتراضي: 1 حاوية</p>
+                  <div className="flex items-stretch gap-2">
+                    <button
+                      type="button"
+                      aria-label="إنقاص عدد الحاويات"
+                      onClick={() => updateFclCount(fclContainerCount - 1)}
+                      disabled={fclContainerCount <= 1}
+                      className="w-11 shrink-0 rounded-xl border border-border bg-background text-lg font-bold text-foreground hover:border-cyan-400 disabled:opacity-40 transition-colors"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number" inputMode="numeric" min="1" step="1"
+                      value={fclCountInput}
+                      onChange={e => handleFclCountChange(e.target.value)}
+                      onBlur={() => { if (fclCountInput === '' || Number(fclCountInput) < 1) updateFclCount(1); }}
+                      className="w-full min-w-0 px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-center font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-300"
+                    />
+                    <button
+                      type="button"
+                      aria-label="زيادة عدد الحاويات"
+                      onClick={() => updateFclCount(fclContainerCount + 1)}
+                      className="w-11 shrink-0 rounded-xl border border-border bg-background text-lg font-bold text-foreground hover:border-cyan-400 transition-colors"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">الافتراضي: 1 حاوية — الإجمالي = (سعر الحاوية × العدد) + رسوم الوثائق</p>
                 </div>
               </>
             )}
@@ -1624,6 +1677,20 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
           </button>
         )}
       </div>
+
+      {/* Special cargo note */}
+      {isSea && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800" dir="rtl">
+          هل لديك بضائع صب/سائبة (Bulk)، معدات عملاقة (Breakbulk)، أو مركبات (Ro-Ro)؟{' '}
+          <button
+            type="button"
+            onClick={() => onRequestSpecialQuote?.()}
+            className="font-bold text-amber-900 underline hover:text-amber-700"
+          >
+            [اضغط هنا لطلب تسعير خاص من الإدارة]
+          </button>
+        </div>
+      )}
 
       {/* Result */}
       {result && (
@@ -5415,7 +5482,7 @@ export default function LogisticsDashboardPage() {
             <ConversationsTab partnerId={partner.id} userId={user!.id} />
           )}
           {activeTab === 'calculator' && (
-            <ShippingCalculatorTab partner={partner} />
+            <ShippingCalculatorTab partner={partner} onRequestSpecialQuote={() => setActiveTab('admin_messaging')} />
           )}
           {activeTab === 'profile' && (
             <ProfileTab partner={partner} onSaved={updated => setPartner(updated)} />
