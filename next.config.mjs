@@ -1,5 +1,15 @@
 import { imageHosts } from './image-hosts.config.mjs';
 
+const siteUrlHost = (() => {
+  try {
+    return process.env.NEXT_PUBLIC_SITE_URL
+      ? new URL(process.env.NEXT_PUBLIC_SITE_URL).hostname
+      : null;
+  } catch {
+    return null;
+  }
+})();
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   productionBrowserSourceMaps: true,
@@ -10,15 +20,20 @@ const nextConfig = {
     '*.localhost',
     'dhiwise.com',
     '*.dhiwise.com',
+    '*.*.dhiwise.com',
     'dhiwise.dev',
     '*.dhiwise.dev',
+    '*.*.dhiwise.dev',
     'direct-hub.net',
     '*.direct-hub.net',
     'rocket.new',
     '*.rocket.new',
+    '*.*.rocket.new',
     'builtwithrocket.new',
     '*.builtwithrocket.new',
+    '*.*.builtwithrocket.new',
     '*.vercel.app',
+    ...(siteUrlHost ? [siteUrlHost] : []),
   ],
   typescript: {
     ignoreBuildErrors: true,
