@@ -4,6 +4,15 @@ import { imageHosts } from './image-hosts.config.mjs';
 const nextConfig = {
   productionBrowserSourceMaps: true,
   distDir: process.env.DIST_DIR || '.next',
+  allowedDevOrigins: [
+    'direct-hub.net',
+    '*.direct-hub.net',
+    '*.rocket.new',
+    '*.rocket.dev',
+    '*.vercel.app',
+    'localhost',
+    '127.0.0.1',
+  ],
   typescript: {
     ignoreBuildErrors: true,
   },
