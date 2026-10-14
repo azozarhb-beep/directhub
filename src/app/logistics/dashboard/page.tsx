@@ -4581,9 +4581,11 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
 function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; userId: string }) {
   const supabase = createClient();
   const [convId, setConvId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<{ id: string; sender_role: string; message: string; created_at: string; attachment_url?: string | null }[]>([]);
+  const [messages, setMessages] = useState<{ id: string; sender_role: string; message: string; created_at: string; attachment_url?: string | null; attachment_name?: string | null; attachment_type?: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
@@ -4613,7 +4615,7 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
         // Load messages
         const { data: msgs } = await supabase
           .from('admin_messages')
-          .select('id, sender_role, message, created_at, attachment_url')
+          .select('id, sender_role, message, created_at, attachment_url, attachment_name, attachment_type')
           .eq('conversation_id', existing[0].id)
           .order('created_at', { ascending: true });
         setMessages(msgs || []);
@@ -4627,22 +4629,27 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
         return;
       }
 
-      // No existing conversation — find admin user to create one
-      // Get admin user from auth metadata
-      const { data: adminProfiles } = await supabase
-        .from('user_profiles')
-        .select('id, full_name, company_name')
-        .eq('role', 'admin')
-        .limit(1);
+      // No existing conversation — resolve admin id via SECURITY DEFINER RPC (bypasses user_profiles RLS)
+      let adminId: string | null = null;
+      const { data: rpcAdminId } = await supabase.rpc('get_primary_admin_id');
+      if (rpcAdminId) {
+        adminId = rpcAdminId as string;
+      } else {
+        const { data: adminProfiles } = await supabase
+          .from('user_profiles')
+          .select('id')
+          .eq('role', 'admin')
+          .limit(1);
+        adminId = adminProfiles?.[0]?.id ?? null;
+      }
 
-      if (!adminProfiles || adminProfiles.length === 0) {
-        // Try to find admin via platform_settings
-        setError('تعذّر الاتصال بالإدارة. يرجى المحاولة لاحقاً.');
+      if (!adminId) {
+        setError('تعذّر فتح غرفة المحادثة. يرجى المحاولة لاحقاً.');
         setLoading(false);
         return;
       }
 
-      const adminUser = adminProfiles[0];
+      const adminUser = { id: adminId };
 
       // Get partner info for the conversation
       const { data: partnerData } = await supabase
@@ -4660,7 +4667,7 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
       const { data: newConv, error: convErr } = await supabase
         .from('admin_conversations')
         .insert({
-          admin_id: adminUser.id,
+          admin_id: adminId,
           participant_id: userId,
           participant_role: 'logistics_partner',
           participant_name: myProfile?.full_name || partnerData?.contact_name || 'شريك لوجستي',
@@ -4701,7 +4708,7 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
         table: 'admin_messages',
         filter: `conversation_id=eq.${convId}`,
       }, (payload) => {
-        const newMsg = payload.new as { id: string; sender_role: string; message: string; created_at: string; attachment_url?: string | null };
+        const newMsg = payload.new as { id: string; sender_role: string; message: string; created_at: string; attachment_url?: string | null; attachment_name?: string | null; attachment_type?: string | null };
         setMessages(prev => {
           const exists = prev.some(m => m.id === newMsg.id);
           if (exists) return prev;
@@ -4728,6 +4735,54 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
     return () => { supabase.removeChannel(channel); };
   }, [convId, supabase]);
 
+  const handleAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (e.target) e.target.value = '';
+    if (!file || !convId) return;
+    if (file.size > 25 * 1024 * 1024) {
+      setError('حجم الملف يتجاوز 25 ميجابايت.');
+      return;
+    }
+    setUploading(true);
+    setError('');
+    try {
+      const ext = file.name.split('.').pop() || 'bin';
+      const path = `${userId}/admin-chat/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('chat-media').upload(path, file, { contentType: file.type, upsert: false });
+      if (upErr) {
+        setError('فشل رفع المرفق. يرجى المحاولة مجدداً.');
+        return;
+      }
+      const { data: pub } = supabase.storage.from('chat-media').getPublicUrl(path);
+      const { data: msg, error: msgErr } = await supabase
+        .from('admin_messages')
+        .insert({
+          conversation_id: convId,
+          sender_id: userId,
+          sender_role: 'participant',
+          message: file.name,
+          msg_type: file.type.startsWith('image/') ? 'image' : 'file',
+          attachment_url: pub.publicUrl,
+          attachment_name: file.name,
+          attachment_type: file.type,
+          is_read_by_admin: false,
+          is_read_by_participant: true,
+        })
+        .select('id, sender_role, message, created_at, attachment_url, attachment_name, attachment_type')
+        .single();
+      if (!msgErr && msg) {
+        setMessages(prev => (prev.some(m => m.id === msg.id) ? prev : [...prev, msg]));
+        scrollToBottom();
+      } else {
+        setError('فشل إرسال المرفق.');
+      }
+    } catch {
+      setError('حدث خطأ أثناء رفع المرفق.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleSend = async () => {
     const text = input.trim();
     if (!text || !convId) return;
@@ -4745,7 +4800,7 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
           is_read_by_admin: false,
           is_read_by_participant: true,
         })
-        .select('id, sender_role, message, created_at, attachment_url')
+        .select('id, sender_role, message, created_at, attachment_url, attachment_name, attachment_type')
         .single();
 
       if (!msgErr && msg) {
@@ -4777,7 +4832,7 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
       <div className="flex items-center justify-center py-20">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-slate-400">جارٍ الاتصال بالإدارة...</p>
+          <p className="text-sm text-slate-400">جارٍ فتح غرفة المحادثة...</p>
         </div>
       </div>
     );
@@ -4806,13 +4861,13 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
       <div className="bg-gradient-to-r from-cyan-800 to-cyan-900 px-5 py-4 border-b border-cyan-700/50">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center border border-white/30">
-            <Icon name="BuildingOfficeIcon" size={20} className="text-white" />
+            <Icon name="ChatBubbleLeftRightIcon" size={20} className="text-white" />
           </div>
           <div className="flex-1">
             <h3 className="font-bold text-white text-sm">مراسلة الإدارة العامة / الدعم التشغيلي</h3>
             <div className="flex items-center gap-2 mt-0.5">
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <p className="text-cyan-200 text-xs">متصل · Direct Line to Admin</p>
+              <p className="text-cyan-200 text-xs">محادثة كتابية مباشرة مع الإدارة</p>
             </div>
           </div>
           {unreadCount > 0 && (
@@ -4855,6 +4910,19 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
                         ? 'bg-cyan-700 text-white rounded-bl-sm' :'bg-slate-700 text-slate-100 rounded-br-sm border border-slate-600'
                     }`}>
                       <p className="leading-relaxed whitespace-pre-wrap">{msg.message}</p>
+                      {msg.attachment_url && (
+                        msg.attachment_type?.startsWith('image/') ? (
+                          <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={msg.attachment_url} alt={msg.attachment_name || 'مرفق صورة'} className="mt-2 rounded-lg max-h-48 object-cover" />
+                          </a>
+                        ) : (
+                          <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="mt-2 flex items-center gap-2 text-xs underline">
+                            <Icon name="PaperClipIcon" size={14} />
+                            {msg.attachment_name || 'عرض المرفق'}
+                          </a>
+                        )
+                      )}
                     </div>
                     <span className="text-[10px] text-slate-500 px-1">
                       {new Date(msg.created_at).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}
@@ -4878,6 +4946,13 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
       {/* Input */}
       <div className="px-4 py-3 border-t border-slate-700 bg-slate-800 shrink-0">
         <div className="flex gap-2 items-center">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf,video/mp4"
+            onChange={handleAttachment}
+            className="hidden"
+          />
           <button
             onClick={handleSend}
             disabled={sending || !input.trim()}
@@ -4889,15 +4964,19 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
               <Icon name="PaperAirplaneIcon" size={16} />
             )}
           </button>
-          <input
-            type="text"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="اكتب رسالتك للإدارة..."
-            className="flex-1 h-10 px-4 rounded-xl border border-slate-600 bg-slate-700 text-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500"
-            dir="rtl"
-          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading || !convId}
+            title="إرفاق ملف"
+            className="w-10 h-10 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl disabled:opacity-50 transition-colors flex items-center justify-center shrink-0"
+          >
+            {uploading ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Icon name="PaperClipIcon" size={16} />
+            )}
+          </button>
         </div>
         <p className="text-[10px] text-slate-500 mt-1.5 text-center">
           رسائلك تصل مباشرة إلى لوحة تحكم الإدارة مع إشعار فوري
@@ -5235,7 +5314,7 @@ export default function LogisticsDashboardPage() {
       key: 'admin_support',
       label: 'التواصل مع الإدارة',
       tabs: [
-        { key: 'admin_messaging', label: '📞 مراسلة الإدارة العامة / الدعم التشغيلي', icon: 'BuildingOfficeIcon' },
+        { key: 'admin_messaging', label: '💬 مراسلة الإدارة العامة / الدعم التشغيلي', icon: 'ChatBubbleLeftRightIcon' },
       ]
     }
   ];
