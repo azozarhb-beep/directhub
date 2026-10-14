@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 import {
   uploadLogisticsFile,
-  LOGISTICS_FILE_ACCEPT,
   LOGISTICS_MAX_FILE_BYTES,
   LOGISTICS_UPLOAD_BUCKET,
 } from '@/lib/logisticsUpload';
@@ -91,15 +90,21 @@ function UploadModal({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
+    // Reset so the same file can be re-selected (same as the working admin chat)
+    if (e.target) e.target.value = '';
     if (!f) return;
     if (f.size > LOGISTICS_MAX_FILE_BYTES) {
       setError('حجم الملف يتجاوز الحد المسموح (25 MB)');
-      e.target.value = '';
       return;
     }
     setFile(f);
     setPreviewUrl(isImageFile(f) ? URL.createObjectURL(f) : null);
     setError(null);
+  };
+
+  const clearFile = () => {
+    setFile(null);
+    setPreviewUrl(null);
   };
 
   const handleUpload = async () => {
@@ -210,7 +215,7 @@ function UploadModal({
             />
           </div>
 
-          {/* File Upload */}
+          {/* File Upload — same paperclip button + input pattern as the admin support chat */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">
               الملف <span className="text-red-400">*</span>
@@ -218,51 +223,59 @@ function UploadModal({
             <input
               ref={fileInputRef}
               type="file"
-              accept={LOGISTICS_FILE_ACCEPT}
+              accept="image/*,application/pdf"
               onChange={handleFileChange}
               className="hidden"
             />
             <div
-              role="button"
-              tabIndex={0}
-              onClick={() => !uploading && fileInputRef.current?.click()}
-              onKeyDown={e => {
-                if ((e.key === 'Enter' || e.key === ' ') && !uploading) {
-                  e.preventDefault();
-                  fileInputRef.current?.click();
-                }
-              }}
-              className={`w-full border-2 border-dashed rounded-xl p-4 text-center transition-colors cursor-pointer ${
-                file
-                  ? 'border-cyan-500 bg-cyan-500/10' :'border-slate-600 hover:border-slate-500 bg-slate-800/50'
+              className={`w-full border-2 border-dashed rounded-xl p-3 transition-colors ${
+                file ? 'border-cyan-500 bg-cyan-500/10' : 'border-slate-600 bg-slate-800/50'
               }`}
             >
-              {file ? (
-                <div className="space-y-3">
-                  {previewUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={previewUrl}
-                      alt={`معاينة الملف المحدد ${file.name}`}
-                      className="mx-auto max-h-40 rounded-lg object-contain border border-slate-700"
-                    />
-                  )}
-                  <div className="flex items-center justify-center gap-2">
-                    <Icon name="DocumentCheckIcon" size={18} className="text-cyan-400 shrink-0" />
-                    <div className="text-right min-w-0">
-                      <p className="text-sm font-semibold text-cyan-300 truncate max-w-[220px]" title={file.name}>{file.name}</p>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  title="إرفاق ملف"
+                  aria-label="إرفاق ملف"
+                  className="w-10 h-10 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl disabled:opacity-50 transition-colors flex items-center justify-center shrink-0"
+                >
+                  <Icon name="PaperClipIcon" size={16} />
+                </button>
+
+                {file ? (
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {previewUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={previewUrl}
+                        alt={`معاينة الملف المحدد ${file.name}`}
+                        className="w-10 h-10 rounded-lg object-cover border border-slate-700 shrink-0"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1 text-right">
+                      <p className="text-sm font-semibold text-cyan-300 truncate" title={file.name}>{file.name}</p>
                       <p className="text-xs text-slate-400">{formatFileSize(file.size)}</p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={clearFile}
+                      disabled={uploading}
+                      title="إزالة الملف"
+                      aria-label="إزالة الملف"
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-700 transition-colors shrink-0 disabled:opacity-50"
+                    >
+                      <Icon name="XMarkIcon" size={14} />
+                    </button>
                   </div>
-                  <p className="text-xs text-slate-500">اضغط لتغيير الملف</p>
-                </div>
-              ) : (
-                <div>
-                  <Icon name="ArrowUpTrayIcon" size={24} className="text-slate-500 mx-auto mb-2" />
-                  <p className="text-sm text-slate-400">اضغط لاختيار الملف</p>
-                  <p className="text-xs text-slate-500 mt-1">PDF, JPG, PNG, WEBP — حتى 25 MB</p>
-                </div>
-              )}
+                ) : (
+                  <div className="flex-1 text-right min-w-0">
+                    <p className="text-sm text-slate-300">اضغط على 📎 لاختيار صورة أو ملف PDF</p>
+                    <p className="text-xs text-slate-500 mt-0.5">PDF, JPG, PNG, WEBP — حتى 25 MB</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
