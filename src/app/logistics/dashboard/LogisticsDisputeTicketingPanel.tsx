@@ -33,7 +33,18 @@ interface DisputeTicket {
   created_at: string;
   updated_at: string;
   orders?: { order_number: string | null; total: number } | null;
-  logistics_shipments?: { shipment_number: string | null } | null;
+  logistics_shipments?: { tracking_number: string | null; bl_number: string | null } | null;
+}
+
+interface ActiveShipmentOption {
+  id: string;
+  order_id: string | null;
+  tracking_number: string | null;
+  bl_number: string | null;
+  transport_type: string | null;
+  route_origin_port: string | null;
+  route_destination_port: string | null;
+  shipment_status: string | null;
 }
 
 interface LogisticsDisputeTicketingPanelProps {
@@ -54,6 +65,8 @@ const DISPUTE_REASONS = [
   { value: 'missing_items',      label: 'بضاعة مفقودة',             icon: '🔍' },
   { value: 'other',              label: 'سبب آخر',                  icon: '📋' },
 ];
+
+const ACTIVE_SHIPMENT_STATUSES = ['pending', 'picked_up', 'in_transit', 'arrived_at_hub', 'out_for_delivery'];
 
 const STATUS_META: Record<string, { label: string; color: string; icon: string }> = {
   open:                        { label: 'مفتوح',                    color: 'bg-red-50 text-red-700 border-red-200',         icon: 'ExclamationCircleIcon' },
@@ -92,65 +105,114 @@ function OpenDisputeForm({
   const [otherReason, setOtherReason] = useState('');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState(disputedAmount ? String(disputedAmount) : '');
-  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [activeShipments, setActiveShipments] = useState<ActiveShipmentOption[]>([]);
+  const [loadingShipments, setLoadingShipments] = useState(true);
+  const [selectedShipmentId, setSelectedShipmentId] = useState<string>(shipmentId || '');
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadShipments = async () => {
+      setLoadingShipments(true);
+      const { data } = await supabase
+        .from('logistics_shipments')
+        .select('id, order_id, tracking_number, bl_number, transport_type, route_origin_port, route_destination_port, shipment_status')
+        .eq('logistics_partner_id', partnerId)
+        .in('shipment_status', ACTIVE_SHIPMENT_STATUSES)
+        .order('created_at', { ascending: false });
+      if (!cancelled) {
+        setActiveShipments((data as ActiveShipmentOption[]) || []);
+        setLoadingShipments(false);
+      }
+    };
+    loadShipments();
+    return () => { cancelled = true; };
+  }, [partnerId]);
+
+  const selectedShipment = activeShipments.find(s => s.id === selectedShipmentId) || null;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) setEvidenceFile(file);
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) setEvidenceFiles(prev => [...prev, ...files]);
+    e.target.value = '';
+  };
+
+  const removeFile = (index: number) => {
+    setEvidenceFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async () => {
+    if (!selectedShipmentId) { toast.error('يرجى اختيار الشحنة المتنازع عليها'); return; }
     if (!reason) { toast.error('يرجى اختيار سبب النزاع'); return; }
     if (!description.trim()) { toast.error('يرجى كتابة وصف النزاع'); return; }
 
     setSubmitting(true);
-    let evidenceUrl: string | null = null;
-    let evidenceFilename: string | null = null;
+    const effectiveOrderId = selectedShipment?.order_id || orderId || null;
 
     try {
-      // Upload evidence if provided
-      if (evidenceFile) {
-        const ext = evidenceFile.name.split('.').pop();
-        const path = `dispute-evidence/${partnerId}/${Date.now()}.${ext}`;
-        const { data: uploadData } = await supabase.storage
+      // Upload evidence files to storage first
+      const uploaded: { name: string; url: string; path: string; type: string; size: number }[] = [];
+      for (const file of evidenceFiles) {
+        const ext = file.name.split('.').pop() || 'bin';
+        const path = `${partnerId}/dispute-evidence/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error: uploadErr } = await supabase.storage
           .from('chat-attachments')
-          .upload(path, evidenceFile, { upsert: true });
-        if (uploadData) {
-          const { data: urlData } = supabase.storage.from('chat-attachments').getPublicUrl(path);
-          evidenceUrl = urlData.publicUrl;
-          evidenceFilename = evidenceFile.name;
-        }
+          .upload(path, file, { upsert: true, contentType: file.type || undefined });
+        if (uploadErr) throw new Error(`فشل رفع الملف "${file.name}": ${uploadErr.message}`);
+        const { data: urlData } = supabase.storage.from('chat-attachments').getPublicUrl(path);
+        uploaded.push({ name: file.name, url: urlData.publicUrl, path, type: file.type, size: file.size });
       }
 
       // Insert dispute ticket
-      const { error } = await supabase.from('logistics_dispute_tickets').insert({
-        shipment_id: shipmentId || null,
-        order_id: orderId || null,
-        partner_id: partnerId,
-        buyer_id: buyerId || null,
-        opened_by: openedBy,
-        opened_by_user_id: userId,
-        dispute_reason: reason,
-        dispute_reason_other: reason === 'other' ? otherReason : null,
-        description,
-        evidence_url: evidenceUrl,
-        evidence_filename: evidenceFilename,
-        disputed_amount: amount ? parseFloat(amount) : null,
-        currency: 'USD',
-        escrow_frozen: true,
-        escrow_frozen_at: new Date().toISOString(),
-        status: 'open',
-      });
+      const { data: ticket, error } = await supabase
+        .from('logistics_dispute_tickets')
+        .insert({
+          shipment_id: selectedShipmentId,
+          order_id: effectiveOrderId,
+          partner_id: partnerId,
+          buyer_id: buyerId || null,
+          opened_by: openedBy,
+          opened_by_user_id: userId,
+          dispute_reason: reason,
+          dispute_reason_other: reason === 'other' ? otherReason : null,
+          description,
+          evidence_url: uploaded[0]?.url || null,
+          evidence_filename: uploaded[0]?.name || null,
+          disputed_amount: amount ? parseFloat(amount) : null,
+          currency: 'USD',
+          escrow_frozen: true,
+          escrow_frozen_at: new Date().toISOString(),
+          status: 'open',
+        })
+        .select('id')
+        .single();
 
       if (error) throw error;
 
-      // Freeze escrow if order_id exists
-      if (orderId) {
+      // Save every evidence file in dispute_attachments
+      if (ticket?.id && uploaded.length > 0) {
+        const { error: attErr } = await supabase.from('dispute_attachments').insert(
+          uploaded.map(u => ({
+            dispute_id: ticket.id,
+            partner_id: partnerId,
+            uploaded_by: userId,
+            file_name: u.name,
+            file_url: u.url,
+            storage_path: u.path,
+            file_type: u.type || null,
+            file_size: u.size,
+          }))
+        );
+        if (attErr) toast.error(`تم فتح النزاع لكن فشل حفظ المرفقات: ${attErr.message}`);
+      }
+
+      // Freeze escrow for the order linked to the selected shipment
+      if (effectiveOrderId) {
         await supabase
           .from('orders')
           .update({ status: 'disputed', updated_at: new Date().toISOString() })
-          .eq('id', orderId);
+          .eq('id', effectiveOrderId);
       }
 
       // Notify admin
@@ -160,7 +222,7 @@ function OpenDisputeForm({
         title: '🚨 نزاع لوجستي جديد',
         body: `تم فتح تذكرة نزاع جديدة — السبب: ${DISPUTE_REASONS.find(r => r.value === reason)?.label || reason}`,
         is_read: false,
-        metadata: { partner_id: partnerId, order_id: orderId, opened_by: openedBy },
+        metadata: { partner_id: partnerId, order_id: effectiveOrderId, shipment_id: selectedShipmentId, opened_by: openedBy },
       });
 
       toast.success('تم فتح تذكرة النزاع وتجميد مبلغ الضمان (Escrow) بنجاح');
@@ -183,6 +245,33 @@ function OpenDisputeForm({
             بمجرد فتح النزاع، سيتم تجميد مبلغ الشحنة في محفظة الضمان (Escrow) تلقائياً حتى يتم حسم النزاع من قِبل الإدارة.
           </p>
         </div>
+      </div>
+
+      {/* Shipment selector */}
+      <div>
+        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+          اختر الشحنة المتنازع عليها * (Select Shipment / B/L)
+        </label>
+        <select
+          value={selectedShipmentId}
+          onChange={e => setSelectedShipmentId(e.target.value)}
+          disabled={loadingShipments}
+          className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-red-500 disabled:opacity-60"
+        >
+          <option value="">
+            {loadingShipments ? 'جاري تحميل الشحنات...' : activeShipments.length === 0 ? 'لا توجد شحنات نشطة' : '— اختر الشحنة —'}
+          </option>
+          {activeShipments.map(s => (
+            <option key={s.id} value={s.id}>
+              {s.tracking_number || 'بدون رقم'}
+              {s.bl_number ? ` • B/L: ${s.bl_number}` : ''}
+              {s.route_origin_port || s.route_destination_port ? ` • ${s.route_origin_port || '—'} → ${s.route_destination_port || '—'}` : ''}
+            </option>
+          ))}
+        </select>
+        <p className="text-[10px] text-slate-500 mt-1">
+          سيتم تجميد الضمان المالي (Escrow Freeze) المرتبط بالشحنة المختارة.
+        </p>
       </div>
 
       {/* Reason */}
@@ -250,15 +339,40 @@ function OpenDisputeForm({
       {/* Evidence Upload */}
       <div>
         <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-          رفع دليل / إثبات (اختياري)
+          رفع دليل / إثبات (صور الضرر ومستندات الفحص) — اختياري
         </label>
         <label className="flex items-center gap-3 px-4 py-3 border border-dashed border-slate-700 rounded-xl cursor-pointer hover:border-red-500/50 transition-colors bg-slate-800/50">
           <Icon name="PaperClipIcon" size={18} className="text-slate-500" />
           <span className="text-xs text-slate-400">
-            {evidenceFile ? evidenceFile.name : 'صورة أو مستند PDF'}
+            {evidenceFiles.length > 0 ? `إضافة ملفات أخرى (${evidenceFiles.length} مختار)` : 'صورة أو مستند PDF'}
           </span>
-          <input type="file" accept="image/*,.pdf" onChange={handleFileChange} className="hidden" />
+          <input
+            type="file"
+            accept="image/*,.pdf"
+            multiple
+            onChange={handleFileChange}
+            className="hidden"
+          />
         </label>
+        {evidenceFiles.length > 0 && (
+          <ul className="mt-2 space-y-1.5">
+            {evidenceFiles.map((f, i) => (
+              <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-2 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg">
+                <span className="text-xs text-slate-300 truncate">
+                  {f.name} <span className="text-slate-500">({(f.size / 1024).toFixed(0)} KB)</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeFile(i)}
+                  className="text-slate-500 hover:text-red-400 shrink-0"
+                  aria-label="إزالة الملف"
+                >
+                  <Icon name="XMarkIcon" size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* Actions */}
@@ -271,7 +385,7 @@ function OpenDisputeForm({
         </button>
         <button
           onClick={handleSubmit}
-          disabled={submitting || !reason || !description.trim()}
+          disabled={submitting || !selectedShipmentId || !reason || !description.trim()}
           className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
         >
           {submitting ? (
@@ -321,6 +435,12 @@ function DisputeList({ tickets }: { tickets: DisputeTicket[] }) {
                   )}
                 </div>
                 <p className="text-sm font-semibold text-white mt-1.5">{reasonLabel}</p>
+                {(ticket.logistics_shipments?.tracking_number || ticket.logistics_shipments?.bl_number) && (
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    {ticket.logistics_shipments?.tracking_number || ''}
+                    {ticket.logistics_shipments?.bl_number ? ` • B/L: ${ticket.logistics_shipments.bl_number}` : ''}
+                  </p>
+                )}
                 <p className="text-xs text-slate-400 mt-0.5 line-clamp-2">{ticket.description}</p>
               </div>
               {ticket.disputed_amount && (
@@ -381,7 +501,7 @@ export default function LogisticsDisputeTicketingPanel({
         .select(`
           *,
           orders(order_number, total),
-          logistics_shipments(shipment_number)
+          logistics_shipments(tracking_number, bl_number)
         `)
         .eq('partner_id', partnerId)
         .order('created_at', { ascending: false });

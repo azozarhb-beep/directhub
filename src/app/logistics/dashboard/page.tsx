@@ -3918,11 +3918,11 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
     setLoading(true);
     const { data } = await supabase
       .from('logistics_shipments')
-      .select('id, tracking_number, bl_number, transport_type, origin_address, destination_address, route_origin_port, route_destination_port, shipment_status, etd, estimated_delivery, document_url, carrier_name, notes, created_at, updated_at')
+      .select('id, tracking_number, bl_number, transport_type, shipment_status, estimated_delivery, order_id, route_origin_port, route_destination_port, origin_address, destination_address')
       .eq('logistics_partner_id', partnerId)
+      .in('shipment_status', ['pending', 'picked_up', 'in_transit', 'arrived_at_hub', 'out_for_delivery'])
       .order('created_at', { ascending: false });
-    setShipments((data as IntlShipment[]) || []);
-    setLoading(false);
+    setShipments(data || []);
   }, [partnerId, supabase]);
 
   useEffect(() => { fetchShipments(); }, [fetchShipments]);
@@ -5054,11 +5054,10 @@ function DisputesAndDelaysTab({ partnerId, userId }: { partnerId: string; userId
     try {
       const { data } = await supabase
         .from('logistics_shipments')
-        .select('id, shipment_number, status, estimated_arrival, order_id, origin_port, destination_port')
-        .eq('partner_id', partnerId)
-        .in('status', ['in_transit', 'customs_clearance', 'processing', 'shipped'])
-        .order('created_at', { ascending: false })
-        .limit(20);
+        .select('id, tracking_number, bl_number, transport_type, shipment_status, estimated_delivery, order_id, route_origin_port, route_destination_port, origin_address, destination_address')
+        .eq('logistics_partner_id', partnerId)
+        .in('shipment_status', ['pending', 'picked_up', 'in_transit', 'arrived_at_hub', 'out_for_delivery'])
+        .order('created_at', { ascending: false });
       setShipments(data || []);
     } catch {
       setShipments([]);
@@ -5158,47 +5157,64 @@ function DisputesAndDelaysTab({ partnerId, userId }: { partnerId: string; userId
                 <p className="text-slate-400 text-sm">لا توجد شحنات نشطة حالياً</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-slate-400 mb-2">اختر الشحنة المتأثرة:</p>
-                {shipments.map(shipment => (
-                  <div
-                    key={shipment.id}
-                    className={`flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-all ${
-                      selectedShipment?.id === shipment.id
-                        ? 'border-amber-500 bg-amber-500/10' :'border-slate-700 bg-slate-800 hover:border-slate-600'
-                    }`}
-                    onClick={() => setSelectedShipment(shipment)}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    اختر الشحنة الجارية (دولية / محلية) <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    value={selectedShipment?.id || ''}
+                    onChange={e => setSelectedShipment(shipments.find(s => s.id === e.target.value) || null)}
+                    className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500"
                   >
-                    <div>
-                      <p className="text-sm font-semibold text-white">
-                        {shipment.shipment_number ? `شحنة #${shipment.shipment_number}` : 'شحنة بدون رقم'}
+                    <option value="">— اختر الشحنة —</option>
+                    {shipments.map(shipment => {
+                      const isIntl = ['sea_fcl', 'sea_lcl', 'air'].includes(shipment.transport_type || '');
+                      const from = shipment.route_origin_port || shipment.origin_address || '—';
+                      const to = shipment.route_destination_port || shipment.destination_address || '—';
+                      return (
+                        <option key={shipment.id} value={shipment.id}>
+                          {isIntl ? '🌍' : '🚚'} {shipment.tracking_number || 'بدون رقم'}
+                          {shipment.bl_number ? ` • B/L: ${shipment.bl_number}` : ''} • {from} → {to}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {selectedShipment && (
+                  <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-amber-500/40 bg-amber-500/10">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">
+                        {selectedShipment.tracking_number || 'شحنة بدون رقم'}
                       </p>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        {shipment.origin_port || '—'} → {shipment.destination_port || '—'}
+                      <p className="text-xs text-slate-400 mt-0.5 truncate">
+                        {selectedShipment.route_origin_port || selectedShipment.origin_address || '—'} → {selectedShipment.route_destination_port || selectedShipment.destination_address || '—'}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right shrink-0">
                       <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                        {shipment.status}
+                        {selectedShipment.shipment_status}
                       </span>
-                      {shipment.estimated_arrival && (
-                        <p className="text-[10px] text-slate-500 mt-1">
-                          ETA: {new Date(shipment.estimated_arrival).toLocaleDateString('ar-SA')}
+                      {selectedShipment.estimated_delivery && (
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          ETA الحالي: {new Date(selectedShipment.estimated_delivery).toLocaleDateString('ar-SA')}
                         </p>
                       )}
                     </div>
                   </div>
-                ))}
+                )}
+
                 <button
                   onClick={() => {
                     if (!selectedShipment) { toast.error('يرجى اختيار شحنة أولاً'); return; }
                     setShowDelayModal(true);
                   }}
                   disabled={!selectedShipment}
-                  className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold disabled:opacity-40 transition-colors"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold disabled:opacity-40 transition-colors"
                 >
                   <Icon name="ExclamationTriangleIcon" size={16} />
-                  تسجيل تأخير للشحنة المحددة
+                  تحديث ETA وملاحظة التأخير
                 </button>
               </div>
             )}
@@ -5256,7 +5272,7 @@ function DisputesAndDelaysTab({ partnerId, userId }: { partnerId: string; userId
           partnerId={partnerId}
           userId={userId}
           onClose={() => setShowDelayModal(false)}
-          onSubmitted={() => { fetchDelays(); fetchShipments(); }}
+          onSubmitted={() => { setSelectedShipment(null); fetchDelays(); fetchShipments(); }}
         />
       )}
     </div>

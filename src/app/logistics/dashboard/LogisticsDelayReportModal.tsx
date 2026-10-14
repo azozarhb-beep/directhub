@@ -10,9 +10,10 @@ import toast from 'react-hot-toast';
 interface LogisticsShipment {
   id: string;
   order_id?: string | null;
-  shipment_number?: string | null;
-  status?: string;
-  estimated_arrival?: string | null;
+  tracking_number?: string | null;
+  bl_number?: string | null;
+  shipment_status?: string;
+  estimated_delivery?: string | null;
 }
 
 interface DelayReportModalProps {
@@ -84,8 +85,8 @@ export default function LogisticsDelayReportModal({
       // Upload proof file if provided
       if (proofFile) {
         setUploading(true);
-        const ext = proofFile.name.split('.').pop();
-        const path = `delay-proofs/${partnerId}/${Date.now()}.${ext}`;
+        const ext = proofFile.name.split('.').pop() || 'bin';
+        const path = `${partnerId}/delay-proofs/${Date.now()}.${ext}`;
         const { data: uploadData, error: uploadErr } = await supabase.storage
           .from('logistics-documents')
           .upload(path, proofFile, { upsert: true });
@@ -121,7 +122,7 @@ export default function LogisticsDelayReportModal({
           description: description || null,
           proof_url: proofUrl,
           proof_filename: proofFilename,
-          original_eta: shipment.estimated_arrival || null,
+          original_eta: shipment.estimated_delivery || null,
           updated_eta: new Date(updatedEta).toISOString(),
           customer_notified: false,
         });
@@ -132,7 +133,7 @@ export default function LogisticsDelayReportModal({
       await supabase
         .from('logistics_shipments')
         .update({
-          estimated_arrival: new Date(updatedEta).toISOString(),
+          estimated_delivery: new Date(updatedEta).toISOString(),
           updated_at: new Date().toISOString(),
         })
         .eq('id', shipment.id);
@@ -178,7 +179,7 @@ export default function LogisticsDelayReportModal({
             <div>
               <h3 className="font-bold text-white text-sm">الإبلاغ عن تأخير تشغيلي</h3>
               <p className="text-xs text-slate-400">
-                {shipment.shipment_number ? `شحنة #${shipment.shipment_number}` : 'تحديث حالة الشحنة'}
+                {shipment.tracking_number ? `شحنة #${shipment.tracking_number}` : 'تحديث حالة الشحنة'}
               </p>
             </div>
           </div>
@@ -233,7 +234,7 @@ export default function LogisticsDelayReportModal({
           {/* Description */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              تفاصيل إضافية (اختياري)
+              ملاحظة التأخير (اختياري)
             </label>
             <textarea
               value={description}
