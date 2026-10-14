@@ -45,6 +45,11 @@ interface TrackingOrder {
   warranty_notes: string | null;
   production_notes: string | null;
   logistics_partner_id: string | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  truck_plate?: string | null;
+  truck_type?: string | null;
+  dispatched_at?: string | null;
 }
 
 interface LogisticsPartner {
@@ -860,6 +865,46 @@ function OrderDetailPanel({ order, isFactory, onUpdateProduction }: {
 
       {/* Logistics Partner & Field Inspector Card */}
       <LogisticsInspectorCard order={order} />
+
+      {/* Assigned Driver & Truck (gate verification) */}
+      {order.driver_name && order.truck_plate && (
+        <div className="bg-cyan-50 border border-cyan-200 rounded-xl overflow-hidden" dir="rtl">
+          <div className="flex items-center gap-2.5 px-4 py-3 border-b border-cyan-200 bg-cyan-100/60">
+            <div className="w-8 h-8 rounded-lg bg-cyan-600 flex items-center justify-center shrink-0">
+              <Icon name="TruckIcon" size={15} className="text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-cyan-900">السائق والقاطرة المعيّنة</p>
+              <p className="text-[10px] text-cyan-700">للتحقق من هوية السائق عند بوابة المصنع</p>
+            </div>
+            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-cyan-200 text-cyan-800 border border-cyan-300 shrink-0">
+              في الطريق
+            </span>
+          </div>
+          <div className="px-4 py-3 grid grid-cols-1 gap-2">
+            <div className="flex items-center gap-2">
+              <Icon name="UserIcon" size={12} className="text-cyan-600 shrink-0" />
+              <span className="text-xs text-cyan-900 font-semibold">{order.driver_name}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Icon name="PhoneIcon" size={12} className="text-cyan-600 shrink-0" />
+              <a href={`tel:${order.driver_phone}`} dir="ltr" className="text-xs text-cyan-800 font-mono hover:underline">
+                {order.driver_phone}
+              </a>
+            </div>
+            <div className="flex items-center gap-2">
+              <Icon name="TruckIcon" size={12} className="text-cyan-600 shrink-0" />
+              <span className="text-xs text-cyan-900">
+                لوحة الشاحنة: <span className="font-mono font-bold">{order.truck_plate}</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Icon name="TagIcon" size={12} className="text-cyan-600 shrink-0" />
+              <span className="text-xs text-cyan-900">نوع القاطرة: <span className="font-semibold">{order.truck_type}</span></span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Shipping Info */}
       {(order.tracking_number || order.shipping_carrier) && (

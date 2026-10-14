@@ -37,6 +37,11 @@ interface IncomingShipment {
   currency: string | null;
   created_at: string;
   updated_at: string;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  truck_plate?: string | null;
+  truck_type?: string | null;
+  dispatched_at?: string | null;
   buyer?: { full_name: string; company_name: string | null };
   partner?: { company_name: string; partner_type: string };
 }
@@ -104,6 +109,8 @@ const STATUS_META: Record<string, { label: string; color: string; dot: string }>
 const ORDER_STATUS_META: Record<string, { label: string; color: string }> = {
   pending:          { label: 'معلق',            color: 'bg-amber-50 text-amber-700 border-amber-200' },
   confirmed:        { label: 'مؤكد',            color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  assigned:         { label: 'تم الإسناد',      color: 'bg-teal-50 text-teal-700 border-teal-200' },
+  ready_for_pickup: { label: 'جاهز للاستلام',   color: 'bg-lime-50 text-lime-700 border-lime-200' },
   processing:       { label: 'قيد المعالجة',   color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
   shipped:          { label: 'تم الشحن',        color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
   in_transit:       { label: 'في الطريق',       color: 'bg-sky-50 text-sky-700 border-sky-200' },
@@ -582,6 +589,14 @@ function ShipmentsTab({ shipments, loading }: { shipments: IncomingShipment[]; l
                         {s.partner.company_name} — {PARTNER_TYPE_LABELS[s.partner.partner_type] || s.partner.partner_type}
                       </p>
                     )}
+                    {s.driver_name && s.truck_plate && (
+                      <div className="mt-2 rounded-lg border border-cyan-200 bg-cyan-50/60 px-3 py-2 text-[11px] text-cyan-900 space-y-0.5" dir="rtl">
+                        <p className="font-bold">🚚 السائق والقاطرة</p>
+                        <p>السائق: <span className="font-semibold">{s.driver_name}</span> — <span dir="ltr" className="font-mono">{s.driver_phone}</span></p>
+                        <p>اللوحة: <span className="font-mono font-bold">{s.truck_plate}</span> — {s.truck_type}</p>
+                        {s.dispatched_at && <p className="text-cyan-700">تاريخ الإرسال: {formatDateTime(s.dispatched_at)}</p>}
+                      </div>
+                    )}
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-sm font-bold text-foreground">
@@ -752,7 +767,7 @@ export default function LogisticsDashboardPanel() {
     setLoadingShipments(true);
     const { data } = await supabase
       .from('orders')
-      .select('id, order_number, status, logistics_partner_id, total, currency, created_at, updated_at, buyer:user_profiles!orders_buyer_id_fkey(full_name, company_name)')
+      .select('id, order_number, status, logistics_partner_id, total, currency, created_at, updated_at, driver_name, driver_phone, truck_plate, truck_type, dispatched_at, buyer:user_profiles!orders_buyer_id_fkey(full_name, company_name)')
       .not('logistics_partner_id', 'is', null)
       .order('created_at', { ascending: false })
       .limit(100);
@@ -783,6 +798,17 @@ export default function LogisticsDashboardPanel() {
     fetchPartners();
     fetchShipments();
   }, [fetchPartners, fetchShipments]);
+
+  // Real-time: refresh shipments (incl. driver/truck dispatch details) on any order change
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-logistics-orders-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        fetchShipments();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [supabase, fetchShipments]);
 
   // ─── KPI Calculations ───────────────────────────────────────────────────────
   const totalPartners = partners.length;
