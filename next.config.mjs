@@ -6,10 +6,13 @@ const nextConfig = {
   distDir: process.env.DIST_DIR || '.next',
   allowedDevOrigins: [
     'direct-hub.net',
-    '**.direct-hub.net',
-    '**.rocket.new',
-    '**.builtwithrocket.new',
-    '**.vercel.app',
+    '*.direct-hub.net',
+    'rocket.new',
+    '*.rocket.new',
+    'builtwithrocket.new',
+    '*.builtwithrocket.new',
+    '*.vercel.app',
+    '*.dhiwise.com',
   ],
   typescript: {
     ignoreBuildErrors: true,
