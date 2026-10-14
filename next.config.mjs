@@ -9,6 +9,8 @@ const nextConfig = {
     '*.direct-hub.net',
     '*.rocket.new',
     '*.rocket.dev',
+    '*.builtwithrocket.new',
+    'directhub3220.builtwithrocket.new',
     '*.vercel.app',
     'localhost',
     '127.0.0.1',
