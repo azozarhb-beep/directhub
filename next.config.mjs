@@ -33,6 +33,12 @@ const nextConfig = {
     '*.builtwithrocket.new',
     '*.*.builtwithrocket.new',
     '*.vercel.app',
+    '*.app.github.dev',
+    '*.csb.app',
+    '*.stackblitz.io',
+    '*.webcontainer.io',
+    '*.webcontainer-api.io',
+    '*.local-credentialless.webcontainer-api.io',
     ...(siteUrlHost ? [siteUrlHost] : []),
   ],
   typescript: {
