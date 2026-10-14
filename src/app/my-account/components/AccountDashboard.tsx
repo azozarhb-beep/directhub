@@ -241,84 +241,52 @@ const RoleBasedAddProductButton: React.FC<{
   sublabel: string;
 }> = ({ profile, label, sublabel }) => {
   const router = useRouter();
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const workspaceRole = getUserWorkspaceRole(profile);
   const accountRole = (profile?.account_role || '').toLowerCase().trim();
-  const isBuyerRole = workspaceRole === 'buyer' || workspaceRole === 'unknown';
+  const isSeller =
+    workspaceRole === 'manufacturer' ||
+    workspaceRole === 'commercial_supplier' ||
+    accountRole === 'commercial_supplier' ||
+    accountRole === 'local_manufacturer' ||
+    accountRole === 'international_manufacturer' ||
+    (profile?.is_verified === true && workspaceRole !== 'buyer' && workspaceRole !== 'unknown');
 
   const getAddProductDestination = (): string => {
     if (accountRole === 'commercial_supplier') return '/supplier/local-dashboard';
     if (accountRole === 'local_manufacturer') return '/factory/local-dashboard';
     if (accountRole === 'international_manufacturer') return '/manufacturer/international-dashboard';
+    if (workspaceRole === 'commercial_supplier') return '/supplier/local-dashboard';
     if (workspaceRole === 'manufacturer') return '/factory/local-dashboard';
     return '/factory/local-dashboard';
   };
 
   const handleClick = () => {
-    if (isBuyerRole) {
-      setShowUpgradeModal(true);
-    } else {
+    if (isSeller) {
       router.push(getAddProductDestination());
+    } else {
+      router.push('/account/upgrade');
     }
   };
 
-  return (
-    <>
-      <button
-        onClick={handleClick}
-        className="flex flex-col items-center gap-3 p-4 bg-card border border-border rounded-2xl hover:shadow-md hover:border-orange-300 transition-all text-center group w-full"
-      >
-        <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center group-hover:bg-orange-200 transition-colors shrink-0">
-          <Icon name="PlusCircleIcon" size={22} className="text-orange-600" />
-        </div>
-        <div className="min-w-0">
-          <span className="text-xs font-bold text-foreground group-hover:text-orange-600 transition-colors block leading-tight">
-            {label}
-          </span>
-          <span className="text-[11px] text-muted-foreground mt-0.5 block">{sublabel}</span>
-        </div>
-      </button>
+  const displayLabel = isSeller ? label : 'ترقية الحساب للبيع';
+  const displaySublabel = isSeller ? sublabel : 'سجّل كمصنع أو مورد لعرض منتجاتك الصناعية';
 
-      {/* Upgrade Prompt Modal — shown only for buyers */}
-      {showUpgradeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowUpgradeModal(false)}>
-          <div
-            className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full shadow-2xl"
-            dir="rtl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-                <Icon name="ArrowUpCircleIcon" size={24} className="text-amber-600" />
-              </div>
-              <div>
-                <h3 className="text-base font-extrabold text-foreground">ترقية الحساب مطلوبة</h3>
-                <p className="text-xs text-muted-foreground">حسابك الحالي مسجل كمشتري</p>
-              </div>
-            </div>
-            <p className="text-sm text-foreground leading-relaxed mb-5">
-              حسابك الحالي مسجل كمشتري. هل ترغب في ترقية حسابك إلى مورّد أو مصنع لتتمكن من إضافة المنتجات والبيع؟
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() => { setShowUpgradeModal(false); router.push('/factory/register'); }}
-                className="w-full px-4 py-3 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-              >
-                <Icon name="ArrowUpCircleIcon" size={16} />
-                ترقية الحساب الآن
-              </button>
-              <button
-                onClick={() => setShowUpgradeModal(false)}
-                className="w-full px-4 py-2.5 bg-muted text-muted-foreground text-sm font-medium rounded-xl hover:bg-muted/80 transition-colors"
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+  return (
+    <button
+      onClick={handleClick}
+      className="flex flex-col items-center gap-3 p-4 bg-card border border-border rounded-2xl hover:shadow-md hover:border-orange-300 transition-all text-center group w-full"
+    >
+      <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center group-hover:bg-orange-200 transition-colors shrink-0">
+        <Icon name={isSeller ? 'PlusCircleIcon' : 'ArrowUpCircleIcon'} size={22} className="text-orange-600" />
+      </div>
+      <div className="min-w-0">
+        <span className="text-xs font-bold text-foreground group-hover:text-orange-600 transition-colors block leading-tight">
+          {displayLabel}
+        </span>
+        <span className="text-[11px] text-muted-foreground mt-0.5 block">{displaySublabel}</span>
+      </div>
+    </button>
   );
 };
 
