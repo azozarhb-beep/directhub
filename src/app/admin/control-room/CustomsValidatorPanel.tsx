@@ -196,102 +196,148 @@ export function CustomsDocumentUploader({
   );
 }
 
-// ─── Main Panel ───────────────────────────────────────────────────────────────
+// ─── Main Panel (live: logistics_documents) ───────────────────────────────────
+
+interface LogisticsDoc {
+  id: string;
+  partner_id: string | null;
+  document_type: string;
+  shipment_id: string | null;
+  file_name: string | null;
+  file_url: string;
+  status: string;
+  tracking_number: string | null;
+  created_at: string;
+  partner_name?: string;
+}
+
+type DocTab = 'pending' | 'approved' | 'rejected' | 'all';
+
+const LOGISTICS_DOC_TYPE_LABELS: Record<string, string> = {
+  bill_of_lading: 'بوليصة الشحن',
+  commercial_invoice: 'الفاتورة التجارية',
+  packing_list: 'قائمة التعبئة',
+  certificate_of_origin: 'شهادة المنشأ',
+  customs_declaration: 'البيان الجمركي',
+  inspection_cert: 'شهادة المطابقة / التفتيش',
+};
+
+function isPendingStatus(s: string): boolean {
+  return s === 'pending_review' || s === 'pending' || s === 'قيد المراجعة';
+}
+function isApprovedStatus(s: string): boolean {
+  return s === 'approved';
+}
+function isRejectedStatus(s: string): boolean {
+  return s === 'rejected';
+}
+function isImageFileUrl(url: string, name?: string | null): boolean {
+  const target = name || url || '';
+  return /\.(jpg|jpeg|png|webp|gif|bmp|svg|avif|heic|heif)(\?|$)/i.test(target) || /\.(jpg|jpeg|png|webp|gif|bmp|svg|avif|heic|heif)(\?|$)/i.test(url || '');
+}
 
 export default function CustomsValidatorPanel() {
-  const { t, dir, language, isRTL } = useLanguage();
-  const ui = t.admin.customs;
-  const statusLabels: Record<string, string> = {
-    pending: ui.pending,
-    processing: ui.verifying,
-    passed: ui.passed,
-    failed: ui.failed,
-    needs_review: ui.needsReview,
-  };
-
+  const { dir } = useLanguage();
   const supabase = createClient();
-  const [validations, setValidations] = useState<CustomsValidation[]>([]);
+  const [docs, setDocs] = useState<LogisticsDoc[]>([]);
   const [loading, setLoading] = useState(true);
-  const [aiLoading, setAiLoading] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [actionLoading, setActionLoading] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  const [tab, setTab] = useState<DocTab>('pending');
 
   const showSuccess = (msg: string) => {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(''), 3000);
   };
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    let q = supabase
-      .from('customs_validations')
-      .select('*, user_profiles(full_name, email)')
-      .order('created_at', { ascending: false });
-    if (filterStatus) q = q.eq('overall_status', filterStatus);
-    const { data } = await q;
-    setValidations(data || []);
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setLoadError('');
+    const { data, error } = await supabase
+      .from('logistics_documents')
+      .select('id, partner_id, document_type, shipment_id, file_name, file_url, status, tracking_number, created_at')
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    if (error) {
+      setLoadError(`فشل تحميل المستندات: ${error.message}`);
+      setDocs([]);
+      setLoading(false);
+      return;
+    }
+
+    const rows = (data || []) as LogisticsDoc[];
+    const partnerIds = Array.from(new Set(rows.map(r => r.partner_id).filter(Boolean))) as string[];
+    let nameMap = new Map<string, string>();
+    if (partnerIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('user_profiles')
+        .select('id, full_name, company_name')
+        .in('id', partnerIds);
+      nameMap = new Map((profiles || []).map((p: any) => [p.id, p.company_name || p.full_name || '']));
+    }
+    setDocs(rows.map(r => ({ ...r, partner_name: r.partner_id ? nameMap.get(r.partner_id) || '' : '' })));
     setLoading(false);
-  }, [supabase, filterStatus]);
+  }, [supabase]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const runAIValidation = async (v: CustomsValidation) => {
-    setAiLoading(v.id);
-    try {
-      // Get order data for matching
-      const { data: orderData } = await supabase.from('orders').select('*').eq('id', v.order_id).single();
-      const result = await validateCustomsDocumentWithAI(v.document_url, v.document_type, orderData);
+  // Live updates when a partner uploads / status changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-logistics-documents-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'logistics_documents' }, () => {
+        fetchData(true);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [supabase, fetchData]);
 
-      await supabase.from('customs_validations').update({
-        format_check_passed: result.formatPassed,
-        order_match_passed: result.orderMatchPassed,
-        qr_code_detected: result.qrDetected,
-        ai_validation_notes: result.notes,
-        ai_confidence_score: result.confidence,
-        discrepancies: result.discrepancies,
-        overall_status: result.status,
-        funds_release_blocked: result.status !== 'passed',
-      }).eq('id', v.id);
-
-      await fetchData();
-      showSuccess('تم التحقق من الوثيقة بالذكاء الاصطناعي');
-    } catch (err: any) {
-      showSuccess('فشل التحقق: ' + err.message);
-    } finally {
-      setAiLoading('');
-    }
-  };
-
-  const adminOverride = async (id: string, pass: boolean) => {
+  const updateStatus = async (id: string, status: 'approved' | 'rejected') => {
     setActionLoading(id);
-    await supabase.from('customs_validations').update({
-      overall_status: pass ? 'passed' : 'failed',
-      funds_release_blocked: !pass,
-      admin_override_at: new Date().toISOString(),
-    }).eq('id', id);
-    await fetchData();
-    showSuccess(pass ? 'تم تجاوز التحقق والموافقة على الإفراج' : 'تم رفض الوثيقة وحظر الإفراج');
+    const { error } = await supabase.from('logistics_documents').update({ status }).eq('id', id);
+    if (error) {
+      showSuccess('فشل تحديث الحالة: ' + error.message);
+    } else {
+      setDocs(prev => prev.map(d => (d.id === id ? { ...d, status } : d)));
+      showSuccess(status === 'approved' ? 'تم اعتماد المستند' : 'تم رفض المستند');
+    }
     setActionLoading('');
   };
 
-  const blockedCount = validations.filter(v => v.funds_release_blocked).length;
-  const passedCount = validations.filter(v => v.overall_status === 'passed').length;
-  const pendingCount = validations.filter(v => v.overall_status === 'pending').length;
+  const pendingCount = docs.filter(d => isPendingStatus(d.status)).length;
+  const approvedCount = docs.filter(d => isApprovedStatus(d.status)).length;
+  const rejectedCount = docs.filter(d => isRejectedStatus(d.status)).length;
+
+  const visibleDocs = docs.filter(d => {
+    if (tab === 'pending') return isPendingStatus(d.status);
+    if (tab === 'approved') return isApprovedStatus(d.status);
+    if (tab === 'rejected') return isRejectedStatus(d.status);
+    return true;
+  });
+
+  const tabs: { key: DocTab; label: string; count: number }[] = [
+    { key: 'pending', label: 'قيد الانتظار', count: pendingCount },
+    { key: 'approved', label: 'معتمد', count: approvedCount },
+    { key: 'rejected', label: 'مرفوض', count: rejectedCount },
+    { key: 'all', label: 'الكل', count: docs.length },
+  ];
 
   return (
     <div className="space-y-5" dir={dir}>
       <div className="bg-gradient-to-r from-teal-600 to-teal-800 rounded-2xl p-5 text-white">
-        <h2 className="text-lg font-bold">{ui.title}</h2>
-        <p className="text-sm text-white/80 mt-1">{ui.subtitle}</p>
+        <h2 className="text-lg font-bold">مدقق الجمارك الذكي</h2>
+        <p className="text-sm text-white/80 mt-1">مراجعة المستندات الجمركية واللوجستية المرفوعة من الشركاء مباشرةً</p>
       </div>
+
       {/* KPI */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: ui.releaseBlocked, value: blockedCount, color: 'text-red-600 bg-red-50', icon: 'LockClosedIcon' },
-          { label: ui.passed, value: passedCount, color: 'text-emerald-600 bg-emerald-50', icon: 'CheckCircleIcon' },
-          { label: ui.pending, value: pendingCount, color: 'text-amber-600 bg-amber-50', icon: 'ClockIcon' },
-          { label: ui.totalDocs, value: validations.length, color: 'text-blue-600 bg-blue-50', icon: 'DocumentTextIcon' },
+          { label: 'قيد الانتظار', value: pendingCount, color: 'text-amber-600 bg-amber-50', icon: 'ClockIcon' },
+          { label: 'معتمد', value: approvedCount, color: 'text-emerald-600 bg-emerald-50', icon: 'CheckCircleIcon' },
+          { label: 'مرفوض', value: rejectedCount, color: 'text-red-600 bg-red-50', icon: 'XCircleIcon' },
+          { label: 'إجمالي الوثائق', value: docs.length, color: 'text-blue-600 bg-blue-50', icon: 'DocumentTextIcon' },
         ].map((kpi, i) => (
           <div key={i} className="bg-white border border-gray-200 rounded-xl p-4">
             <div className={`w-9 h-9 rounded-lg ${kpi.color} flex items-center justify-center mb-2`}>
@@ -303,17 +349,25 @@ export default function CustomsValidatorPanel() {
         ))}
       </div>
 
-      {/* Filter */}
+      {/* Tabs */}
       <div className="flex items-center gap-2 flex-wrap">
-        {['', 'pending', 'passed', 'failed', 'needs_review'].map(s => (
+        {tabs.map(t => (
           <button
-            key={s}
-            onClick={() => setFilterStatus(s)}
-            className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${filterStatus === s ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`text-xs px-3 py-1.5 rounded-full border transition-colors flex items-center gap-1.5 ${tab === t.key ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
           >
-            {s === '' ? t.admin.all : (s === 'pending' ? ui.pending : s === 'passed' ? ui.passed : s === 'failed' ? ui.failed : s === 'needs_review' ? ui.needsReview : STATUS_CONFIG[s]?.label || s)}
+            {t.label}
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${tab === t.key ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'}`}>{t.count}</span>
           </button>
         ))}
+        <button
+          onClick={() => fetchData()}
+          className="text-xs px-3 py-1.5 rounded-full border bg-white text-gray-600 border-gray-200 hover:border-gray-300 flex items-center gap-1"
+        >
+          <Icon name="ArrowPathIcon" size={12} />
+          تحديث
+        </button>
       </div>
 
       {successMsg && (
@@ -323,97 +377,97 @@ export default function CustomsValidatorPanel() {
         </div>
       )}
 
+      {loadError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">{loadError}</div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : validations.length === 0 ? (
+      ) : visibleDocs.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <Icon name="DocumentCheckIcon" size={40} className="mx-auto mb-3 opacity-30" />
-          <p>{ui.emptyReview}</p>
+          <p>{tab === 'pending' ? 'لا توجد مستندات قيد الانتظار' : 'لا توجد مستندات في هذا القسم'}</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {validations.map(v => {
-            const statusCfg = STATUS_CONFIG[v.overall_status] || STATUS_CONFIG.pending;
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {visibleDocs.map(d => {
+            const isImg = isImageFileUrl(d.file_url, d.file_name);
+            const pending = isPendingStatus(d.status);
+            const approved = isApprovedStatus(d.status);
+            const statusLabel = approved ? 'معتمد' : isRejectedStatus(d.status) ? 'مرفوض' : 'قيد الانتظار';
+            const statusColor = approved
+              ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+              : isRejectedStatus(d.status)
+                ? 'text-red-700 bg-red-50 border-red-200' :'text-amber-700 bg-amber-50 border-amber-200';
             return (
-              <div key={v.id} className="bg-white border border-gray-200 rounded-xl p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="font-semibold text-gray-900 text-sm">{DOC_TYPE_LABELS[v.document_type] || v.document_type}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${statusCfg.color}`}>
-                        {statusLabels[v.overall_status] || statusCfg.label}
-                      </span>
-                      {v.funds_release_blocked && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200 flex items-center gap-1">
-                          <Icon name="LockClosedIcon" size={11} />
-                          {ui.blockedBadge}
-                        </span>
-                      )}
+              <div key={d.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden flex flex-col">
+                <a
+                  href={d.file_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block h-44 bg-gray-50 flex items-center justify-center overflow-hidden"
+                >
+                  {isImg ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={d.file_url}
+                      alt={d.file_name || LOGISTICS_DOC_TYPE_LABELS[d.document_type] || 'مستند'}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 text-gray-400">
+                      <Icon name="DocumentTextIcon" size={44} />
+                      <span className="text-xs">ملف PDF / مستند</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 mb-2">
-                      <div className={`flex items-center gap-1 text-xs ${v.format_check_passed ? 'text-emerald-600' : 'text-gray-400'}`}>
-                        <Icon name={v.format_check_passed ? 'CheckCircleIcon' : 'MinusCircleIcon'} size={13} />
-                        {ui.formatCheck}
-                      </div>
-                      <div className={`flex items-center gap-1 text-xs ${v.qr_code_detected ? 'text-emerald-600' : 'text-gray-400'}`}>
-                        <Icon name={v.qr_code_detected ? 'CheckCircleIcon' : 'MinusCircleIcon'} size={13} />
-                        {ui.qrCode}
-                      </div>
-                      <div className={`flex items-center gap-1 text-xs ${v.order_match_passed ? 'text-emerald-600' : 'text-gray-400'}`}>
-                        <Icon name={v.order_match_passed ? 'CheckCircleIcon' : 'MinusCircleIcon'} size={13} />
-                        مطابقة الطلب
-                      </div>
-                    </div>
-                    {v.ai_validation_notes && (
-                      <p className="text-xs text-gray-600 bg-gray-50 rounded px-2 py-1.5 mb-2">{v.ai_validation_notes}</p>
-                    )}
-                    {v.discrepancies && Array.isArray(v.discrepancies) && v.discrepancies.length > 0 && (
-                      <div className="space-y-1 mb-2">
-                        {v.discrepancies.map((d: string, i: number) => (
-                          <div key={i} className="flex items-center gap-1.5 text-xs text-orange-700 bg-orange-50 rounded px-2 py-1">
-                            <Icon name="ExclamationTriangleIcon" size={12} />
-                            {d}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                  )}
+                </a>
+                <div className="p-4 flex-1 flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-gray-900 text-sm">
+                      {LOGISTICS_DOC_TYPE_LABELS[d.document_type] || d.document_type}
+                    </span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${statusColor}`}>{statusLabel}</span>
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    <a href={v.document_url} target="_blank" rel="noopener noreferrer"
-                      className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 flex items-center gap-1">
+                  {d.partner_name && <p className="text-xs text-gray-600">🚚 {d.partner_name}</p>}
+                  {(d.tracking_number || d.shipment_id) && (
+                    <p className="text-xs text-gray-500" dir="ltr">
+                      Shipment: {d.tracking_number || d.shipment_id}
+                    </p>
+                  )}
+                  {d.file_name && <p className="text-xs text-gray-400 truncate" dir="ltr">{d.file_name}</p>}
+                  <p className="text-[11px] text-gray-400">
+                    {d.created_at ? new Date(d.created_at).toISOString().slice(0, 16).replace('T', ' ') : ''}
+                  </p>
+                  <div className="flex items-center gap-2 mt-auto pt-2">
+                    <a
+                      href={d.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 flex items-center gap-1"
+                    >
                       <Icon name="EyeIcon" size={12} />
-                      عرض
+                      معاينة
                     </a>
-                    {v.overall_status === 'pending' && (
+                    {!approved && (
                       <button
-                        onClick={() => runAIValidation(v)}
-                        disabled={aiLoading === v.id}
-                        className="text-xs bg-teal-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-teal-700 disabled:opacity-50 flex items-center gap-1"
-                      >
-                        {aiLoading === v.id ? <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" /> : <Icon name="SparklesIcon" size={12} />}
-                        تحقق AI
-                      </button>
-                    )}
-                    {v.overall_status !== 'passed' && (
-                      <button
-                        onClick={() => adminOverride(v.id, true)}
-                        disabled={!!actionLoading}
+                        onClick={() => updateStatus(d.id, 'approved')}
+                        disabled={actionLoading === d.id}
                         className="text-xs bg-emerald-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1"
                       >
                         <Icon name="CheckIcon" size={12} />
-                        تجاوز وموافقة
+                        اعتماد
                       </button>
                     )}
-                    {v.overall_status === 'passed' && (
+                    {(pending || approved) && (
                       <button
-                        onClick={() => adminOverride(v.id, false)}
-                        disabled={!!actionLoading}
+                        onClick={() => updateStatus(d.id, 'rejected')}
+                        disabled={actionLoading === d.id}
                         className="text-xs bg-red-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-1"
                       >
-                        <Icon name="LockClosedIcon" size={12} />
-                        حظر الإفراج
+                        <Icon name="XMarkIcon" size={12} />
+                        رفض
                       </button>
                     )}
                   </div>

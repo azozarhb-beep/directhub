@@ -4,6 +4,41 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import { createClient } from '@/lib/supabase/client';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { isImageAttachment } from '@/components/ChatImageAttachment';
+
+interface SupportConversation {
+  id: string;
+  participant_id: string;
+  participant_role: string;
+  participant_name: string | null;
+  participant_company: string | null;
+  subject: string | null;
+  last_message: string | null;
+  last_message_at: string | null;
+  unread_by_admin: number | null;
+  created_at: string;
+}
+
+interface SupportMessage {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  sender_role: string;
+  message: string;
+  msg_type?: string | null;
+  attachment_url?: string | null;
+  attachment_name?: string | null;
+  attachment_type?: string | null;
+  created_at: string;
+}
+
+const SUPPORT_ROLE_LABELS: Record<string, string> = {
+  manufacturer: 'مصنع',
+  supplier: 'مورد',
+  logistics_partner: 'شريك لوجستي',
+  agent: 'مندوب',
+  buyer: 'مشتري',
+};
 
 interface ChatConversation {
   id: string;
@@ -49,6 +84,72 @@ export default function BuyerSellerChatMonitorPanel() {
   const [isLive, setIsLive] = useState(false);
   const [newMessageCount, setNewMessageCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // ── Admin support chat (admin_conversations / admin_messages) ───────────────
+  const [source, setSource] = useState<'buyer_seller' | 'support'>('support');
+  const [supportConvs, setSupportConvs] = useState<SupportConversation[]>([]);
+  const [supportLoading, setSupportLoading] = useState(true);
+  const [selectedSupport, setSelectedSupport] = useState<SupportConversation | null>(null);
+  const [supportMessages, setSupportMessages] = useState<SupportMessage[]>([]);
+  const [supportMsgsLoading, setSupportMsgsLoading] = useState(false);
+  const selectedSupportRef = useRef<string | null>(null);
+  const supportEndRef = useRef<HTMLDivElement>(null);
+
+  const fetchSupportConvs = useCallback(async () => {
+    const { data } = await supabase
+      .from('admin_conversations')
+      .select('id, participant_id, participant_role, participant_name, participant_company, subject, last_message, last_message_at, unread_by_admin, created_at')
+      .order('last_message_at', { ascending: false, nullsFirst: false })
+      .limit(200);
+    setSupportConvs((data || []) as SupportConversation[]);
+    setSupportLoading(false);
+  }, [supabase]);
+
+  const fetchSupportMessages = useCallback(async (convId: string) => {
+    setSupportMsgsLoading(true);
+    const { data } = await supabase
+      .from('admin_messages')
+      .select('id, conversation_id, sender_id, sender_role, message, msg_type, attachment_url, attachment_name, attachment_type, created_at')
+      .eq('conversation_id', convId)
+      .order('created_at', { ascending: true })
+      .limit(500);
+    setSupportMessages((data || []) as SupportMessage[]);
+    setSupportMsgsLoading(false);
+  }, [supabase]);
+
+  useEffect(() => { fetchSupportConvs(); }, [fetchSupportConvs]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-support-monitor')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_conversations' }, () => {
+        fetchSupportConvs();
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'admin_messages' }, (payload: any) => {
+        const m = payload.new as SupportMessage;
+        if (selectedSupportRef.current && m.conversation_id === selectedSupportRef.current) {
+          setSupportMessages(prev => (prev.some(x => x.id === m.id) ? prev : [...prev, m]));
+        }
+        fetchSupportConvs();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [supabase, fetchSupportConvs]);
+
+  useEffect(() => {
+    supportEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [supportMessages]);
+
+  const handleSelectSupport = (c: SupportConversation) => {
+    setSelectedSupport(c);
+    selectedSupportRef.current = c.id;
+    fetchSupportMessages(c.id);
+  };
+
+  const closeSupport = () => {
+    setSelectedSupport(null);
+    selectedSupportRef.current = null;
+  };
 
   const fetchConversations = useCallback(async () => {
     setLoading(true);
@@ -252,6 +353,156 @@ export default function BuyerSellerChatMonitorPanel() {
         </div>
       </div>
 
+      {/* Source toggle */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => setSource('support')}
+          className={`text-sm px-4 py-2 rounded-xl border font-semibold transition-colors ${source === 'support' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
+        >
+          مراسلات الإدارة والدعم ({supportConvs.length})
+        </button>
+        <button
+          onClick={() => setSource('buyer_seller')}
+          className={`text-sm px-4 py-2 rounded-xl border font-semibold transition-colors ${source === 'buyer_seller' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
+        >
+          محادثات المشترين والموردين ({conversations.length})
+        </button>
+      </div>
+
+      {source === 'support' && (
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/30">
+            <div className="flex items-center gap-2">
+              <Icon name="QueueListIcon" size={16} className="text-indigo-600" />
+              <h3 className="font-semibold text-foreground text-sm">مراسلة الإدارة العامة / الدعم التشغيلي</h3>
+              <span className="text-xs text-muted-foreground">({supportConvs.length})</span>
+            </div>
+            <button onClick={fetchSupportConvs} className="text-xs text-indigo-700 flex items-center gap-1">
+              <Icon name="ArrowPathIcon" size={13} />
+              تحديث
+            </button>
+          </div>
+          {supportLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : supportConvs.length === 0 ? (
+            <div className="text-center py-16 text-sm text-muted-foreground">لا توجد مراسلات دعم بعد</div>
+          ) : (
+            <div className="divide-y divide-border">
+              {supportConvs.map(c => (
+                <div
+                  key={c.id}
+                  className="flex items-start gap-3 px-5 py-4 hover:bg-muted/20 transition-colors cursor-pointer"
+                  onClick={() => handleSelectSupport(c)}
+                >
+                  <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
+                    <Icon name="ChatBubbleLeftRightIcon" size={18} className="text-indigo-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      <span className="text-sm font-bold text-foreground">{c.participant_name || 'مستخدم'}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 font-semibold">
+                        {SUPPORT_ROLE_LABELS[c.participant_role] || c.participant_role}
+                      </span>
+                      {(c.unread_by_admin || 0) > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold">{c.unread_by_admin}</span>
+                      )}
+                    </div>
+                    {c.participant_company && <p className="text-xs text-muted-foreground truncate">{c.participant_company}</p>}
+                    {c.last_message && <p className="text-xs text-muted-foreground truncate mt-0.5">{c.last_message}</p>}
+                  </div>
+                  <p className="text-xs text-muted-foreground shrink-0">
+                    {(c.last_message_at || c.created_at) ? new Date(c.last_message_at || c.created_at).toISOString().slice(0, 10) : '—'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {selectedSupport && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={closeSupport}>
+          <div
+            className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+            dir={dir}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div>
+                <p className="font-bold text-sm text-foreground">{selectedSupport.participant_name || 'مستخدم'}</p>
+                <p className="text-xs text-muted-foreground">
+                  {SUPPORT_ROLE_LABELS[selectedSupport.participant_role] || selectedSupport.participant_role}
+                  {selectedSupport.participant_company ? ` · ${selectedSupport.participant_company}` : ''}
+                </p>
+              </div>
+              <button onClick={closeSupport} className="w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center">
+                <Icon name="XMarkIcon" size={16} className="text-muted-foreground" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {supportMsgsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : supportMessages.length === 0 ? (
+                <p className="text-center text-sm text-muted-foreground py-8">لا توجد رسائل في هذه المحادثة</p>
+              ) : (
+                supportMessages.map(m => {
+                  const fromAdmin = m.sender_role === 'admin';
+                  const isImg = !!m.attachment_url && (
+                    m.msg_type === 'image' || (m.attachment_type ||'').startsWith('image/') ||
+                    isImageAttachment(m.attachment_url, m.attachment_name || undefined)
+                  );
+                  return (
+                    <div key={m.id} className={`flex ${fromAdmin ? 'justify-end' : 'justify-start'}`}>
+                      <div className="max-w-[80%] flex flex-col gap-0.5">
+                        <span className="text-[10px] text-muted-foreground px-1">
+                          {fromAdmin ? 'الإدارة' : (selectedSupport.participant_name || 'الشريك')} · {m.created_at ? new Date(m.created_at).toISOString().slice(11, 16) : ''}
+                        </span>
+                        <div className={`px-3 py-2 rounded-xl text-sm ${fromAdmin ? 'bg-[#D4AF37] text-[#0A192F] rounded-tr-sm' : 'bg-muted text-foreground rounded-tl-sm border border-border'}`}>
+                          {m.attachment_url && (
+                            <div className="mb-2">
+                              {isImg ? (
+                                <a href={m.attachment_url} target="_blank" rel="noopener noreferrer">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={m.attachment_url}
+                                    alt={m.attachment_name || 'صورة مرفقة'}
+                                    className="max-w-full rounded-xl max-h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                  />
+                                </a>
+                              ) : (
+                                <a
+                                  href={m.attachment_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-2 text-xs underline"
+                                >
+                                  <Icon name="PaperClipIcon" size={14} />
+                                  {m.attachment_name || 'مرفق'}
+                                </a>
+                              )}
+                            </div>
+                          )}
+                          {(!m.attachment_url || (m.message && m.message !== m.attachment_name)) && m.message}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+              <div ref={supportEndRef} />
+            </div>
+            <div className="px-5 py-3 border-t border-border bg-muted/30">
+              <p className="text-xs text-center text-muted-foreground">🔒 وضع المراقبة — للرد افتح تبويب «مراسلة الإدارة»</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {source === 'buyer_seller' && (<>
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
@@ -453,11 +704,16 @@ export default function BuyerSellerChatMonitorPanel() {
                             ? 'bg-blue-500 text-white rounded-tr-none' : 'bg-muted text-foreground rounded-tl-none'
                         }`}>
                           {msg.message}
-                          {msg.attachment_url && (
+                          {msg.attachment_url && isImageAttachment(msg.attachment_url) ? (
+                            <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="block mt-1">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={msg.attachment_url} alt="صورة مرفقة" className="max-w-full rounded-lg max-h-48 object-cover" />
+                            </a>
+                          ) : msg.attachment_url ? (
                             <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="block mt-1 text-xs underline opacity-80">
                               📎 مرفق
                             </a>
-                          )}
+                          ) : null}
                         </div>
                       </div>
                       {isBuyer && (
@@ -482,6 +738,7 @@ export default function BuyerSellerChatMonitorPanel() {
           </div>
         </div>
       )}
+      </>)}
     </div>
   );
 }
