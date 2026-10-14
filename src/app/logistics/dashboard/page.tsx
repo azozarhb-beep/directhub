@@ -9,6 +9,7 @@ import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
+import DispatchTruckModal from './DispatchTruckModal';
 import {
   resolvePlatformRole,
   getHomeRoomForRole,
@@ -3298,6 +3299,7 @@ function OrdersTab({ partnerId }: { partnerId: string }) {
   const [updateSuccess, setUpdateSuccess] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [trackingInputs, setTrackingInputs] = useState<Record<string, string>>({});
+  const [dispatchOrder, setDispatchOrder] = useState<AssignedOrder | null>(null);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -3387,7 +3389,21 @@ function OrdersTab({ partnerId }: { partnerId: string }) {
 
   return (
     <div className="space-y-5">
-      {/* KPI row */}
+      {dispatchOrder && (
+        <DispatchTruckModal
+          orderId={dispatchOrder.id}
+          orderLabel={(dispatchOrder.order_number || dispatchOrder.id.slice(0, 8)).toUpperCase()}
+          partnerId={partnerId}
+          onClose={() => setDispatchOrder(null)}
+          onDispatched={details => {
+            setOrders(prev => prev.map(o => o.id === dispatchOrder.id ? { ...o, ...details, status: 'in_transit' } : o));
+            setUpdateSuccess(dispatchOrder.id);
+            setTimeout(() => setUpdateSuccess(null), 2500);
+            setDispatchOrder(null);
+          }}
+        />
+      )}
+            {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {kpis.map(kpi => (
           <div key={kpi.label} className={`rounded-xl border p-4 ${kpi.bg}`}>
@@ -3508,6 +3524,28 @@ function OrdersTab({ partnerId }: { partnerId: string }) {
                 {/* Expanded management panel */}
                 {isExpanded && (
                   <div className="border-t border-border bg-muted/20 p-4 space-y-4">
+                    {/* Dispatch Truck & Driver */}
+                    {(order.status === 'assigned' || order.status === 'ready_for_pickup') && (
+                      <button
+                        type="button"
+                        onClick={() => setDispatchOrder(order)}
+                        className="w-full h-11 rounded-xl bg-cyan-600 text-white text-sm font-bold hover:bg-cyan-700 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Icon name="TruckIcon" size={16} />
+                        تعيين السائق والقاطرة (Dispatch Truck &amp; Driver)
+                      </button>
+                    )}
+                    {order.dispatched_at && order.driver_name && (
+                      <div className="border border-cyan-200 bg-cyan-50/60 rounded-xl p-3 space-y-1.5" dir="rtl">
+                        <p className="text-xs font-bold text-cyan-800 flex items-center gap-1.5">
+                          <Icon name="TruckIcon" size={13} /> بيانات السائق والقاطرة
+                        </p>
+                        <p className="text-xs text-foreground">السائق: <span className="font-semibold">{order.driver_name}</span></p>
+                        <p className="text-xs text-foreground">الهاتف: <span className="font-mono" dir="ltr">{order.driver_phone}</span></p>
+                        <p className="text-xs text-foreground">اللوحة: <span className="font-mono font-semibold">{order.truck_plate}</span></p>
+                        <p className="text-xs text-foreground">النوع: <span className="font-semibold">{order.truck_type}</span></p>
+                      </div>
+                    )}
                     {/* Status update */}
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Update Shipment Status</p>

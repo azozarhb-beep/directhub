@@ -211,9 +211,23 @@ export default function FactoryOrdersPanel({
                      selectedFactoryOrder.status === 'shipped' ? 'تم الشحن' :
                      selectedFactoryOrder.status === 'delivered' ? 'تم التسليم' :
                      selectedFactoryOrder.status === 'cancelled' ? 'ملغي' :
+                     selectedFactoryOrder.status === 'in_transit' ? 'في الطريق' :
+                     selectedFactoryOrder.status === 'assigned' ? 'تم الإسناد' :
+                     selectedFactoryOrder.status === 'ready_for_pickup' ? 'جاهز للاستلام' :
                      selectedFactoryOrder.status?.toUpperCase()}
                   </span>
                 </div>
+
+                {/* Assigned Driver & Truck (gate verification) */}
+                {selectedFactoryOrder.driver_name && selectedFactoryOrder.truck_plate && (
+                  <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-4 space-y-1.5 text-xs" dir="rtl">
+                    <p className="font-bold text-cyan-900">🚚 السائق والقاطرة المعيّنة (للتحقق عند بوابة المصنع)</p>
+                    <p className="text-cyan-900">السائق: <span className="font-semibold">{selectedFactoryOrder.driver_name}</span></p>
+                    <p className="text-cyan-900">الهاتف: <a href={`tel:${selectedFactoryOrder.driver_phone}`} dir="ltr" className="font-mono hover:underline">{selectedFactoryOrder.driver_phone}</a></p>
+                    <p className="text-cyan-900">لوحة الشاحنة: <span className="font-mono font-bold">{selectedFactoryOrder.truck_plate}</span></p>
+                    <p className="text-cyan-900">نوع القاطرة: <span className="font-semibold">{selectedFactoryOrder.truck_type}</span></p>
+                  </div>
+                )}
 
                 {/* Order Summary */}
                 <div className="bg-muted/40 rounded-xl p-4 grid grid-cols-2 gap-3 text-xs">
