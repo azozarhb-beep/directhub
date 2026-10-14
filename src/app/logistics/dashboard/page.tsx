@@ -5501,9 +5501,7 @@ export default function LogisticsDashboardPage() {
           )}
           {activeTab === 'customs_docs' && (
             <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-              <h2 className="text-lg font-semibold text-white mb-4">وثائق التخليص الجمركي</h2>
-              <p className="text-slate-400 text-sm mb-4">إدارة وثائق التخليص الجمركي للشحنات الدولية</p>
-              {/* Customs clearance document list — query logistics_shipments where type = 'customs' */}
+              <LogisticsDocumentsPanel userId={user?.id} />
             </div>
           )}
           {activeTab === 'documents' && (
