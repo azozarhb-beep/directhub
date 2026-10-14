@@ -227,7 +227,7 @@ const MasterCategoriesGrid: React.FC = () => {
 
   if (loading) {
     return (
-      <section className="bg-background py-8 border-b border-border" dir={dir}>
+      <section className="bg-background py-8 border-b border-border" dir={dir} suppressHydrationWarning>
         <div className="max-w-7xl mx-auto px-4 md:px-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="h-4 w-48 bg-muted animate-pulse rounded" />
@@ -243,7 +243,7 @@ const MasterCategoriesGrid: React.FC = () => {
   }
 
   return (
-    <section className="bg-background py-8 border-b border-border" dir={dir} aria-label="Industrial Categories">
+    <section className="bg-background py-8 border-b border-border" dir={dir} aria-label="Industrial Categories" suppressHydrationWarning>
       <div className="max-w-7xl mx-auto px-4 md:px-6">
 
         {/* Section header */}

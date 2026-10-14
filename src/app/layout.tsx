@@ -130,7 +130,7 @@ export default async function RootLayout({
             hydration and causes a React attribute mismatch. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var m=document.cookie.match(/(?:^|; )dh_lang=([^;]*)/);if(!m)return;var l=decodeURIComponent(m[1]);if(['en','ar','zh','tr'].indexOf(l)<0)return;document.documentElement.lang=l;document.documentElement.dir=l==='ar'?'rtl':'ltr';}catch(e){}})();`,
+            __html: `(function(){try{var m=document.cookie.match(/(?:^|; )dh_lang=([^;]*)/);if(!m){var n=(navigator.language||'en').toLowerCase();var d=n.indexOf('ar')===0?'ar':n.indexOf('zh')===0?'zh':n.indexOf('tr')===0?'tr':'en';document.cookie='dh_lang='+encodeURIComponent(d)+'; Path=/; Max-Age=31536000; SameSite=Lax';return;}var l=decodeURIComponent(m[1]);if(['en','ar','zh','tr'].indexOf(l)<0)return;document.documentElement.lang=l;document.documentElement.dir=l==='ar'?'rtl':'ltr';}catch(e){}})();`,
           }}
         />
         <script
