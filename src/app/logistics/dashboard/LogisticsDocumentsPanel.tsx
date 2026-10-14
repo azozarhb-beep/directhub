@@ -100,9 +100,9 @@ function UploadModal({
     !!f && (f.type.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(f.name));
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    // Reset so the same file can be re-selected (same as the working admin chat)
-    if (e.target) e.target.value = '';
+    e.stopPropagation();
+    const input = e.target;
+    const f = input.files?.[0];
     if (!f) return;
     if (f.size > LOGISTICS_MAX_FILE_BYTES) {
       setError('حجم الملف يتجاوز الحد المسموح (25 MB)');
@@ -111,6 +111,12 @@ function UploadModal({
     setFile(f);
     setPreviewUrl(isImageFile(f) ? URL.createObjectURL(f) : null);
     setError(null);
+    // Reset AFTER the File reference has been stored in state
+    try {
+      input.value = '';
+    } catch {
+      /* ignore */
+    }
   };
 
   const clearFile = () => {
@@ -182,7 +188,13 @@ function UploadModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => e.stopPropagation()}
+      onSubmit={(e) => e.preventDefault()}
+    >
       <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl max-h-[95vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-700">
