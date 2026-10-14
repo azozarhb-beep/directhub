@@ -22,6 +22,7 @@ import LogisticsDisputeTicketingPanel from './LogisticsDisputeTicketingPanel';
 import AirportSearchModal from './AirportSearchModal';
 import { AIR_ORIGIN_AIRPORTS, AIR_DEST_AIRPORTS } from './airportData';
 import toast from 'react-hot-toast';
+import { uploadLogisticsFile, LOGISTICS_FILE_ACCEPT } from '@/lib/logisticsUpload';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -3988,22 +3989,10 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
   const handleDocUpload = async (shipmentId: string, file: File) => {
     setDocUploading(shipmentId);
     try {
-      const ext = file.name.split('.').pop();
-      const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const storagePath = `${partnerId}/${shipmentId}/customs_doc_${Date.now()}_${safeFileName}`;
-
-      const { error: uploadErr } = await supabase.storage
-        .from('logistics-documents')
-        .upload(storagePath, file, { upsert: false });
-      if (uploadErr) throw new Error(`فشل رفع الملف: ${uploadErr.message}`);
-
-      // Use signed URL (bucket is private)
-      const { data: signedData, error: signErr } = await supabase.storage
-        .from('logistics-documents')
-        .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
-      if (signErr || !signedData?.signedUrl) throw new Error('فشل إنشاء رابط المعاينة');
-
-      const publicUrl = signedData.signedUrl;
+      // Same upload flow as the chat: resolve MIME, upload to chat-media, public URL
+      const uploaded = await uploadLogisticsFile(file, partnerId, `logistics-docs/${shipmentId}`);
+      const storagePath = uploaded.storagePath;
+      const publicUrl = uploaded.publicUrl;
 
       // Insert into logistics_documents table linked to shipment_id
       const { data: docData, error: insertErr } = await supabase
@@ -4051,7 +4040,8 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
     try {
       // Delete from storage
       if (doc.storage_path) {
-        await supabase.storage.from('logistics-documents').remove([doc.storage_path]);
+        const bucket = doc.file_url?.includes('/logistics-documents/') ? 'logistics-documents' : 'chat-media';
+        await supabase.storage.from(bucket).remove([doc.storage_path]);
       }
       // Delete from DB
       await supabase.from('logistics_documents').delete().eq('id', doc.id);
@@ -4233,7 +4223,7 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
                   {docUploading === shipment.id ? 'جاري رفع الوثيقة... ⏳' : 'إرفاق وثيقة (PDF / صورة)'}
                   <input
                     type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp"
+                    accept={LOGISTICS_FILE_ACCEPT}
                     className="hidden"
                     disabled={docUploading === shipment.id}
                     onChange={e => {

@@ -3,6 +3,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
+import {
+  uploadLogisticsFile,
+  LOGISTICS_FILE_ACCEPT,
+  LOGISTICS_MAX_FILE_BYTES,
+  LOGISTICS_UPLOAD_BUCKET,
+} from '@/lib/logisticsUpload';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,8 +92,8 @@ function UploadModal({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (f.size > 26 * 1024 * 1024) {
-      setError('حجم الملف يتجاوز الحد المسموح (26 MB)');
+    if (f.size > LOGISTICS_MAX_FILE_BYTES) {
+      setError('حجم الملف يتجاوز الحد المسموح (25 MB)');
       e.target.value = '';
       return;
     }
@@ -112,34 +118,10 @@ function UploadModal({
     setProgress(10);
 
     try {
-      // Build storage path: userId/timestamp_filename
-      const timestamp = Date.now();
-      const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      let storagePath = `${userId}/${timestamp}_${safeFileName}`;
-
       setProgress(30);
 
-      // Upload to Supabase Storage
-      const { error: storageError } = await supabase.storage
-        .from('logistics-documents')
-        .upload(storagePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-
-      if (storageError) {
-        setError(`فشل رفع الملف: ${storageError.message}`);
-        return;
-      }
-
-      setProgress(70);
-
-      // Get signed URL for the uploaded file
-      const { data: urlData } = await supabase.storage
-        .from('logistics-documents')
-        .createSignedUrl(storagePath, 60 * 60 * 24 * 365); // 1 year
-
-      const fileUrl = urlData?.signedUrl || storagePath;
+      // Same upload flow as the chat: resolve MIME, upload to chat-media, get public URL
+      const uploaded = await uploadLogisticsFile(file, userId, 'logistics-docs');
 
       setProgress(85);
 
@@ -149,9 +131,10 @@ function UploadModal({
         .insert({
           partner_id: userId,
           document_type: docType,
-          file_name: file.name,
-          file_url: fileUrl,
-          file_size: file.size,
+          file_name: uploaded.fileName,
+          file_url: uploaded.publicUrl,
+          storage_path: uploaded.storagePath,
+          file_size: uploaded.fileSize,
           tracking_number: trackingNumber.trim() || null,
           status: 'pending_review',
         })
@@ -235,10 +218,9 @@ function UploadModal({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*,application/pdf,.pdf,.doc,.docx,.heic"
+              accept={LOGISTICS_FILE_ACCEPT}
               onChange={handleFileChange}
-              className="sr-only"
-              tabIndex={-1}
+              className="hidden"
             />
             <div
               role="button"
@@ -278,7 +260,7 @@ function UploadModal({
                 <div>
                   <Icon name="ArrowUpTrayIcon" size={24} className="text-slate-500 mx-auto mb-2" />
                   <p className="text-sm text-slate-400">اضغط لاختيار الملف</p>
-                  <p className="text-xs text-slate-500 mt-1">PDF, JPG, PNG, DOCX — حتى 26 MB</p>
+                  <p className="text-xs text-slate-500 mt-1">PDF, JPG, PNG, WEBP — حتى 25 MB</p>
                 </div>
               )}
             </div>
@@ -390,15 +372,22 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
   const handleDelete = async (doc: LogisticsDocument) => {
     if (!confirm(`هل تريد حذف المستند "${doc.file_name}"؟`)) return;
 
-    // Extract storage path from file_url
+    // Extract storage path from file_url (chat-media public URL or legacy private bucket)
     let storagePath = doc.file_url;
+    let bucket = LOGISTICS_UPLOAD_BUCKET;
     if (doc.file_url.startsWith('http')) {
-      const match = doc.file_url.match(/logistics-documents\/([^?]+)/);
-      if (match) storagePath = decodeURIComponent(match[1]);
+      const chatMatch = doc.file_url.match(/\/chat-media\/([^?]+)/);
+      const legacyMatch = doc.file_url.match(/logistics-documents\/([^?]+)/);
+      if (chatMatch) {
+        storagePath = decodeURIComponent(chatMatch[1]);
+      } else if (legacyMatch) {
+        bucket = 'logistics-documents';
+        storagePath = decodeURIComponent(legacyMatch[1]);
+      }
     }
 
     // Delete from storage (best effort)
-    await supabase.storage.from('logistics-documents').remove([storagePath]);
+    await supabase.storage.from(bucket).remove([storagePath]);
 
     // Delete from database
     const { error: deleteErr } = await supabase

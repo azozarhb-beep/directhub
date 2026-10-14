@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 import toast from 'react-hot-toast';
+import { uploadLogisticsFile, LOGISTICS_FILE_ACCEPT } from '@/lib/logisticsUpload';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -151,17 +152,16 @@ function OpenDisputeForm({
     const effectiveOrderId = selectedShipment?.order_id || orderId || null;
 
     try {
-      // Upload evidence files to storage first
+      // Upload evidence files using the same flow as the chat (chat-media bucket)
       const uploaded: { name: string; url: string; path: string; type: string; size: number }[] = [];
       for (const file of evidenceFiles) {
-        const ext = file.name.split('.').pop() || 'bin';
-        const path = `${partnerId}/dispute-evidence/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const { error: uploadErr } = await supabase.storage
-          .from('chat-attachments')
-          .upload(path, file, { upsert: true, contentType: file.type || undefined });
-        if (uploadErr) throw new Error(`فشل رفع الملف "${file.name}": ${uploadErr.message}`);
-        const { data: urlData } = supabase.storage.from('chat-attachments').getPublicUrl(path);
-        uploaded.push({ name: file.name, url: urlData.publicUrl, path, type: file.type, size: file.size });
+        let up;
+        try {
+          up = await uploadLogisticsFile(file, userId, 'dispute-evidence');
+        } catch (upErr: any) {
+          throw new Error(`"${file.name}": ${upErr?.message || 'فشل رفع الملف'}`);
+        }
+        uploaded.push({ name: up.fileName, url: up.publicUrl, path: up.storagePath, type: up.fileType, size: up.fileSize });
       }
 
       // Insert dispute ticket
@@ -348,7 +348,7 @@ function OpenDisputeForm({
           </span>
           <input
             type="file"
-            accept="image/*,.pdf"
+            accept={LOGISTICS_FILE_ACCEPT}
             multiple
             onChange={handleFileChange}
             className="hidden"
