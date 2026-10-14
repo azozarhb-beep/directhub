@@ -58,6 +58,16 @@ function formatDate(iso: string): string {
   });
 }
 
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  return `${d.toLocaleDateString('ar-YE', { year: 'numeric', month: 'short', day: 'numeric' })} • ${d.toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+function isImageDoc(doc: { file_url: string; file_name: string }): boolean {
+  const target = `${doc.file_name || ''} ${doc.file_url || ''}`;
+  return /\.(jpe?g|png|webp|gif|bmp|svg|avif|heic|heif)(\s|\?|$)/i.test(target);
+}
+
 // ─── Upload Modal ─────────────────────────────────────────────────────────────
 
 function UploadModal({
@@ -529,85 +539,94 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
           </button>
         </div>
       ) : (
-        /* Documents Table */
-        <div className="bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden">
-          {/* Table Header */}
-          <div className="grid grid-cols-12 gap-2 px-4 py-3 border-b border-slate-700 bg-slate-800">
-            <div className="col-span-4 text-xs font-semibold text-slate-400 uppercase tracking-wide">المستند</div>
-            <div className="col-span-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">النوع</div>
-            <div className="col-span-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">التاريخ</div>
-            <div className="col-span-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">الحالة</div>
-            <div className="col-span-1 text-xs font-semibold text-slate-400 uppercase tracking-wide text-center">خيارات</div>
-          </div>
+        /* Documents Cards — same visual style as the admin chat media */
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {documents.map(doc => {
+            const statusMeta = STATUS_META[doc.status] || STATUS_META.pending_review;
+            const docTypeLabel = DOC_TYPE_LABELS[doc.document_type] || doc.document_type;
+            const isImage = isImageDoc(doc);
+            const linkedId = doc.tracking_number || doc.shipment_id;
 
-          {/* Table Rows */}
-          <div className="divide-y divide-slate-700/50">
-            {documents.map(doc => {
-              const statusMeta = STATUS_META[doc.status] || STATUS_META.pending_review;
-              const docTypeLabel = DOC_TYPE_LABELS[doc.document_type] || doc.document_type;
-
-              return (
-                <div
-                  key={doc.id}
-                  className="grid grid-cols-12 gap-2 px-4 py-3.5 items-center hover:bg-slate-700/30 transition-colors"
+            return (
+              <div
+                key={doc.id}
+                className="bg-slate-800/60 border border-slate-700 rounded-2xl overflow-hidden flex flex-col hover:border-cyan-500/40 transition-colors"
+              >
+                {/* Thumbnail / PDF preview container */}
+                <button
+                  type="button"
+                  onClick={() => getSignedUrl(doc)}
+                  className="block w-full bg-slate-900/60 border-b border-slate-700"
+                  title="معاينة / فتح"
                 >
-                  {/* File Name */}
-                  <div className="col-span-4 flex items-center gap-2 min-w-0">
-                    <div className="w-8 h-8 bg-slate-700 rounded-lg flex items-center justify-center shrink-0">
-                      <Icon name="DocumentTextIcon" size={15} className="text-cyan-400" />
+                  {isImage ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={doc.file_url}
+                      alt={`${docTypeLabel} - ${doc.file_name}`}
+                      className="w-full h-44 object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-44 flex flex-col items-center justify-center gap-2">
+                      <div className="w-16 h-16 bg-red-500/10 border border-red-500/30 rounded-2xl flex items-center justify-center">
+                        <Icon name="DocumentTextIcon" size={32} className="text-red-400" />
+                      </div>
+                      <span className="text-xs font-bold text-slate-300 tracking-wide">PDF</span>
                     </div>
+                  )}
+                </button>
+
+                {/* Details */}
+                <div className="p-4 flex-1 flex flex-col gap-2.5">
+                  <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-white truncate" title={doc.file_name}>
-                        {doc.file_name}
+                      <p className="text-sm font-bold text-white leading-snug">{docTypeLabel}</p>
+                      <p className="text-xs text-slate-400 truncate mt-0.5" title={doc.file_name}>
+                        {doc.file_name} • {formatFileSize(doc.file_size || 0)}
                       </p>
-                      <p className="text-xs text-slate-500">{formatFileSize(doc.file_size)}</p>
                     </div>
-                  </div>
-
-                  {/* Document Type */}
-                  <div className="col-span-3">
-                    <p className="text-xs text-slate-300 leading-tight">{docTypeLabel}</p>
-                    {doc.tracking_number && (
-                      <p className="text-xs text-slate-500 mt-0.5 font-mono">
-                        {doc.tracking_number}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Date */}
-                  <div className="col-span-2">
-                    <p className="text-xs text-slate-400">{formatDate(doc.created_at)}</p>
-                  </div>
-
-                  {/* Status Badge */}
-                  <div className="col-span-2">
-                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border ${statusMeta.color}`}>
+                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border shrink-0 ${statusMeta.color}`}>
                       <Icon name={statusMeta.icon as any} size={11} />
                       {statusMeta.label}
                     </span>
                   </div>
 
-                  {/* Actions: Preview/Download + Delete */}
-                  <div className="col-span-1 flex justify-center items-center gap-1">
+                  {linkedId && (
+                    <div className="flex items-center gap-1.5 text-xs text-slate-300">
+                      <Icon name="TruckIcon" size={13} className="text-cyan-400 shrink-0" />
+                      <span className="text-slate-500">الشحنة / الحاوية:</span>
+                      <span className="font-mono truncate" title={linkedId}>{linkedId}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                    <Icon name="ClockIcon" size={12} className="shrink-0" />
+                    {formatDateTime(doc.created_at)}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-2 mt-auto pt-2">
                     <button
+                      type="button"
                       onClick={() => getSignedUrl(doc)}
-                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-cyan-600 text-slate-400 hover:text-white transition-colors"
-                      title="معاينة / تحميل"
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-semibold transition-colors"
                     >
-                      <Icon name="ArrowDownTrayIcon" size={13} />
+                      <Icon name="EyeIcon" size={14} />
+                      معاينة / فتح
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleDelete(doc)}
-                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-red-600 text-slate-400 hover:text-white transition-colors"
-                      title="حذف"
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-red-600 text-slate-200 hover:text-white rounded-xl text-xs font-semibold transition-colors"
                     >
-                      <Icon name="TrashIcon" size={13} />
+                      <Icon name="TrashIcon" size={14} />
+                      حذف
                     </button>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
