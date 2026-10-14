@@ -5,6 +5,13 @@ const nextConfig = {
   productionBrowserSourceMaps: true,
   distDir: process.env.DIST_DIR || '.next',
   allowedDevOrigins: [
+    'localhost',
+    '127.0.0.1',
+    '*.localhost',
+    'dhiwise.com',
+    '*.dhiwise.com',
+    'dhiwise.dev',
+    '*.dhiwise.dev',
     'direct-hub.net',
     '*.direct-hub.net',
     'rocket.new',
@@ -12,7 +19,6 @@ const nextConfig = {
     'builtwithrocket.new',
     '*.builtwithrocket.new',
     '*.vercel.app',
-    '*.dhiwise.com',
   ],
   typescript: {
     ignoreBuildErrors: true,
