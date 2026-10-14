@@ -10,6 +10,14 @@ import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import DispatchTruckModal from './DispatchTruckModal';
+import MaritimeBookingModal from './MaritimeBookingModal';
+import OceanCarrierFields, {
+  oceanFormFromPartner,
+  oceanFormToPayload,
+  validateOceanForm,
+  type OceanCarrierFormValue,
+} from '@/components/OceanCarrierFields';
+import { CARRIER_TYPES, CARGO_CAPABILITIES, CONTAINER_EQUIPMENT, RATE_STRUCTURES, labelOf } from '@/lib/oceanCarrier';
 import PODConfirmModal from './PODConfirmModal';
 import LoadBoardTab from './LoadBoardTab';
 import PortFreeTimeBadge from '@/components/PortFreeTimeBadge';
@@ -63,6 +71,20 @@ interface LogisticsPartner {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  legal_company_name?: string | null;
+  country_code?: string | null;
+  imo_company_number?: string | null;
+  scac_code?: string | null;
+  carrier_type?: string | null;
+  cargo_capabilities?: string[] | null;
+  container_equipment?: string[] | null;
+  calling_ports?: any[] | null;
+  trade_lanes?: any[] | null;
+  rate_structure?: string | null;
+  thc_surcharge?: number | null;
+  bunker_surcharge?: number | null;
+  other_surcharges?: number | null;
+  accepted_currencies?: string[] | null;
 }
 
 interface AssignedOrder {
@@ -80,6 +102,20 @@ interface AssignedOrder {
   logistics_delivery_pin?: string | null;
   logistics_delivery_pin_verified_at?: string | null;
   shipping_fees_released?: boolean;
+  escrow_status?: string | null;
+  shipping_mode?: string | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  truck_plate?: string | null;
+  truck_type?: string | null;
+  dispatched_at?: string | null;
+  vessel_name?: string | null;
+  vessel_imo_number?: string | null;
+  voyage_number?: string | null;
+  booking_reference?: string | null;
+  container_numbers?: string[] | null;
+  maritime_booked_at?: string | null;
+  mbl_released_at?: string | null;
   buyer?: { full_name: string; email: string; company_name?: string | null };
 }
 
@@ -2029,6 +2065,8 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
     services_offered: partner.services_offered || [],
     incoterms_supported: partner.incoterms_supported || [],
   });
+  const [oceanForm, setOceanForm] = useState<OceanCarrierFormValue>(() => oceanFormFromPartner(partner));
+  const showOcean = partner.partner_type === 'international_shipping_office' || !!partner.carrier_type;
 
   const toggleArrayItem = (field: keyof typeof form, value: string) => {
     const arr = form[field] as string[];
@@ -2042,9 +2080,14 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
     setSaving(true);
     setSaveError('');
     try {
+      if (showOcean) {
+        const oceanErr = validateOceanForm(oceanForm);
+        if (oceanErr) throw new Error(oceanErr);
+      }
       const { data, error } = await supabase
         .from('logistics_partners')
         .update({
+          ...(showOcean ? oceanFormToPayload(oceanForm) : {}),
           company_name: form.company_name,
           contact_name: form.contact_name,
           contact_email: form.contact_email,
@@ -2165,6 +2208,62 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
             </div>
           )}
 
+          {showOcean && (
+            <div className="p-4 bg-blue-50/40 rounded-xl border border-blue-200 space-y-4" dir="rtl">
+              <p className="text-xs font-semibold text-blue-800 flex items-center gap-1.5">
+                <Icon name="GlobeAltIcon" size={14} /> ملف الناقل البحري الدولي (International Ocean Carrier)
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <Field label="الاسم القانوني للناقل" value={partner.legal_company_name} />
+                <Field label="دولة التأسيس (ISO)" value={partner.country_code} />
+                <Field label="نوع الناقل" value={partner.carrier_type ? labelOf(CARRIER_TYPES, partner.carrier_type) : null} />
+                <Field label="رقم IMO للشركة" value={partner.imo_company_number} />
+                <Field label="رمز SCAC" value={partner.scac_code} />
+                <Field label="هيكل التسعير" value={partner.rate_structure ? labelOf(RATE_STRUCTURES, partner.rate_structure) : null} />
+                {partner.rate_structure === 'base_ocean_freight' && (
+                  <>
+                    <Field label="THC" value={partner.thc_surcharge != null ? String(partner.thc_surcharge) : null} />
+                    <Field label="Bunker / BAF" value={partner.bunker_surcharge != null ? String(partner.bunker_surcharge) : null} />
+                    <Field label="رسوم أخرى" value={partner.other_surcharges != null ? String(partner.other_surcharges) : null} />
+                  </>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {(partner.cargo_capabilities || []).map(c => (
+                  <span key={c} className="px-2.5 py-1 bg-primary/10 text-primary rounded-lg text-xs font-medium">
+                    {CARGO_CAPABILITIES.find(x => x.value === c)?.labelEn || c}
+                  </span>
+                ))}
+                {(partner.container_equipment || []).map(c => (
+                  <span key={c} className="px-2.5 py-1 bg-violet-50 text-violet-700 border border-violet-200 rounded-lg text-xs font-medium">
+                    {CONTAINER_EQUIPMENT.find(x => x.value === c)?.labelEn || c}
+                  </span>
+                ))}
+                {(partner.accepted_currencies || []).map(c => (
+                  <span key={c} className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-xs font-bold">{c}</span>
+                ))}
+              </div>
+              {(partner.calling_ports || []).length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {(partner.calling_ports || []).map((p: any) => (
+                    <span key={`${p.locode}-${p.role}`} className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs">
+                      <span className="font-mono" dir="ltr">{p.locode}</span> {p.name} · {p.role}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {(partner.trade_lanes || []).length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {(partner.trade_lanes || []).map((l: any) => (
+                    <span key={`${l.origin}-${l.destination}`} className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-mono" dir="ltr">
+                      {l.origin} → {l.destination}{l.transit_days ? ` · ${l.transit_days}d` : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {partner.services_offered?.length > 0 && (
               <div className="p-4 bg-muted/30 rounded-xl border border-border">
@@ -2218,6 +2317,7 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
         </div>
       ) : (
         <div className="space-y-5">
+          {showOcean && <OceanCarrierFields value={oceanForm} onChange={setOceanForm} />}
           {/* Basic Info */}
           <div className="p-4 border border-border rounded-xl space-y-4">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">البيانات الأساسية</p>
@@ -3294,7 +3394,7 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
 
 // ─── Orders Tab ───────────────────────────────────────────────────────────────
 
-function OrdersTab({ partnerId }: { partnerId: string }) {
+function OrdersTab({ partnerId, userId }: { partnerId: string; userId: string }) {
   const supabase = createClient();
   const [orders, setOrders] = useState<AssignedOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3305,12 +3405,40 @@ function OrdersTab({ partnerId }: { partnerId: string }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [trackingInputs, setTrackingInputs] = useState<Record<string, string>>({});
   const [dispatchOrder, setDispatchOrder] = useState<AssignedOrder | null>(null);
+  const [maritimeOrder, setMaritimeOrder] = useState<AssignedOrder | null>(null);
+  const [mblUploadingId, setMblUploadingId] = useState<string | null>(null);
 
+  const isOceanOrder = (o: AssignedOrder) => o.shipping_mode === 'ocean' || !!o.booking_reference;
+
+  const handleMblUpload = async (order: AssignedOrder, docType: 'master_bill_of_lading' | 'delivery_order', file: File) => {
+    setMblUploadingId(order.id);
+    try {
+      const uploaded = await uploadLogisticsFile(file, userId, 'logistics-docs');
+      const { error: insertError } = await supabase.from('logistics_documents').insert({
+        partner_id: userId,
+        order_id: order.id,
+        document_type: docType,
+        file_name: uploaded.fileName,
+        file_url: uploaded.publicUrl,
+        storage_path: uploaded.storagePath,
+        file_size: uploaded.fileSize,
+        tracking_number: order.booking_reference || null,
+        status: 'pending_review',
+      });
+      if (insertError) throw insertError;
+      toast.success('تم رفع المستند وتحرير الضمان للطلب البحري');
+      await fetchOrders();
+    } catch (err: any) {
+      toast.error(err?.message || 'فشل رفع المستند', { duration: 8000 });
+    } finally {
+      setMblUploadingId(null);
+    }
+  };
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase
       .from('orders')
-      .select('id, order_number, status, logistics_partner_id, total, currency, created_at, updated_at, shipping_address, tracking_number, delivery_pin, logistics_delivery_pin, logistics_delivery_pin_verified_at, shipping_fees_released, buyer:buyer_id(full_name, email, company_name)')
+      .select('id, order_number, status, logistics_partner_id, total, currency, created_at, updated_at, shipping_address, tracking_number, delivery_pin, logistics_delivery_pin, logistics_delivery_pin_verified_at, shipping_fees_released, escrow_status, shipping_mode, vessel_name, vessel_imo_number, voyage_number, booking_reference, container_numbers, maritime_booked_at, mbl_released_at, buyer:buyer_id(full_name, email, company_name)')
       .eq('logistics_partner_id', partnerId)
       .order('created_at', { ascending: false });
     setOrders((data as any[]) || []);
@@ -3405,6 +3533,27 @@ function OrdersTab({ partnerId }: { partnerId: string }) {
             setUpdateSuccess(dispatchOrder.id);
             setTimeout(() => setUpdateSuccess(null), 2500);
             setDispatchOrder(null);
+          }}
+        />
+      )}
+      {maritimeOrder && (
+        <MaritimeBookingModal
+          orderId={maritimeOrder.id}
+          orderLabel={(maritimeOrder.order_number || maritimeOrder.id.slice(0, 8)).toUpperCase()}
+          partnerId={partnerId}
+          initial={{
+            vessel_name: maritimeOrder.vessel_name || '',
+            vessel_imo_number: maritimeOrder.vessel_imo_number || '',
+            voyage_number: maritimeOrder.voyage_number || '',
+            booking_reference: maritimeOrder.booking_reference || '',
+            container_numbers: maritimeOrder.container_numbers || [],
+          }}
+          onClose={() => setMaritimeOrder(null)}
+          onSaved={details => {
+            setOrders(prev => prev.map(o => o.id === maritimeOrder.id ? { ...o, ...details, shipping_mode: 'ocean', status: 'in_transit' } : o));
+            setUpdateSuccess(maritimeOrder.id);
+            setTimeout(() => setUpdateSuccess(null), 2500);
+            setMaritimeOrder(null);
           }}
         />
       )}
@@ -3529,18 +3678,96 @@ function OrdersTab({ partnerId }: { partnerId: string }) {
                 {/* Expanded management panel */}
                 {isExpanded && (
                   <div className="border-t border-border bg-muted/20 p-4 space-y-4">
-                    {/* Dispatch Truck & Driver */}
-                    {(order.status === 'assigned' || order.status === 'ready_for_pickup') && (
-                      <button
-                        type="button"
-                        onClick={() => setDispatchOrder(order)}
-                        className="w-full h-11 rounded-xl bg-cyan-600 text-white text-sm font-bold hover:bg-cyan-700 transition-colors flex items-center justify-center gap-2"
-                      >
-                        <Icon name="TruckIcon" size={16} />
-                        تعيين السائق والقاطرة (Dispatch Truck &amp; Driver)
-                      </button>
+                    {/* Dispatch Truck & Driver (land) / Maritime Booking Card (ocean) */}
+                    {!isOceanOrder(order) && (order.status === 'assigned' || order.status === 'ready_for_pickup') && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDispatchOrder(order)}
+                          className="w-full h-11 rounded-xl bg-cyan-600 text-white text-sm font-bold hover:bg-cyan-700 transition-colors flex items-center justify-center gap-2"
+                        >
+                          <Icon name="TruckIcon" size={16} />
+                          تعيين السائق والقاطرة (Dispatch Truck &amp; Driver)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMaritimeOrder(order)}
+                          className="w-full h-11 rounded-xl bg-blue-700 text-white text-sm font-bold hover:bg-blue-800 transition-colors flex items-center justify-center gap-2"
+                        >
+                          <Icon name="GlobeAltIcon" size={16} />
+                          شحنة بحرية (Ocean Booking)
+                        </button>
+                      </div>
                     )}
-                    {order.dispatched_at && order.driver_name && (
+                    {isOceanOrder(order) && (
+                      <div className="border border-blue-200 bg-blue-50/60 rounded-xl p-3 space-y-2" dir="rtl">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-bold text-blue-800 flex items-center gap-1.5">
+                            <Icon name="GlobeAltIcon" size={13} /> بطاقة الحجز البحري (Maritime Booking)
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setMaritimeOrder(order)}
+                            className="text-[11px] text-blue-700 hover:underline font-semibold"
+                          >
+                            {order.booking_reference ? 'تعديل' : 'إدخال بيانات الحجز'}
+                          </button>
+                        </div>
+                        {order.booking_reference ? (
+                          <div className="grid grid-cols-2 gap-2 text-xs text-foreground">
+                            <p>السفينة: <span className="font-semibold">{order.vessel_name}</span></p>
+                            <p>IMO: <span className="font-mono font-semibold" dir="ltr">{order.vessel_imo_number}</span></p>
+                            <p>الرحلة: <span className="font-mono font-semibold" dir="ltr">{order.voyage_number}</span></p>
+                            <p>الحجز: <span className="font-mono font-semibold" dir="ltr">{order.booking_reference}</span></p>
+                            <p className="col-span-2">
+                              الحاويات:{' '}
+                              <span className="font-mono font-semibold" dir="ltr">{(order.container_numbers || []).join(', ') || '—'}</span>
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">لم يتم إدخال بيانات الحجز البحري بعد.</p>
+                        )}
+                        {order.booking_reference && order.escrow_status !== 'funds_released' && (
+                          <div className="pt-2 border-t border-blue-200 space-y-2">
+                            <p className="text-[11px] text-blue-900">
+                              ارفع بوليصة الشحن الرئيسية المختومة (MBL) أو أمر التسليم (D/O) الصادر في ميناء الوصول لتحرير الضمان تلقائياً.
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {([
+                                ['master_bill_of_lading', 'رفع MBL مختومة'],
+                                ['delivery_order', 'رفع Delivery Order'],
+                              ] as const).map(([docType, label]) => (
+                                <label
+                                  key={docType}
+                                  className={`px-3 py-2 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${
+                                    mblUploadingId === order.id
+                                      ? 'opacity-60 pointer-events-none bg-muted border-border' :'bg-blue-700 text-white border-blue-700 hover:bg-blue-800'
+                                  }`}
+                                >
+                                  {mblUploadingId === order.id ? 'جاري الرفع...' : label}
+                                  <input
+                                    type="file"
+                                    accept="application/pdf,image/*"
+                                    className="hidden"
+                                    onChange={e => {
+                                      const f = e.target.files?.[0];
+                                      e.target.value = '';
+                                      if (f) handleMblUpload(order, docType, f);
+                                    }}
+                                  />
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {order.escrow_status === 'funds_released' && (
+                          <p className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                            <Icon name="CheckBadgeIcon" size={12} /> تم تحرير الضمان بعد رفع MBL / D.O.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {!isOceanOrder(order) && order.dispatched_at && order.driver_name && (
                       <div className="border border-cyan-200 bg-cyan-50/60 rounded-xl p-3 space-y-1.5" dir="rtl">
                         <p className="text-xs font-bold text-cyan-800 flex items-center gap-1.5">
                           <Icon name="TruckIcon" size={13} /> بيانات السائق والقاطرة
@@ -5693,7 +5920,7 @@ export default function LogisticsDashboardPage() {
           )}
           {activeTab === 'orders' && (
             <div className="space-y-4">
-              <OrdersTab partnerId={partner.id} />
+              <OrdersTab partnerId={partner.id} userId={user?.id || ''} />
             </div>
           )}
           {activeTab === 'conversations' && (
