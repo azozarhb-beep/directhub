@@ -89,20 +89,21 @@ const CategoriesSection: React.FC = () => {
   }, []);
 
   return (
-    <section ref={sectionRef} className="bg-muted/30 py-16 border-b border-border" dir={dir}>
+    <section ref={sectionRef} className="bg-muted/30 py-16 border-b border-border" dir={dir} suppressHydrationWarning>
       <div className="max-w-7xl mx-auto px-4 md:px-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
           <div className={visible ? 'reveal-animate' : 'opacity-0'}>
-            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground block mb-3">
+            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground block mb-3" suppressHydrationWarning>
               {ui.title}
             </span>
-            <h2 className="text-section-title font-extrabold text-foreground">
+            <h2 className="text-section-title font-extrabold text-foreground" suppressHydrationWarning>
               {ui.title}
             </h2>
           </div>
           <Link
             href="/categories"
+            suppressHydrationWarning
             className={`inline-flex items-center gap-2 px-6 py-3 bg-foreground text-primary-foreground text-sm font-bold rounded-full hover:opacity-80 transition-opacity ${visible ? 'reveal-animate stagger-2' : 'opacity-0'}`}>
             {ui.viewAll}
             <Icon name="ArrowRightIcon" size={16} />
