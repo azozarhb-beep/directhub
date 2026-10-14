@@ -9,6 +9,8 @@ export const CONTAINER_TYPES = [
   { value: 'reefer', label: 'Reefer' },
   { value: 'open_top', label: 'Open Top' },
   { value: 'tank', label: 'Tank' },
+  { value: 'flatbed', label: 'Flatbed' },
+  { value: 'dry_box', label: 'Dry Box' },
 ];
 
 export const SHIPPING_LINES = [
