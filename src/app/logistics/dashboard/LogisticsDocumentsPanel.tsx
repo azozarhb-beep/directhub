@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
+import toast from 'react-hot-toast';
 import {
   uploadLogisticsFile,
   LOGISTICS_MAX_FILE_BYTES,
@@ -108,13 +109,15 @@ function UploadModal({
   };
 
   const handleUpload = async () => {
+    if (uploading) return;
     if (!file) {
       setError('يرجى تحديد ملف أو صورة أولاً');
-      if (typeof window !== 'undefined') window.alert('يرجى تحديد ملف أو صورة أولاً');
+      toast.error('يرجى تحديد ملف أو صورة أولاً');
       return;
     }
     if (!docType) {
       setError('يرجى اختيار نوع المستند');
+      toast.error('يرجى اختيار نوع المستند');
       return;
     }
 
@@ -146,16 +149,23 @@ function UploadModal({
         .select()
         .single();
 
-      if (insertError) {
-        setError(`فشل حفظ بيانات المستند: ${insertError.message}`);
+      // Keep the modal OPEN on any failure and show the exact error
+      if (insertError || !docData) {
+        const msg = `فشل حفظ بيانات المستند: ${insertError?.message || 'لم يتم إرجاع سجل من قاعدة البيانات'}`;
+        setError(msg);
+        toast.error(msg, { duration: 8000 });
         return;
       }
 
       setProgress(100);
+      toast.success('تم رفع المستند بنجاح');
+      // Only now (insert confirmed) update the list and close
       await onUploaded(docData as LogisticsDocument);
       onClose();
     } catch (err: any) {
-      setError(`حدث خطأ غير متوقع: ${err?.message || 'Unknown error'}`);
+      const msg = err?.message || 'حدث خطأ غير متوقع أثناء الرفع';
+      setError(msg);
+      toast.error(msg, { duration: 8000 });
     } finally {
       setUploading(false);
     }
