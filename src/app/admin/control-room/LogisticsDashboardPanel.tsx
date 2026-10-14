@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
+import PortFreeTimeBadge from '@/components/PortFreeTimeBadge';
+import { sortByFreeTimeUrgency } from '@/lib/portFreeTime';
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -59,6 +61,16 @@ interface LiveShipment {
   weight_kg: number | null;
   created_at: string;
   updated_at: string;
+  container_number?: string | null;
+  container_type?: string | null;
+  shipping_line?: string | null;
+  port_country?: string | null;
+  port_name?: string | null;
+  port_role?: string | null;
+  discharge_date?: string | null;
+  free_days_limit?: number | null;
+  daily_demurrage_rate?: number | null;
+  demurrage_currency?: string | null;
   order?: { order_number: string | null; total: number; currency: string | null };
   partner?: { company_name: string; partner_type: string };
   tracking_logs?: TrackingLog[];
@@ -169,6 +181,8 @@ function LiveShipmentTrackingTab() {
         id, tracking_number, carrier_name, origin_address, destination_address,
         shipment_status, estimated_delivery, actual_delivery, weight_kg,
         created_at, updated_at,
+        container_number, container_type, shipping_line, port_country, port_name, port_role,
+        discharge_date, free_days_limit, daily_demurrage_rate, demurrage_currency,
         order:orders(order_number, total, currency),
         partner:logistics_partners(company_name, partner_type)
       `)
@@ -236,11 +250,13 @@ function LiveShipmentTrackingTab() {
     const q = searchQ.toLowerCase();
     const matchSearch = !q ||
       s.tracking_number.toLowerCase().includes(q) ||
+      (s.container_number || '').toLowerCase().includes(q) ||
       (s.carrier_name || '').toLowerCase().includes(q) ||
       ((s.order as any)?.order_number || '').toLowerCase().includes(q) ||
       ((s.partner as any)?.company_name || '').toLowerCase().includes(q);
     return matchStatus && matchSearch;
   });
+  const filteredSorted = sortByFreeTimeUrgency(filtered);
 
   const statusCounts = Object.keys(SHIPMENT_STATUS_META).reduce((acc, k) => {
     acc[k] = shipments.filter(s => s.shipment_status === k).length;
@@ -321,7 +337,7 @@ function LiveShipmentTrackingTab() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map(s => {
+          {filteredSorted.map(s => {
             const sm = SHIPMENT_STATUS_META[s.shipment_status] || { label: s.shipment_status, color: 'bg-muted text-muted-foreground border-border', dot: 'bg-gray-400', icon: 'TruckIcon' };
             const isExpanded = expandedId === s.id;
             const stepIdx = PROGRESS_STEPS.indexOf(s.shipment_status);
@@ -372,6 +388,11 @@ function LiveShipmentTrackingTab() {
                           </p>
                         )}
                       </div>
+                      {s.discharge_date && s.free_days_limit != null && (
+                        <div className="mt-2">
+                          <PortFreeTimeBadge shipment={s} />
+                        </div>
+                      )}
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-xs text-muted-foreground">{formatDate(s.updated_at)}</p>

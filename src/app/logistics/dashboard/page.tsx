@@ -12,6 +12,9 @@ import Icon from '@/components/ui/AppIcon';
 import DispatchTruckModal from './DispatchTruckModal';
 import PODConfirmModal from './PODConfirmModal';
 import LoadBoardTab from './LoadBoardTab';
+import PortFreeTimeBadge from '@/components/PortFreeTimeBadge';
+import PortFreeTimeFields, { EMPTY_PORT_FREE_TIME, portFreeTimePayload, PortFreeTimeFormValues } from '@/components/PortFreeTimeFields';
+import { sortByFreeTimeUrgency, computeFreeTime, formatPenalty } from '@/lib/portFreeTime';
 import {
   resolvePlatformRole,
   getHomeRoomForRole,
@@ -3883,6 +3886,19 @@ interface IntlShipment {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  container_number?: string | null;
+  container_type?: string | null;
+  shipping_line?: string | null;
+  port_country?: string | null;
+  port_name?: string | null;
+  port_role?: string | null;
+  discharge_date?: string | null;
+  free_days_limit?: number | null;
+  daily_demurrage_rate?: number | null;
+  demurrage_currency?: string | null;
+  free_time_alert_sent_at?: string | null;
+  order_id?: string | null;
+  created_by?: string | null;
 }
 
 interface ShipmentDoc {
@@ -3952,6 +3968,7 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
     estimated_delivery: '',
     notes: '',
   });
+  const [addPortFT, setAddPortFT] = useState<PortFreeTimeFormValues>(EMPTY_PORT_FREE_TIME);
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState('');
 
@@ -3960,14 +3977,102 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
     setLoading(true);
     const { data } = await supabase
       .from('logistics_shipments')
-      .select('id, tracking_number, bl_number, transport_type, shipment_status, estimated_delivery, order_id, route_origin_port, route_destination_port, origin_address, destination_address')
+      .select('id, tracking_number, bl_number, transport_type, shipment_status, estimated_delivery, order_id, created_by, route_origin_port, route_destination_port, origin_address, destination_address, container_number, container_type, shipping_line, port_country, port_name, port_role, discharge_date, free_days_limit, daily_demurrage_rate, demurrage_currency, free_time_alert_sent_at')
       .eq('logistics_partner_id', partnerId)
       .in('shipment_status', ['pending', 'picked_up', 'in_transit', 'arrived_at_hub', 'out_for_delivery'])
       .order('created_at', { ascending: false });
-    setShipments(data || []);
+    setShipments(sortByFreeTimeUrgency((data as any[]) || []) as any);
   }, [partnerId, supabase]);
 
   useEffect(() => { fetchShipments(); }, [fetchShipments]);
+
+  // ── Urgent free-time alerts (Shipper + Customs Broker), once per day ───────
+  useEffect(() => {
+    if (shipments.length === 0) return;
+    const now = new Date();
+    const todayKey = now.toISOString().slice(0, 10);
+    const urgent = shipments.filter(s => {
+      const ft = computeFreeTime(s, now);
+      return ft?.urgent && (!(s as any).free_time_alert_sent_at || String((s as any).free_time_alert_sent_at).slice(0, 10) !== todayKey);
+    });
+    if (urgent.length === 0) return;
+    (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      const brokerId = auth?.user?.id;
+      for (const s of urgent) {
+        const ft = computeFreeTime(s, now);
+        if (!ft) continue;
+        const recipients = new Set<string>();
+        if (brokerId) recipients.add(brokerId);
+        if (s.created_by) recipients.add(s.created_by);
+        if (s.order_id) {
+          const { data: ord } = await supabase.from('orders').select('user_id, factory_user_id').eq('id', s.order_id).maybeSingle();
+          if (ord?.user_id) recipients.add(ord.user_id);
+          if (ord?.factory_user_id) recipients.add(ord.factory_user_id);
+        }
+        const label = s.container_number || s.bl_number || s.tracking_number;
+        const body = ft.remainingDays > 0
+          ? `الحاوية ${label} — متبقي ${ft.remainingDays} يوم فقط من المهلة المجانية. يرجى تسريع وثائق التخليص والخروج من الميناء.`
+          : `الحاوية ${label} — تجاوزت المهلة المجانية بـ ${ft.overdueDays} يوم. غرامة مستحقة: ${formatPenalty(ft.accruedPenalty, ft.currency)}.`;
+        const rows = Array.from(recipients).map(uid => ({
+          user_id: uid,
+          type: 'system',
+          title: '⏱️ تنبيه عاجل: مهلة الأرضيات والتأخير',
+          body,
+          metadata: { shipment_id: s.id, remaining_days: ft.remainingDays },
+          is_read: false,
+        }));
+        if (rows.length > 0) {
+          const { error: nErr } = await supabase.from('notifications').insert(rows);
+          if (!nErr) {
+            await supabase.from('logistics_shipments').update({ free_time_alert_sent_at: now.toISOString() }).eq('id', s.id);
+            setShipments(prev => prev.map(x => x.id === s.id ? ({ ...x, free_time_alert_sent_at: now.toISOString() } as any) : x));
+          }
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shipments.length]);
+
+  // ── Save free-time fields for an existing shipment ─────────────────────────
+  const [ftEditId, setFtEditId] = useState<string | null>(null);
+  const [ftEditValues, setFtEditValues] = useState<PortFreeTimeFormValues>(EMPTY_PORT_FREE_TIME);
+  const [ftSaving, setFtSaving] = useState(false);
+
+  const startFtEdit = (s: IntlShipment) => {
+    setFtEditId(s.id);
+    setFtEditValues({
+      container_number: s.container_number || '',
+      container_type: s.container_type || '',
+      shipping_line: s.shipping_line || '',
+      port_country: s.port_country || '',
+      port_name: s.port_name || '',
+      port_role: s.port_role || '',
+      discharge_date: s.discharge_date ? String(s.discharge_date).slice(0, 10) : '',
+      free_days_limit: s.free_days_limit != null ? String(s.free_days_limit) : '',
+      daily_demurrage_rate: s.daily_demurrage_rate != null ? String(s.daily_demurrage_rate) : '',
+      demurrage_currency: s.demurrage_currency || 'USD',
+    });
+  };
+
+  const saveFtEdit = async () => {
+    if (!ftEditId) return;
+    setFtSaving(true);
+    const payload = { ...portFreeTimePayload(ftEditValues), free_time_alert_sent_at: null };
+    const { error } = await supabase
+      .from('logistics_shipments')
+      .update(payload)
+      .eq('id', ftEditId)
+      .eq('logistics_partner_id', partnerId);
+    if (error) {
+      toast.error(error.message);
+    } else {
+      setShipments(prev => sortByFreeTimeUrgency(prev.map(s => s.id === ftEditId ? ({ ...s, ...payload } as IntlShipment) : s)));
+      toast.success('تم حفظ بيانات مهلة الأرضيات ✓');
+      setFtEditId(null);
+    }
+    setFtSaving(false);
+  };
 
   // ── Tracking Search ────────────────────────────────────────────────────────
   const handleSearch = async () => {
@@ -3979,7 +4084,7 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
 
     const { data } = await supabase
       .from('logistics_shipments')
-      .select('id, tracking_number, bl_number, transport_type, origin_address, destination_address, route_origin_port, route_destination_port, shipment_status, etd, estimated_delivery, document_url, carrier_name, notes, created_at, updated_at')
+      .select('id, tracking_number, bl_number, transport_type, origin_address, destination_address, route_origin_port, route_destination_port, shipment_status, etd, estimated_delivery, document_url, carrier_name, notes, created_at, updated_at, container_number, container_type, shipping_line, port_country, port_name, port_role, discharge_date, free_days_limit, daily_demurrage_rate, demurrage_currency')
       .eq('logistics_partner_id', partnerId)
       .or(`tracking_number.ilike.%${q}%,bl_number.ilike.%${q}%`)
       .limit(1)
@@ -4121,15 +4226,17 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
         estimated_delivery: addForm.estimated_delivery || null,
         notes: addForm.notes.trim() || null,
         shipment_status: 'pending',
+        ...portFreeTimePayload(addPortFT),
       })
       .select()
       .single();
     if (error) {
       setAddError(error.message);
     } else {
-      setShipments(prev => [data as IntlShipment, ...prev]);
+      setShipments(prev => sortByFreeTimeUrgency([data as IntlShipment, ...prev]));
       setShowAddModal(false);
       setAddForm({ tracking_number: '', bl_number: '', transport_type: 'sea_fcl', route_origin_port: '', route_destination_port: '', carrier_name: '', etd: '', estimated_delivery: '', notes: '' });
+      setAddPortFT(EMPTY_PORT_FREE_TIME);
     }
     setAddSaving(false);
   };
@@ -4194,6 +4301,11 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
                 </span>
               )}
             </div>
+            {shipment.discharge_date && shipment.free_days_limit != null && (
+              <div className="mt-2">
+                <PortFreeTimeBadge shipment={shipment} />
+              </div>
+            )}
           </div>
           <div className="shrink-0 flex flex-col items-end gap-1.5">
             {shipment.document_url && (
@@ -4258,6 +4370,35 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Free-time / demurrage editor */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">مهلة الأرضيات والتأخير</p>
+                {ftEditId !== shipment.id && (
+                  <button onClick={() => startFtEdit(shipment)} className="text-xs text-primary hover:underline">
+                    {shipment.discharge_date ? 'تعديل' : '+ إضافة بيانات الحاوية والمهلة'}
+                  </button>
+                )}
+              </div>
+              {ftEditId === shipment.id && (
+                <div className="space-y-3">
+                  <PortFreeTimeFields values={ftEditValues} onChange={setFtEditValues} />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={saveFtEdit}
+                      disabled={ftSaving}
+                      className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-60"
+                    >
+                      {ftSaving ? 'جاري الحفظ...' : 'حفظ'}
+                    </button>
+                    <button onClick={() => setFtEditId(null)} className="px-4 py-2 rounded-xl border border-border text-xs">
+                      إلغاء
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Document attachment */}
@@ -4644,6 +4785,8 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
               </div>
 
               {/* Notes */}
+              <PortFreeTimeFields values={addPortFT} onChange={setAddPortFT} />
+
               <div>
                 <label className="block text-xs font-semibold text-muted-foreground mb-1.5">ملاحظات</label>
                 <textarea

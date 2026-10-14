@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import DispatchChatRoom from '@/components/DispatchChatRoom';
-
+import PortFreeTimeBadge from '@/components/PortFreeTimeBadge';
+import { createClient } from '@/lib/supabase/client';
+import { computeFreeTime } from '@/lib/portFreeTime';
 
 interface FactoryOrdersPanelProps {
   factoryOrders: any[];
@@ -45,6 +47,43 @@ export default function FactoryOrdersPanel({
   currentUserId,
 }: FactoryOrdersPanelProps) {
   const [showDispatchChat, setShowDispatchChat] = useState<string | null>(null);
+  const [portShipments, setPortShipments] = useState<Record<string, any[]>>({});
+
+  const orderIdsKey = factoryOrders.map((o: any) => o.id).join(',');
+  useEffect(() => {
+    if (!orderIdsKey) {
+      setPortShipments({});
+      return;
+    }
+    const supabase = createClient();
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('logistics_shipments')
+        .select('id, order_id, tracking_number, container_number, shipping_line, port_country, port_name, discharge_date, free_days_limit, daily_demurrage_rate, demurrage_currency')
+        .in('order_id', orderIdsKey.split(','))
+        .not('discharge_date', 'is', null);
+      if (cancelled) return;
+      const map: Record<string, any[]> = {};
+      (data || []).forEach((s: any) => {
+        if (!map[s.order_id]) map[s.order_id] = [];
+        map[s.order_id].push(s);
+      });
+      setPortShipments(map);
+    })();
+    return () => { cancelled = true; };
+  }, [orderIdsKey]);
+
+  const minRemaining = (orderId: string): number => {
+    const list = portShipments[orderId] || [];
+    const vals = list.map(s => computeFreeTime(s)?.remainingDays).filter((v): v is number => v !== undefined);
+    return vals.length ? Math.min(...vals) : Number.POSITIVE_INFINITY;
+  };
+
+  const sortedFactoryOrders = useMemo(() => {
+    return [...factoryOrders].sort((a: any, b: any) => minRemaining(a.id) - minRemaining(b.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [factoryOrders, portShipments]);
 
   return (
     <div className="space-y-5">
@@ -133,7 +172,7 @@ export default function FactoryOrdersPanel({
                 </p>
               </div>
             ) : (
-              factoryOrders
+              sortedFactoryOrders
                 .filter((o: any) => factoryOrderStatusFilter === 'all' || o.status === factoryOrderStatusFilter)
                 .map((order: any) => {
                   const isSelected = selectedFactoryOrder?.id === order.id;
@@ -182,6 +221,13 @@ export default function FactoryOrdersPanel({
                         </p>
                         <p className="text-sm font-bold text-foreground">${Number(order.total || 0).toLocaleString()}</p>
                       </div>
+                      {(portShipments[order.id] || []).length > 0 && (
+                        <div className="mt-2 space-y-1.5">
+                          {(portShipments[order.id] || []).map((ps: any) => (
+                            <PortFreeTimeBadge key={ps.id} shipment={ps} compact />
+                          ))}
+                        </div>
+                      )}
                     </button>
                   );
                 })
@@ -226,6 +272,16 @@ export default function FactoryOrdersPanel({
                     <p className="text-cyan-900">الهاتف: <a href={`tel:${selectedFactoryOrder.driver_phone}`} dir="ltr" className="font-mono hover:underline">{selectedFactoryOrder.driver_phone}</a></p>
                     <p className="text-cyan-900">لوحة الشاحنة: <span className="font-mono font-bold">{selectedFactoryOrder.truck_plate}</span></p>
                     <p className="text-cyan-900">نوع القاطرة: <span className="font-semibold">{selectedFactoryOrder.truck_type}</span></p>
+                  </div>
+                )}
+
+                {/* Port Free-Time / Demurrage */}
+                {(portShipments[selectedFactoryOrder.id] || []).length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-foreground">⏱️ مهلة الأرضيات والتأخير في الميناء</p>
+                    {(portShipments[selectedFactoryOrder.id] || []).map((ps: any) => (
+                      <PortFreeTimeBadge key={ps.id} shipment={ps} />
+                    ))}
                   </div>
                 )}
 
