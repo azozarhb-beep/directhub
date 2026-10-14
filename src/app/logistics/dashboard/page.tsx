@@ -19,6 +19,8 @@ import LogisticsDocumentsPanel from './LogisticsDocumentsPanel';
 import LogisticsDispatchRoomsTab from './LogisticsDispatchRoomsTab';
 import LogisticsDelayReportModal from './LogisticsDelayReportModal';
 import LogisticsDisputeTicketingPanel from './LogisticsDisputeTicketingPanel';
+import AirportSearchModal from './AirportSearchModal';
+import { AIR_ORIGIN_AIRPORTS, AIR_DEST_AIRPORTS } from './airportData';
 import toast from 'react-hot-toast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -608,21 +610,7 @@ const SEA_DEST_PORTS = [
 ];
 
 // ── Air freight airports ──────────────────────────────────────────────────────
-const AIR_ORIGIN_AIRPORTS = [
-  { value: 'pvg',  label: 'Shanghai Pudong (PVG)',   labelAr: 'شنغهاي بودونغ' },
-  { value: 'can',  label: 'Guangzhou Baiyun (CAN)',  labelAr: 'غوانغتشو' },
-  { value: 'szx',  label: 'Shenzhen Bao\'an (SZX)',  labelAr: 'شنزن' },
-  { value: 'ist',  label: 'Istanbul Airport (IST)',  labelAr: 'إسطنبول' },
-  { value: 'dxb',  label: 'Dubai International (DXB)', labelAr: 'دبي' },
-  { value: 'auh',  label: 'Abu Dhabi (AUH)',          labelAr: 'أبوظبي' },
-  { value: 'doh',  label: 'Doha Hamad (DOH)',         labelAr: 'الدوحة' },
-  { value: 'ruh',  label: 'Riyadh King Khalid (RUH)', labelAr: 'الرياض' },
-];
-
-const AIR_DEST_AIRPORTS = [
-  { value: 'aden',    label: 'Aden International (ADE)',   labelAr: 'مطار عدن الدولي' },
-  { value: 'sanaa',   label: "Sana'a International (SAH)", labelAr: 'مطار صنعاء الدولي' },
-];
+// Airport lists are imported from ./airportData
 
 // ── FTL Truck types ───────────────────────────────────────────────────────────
 const FTL_TRUCKS = [
@@ -1473,31 +1461,27 @@ function ShippingCalculatorTab({ partner }: { partner?: LogisticsPartner | null 
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
                 مطار المنشأ / Origin Airport <span className="text-red-500">*</span>
               </label>
-              <select
+              <AirportSearchModal
+                title="اختر مطار المنشأ / Origin Airport"
+                placeholder="اضغط للبحث واختيار مطار المنشأ"
+                airports={AIR_ORIGIN_AIRPORTS}
                 value={airOriginAirport}
-                onChange={e => { setAirOriginAirport(e.target.value); setResult(null); }}
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              >
-                <option value="">اختر مطار المنشأ</option>
-                {AIR_ORIGIN_AIRPORTS.map(a => (
-                  <option key={a.value} value={a.value}>{a.label} — {a.labelAr}</option>
-                ))}
-              </select>
+                onSelect={v => { setAirOriginAirport(v); setResult(null); }}
+                onClear={() => { setAirOriginAirport(''); setResult(null); }}
+              />
             </div>
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
                 مطار الوصول / Destination Airport <span className="text-red-500">*</span>
               </label>
-              <select
+              <AirportSearchModal
+                title="اختر مطار الوصول / Destination Airport"
+                placeholder="اضغط للبحث واختيار مطار الوصول"
+                airports={AIR_DEST_AIRPORTS}
                 value={airDestAirport}
-                onChange={e => { setAirDestAirport(e.target.value); setResult(null); }}
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              >
-                <option value="">اختر مطار الوصول</option>
-                {AIR_DEST_AIRPORTS.map(a => (
-                  <option key={a.value} value={a.value}>{a.label} — {a.labelAr}</option>
-                ))}
-              </select>
+                onSelect={v => { setAirDestAirport(v); setResult(null); }}
+                onClear={() => { setAirDestAirport(''); setResult(null); }}
+              />
             </div>
           </>
         )}
