@@ -10,6 +10,7 @@ import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import DispatchTruckModal from './DispatchTruckModal';
+import PODConfirmModal from './PODConfirmModal';
 import {
   resolvePlatformRole,
   getHomeRoomForRole,
@@ -3936,6 +3937,7 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
   const [shipmentDocs, setShipmentDocs] = useState<Record<string, ShipmentDoc[]>>({});
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [podShipment, setPodShipment] = useState<IntlShipment | null>(null);
 
   // Add shipment form state
   const [addForm, setAddForm] = useState({
@@ -4217,6 +4219,15 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
               {isExpanded ? 'طي' : 'إدارة'}
               <Icon name={isExpanded ? 'ChevronUpIcon' : 'ChevronDownIcon'} size={12} />
             </button>
+            {shipment.shipment_status === 'in_transit' && (
+              <button
+                onClick={() => setPodShipment(shipment)}
+                className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold flex items-center gap-1 transition-colors"
+              >
+                <Icon name="CheckBadgeIcon" size={12} />
+                تأكيد التسليم وإنهاء الرحلة (Confirm Delivery)
+              </button>
+            )}
           </div>
         </div>
 
@@ -4361,6 +4372,21 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
   // ── Main render ────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6" dir="rtl">
+      {podShipment && (
+        <PODConfirmModal
+          shipmentId={podShipment.id}
+          shipmentLabel={podShipment.bl_number ? `B/L ${podShipment.bl_number}` : podShipment.tracking_number}
+          partnerId={partnerId}
+          onClose={() => setPodShipment(null)}
+          onConfirmed={(sid, podUrl) => {
+            setShipments(prev => prev.filter(s => s.id !== sid));
+            if (searchResult && searchResult !== 'not_found' && searchResult.id === sid) {
+              setSearchResult({ ...searchResult, shipment_status: 'delivered', document_url: podUrl });
+            }
+            setPodShipment(null);
+          }}
+        />
+      )}
       {/* Header */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-start gap-3">
