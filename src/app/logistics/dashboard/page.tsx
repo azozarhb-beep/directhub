@@ -11,6 +11,7 @@ import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import DispatchTruckModal from './DispatchTruckModal';
 import PODConfirmModal from './PODConfirmModal';
+import LoadBoardTab from './LoadBoardTab';
 import {
   resolvePlatformRole,
   getHomeRoomForRole,
@@ -5342,7 +5343,7 @@ export default function LogisticsDashboardPage() {
 
   const [partner, setPartner] = useState<LogisticsPartner | null>(null);
   const [checkLoading, setCheckLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'orders' | 'conversations' | 'stats' | 'calculator' | 'profile' | 'payments' | 'international_orders' | 'customs_docs' | 'documents' | 'dispatch_rooms' | 'admin_messaging' | 'disputes_delays'>('orders');
+  const [activeTab, setActiveTab] = useState<'load_board' | 'orders' | 'conversations' | 'stats' | 'calculator' | 'profile' | 'payments' | 'international_orders' | 'customs_docs' | 'documents' | 'dispatch_rooms' | 'admin_messaging' | 'disputes_delays'>('orders');
 
   useEffect(() => {
     if (authLoading) return;
@@ -5388,6 +5389,7 @@ export default function LogisticsDashboardPage() {
       key: 'local',
       label: 'الشحن المحلي والتوزيع',
       tabs: [
+        { key: 'load_board', label: '🛒 سوق الطلبات المتاحة (Load Board)', icon: 'ShoppingBagIcon' },
         { key: 'orders', label: '📦 الطلبات والشحنات', icon: 'TruckIcon' },
         { key: 'stats', label: '📊 الأداء والإحصائيات', icon: 'ChartBarIcon' },
         { key: 'calculator', label: '🧮 حاسبة التكاليف', icon: 'CalculatorIcon' },
@@ -5542,6 +5544,9 @@ export default function LogisticsDashboardPage() {
         <div>
           {activeTab === 'stats' && (
             <PerformanceStatsTab partnerId={partner.id} />
+          )}
+          {activeTab === 'load_board' && (
+            <LoadBoardTab partnerId={partner.id} />
           )}
           {activeTab === 'orders' && (
             <div className="space-y-4">

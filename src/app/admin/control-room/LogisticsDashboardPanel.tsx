@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface LogisticsPartner {
