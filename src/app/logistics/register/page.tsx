@@ -8,6 +8,12 @@ import { createClient } from '@/lib/supabase/client';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
+import OceanCarrierFields, {
+  EMPTY_OCEAN_CARRIER_FORM,
+  oceanFormToPayload,
+  validateOceanForm,
+  type OceanCarrierFormValue,
+} from '@/components/OceanCarrierFields';
 import { useLanguage } from '@/contexts/LanguageContext';
 import toast from 'react-hot-toast';
 
@@ -401,6 +407,7 @@ export default function LogisticsRegisterPage() {
   });
 
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
+  const [oceanForm, setOceanForm] = useState<OceanCarrierFormValue>(EMPTY_OCEAN_CARRIER_FORM);
   const [customsFile, setCustomsFile] = useState<File | null>(null);
   const [localPhone, setLocalPhone] = useState('');
 
@@ -485,6 +492,11 @@ export default function LogisticsRegisterPage() {
     if (form.destination_countries.length === 0 && form.partner_type !== 'customs_broker') {
       setError(lr.errorDestCountries); return;
     }
+    const isOcean = form.partner_type === 'international_shipping_office';
+    if (isOcean) {
+      const oceanErr = validateOceanForm(oceanForm);
+      if (oceanErr) { setError(oceanErr); return; }
+    }
 
     setLoading(true);
     setError('');
@@ -525,6 +537,7 @@ export default function LogisticsRegisterPage() {
         status: 'pending',
         service_scope: form.service_scope,
         specialized_role: form.service_scope === 'specialized' ? form.specialized_role || null : null,
+        ...(isOcean ? oceanFormToPayload(oceanForm) : {}),
       });
 
       if (dbErr) throw dbErr;
@@ -957,6 +970,10 @@ export default function LogisticsRegisterPage() {
         {step === 3 && (
           <div className="space-y-5">
             <h2 className="text-base font-bold text-foreground">التغطية والمسارات والخدمات</h2>
+
+            {form.partner_type === 'international_shipping_office' && (
+              <OceanCarrierFields value={oceanForm} onChange={setOceanForm} />
+            )}
 
             {/* Origin Countries — not for local distribution */}
             {form.partner_type !== 'local_shipping_distribution' && (

@@ -27,6 +27,8 @@ interface LogisticsDocument {
 
 const DOCUMENT_TYPE_OPTIONS = [
   { value: 'bill_of_lading',        label: 'بوليصة الشحن (Bill of Lading / AWB)' },
+  { value: 'master_bill_of_lading', label: 'بوليصة الشحن الرئيسية المختومة (Stamped Master B/L - MBL)' },
+  { value: 'delivery_order',        label: 'أمر التسليم من ميناء الوصول (Delivery Order - D/O)' },
   { value: 'commercial_invoice',    label: 'الفاتورة التجارية (Commercial Invoice)' },
   { value: 'packing_list',          label: 'قائمة التعبئة (Packing List)' },
   { value: 'certificate_of_origin', label: 'شهادة المنشأ (Certificate of Origin)' },

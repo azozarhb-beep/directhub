@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import toast from 'react-hot-toast';
 import { createClient } from '@/lib/supabase/client';
+import { type BidCurrency } from '@/lib/oceanCarrier';
 
 export interface OpenLoad {
   id: string;
