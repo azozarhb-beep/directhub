@@ -3,6 +3,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
+import {
+  uploadLogisticsFile,
+  LOGISTICS_FILE_ACCEPT,
+  LOGISTICS_MAX_FILE_BYTES,
+  LOGISTICS_UPLOAD_BUCKET,
+} from '@/lib/logisticsUpload';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -61,32 +67,49 @@ function UploadModal({
 }: {
   userId: string;
   onClose: () => void;
-  onUploaded: (doc: LogisticsDocument) => void;
+  onUploaded: (doc: LogisticsDocument) => void | Promise<void>;
 }) {
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [docType, setDocType] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
 
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const isImageFile = (f: File | null) =>
+    !!f && (f.type.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(f.name));
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (f.size > 26 * 1024 * 1024) {
-      setError('حجم الملف يتجاوز الحد المسموح (26 MB)');
+    if (f.size > LOGISTICS_MAX_FILE_BYTES) {
+      setError('حجم الملف يتجاوز الحد المسموح (25 MB)');
+      e.target.value = '';
       return;
     }
     setFile(f);
+    setPreviewUrl(isImageFile(f) ? URL.createObjectURL(f) : null);
     setError(null);
   };
 
   const handleUpload = async () => {
-    if (!file || !docType) {
-      setError('يرجى اختيار الملف ونوع المستند');
+    if (!file) {
+      setError('يرجى تحديد ملف أو صورة أولاً');
+      if (typeof window !== 'undefined') window.alert('يرجى تحديد ملف أو صورة أولاً');
+      return;
+    }
+    if (!docType) {
+      setError('يرجى اختيار نوع المستند');
       return;
     }
 
@@ -95,34 +118,10 @@ function UploadModal({
     setProgress(10);
 
     try {
-      // Build storage path: userId/timestamp_filename
-      const timestamp = Date.now();
-      const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      let storagePath = `${userId}/${timestamp}_${safeFileName}`;
-
       setProgress(30);
 
-      // Upload to Supabase Storage
-      const { error: storageError } = await supabase.storage
-        .from('logistics-documents')
-        .upload(storagePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-
-      if (storageError) {
-        setError(`فشل رفع الملف: ${storageError.message}`);
-        return;
-      }
-
-      setProgress(70);
-
-      // Get signed URL for the uploaded file
-      const { data: urlData } = await supabase.storage
-        .from('logistics-documents')
-        .createSignedUrl(storagePath, 60 * 60 * 24 * 365); // 1 year
-
-      const fileUrl = urlData?.signedUrl || storagePath;
+      // Same upload flow as the chat: resolve MIME, upload to chat-media, get public URL
+      const uploaded = await uploadLogisticsFile(file, userId, 'logistics-docs');
 
       setProgress(85);
 
@@ -132,9 +131,10 @@ function UploadModal({
         .insert({
           partner_id: userId,
           document_type: docType,
-          file_name: file.name,
-          file_url: fileUrl,
-          file_size: file.size,
+          file_name: uploaded.fileName,
+          file_url: uploaded.publicUrl,
+          storage_path: uploaded.storagePath,
+          file_size: uploaded.fileSize,
           tracking_number: trackingNumber.trim() || null,
           status: 'pending_review',
         })
@@ -147,7 +147,7 @@ function UploadModal({
       }
 
       setProgress(100);
-      onUploaded(docData as LogisticsDocument);
+      await onUploaded(docData as LogisticsDocument);
       onClose();
     } catch (err: any) {
       setError(`حدث خطأ غير متوقع: ${err?.message || 'Unknown error'}`);
@@ -158,7 +158,7 @@ function UploadModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl max-h-[95vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-700">
           <div className="flex items-center gap-2">
@@ -168,8 +168,10 @@ function UploadModal({
             <h3 className="text-base font-bold text-white">رفع مستند جمركي</h3>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+            disabled={uploading}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors disabled:opacity-50"
           >
             <Icon name="XMarkIcon" size={18} />
           </button>
@@ -216,34 +218,52 @@ function UploadModal({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx"
+              accept={LOGISTICS_FILE_ACCEPT}
               onChange={handleFileChange}
               className="hidden"
             />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className={`w-full border-2 border-dashed rounded-xl p-4 text-center transition-colors ${
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => !uploading && fileInputRef.current?.click()}
+              onKeyDown={e => {
+                if ((e.key === 'Enter' || e.key === ' ') && !uploading) {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              className={`w-full border-2 border-dashed rounded-xl p-4 text-center transition-colors cursor-pointer ${
                 file
                   ? 'border-cyan-500 bg-cyan-500/10' :'border-slate-600 hover:border-slate-500 bg-slate-800/50'
               }`}
             >
               {file ? (
-                <div className="flex items-center justify-center gap-2">
-                  <Icon name="DocumentCheckIcon" size={18} className="text-cyan-400" />
-                  <div className="text-right">
-                    <p className="text-sm font-semibold text-cyan-300 truncate max-w-[200px]">{file.name}</p>
-                    <p className="text-xs text-slate-400">{formatFileSize(file.size)}</p>
+                <div className="space-y-3">
+                  {previewUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={previewUrl}
+                      alt={`معاينة الملف المحدد ${file.name}`}
+                      className="mx-auto max-h-40 rounded-lg object-contain border border-slate-700"
+                    />
+                  )}
+                  <div className="flex items-center justify-center gap-2">
+                    <Icon name="DocumentCheckIcon" size={18} className="text-cyan-400 shrink-0" />
+                    <div className="text-right min-w-0">
+                      <p className="text-sm font-semibold text-cyan-300 truncate max-w-[220px]" title={file.name}>{file.name}</p>
+                      <p className="text-xs text-slate-400">{formatFileSize(file.size)}</p>
+                    </div>
                   </div>
+                  <p className="text-xs text-slate-500">اضغط لتغيير الملف</p>
                 </div>
               ) : (
                 <div>
                   <Icon name="ArrowUpTrayIcon" size={24} className="text-slate-500 mx-auto mb-2" />
                   <p className="text-sm text-slate-400">اضغط لاختيار الملف</p>
-                  <p className="text-xs text-slate-500 mt-1">PDF, JPG, PNG, DOCX — حتى 26 MB</p>
+                  <p className="text-xs text-slate-500 mt-1">PDF, JPG, PNG, WEBP — حتى 25 MB</p>
                 </div>
               )}
-            </button>
+            </div>
           </div>
 
           {/* Progress */}
@@ -274,6 +294,7 @@ function UploadModal({
         {/* Footer */}
         <div className="flex items-center gap-3 p-5 border-t border-slate-700">
           <button
+            type="button"
             onClick={onClose}
             disabled={uploading}
             className="flex-1 px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
@@ -281,9 +302,11 @@ function UploadModal({
             إلغاء
           </button>
           <button
+            type="button"
             onClick={handleUpload}
-            disabled={uploading || !file || !docType}
-            className="flex-1 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            disabled={uploading || !file}
+            title={!file ? 'يرجى تحديد ملف أو صورة أولاً' : undefined}
+            className="flex-1 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {uploading ? (
               <>
@@ -298,6 +321,9 @@ function UploadModal({
             )}
           </button>
         </div>
+        {!file && !uploading && (
+          <p className="px-5 pb-4 -mt-2 text-xs text-amber-400 text-center">يرجى تحديد ملف أو صورة أولاً</p>
+        )}
       </div>
     </div>
   );
@@ -313,9 +339,9 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
   const [error, setError] = useState<string | null>(null);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
 
-  const fetchDocuments = useCallback(async () => {
+  const fetchDocuments = useCallback(async (silent = false) => {
     if (!userId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
 
     const { data, error: fetchErr } = await supabase
@@ -336,22 +362,32 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
     fetchDocuments();
   }, [fetchDocuments]);
 
-  const handleUploaded = (doc: LogisticsDocument) => {
-    setDocuments(prev => [doc, ...prev]);
+  const handleUploaded = async (doc: LogisticsDocument) => {
+    // Show the new document immediately, then re-sync with the database
+    setDocuments(prev => [doc, ...prev.filter(d => d.id !== doc.id)]);
+    setLoading(false);
+    await fetchDocuments(true);
   };
 
   const handleDelete = async (doc: LogisticsDocument) => {
     if (!confirm(`هل تريد حذف المستند "${doc.file_name}"؟`)) return;
 
-    // Extract storage path from file_url
+    // Extract storage path from file_url (chat-media public URL or legacy private bucket)
     let storagePath = doc.file_url;
+    let bucket = LOGISTICS_UPLOAD_BUCKET;
     if (doc.file_url.startsWith('http')) {
-      const match = doc.file_url.match(/logistics-documents\/([^?]+)/);
-      if (match) storagePath = decodeURIComponent(match[1]);
+      const chatMatch = doc.file_url.match(/\/chat-media\/([^?]+)/);
+      const legacyMatch = doc.file_url.match(/logistics-documents\/([^?]+)/);
+      if (chatMatch) {
+        storagePath = decodeURIComponent(chatMatch[1]);
+      } else if (legacyMatch) {
+        bucket = 'logistics-documents';
+        storagePath = decodeURIComponent(legacyMatch[1]);
+      }
     }
 
     // Delete from storage (best effort)
-    await supabase.storage.from('logistics-documents').remove([storagePath]);
+    await supabase.storage.from(bucket).remove([storagePath]);
 
     // Delete from database
     const { error: deleteErr } = await supabase
