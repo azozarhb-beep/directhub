@@ -302,10 +302,10 @@ function AddProductPageInner() {
               </button>
             </div>
 
-            <div className={`grid gap-3 ${form.is_b2b_only ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
-              <div>
+            <div className="flex flex-col w-full gap-3">
+              <div className="w-full">
                 <label className="block text-sm font-medium text-foreground mb-1.5">{ap.wholesalePrice} <span className="text-red-500">*</span></label>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row w-full gap-2">
                   <input
                     type="number"
                     value={form.wholesale_price}
@@ -313,20 +313,20 @@ function AddProductPageInner() {
                     placeholder="0.00"
                     min="0"
                     step="0.01"
-                    className="flex-1 min-w-0 px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                    className="w-full sm:flex-1 min-w-0 px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
                     dir="ltr"
                   />
                   <select
                     value={form.currency}
                     onChange={e => update('currency', e.target.value)}
-                    className="w-20 px-2 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
+                    className="w-full sm:w-24 px-2 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
                   >
                     {['SAR', 'USD', 'EUR', 'AED', 'CNY', 'YER'].map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
               </div>
               {!form.is_b2b_only && (
-                <div>
+                <div className="w-full">
                   <label className="block text-sm font-medium text-foreground mb-1.5">{ap.retailPrice} <span className="text-red-500">*</span></label>
                   <input
                     type="number"
@@ -342,22 +342,22 @@ function AddProductPageInner() {
               )}
             </div>
 
-            <div>
+            <div className="w-full">
               <label className="block text-sm font-medium text-foreground mb-1.5">{ap.moq} <span className="text-red-500">*</span></label>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row w-full gap-2">
                 <input
                   type="number"
                   value={form.moq}
                   onChange={e => update('moq', e.target.value)}
                   placeholder="1"
                   min="1"
-                  className="flex-1 min-w-0 px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                  className="w-full sm:flex-1 min-w-0 px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
                   dir="ltr"
                 />
                 <select
                   value={form.unit}
                   onChange={e => update('unit', e.target.value)}
-                  className="w-24 px-2 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
+                  className="w-full sm:w-28 px-2 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
                 >
                   {['piece', 'kg', 'ton', 'box', 'pallet', 'set', 'meter', 'liter'].map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
