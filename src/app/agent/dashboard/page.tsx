@@ -94,6 +94,8 @@ interface AgentProduct {
   retail_price?: number | null;
   wholesale_price?: number | null;
   price_tiers?: { min_qty: number; max_qty: number | null; price: number }[] | null;
+  images?: string[] | null;
+  video_url?: string | null;
 }
 
 const CONTACT_STATUS_COLORS: Record<string, string> = {
@@ -1677,6 +1679,22 @@ export default function AgentDashboardPage() {
                   return (
                     <div key={product.id} className="bg-card border border-border rounded-xl p-4">
                       <div className="flex items-start justify-between gap-2">
+                        <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-border bg-muted flex items-center justify-center relative">
+                          {product.images?.[0] ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={product.images[0]} alt={product.name_ar} className="w-full h-full object-cover" />
+                          ) : (
+                            <Icon name="PhotoIcon" size={22} className="text-muted-foreground" />
+                          )}
+                          {product.video_url && (
+                            <span
+                              title={t.agentAddProduct.badgeVideo}
+                              className="absolute bottom-0.5 end-0.5 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center"
+                            >
+                              <Icon name="VideoCameraIcon" size={11} />
+                            </span>
+                          )}
+                        </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-foreground text-sm">{product.name_ar}</p>
                           {product.name_en && <p className="text-xs text-muted-foreground">{product.name_en}</p>}
