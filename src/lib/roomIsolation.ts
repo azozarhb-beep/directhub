@@ -166,6 +166,10 @@ export const FIELD_OPS_MANAGER_HOME = '/admin/field-ops';
 export const ESCROW_OFFICER_ROLE = 'ESCROW_OFFICER';
 export const ESCROW_OFFICER_HOME = '/admin/finance';
 
+/** Staff role that is strictly contained to the system engineering command center. */
+export const SYSTEM_ENGINEER_ROLE = 'SYSTEM_ENGINEER';
+export const SYSTEM_ENGINEER_HOME = '/admin/system';
+
 /**
  * FIELD_OPS_MANAGER staff may only use /admin/field-ops (plus always-open
  * messaging/auth paths). /admin, /admin/finance and any other privileged
@@ -210,6 +214,29 @@ export function resolveEscrowOfficerRedirect(
   }
   const privileged = ['/admin', '/management', '/operations', '/analytics', '/financial-accounts', '/invoices', '/kyc', '/factory', '/agent/register-factory', '/agent/upload-license', '/manufacturer/erp'];
   if (privileged.some((pre) => matchesPrefix(p, pre))) return ESCROW_OFFICER_HOME;
+  return null;
+}
+
+/**
+ * SYSTEM_ENGINEER staff may only use /admin/system. /admin, /admin/finance,
+ * escrow records and every other privileged area redirect back.
+ */
+export function resolveSystemEngineerRedirect(
+  pathname: string,
+  staffRole?: string | null
+): string | null {
+  if ((staffRole || '').toUpperCase() !== SYSTEM_ENGINEER_ROLE) return null;
+  if (isAlwaysOpenPath(pathname)) return null;
+  const p = normalizePath(pathname);
+  if (
+    p === SYSTEM_ENGINEER_HOME ||
+    p.startsWith(SYSTEM_ENGINEER_HOME + '/') ||
+    p.startsWith('/api/')
+  ) {
+    return null;
+  }
+  const privileged = ['/admin', '/management', '/operations', '/analytics', '/financial-accounts', '/invoices', '/kyc', '/factory', '/agent/register-factory', '/agent/upload-license', '/manufacturer/erp'];
+  if (privileged.some((pre) => matchesPrefix(p, pre))) return SYSTEM_ENGINEER_HOME;
   return null;
 }
 

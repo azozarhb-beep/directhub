@@ -4391,6 +4391,18 @@ export default function AdminControlRoomPage() {
                 <span className="text-sm font-bold leading-tight text-slate-100">بوابة الضمان المالي والخزينة المركزية</span>
                 <span className="text-[11px] leading-snug text-slate-400">دورة الضمان المرحلي، مراجعة سندات الإيداع، عمولات المناديب، وسجل التسويات</span>
               </Link>
+
+              {/* System Engineering & Observability Command Center → /admin/system */}
+              <Link
+                href="/admin/system"
+                className="relative flex flex-col items-center gap-2.5 p-4 rounded-2xl border bg-[#161b22] border-[#30363d] text-[#8b949e] hover:border-[#484f58] hover:bg-[#1c2330] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 text-center overflow-hidden col-span-2 sm:col-span-3 md:col-span-2"
+              >
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm" style={{ background: 'linear-gradient(135deg,#6366F1,#06B6D4)' }}>
+                  <Icon name="CpuChipIcon" size={22} className="text-white" />
+                </div>
+                <span className="text-sm font-bold leading-tight text-slate-100">بوابة الهندسة والنظام والبنية التحتية</span>
+                <span className="text-[11px] leading-snug text-slate-400">صحة الخوادم، بوابات الربط، سجل الأخطاء، التدقيق الأمني، ومفاتيح الصيانة</span>
+              </Link>
             </div>
           </div>
 

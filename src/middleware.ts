@@ -7,6 +7,7 @@ import {
   resolveDispatcherRedirect,
   resolveFieldOpsRedirect,
   resolveEscrowOfficerRedirect,
+  resolveSystemEngineerRedirect,
 } from '@/lib/roomIsolation';
 
 /**
@@ -272,7 +273,10 @@ export async function middleware(request: NextRequest) {
     const isDispatcher = (staffRole || '').toUpperCase() === 'LOGISTICS_DISPATCHER';
     const isFieldOps = (staffRole || '').toUpperCase() === 'FIELD_OPS_MANAGER';
     const isEscrowOfficer = (staffRole || '').toUpperCase() === 'ESCROW_OFFICER';
-    const roomRedirect = isEscrowOfficer
+    const isSystemEngineer = (staffRole || '').toUpperCase() === 'SYSTEM_ENGINEER';
+    const roomRedirect = isSystemEngineer
+      ? resolveSystemEngineerRedirect(pathname, staffRole)
+      : isEscrowOfficer
       ? resolveEscrowOfficerRedirect(pathname, staffRole)
       : isFieldOps
         ? resolveFieldOpsRedirect(pathname, staffRole)
