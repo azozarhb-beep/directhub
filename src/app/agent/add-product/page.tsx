@@ -23,6 +23,19 @@ interface PriceTierRow {
   price: string;
 }
 
+interface ImageItem {
+  id: string;
+  file: File;
+  preview: string;
+}
+
+const MAX_IMAGES = 4;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
+const IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+const VIDEO_TYPES = ['video/mp4', 'video/webm'];
+const MEDIA_BUCKET = 'product-media';
+
 const INITIAL_FORM = {
   name_ar: '',
   name_en: '',
@@ -56,6 +69,11 @@ function AddProductPageInner() {
 
   const [form, setForm] = useState(INITIAL_FORM);
   const [tiers, setTiers] = useState<PriceTierRow[]>([]);
+  const [imageItems, setImageItems] = useState<ImageItem[]>([]);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoPreview, setVideoPreview] = useState('');
+  const [videoUrlInput, setVideoUrlInput] = useState('');
+  const [dragOver, setDragOver] = useState(false);
 
   // Auth guard
   useEffect(() => {
@@ -81,6 +99,12 @@ function AddProductPageInner() {
       });
   }, [user, factoryId, supabase]);
 
+  useEffect(() => {
+    return () => {
+      if (videoPreview) URL.revokeObjectURL(videoPreview);
+    };
+  }, [videoPreview]);
+
   const update = (field: string, value: string | boolean) => {
     setForm(prev => ({ ...prev, [field]: value }));
     setError('');
@@ -91,6 +115,61 @@ function AddProductPageInner() {
   const updateTier = (idx: number, field: keyof PriceTierRow, value: string) => {
     setTiers(prev => prev.map((row, i) => (i === idx ? { ...row, [field]: value } : row)));
     setError('');
+  };
+
+  const addImageFiles = (files: FileList | File[] | null) => {
+    if (!files) return;
+    const incoming = Array.from(files);
+    const accepted: ImageItem[] = [];
+    let remaining = MAX_IMAGES - imageItems.length;
+    for (const file of incoming) {
+      if (!IMAGE_TYPES.includes(file.type)) { setError(ap.mediaErrImageType); continue; }
+      if (file.size > MAX_IMAGE_BYTES) { setError(ap.mediaErrImageSize); continue; }
+      if (remaining <= 0) { setError(ap.mediaErrMaxImages); break; }
+      accepted.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        preview: URL.createObjectURL(file),
+      });
+      remaining -= 1;
+    }
+    if (accepted.length) setImageItems(prev => [...prev, ...accepted]);
+  };
+
+  const removeImage = (id: string) => {
+    setImageItems(prev => {
+      const target = prev.find(i => i.id === id);
+      if (target) URL.revokeObjectURL(target.preview);
+      return prev.filter(i => i.id !== id);
+    });
+  };
+
+  const handleVideoPick = (file: File | null) => {
+    if (!file) return;
+    if (!VIDEO_TYPES.includes(file.type)) { setError(ap.mediaErrVideoType); return; }
+    if (file.size > MAX_VIDEO_BYTES) { setError(ap.mediaErrVideoSize); return; }
+    if (videoPreview) URL.revokeObjectURL(videoPreview);
+    setVideoFile(file);
+    setVideoPreview(URL.createObjectURL(file));
+    setVideoUrlInput('');
+    setError('');
+  };
+
+  const removeVideo = () => {
+    if (videoPreview) URL.revokeObjectURL(videoPreview);
+    setVideoFile(null);
+    setVideoPreview('');
+  };
+
+  const uploadToBucket = async (file: File, folder: string): Promise<string> => {
+    const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+    const path = `${user?.id}/${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from(MEDIA_BUCKET)
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (upErr) throw upErr;
+    const { data } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(path);
+    return data.publicUrl;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -127,6 +206,19 @@ function AddProductPageInner() {
         });
       }
 
+      let imageUrls: string[] = [];
+      let videoUrl: string | null = null;
+      try {
+        imageUrls = await Promise.all(imageItems.map(i => uploadToBucket(i.file, 'images')));
+        if (videoFile) {
+          videoUrl = await uploadToBucket(videoFile, 'videos');
+        } else if (videoUrlInput.trim()) {
+          videoUrl = videoUrlInput.trim();
+        }
+      } catch (mediaErr: any) {
+        throw new Error(`${ap.mediaErrUpload}: ${mediaErr?.message || ''}`);
+      }
+
       const { error: insertError } = await supabase
         .from('agent_products')
         .insert({
@@ -146,6 +238,8 @@ function AddProductPageInner() {
           moq: Number(form.moq),
           unit: form.unit,
           specifications: specs,
+          images: imageUrls,
+          video_url: videoUrl,
           is_active: true,
         });
       if (insertError) throw insertError;
@@ -195,7 +289,15 @@ function AddProductPageInner() {
           <p className="text-muted-foreground mb-6">{ap.successDesc.replace('{name}', factory.company_name)}</p>
           <div className="flex flex-col gap-3">
             <button
-              onClick={() => { setSuccess(false); setForm(INITIAL_FORM); setTiers([]); }}
+              onClick={() => {
+                setSuccess(false);
+                setForm(INITIAL_FORM);
+                setTiers([]);
+                imageItems.forEach(i => URL.revokeObjectURL(i.preview));
+                setImageItems([]);
+                removeVideo();
+                setVideoUrlInput('');
+              }}
               className="flex items-center justify-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-semibold hover:bg-primary/90 transition-colors"
             >
               <Icon name="PlusIcon" size={16} />
@@ -466,6 +568,117 @@ function AddProductPageInner() {
             />
           </div>
 
+          {/* Product Media */}
+          <div className="space-y-4 p-4 bg-muted/40 border border-border rounded-xl">
+            <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
+              <Icon name="PhotoIcon" size={16} className="text-primary" />
+              {ap.mediaTitle}
+            </h2>
+
+            {/* Images */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-medium text-foreground">{ap.mediaImages}</label>
+                <span className="text-xs text-muted-foreground" dir="ltr">{imageItems.length}/{MAX_IMAGES}</span>
+              </div>
+
+              {imageItems.length < MAX_IMAGES && (
+                <label
+                  onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={e => { e.preventDefault(); setDragOver(false); addImageFiles(e.dataTransfer.files); }}
+                  className={`flex flex-col items-center justify-center gap-1 w-full px-3 py-5 border-2 border-dashed rounded-xl cursor-pointer text-center transition-colors ${
+                    dragOver ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted'
+                  }`}
+                >
+                  <Icon name="ArrowUpTrayIcon" size={20} className="text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">{ap.mediaImagesHint}</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    multiple
+                    className="hidden"
+                    onChange={e => { addImageFiles(e.target.files); e.target.value = ''; }}
+                  />
+                </label>
+              )}
+
+              {imageItems.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+                  {imageItems.map((item, idx) => (
+                    <div key={item.id} className="relative aspect-square rounded-xl overflow-hidden border border-border bg-background">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={item.preview} alt={`${ap.mediaImages} ${idx + 1}`} className="w-full h-full object-cover" />
+                      {idx === 0 && (
+                        <span className="absolute bottom-1 start-1 px-1.5 py-0.5 rounded-md bg-primary text-white text-[10px] font-semibold">
+                          {ap.mediaCover}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeImage(item.id)}
+                        aria-label={ap.mediaRemove}
+                        className="absolute top-1 end-1 w-6 h-6 flex items-center justify-center rounded-full bg-black/60 text-white hover:bg-red-600 transition-colors"
+                      >
+                        <Icon name="XMarkIcon" size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Video */}
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">{ap.mediaVideo}</label>
+              <p className="text-xs text-muted-foreground mb-2">{ap.mediaVideoHint}</p>
+
+              {!videoFile && (
+                <label className="flex items-center justify-center gap-2 w-full px-3 py-4 border-2 border-dashed border-border bg-background rounded-xl cursor-pointer hover:bg-muted transition-colors">
+                  <Icon name="VideoCameraIcon" size={18} className="text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">{ap.mediaVideoPick}</span>
+                  <input
+                    type="file"
+                    accept="video/mp4,video/webm"
+                    className="hidden"
+                    onChange={e => { handleVideoPick(e.target.files?.[0] || null); e.target.value = ''; }}
+                  />
+                </label>
+              )}
+
+              {videoFile && videoPreview && (
+                <div className="relative rounded-xl overflow-hidden border border-border bg-black">
+                  <video src={videoPreview} controls playsInline className="w-full max-h-64" />
+                  <button
+                    type="button"
+                    onClick={removeVideo}
+                    aria-label={ap.mediaRemove}
+                    className="absolute top-2 end-2 w-7 h-7 flex items-center justify-center rounded-full bg-black/60 text-white hover:bg-red-600 transition-colors"
+                  >
+                    <Icon name="XMarkIcon" size={14} />
+                  </button>
+                </div>
+              )}
+
+              {!videoFile && (
+                <div className="mt-3">
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">{ap.mediaVideoUrl}</label>
+                  <input
+                    type="url"
+                    value={videoUrlInput}
+                    onChange={e => setVideoUrlInput(e.target.value)}
+                    placeholder={ap.mediaVideoUrlPlaceholder}
+                    className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                    dir="ltr"
+                  />
+                  {videoUrlInput.trim() && /^https?:\/\//i.test(videoUrlInput.trim()) && /\.(mp4|webm)(\?.*)?$/i.test(videoUrlInput.trim()) && (
+                    <video src={videoUrlInput.trim()} controls playsInline className="w-full max-h-64 mt-2 rounded-xl border border-border bg-black" />
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
           <button
             type="submit"
             disabled={loading}
@@ -474,7 +687,7 @@ function AddProductPageInner() {
             {loading ? (
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                {ap.saving}
+                {imageItems.length > 0 || videoFile ? ap.mediaUploading : ap.saving}
               </>
             ) : (
               <>
