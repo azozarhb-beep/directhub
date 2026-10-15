@@ -36,9 +36,9 @@ const INTERNATIONAL_COUNTRIES_AR = [
 ];
 
 const FACTORY_TYPES = [
-  { value: 'local_factory', label: '{arf.localFactory}' },
-  { value: 'international_factory', label: '{arf.intlFactory}' },
-  { value: 'local_supplier', label: '{arf.localSupplier}' },
+  { value: 'local_factory', key: 'localFactory' as const, fallback: 'مصنع محلي' },
+  { value: 'international_factory', key: 'intlFactory' as const, fallback: 'مصنع دولي' },
+  { value: 'local_supplier', key: 'localSupplier' as const, fallback: 'مورد محلي' },
 ];
 
 const CONTACT_STATUSES = [
@@ -129,7 +129,8 @@ function RegisterFactoryPageInner() {
 
   const validateStep1 = () => {
     if (!form.company_name.trim()) { setError(arf.errorCompanyRequired); return false; }
-    if (!form.city.trim()) { setError(arf.errorCityRequired); return false; }
+    if (isLocalType && !form.region.trim()) { setError('يرجى اختيار المحافظة'); return false; }
+    if (!form.city.trim()) { setError(isLocalType ? 'يرجى إدخال المديرية / المنطقة' : arf.errorCityRequired); return false; }
     if (!form.industry.trim()) { setError(arf.errorIndustryRequired); return false; }
     return true;
   };
@@ -277,47 +278,64 @@ function RegisterFactoryPageInner() {
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">{arf.facilityTypeLabel}</label>
                 <div className="grid grid-cols-3 gap-2">
-                  {FACTORY_TYPES.map(t => (
-                    <button
-                      key={t.value}
-                      onClick={() => update('factory_type', t.value)}
-                      className={`py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all ${
-                        form.factory_type === t.value
-                          ? 'bg-primary text-white border-primary' :'bg-background border-border text-muted-foreground hover:border-primary/50'
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
+                  {FACTORY_TYPES.map(ft => {
+                    const translated = (arf as Record<string, any>)?.[ft.key];
+                    const label = typeof translated === 'string' && translated.trim() ? translated : ft.fallback;
+                    return (
+                      <button
+                        key={ft.value}
+                        type="button"
+                        onClick={() => update('factory_type', ft.value)}
+                        className={`py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all ${
+                          form.factory_type === ft.value
+                            ? 'bg-primary text-white border-primary' :'bg-background border-border text-muted-foreground hover:border-primary/50'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">{arf.cityLabel} <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    value={form.city}
-                    onChange={e => update('city', e.target.value)}
-                    placeholder={isLocalType ? arf.cityPhLocal : arf.cityPhIntl}
-                    className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-                  />
-                </div>
-                <div>
-                  {isLocalType ? (
-                    <>
-                      <label className="block text-sm font-medium text-foreground mb-1.5">{arf.governorateLabel}</label>
-                      <select
-                        value={form.region}
-                        onChange={e => update('region', e.target.value)}
-                        className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
-                      >
-                        <option value="">{arf.selectGovernorate}</option>
-                        {YEMENI_GOVERNORATES.map(g => <option key={g} value={g}>{g}</option>)}
-                      </select>
-                    </>
-                  ) : (
-                    <>
+              {isLocalType ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">{arf.governorateLabel} <span className="text-red-500">*</span></label>
+                    <select
+                      value={form.region}
+                      onChange={e => update('region', e.target.value)}
+                      className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
+                    >
+                      <option value="">{arf.selectGovernorate}</option>
+                      {YEMENI_GOVERNORATES.map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">المديرية / المنطقة <span className="text-red-500">*</span></label>
+                    <input
+                      type="text"
+                      value={form.city}
+                      onChange={e => update('city', e.target.value)}
+                      placeholder="مثال: مديرية الصافية، المنطقة الصناعية"
+                      className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">الشارع وأقرب مَعلم</label>
+                    <textarea
+                      value={form.address}
+                      onChange={e => update('address', e.target.value)}
+                      rows={2}
+                      placeholder="مثال: شارع الستين، بجوار جسر مذبح، مقابل محطة الشرعبي"
+                      className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
                       <label className="block text-sm font-medium text-foreground mb-1.5">{arf.countryLabel}</label>
                       <select
                         value={form.country}
@@ -326,10 +344,30 @@ function RegisterFactoryPageInner() {
                       >
                         {INTERNATIONAL_COUNTRIES_AR.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
-                    </>
-                  )}
-                </div>
-              </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">{arf.cityLabel} <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={form.city}
+                        onChange={e => update('city', e.target.value)}
+                        placeholder={arf.cityPhIntl}
+                        className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">{arf.addressLabel}</label>
+                    <textarea
+                      value={form.address}
+                      onChange={e => update('address', e.target.value)}
+                      rows={2}
+                      placeholder={arf.addressPh}
+                      className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none"
+                    />
+                  </div>
+                </>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">{arf.industryLabel} <span className="text-red-500">*</span></label>
@@ -425,17 +463,6 @@ function RegisterFactoryPageInner() {
                   dir="ltr"
                 />
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1.5">{arf.addressLabel}</label>
-                <textarea
-                  value={form.address}
-                  onChange={e => update('address', e.target.value)}
-                  rows={2}
-                  placeholder={arf.addressPh}
-                  className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none"
-                />
-              </div>
             </div>
           )}
 
@@ -490,8 +517,10 @@ function RegisterFactoryPageInner() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">{arf.summaryLocation}</span>
-                  <span className="font-semibold text-foreground">
-                    {form.city}{isLocalType && form.region ? `, ${form.region}` : !isLocalType ? `, ${form.country}` : ''}
+                  <span className="font-semibold text-foreground text-left">
+                    {isLocalType
+                      ? [form.region, form.city, form.address.trim()].filter(Boolean).join('، ')
+                      : [form.city, form.country].filter(Boolean).join('، ')}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
