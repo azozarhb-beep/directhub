@@ -6,6 +6,7 @@ import {
   resolveCrossRoleRedirect,
   resolveDispatcherRedirect,
   resolveFieldOpsRedirect,
+  resolveEscrowOfficerRedirect,
 } from '@/lib/roomIsolation';
 
 /**
@@ -270,11 +271,14 @@ export async function middleware(request: NextRequest) {
       (meta.staff_role as string | undefined) || (app.staff_role as string | undefined) || null;
     const isDispatcher = (staffRole || '').toUpperCase() === 'LOGISTICS_DISPATCHER';
     const isFieldOps = (staffRole || '').toUpperCase() === 'FIELD_OPS_MANAGER';
-    const roomRedirect = isFieldOps
-      ? resolveFieldOpsRedirect(pathname, staffRole)
-      : isDispatcher
-        ? resolveDispatcherRedirect(pathname, staffRole)
-        : resolveCrossRoleRedirect(pathname, platformRole);
+    const isEscrowOfficer = (staffRole || '').toUpperCase() === 'ESCROW_OFFICER';
+    const roomRedirect = isEscrowOfficer
+      ? resolveEscrowOfficerRedirect(pathname, staffRole)
+      : isFieldOps
+        ? resolveFieldOpsRedirect(pathname, staffRole)
+        : isDispatcher
+          ? resolveDispatcherRedirect(pathname, staffRole)
+          : resolveCrossRoleRedirect(pathname, platformRole);
     if (roomRedirect && normalizePath(pathname) !== normalizePath(roomRedirect)) {
       const url = request.nextUrl.clone();
       url.pathname = roomRedirect;

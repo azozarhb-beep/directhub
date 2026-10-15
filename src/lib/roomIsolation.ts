@@ -162,6 +162,10 @@ export const LOGISTICS_DISPATCHER_HOME = '/admin/logistics';
 export const FIELD_OPS_MANAGER_ROLE = 'FIELD_OPS_MANAGER';
 export const FIELD_OPS_MANAGER_HOME = '/admin/field-ops';
 
+/** Staff role that is strictly contained to the financial escrow command center. */
+export const ESCROW_OFFICER_ROLE = 'ESCROW_OFFICER';
+export const ESCROW_OFFICER_HOME = '/admin/finance';
+
 /**
  * FIELD_OPS_MANAGER staff may only use /admin/field-ops (plus always-open
  * messaging/auth paths). /admin, /admin/finance and any other privileged
@@ -183,6 +187,29 @@ export function resolveFieldOpsRedirect(
   }
   const privileged = ['/admin', '/management', '/operations', '/analytics', '/financial-accounts', '/invoices', '/kyc'];
   if (privileged.some((pre) => matchesPrefix(p, pre))) return FIELD_OPS_MANAGER_HOME;
+  return null;
+}
+
+/**
+ * ESCROW_OFFICER staff may only use /admin/finance. Catalog editing (field-ops),
+ * factory licensing, logistics and every other privileged area redirect back.
+ */
+export function resolveEscrowOfficerRedirect(
+  pathname: string,
+  staffRole?: string | null
+): string | null {
+  if ((staffRole || '').toUpperCase() !== ESCROW_OFFICER_ROLE) return null;
+  if (isAlwaysOpenPath(pathname)) return null;
+  const p = normalizePath(pathname);
+  if (
+    p === ESCROW_OFFICER_HOME ||
+    p.startsWith(ESCROW_OFFICER_HOME + '/') ||
+    p.startsWith('/api/')
+  ) {
+    return null;
+  }
+  const privileged = ['/admin', '/management', '/operations', '/analytics', '/financial-accounts', '/invoices', '/kyc', '/factory', '/agent/register-factory', '/agent/upload-license', '/manufacturer/erp'];
+  if (privileged.some((pre) => matchesPrefix(p, pre))) return ESCROW_OFFICER_HOME;
   return null;
 }
 
