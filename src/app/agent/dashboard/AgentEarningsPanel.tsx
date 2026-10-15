@@ -40,8 +40,8 @@ interface Props {
   userId: string;
 }
 
-// Commission rate: 2% of total order value linked to agent's factories
-const COMMISSION_RATE = 0.02;
+// Commission rule: 20% of Direct Hub's platform fee on each completed order (not of order value)
+const COMMISSION_RATE = 0.20;
 
 // Currency conversion rates (YER base)
 const YER_TO_USD = 1 / 250;
@@ -65,7 +65,7 @@ export default function AgentEarningsPanel({ userId }: Props) {
       // 1. Fetch factories registered under this agent (via referral link)
       const { data: factoriesData, error: factoriesErr } = await supabase
         .from('factory_registrations')
-        .select('id, company_name, registration_status, approval_type, created_at, city, country')
+        .select('id, user_id, company_name, registration_status, approval_type, created_at, city, country')
         .eq('referred_by_agent_id', userId)
         .order('created_at', { ascending: false });
 
@@ -78,25 +78,51 @@ export default function AgentEarningsPanel({ userId }: Props) {
       );
       const fastTrackFactories = factories.filter(f => f.approval_type === 'fast_track_initial');
 
-      // 2. Fetch orders linked to agent's approved factories
+      // 2. Aggregate completed orders from BOTH sources:
+      //    a) factories registered via the agent's referral link
+      //    b) factories manually registered by the agent (matched through the agent's products in order items)
       let totalOrderValue = 0;
-      let totalOrders = 0;
+      let totalPlatformFee = 0;
+      const countedOrderIds = new Set<string>();
+      const COMPLETED = ['delivered', 'completed'];
 
-      if (approvedFactories.length > 0) {
-        const factoryUserIds = approvedFactories.map(f => f.id);
-        const { data: ordersData } = await supabase
+      const addOrder = (o: { id: string; total?: number | null; platform_commission?: number | null }) => {
+        if (countedOrderIds.has(o.id)) return;
+        countedOrderIds.add(o.id);
+        totalOrderValue += o.total || 0;
+        totalPlatformFee += o.platform_commission || 0;
+      };
+
+      const referralUserIds = approvedFactories.map(f => f.user_id).filter(Boolean) as string[];
+      if (referralUserIds.length > 0) {
+        const { data: refOrders } = await supabase
           .from('orders')
-          .select('id, total, currency, status')
-          .in('factory_user_id', factoryUserIds)
-          .not('status', 'in', '("cancelled","refunded")');
-
-        if (ordersData && ordersData.length > 0) {
-          totalOrders = ordersData.length;
-          totalOrderValue = ordersData.reduce((sum, o) => sum + (o.total || 0), 0);
-        }
+          .select('id, total, platform_commission, status, escrow_status')
+          .in('factory_user_id', referralUserIds);
+        (refOrders || [])
+          .filter(o => COMPLETED.includes(String(o.status)) || o.escrow_status === 'funds_released')
+          .forEach(addOrder);
       }
 
-      const estimatedCommission = totalOrderValue * COMMISSION_RATE;
+      const { data: agentProducts } = await supabase
+        .from('agent_products')
+        .select('id')
+        .eq('agent_id', userId);
+      const agentProductIds = new Set((agentProducts || []).map(p => p.id));
+      if (agentProductIds.size > 0) {
+        const { data: manualOrders } = await supabase
+          .from('orders')
+          .select('id, total, platform_commission, status, escrow_status, items')
+          .order('created_at', { ascending: false })
+          .limit(500);
+        (manualOrders || [])
+          .filter(o => COMPLETED.includes(String(o.status)) || o.escrow_status === 'funds_released')
+          .filter(o => Array.isArray(o.items) && (o.items as any[]).some(it => agentProductIds.has(it?.product_id)))
+          .forEach(addOrder);
+      }
+
+      const totalOrders = countedOrderIds.size;
+      const estimatedCommission = totalPlatformFee * COMMISSION_RATE;
 
       setSummary({
         totalFactories: factories.length,
@@ -104,7 +130,7 @@ export default function AgentEarningsPanel({ userId }: Props) {
         pendingFactories: pendingFactories.length,
         fastTrackFactories: fastTrackFactories.length,
         totalOrders,
-        totalOrderValue,
+        totalOrderValue: totalPlatformFee,
         estimatedCommission,
         currency: 'USD',
         recentFactories: factories.slice(0, 5),
@@ -252,13 +278,13 @@ export default function AgentEarningsPanel({ userId }: Props) {
           </div>
           <div>
             <p className="text-xs font-medium mb-0.5" style={{ color: 'rgba(212,175,55,0.7)' }}>
-              العمولة التقديرية (2% من قيمة الطلبات)
+              العمولة التقديرية (20% من رسوم المنصة)
             </p>
             <p className="text-3xl font-bold" style={{ color: '#D4AF37' }}>
               {commissionFormatted} <span className="text-lg">{summary.currency}</span>
             </p>
             <p className="text-xs mt-1" style={{ color: '#8899aa' }}>
-              بناءً على إجمالي طلبات: {orderValueFormatted} {summary.currency}
+              بناءً على رسوم المنصة المحققة: {orderValueFormatted} {summary.currency}
             </p>
           </div>
         </div>
@@ -268,7 +294,7 @@ export default function AgentEarningsPanel({ userId }: Props) {
             style={{ background: 'rgba(212,175,55,0.1)', border: '1px solid rgba(212,175,55,0.3)' }}
           >
             <p className="text-[10px] font-medium" style={{ color: 'rgba(212,175,55,0.7)' }}>نسبة العمولة</p>
-            <p className="text-xl font-bold" style={{ color: '#D4AF37' }}>2%</p>
+            <p className="text-xl font-bold" style={{ color: '#D4AF37' }}>20%</p>
           </div>
           {summary.pendingFactories > 0 && (
             <div
@@ -358,7 +384,7 @@ export default function AgentEarningsPanel({ userId }: Props) {
                   <tr key={c.id} className={`border-b border-border ${idx % 2 === 0 ? 'bg-card' : 'bg-muted/30'}`}>
                     <td className="px-4 py-3 text-xs font-semibold text-foreground">{c.factory_name || '—'}</td>
                     <td className="px-4 py-3 text-xs font-mono text-muted-foreground" dir="ltr">{c.order_id?.slice(0, 8).toUpperCase() || '—'}</td>
-                    <td className="px-4 py-3 text-xs font-bold text-primary">2%</td>
+                    <td className="px-4 py-3 text-xs font-bold text-primary">20%</td>
                     <td className="px-4 py-3 text-xs font-bold text-emerald-600">
                       {c.commission_amount?.toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {c.currency}
                     </td>
@@ -398,7 +424,7 @@ export default function AgentEarningsPanel({ userId }: Props) {
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2">
         <Icon name="InformationCircleIcon" size={15} className="text-blue-500 shrink-0 mt-0.5" />
         <p className="text-xs text-blue-700">
-          <span className="font-semibold">ملاحظة:</span> العمولات المعروضة تقديرية وتُحسب بنسبة 2% من إجمالي قيمة الطلبات المرتبطة بالمصانع المسجلة عبر رابط الدعوة الخاص بك. يتم صرف العمولات الفعلية وفق جدول الدفع المعتمد من الإدارة.
+          <span className="font-semibold">ملاحظة:</span> العمولات تُحسب بنسبة 20% من رسوم منصة دايركت هب المحققة من طلبات المصانع التابعة لك ويتم صرفها بعد اكتمال الصفقة.
         </p>
       </div>
 

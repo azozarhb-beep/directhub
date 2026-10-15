@@ -21,6 +21,7 @@ interface FactoryOrder {
   buyer_name?: string;
   product_name?: string;
   factory_name?: string;
+  platform_fee?: number;
 }
 
 interface SalesKPI {
@@ -122,9 +123,17 @@ export default function AgentSalesDashboard({ userId, factories }: Props) {
       // Query all orders and filter those that reference agent's factories or products
       const { data: allOrders } = await supabase
         .from('orders')
-        .select('id, order_number, status, total, currency, created_at, items, factory_user_id')
+        .select('id, order_number, status, total, currency, created_at, items, factory_user_id, platform_commission, escrow_status')
         .order('created_at', { ascending: false })
         .limit(200);
+
+      // Referral-link factories: resolve their user ids so their orders are counted too
+      const { data: referralFactories } = await supabase
+        .from('factory_registrations')
+        .select('user_id, company_name')
+        .eq('referred_by_agent_id', userId);
+      const referralUserMap: Record<string, string> = {};
+      (referralFactories || []).forEach(f => { if (f.user_id) referralUserMap[f.user_id] = f.company_name; });
 
       const productIds = (agentProductsData || []).map(p => p.id);
       const productFactoryMap: Record<string, string> = {};
@@ -133,27 +142,25 @@ export default function AgentSalesDashboard({ userId, factories }: Props) {
       let agentOrders: FactoryOrder[] = [];
 
       if (allOrders && allOrders.length > 0) {
-        // Match orders that contain agent's products in items JSONB
-        const matchedByProduct = allOrders.filter(order => {
-          const items = order.items as any[];
-          if (!Array.isArray(items)) return false;
-          return items.some((item: any) => productIds.includes(item.product_id));
-        }).map(order => {
-          const items = order.items as any[];
-          const matchingItem = items?.find((item: any) => productIds.includes(item.product_id));
-          const factoryName = matchingItem ? productFactoryMap[matchingItem.product_id] || '' : '';
-          return {
+        const seen = new Set<string>();
+        for (const order of allOrders) {
+          const items = Array.isArray(order.items) ? (order.items as any[]) : [];
+          const matchingItem = items.find((item: any) => productIds.includes(item?.product_id));
+          const referralFactoryName = order.factory_user_id ? referralUserMap[order.factory_user_id] : undefined;
+          if (!matchingItem && referralFactoryName === undefined) continue;
+          if (seen.has(order.id)) continue;
+          seen.add(order.id);
+          agentOrders.push({
             id: order.id,
             order_number: order.order_number || order.id.slice(0, 8).toUpperCase(),
             status: order.status,
             total_amount: order.total || 0,
             currency: order.currency || 'YER',
             created_at: order.created_at,
-            factory_name: factoryName,
-          };
-        });
-
-        agentOrders = matchedByProduct;
+            factory_name: matchingItem ? productFactoryMap[matchingItem.product_id] || '' : referralFactoryName || '',
+            platform_fee: order.platform_commission || 0,
+          });
+        }
       }
 
       setOrders(agentOrders);
@@ -178,6 +185,11 @@ export default function AgentSalesDashboard({ userId, factories }: Props) {
     });
     const totalRevYER = orders.reduce((sum, o) => sum + toYER(o.total_amount, o.currency), 0);
     const monthRevYER = thisMonth.reduce((sum, o) => sum + toYER(o.total_amount, o.currency), 0);
+    // Commission = 20% of Direct Hub's platform fee on completed orders only (not of order value)
+    const isCompleted = (o: FactoryOrder) => o.status === 'delivered' || o.status === 'completed';
+    const feeYER = (o: FactoryOrder) => toYER(o.platform_fee || 0, o.currency);
+    const totalFeeYER = orders.filter(isCompleted).reduce((sum, o) => sum + feeYER(o), 0);
+    const monthFeeYER = thisMonth.filter(isCompleted).reduce((sum, o) => sum + feeYER(o), 0);
     return {
       totalOrders: orders.length,
       totalRevenue: totalRevYER,
@@ -186,8 +198,8 @@ export default function AgentSalesDashboard({ userId, factories }: Props) {
       avgOrderValue: orders.length > 0 ? totalRevYER / orders.length : 0,
       thisMonthOrders: thisMonth.length,
       thisMonthRevenue: monthRevYER,
-      commissionYER: totalRevYER * COMMISSION_RATE,
-      thisMonthCommission: monthRevYER * COMMISSION_RATE,
+      commissionYER: totalFeeYER * COMMISSION_RATE,
+      thisMonthCommission: monthFeeYER * COMMISSION_RATE,
     };
   }, [orders, factories]);
 

@@ -22,7 +22,6 @@ const nextConfig = {
   allowedDevOrigins: [
     'localhost',
     '127.0.0.1',
-    '*.localhost',
     '**.localhost',
     'dhiwise.com',
     '**.dhiwise.com',

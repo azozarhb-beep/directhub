@@ -275,21 +275,31 @@ export default function AgentMessagingHub({ userId, factories }: AgentMessagingH
   };
 
   const handleAttachmentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const restoreScroll = () => {
+      requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
+    };
     const file = e.target.files?.[0];
     if (!file) return;
     if (!ALLOWED_ATTACH_TYPES.includes(file.type)) {
       setError('نوع الملف غير مدعوم. المسموح به: صور (JPG, PNG, WebP, GIF) وملفات PDF.');
       setTimeout(() => setError(''), 5000);
+      restoreScroll();
       return;
     }
     if (file.size > MAX_ATTACH_SIZE) {
       setError('حجم الملف كبير جداً. الحد الأقصى 25MB.');
       setTimeout(() => setError(''), 5000);
+      restoreScroll();
       return;
     }
     const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined;
     setPendingAttachment({ file, previewUrl });
     if (fileInputRef.current) fileInputRef.current.value = '';
+    restoreScroll();
   };
 
   const clearAttachment = useCallback(() => {
@@ -525,7 +535,7 @@ export default function AgentMessagingHub({ userId, factories }: AgentMessagingH
                   {/* Attachment button */}
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); fileInputRef.current?.click(); }}
                     disabled={sending || uploadingAttachment}
                     title="إرفاق صورة أو ملف PDF"
                     className="w-9 h-9 flex items-center justify-center rounded-xl border border-border bg-background hover:bg-primary/5 hover:border-primary/40 text-muted-foreground hover:text-primary transition-colors disabled:opacity-40 shrink-0 self-end"

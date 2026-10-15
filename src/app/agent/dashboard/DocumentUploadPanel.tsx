@@ -26,13 +26,18 @@ interface FactoryDocument {
 }
 
 const DOC_TYPE_CONFIG: Record<string, { labelKey: string; icon: string; color: string }> = {
+  product_catalog: { labelKey: 'typeCatalog', icon: 'BookOpenIcon', color: 'text-purple-600' },
+  company_profile: { labelKey: 'typeCompanyProfile', icon: 'BuildingOffice2Icon', color: 'text-indigo-600' },
+  certificate: { labelKey: 'typeCertificate', icon: 'AcademicCapIcon', color: 'text-amber-600' },
+  price_sheet: { labelKey: 'typePriceSheet', icon: 'CurrencyDollarIcon', color: 'text-emerald-600' },
+  // Legacy types: kept only to render previously uploaded files
   license: { labelKey: 'typeLicense', icon: 'DocumentCheckIcon', color: 'text-emerald-600' },
   registration: { labelKey: 'typeRegistry', icon: 'ClipboardDocumentListIcon', color: 'text-blue-600' },
-  product_catalog: { labelKey: 'typeCatalog', icon: 'BookOpenIcon', color: 'text-purple-600' },
   image: { labelKey: 'typeImage', icon: 'PhotoIcon', color: 'text-pink-600' },
-  certificate: { labelKey: 'typeCertificate', icon: 'AcademicCapIcon', color: 'text-amber-600' },
   other: { labelKey: 'typeOther', icon: 'DocumentIcon', color: 'text-gray-600' },
 };
+
+const UPLOAD_DOC_TYPES = ['product_catalog', 'company_profile', 'certificate', 'price_sheet'] as const;
 
 const FACTORY_TYPE_KEYS: Record<string, string> = {
   local_factory: 'localFactory',
@@ -56,7 +61,7 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [selectedFactory, setSelectedFactory] = useState('');
-  const [docType, setDocType] = useState('license');
+  const [docType, setDocType] = useState<string>('product_catalog');
   const [description, setDescription] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filterFactory, setFilterFactory] = useState('');
@@ -80,8 +85,13 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
   }, [fetchDocuments]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
     const file = e.target.files?.[0];
     if (file) setSelectedFile(file);
+    requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
   };
 
   const handleUpload = async () => {
@@ -212,8 +222,9 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
               onChange={e => setDocType(e.target.value)}
               className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
             >
-              {Object.entries(DOC_TYPE_CONFIG).map(([key, cfg]) => (
-                <option key={key} value={key}>{(ui as any)[cfg.labelKey]}</option>
+              <option value="">{ui.allTypes}</option>
+              {UPLOAD_DOC_TYPES.map(key => (
+                <option key={key} value={key}>{(ui as any)[DOC_TYPE_CONFIG[key].labelKey]}</option>
               ))}
             </select>
           </div>
@@ -234,8 +245,14 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
           <div>
             <label className="block text-xs font-semibold text-foreground mb-1.5">{ui.fileRequired}</label>
             <div
+              role="button"
+              tabIndex={0}
               className="border-2 border-dashed border-border rounded-xl p-3 text-center cursor-pointer hover:border-primary transition-colors"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                fileInputRef.current?.click();
+              }}
             >
               {selectedFile ? (
                 <div className="flex items-center gap-2 justify-center">
@@ -306,8 +323,8 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
               className="px-2.5 py-1.5 bg-background border border-border rounded-lg text-xs text-foreground focus:outline-none focus:border-primary"
             >
               <option value="">{ui.allTypes}</option>
-              {Object.entries(DOC_TYPE_CONFIG).map(([key, cfg]) => (
-                <option key={key} value={key}>{(ui as any)[cfg.labelKey]}</option>
+              {UPLOAD_DOC_TYPES.map(key => (
+                <option key={key} value={key}>{(ui as any)[DOC_TYPE_CONFIG[key].labelKey]}</option>
               ))}
             </select>
           </div>

@@ -92,6 +92,10 @@ export default function ChatImageAttachment({
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const scrollX = window.scrollX;
+      const scrollY = window.scrollY;
       const file = e.target.files?.[0];
       if (!file) return;
       const resolvedType = resolveFileType(file, CHAT_IMAGE_ALLOWED);
@@ -100,6 +104,7 @@ export default function ChatImageAttachment({
       onAttach({ file, name: file.name, previewUrl });
       // Reset input so the same file can be re-selected
       if (fileInputRef.current) fileInputRef.current.value = '';
+      requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
     },
     [onAttach]
   );
@@ -128,7 +133,7 @@ export default function ChatImageAttachment({
         <button
           type="button"
           disabled={disabled}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); fileInputRef.current?.click(); }}
           title="إرفاق صورة"
           className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-colors shrink-0 bg-[#0A192F]/50 border border-[#D4AF37]/15 text-gray-400 hover:text-[#D4AF37] hover:border-[#D4AF37]/40 disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
         >

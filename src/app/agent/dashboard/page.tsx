@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -516,6 +516,7 @@ export default function AgentDashboardPage() {
   const [milestoneModal, setMilestoneModal] = useState<{ taskId: string; currentStage: number } | null>(null);
   const [milestoneNote, setMilestoneNote] = useState('');
   const [milestoneUpdating, setMilestoneUpdating] = useState(false);
+  const hasLoadedOnceRef = React.useRef(false);
 
   // Auth guard — wrong roles redirect to their room (never 403)
   useEffect(() => {
@@ -537,7 +538,7 @@ export default function AgentDashboardPage() {
 
   const fetchData = useCallback(async () => {
     if (!user) return;
-    setLoading(true);
+    if (!hasLoadedOnceRef.current) setLoading(true);
     try {
       const [factoriesRes, productsRes] = await Promise.all([
         supabase
@@ -556,13 +557,15 @@ export default function AgentDashboardPage() {
     } catch (err) {
       console.error('Error fetching agent data:', err);
     } finally {
+      hasLoadedOnceRef.current = true;
       setLoading(false);
     }
-  }, [user, supabase]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   useEffect(() => {
-    if (user) fetchData();
-  }, [user, fetchData]);
+    if (user?.id) fetchData();
+  }, [user?.id, fetchData]);
 
   // Full review save: updates contact_status, registration_status, agent_notes, admin_note
   const handleReviewSave = async (
@@ -783,7 +786,7 @@ export default function AgentDashboardPage() {
     ? factories.filter(f => f.registration_status === filterStatus)
     : factories;
 
-  if (authLoading || loading) {
+  if ((authLoading || loading) && !hasLoadedOnceRef.current) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
