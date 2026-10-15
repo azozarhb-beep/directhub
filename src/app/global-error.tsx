@@ -14,7 +14,7 @@ export default function GlobalError({
     if (/ChunkLoadError|Loading chunk .* failed/i.test(`${error?.name} ${error?.message}`)) {
       try {
         const last = Number(sessionStorage.getItem('dh_chunk_reload_at') || '0');
-        if (Date.now() - last > 30000) {
+        if (Date.now() - last > 10000) {
           sessionStorage.setItem('dh_chunk_reload_at', String(Date.now()));
           window.location.reload();
         }
