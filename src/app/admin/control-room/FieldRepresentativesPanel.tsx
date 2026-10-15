@@ -24,6 +24,7 @@ interface FieldRep {
   pendingCount: number;
   approvedCount: number;
   productsCount: number;
+  products: any[];
   factories: AgentFactory[];
 }
 
@@ -695,8 +696,94 @@ function MessagingModal({
 
 // ─── Rep Detail Modal ─────────────────────────────────────────────────────────
 
+function AgentProductsModeration({
+  products,
+  onChanged,
+}: {
+  products: any[];
+  onChanged: () => void;
+}) {
+  const supabase = createClient();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [localState, setLocalState] = useState<Record<string, boolean>>({});
+
+  const isLive = (p: any) => (p.id in localState ? localState[p.id] : !!p.is_active);
+
+  const setActive = async (p: any, active: boolean) => {
+    setBusyId(p.id);
+    try {
+      const { error } = await supabase
+        .from('agent_products')
+        .update({ is_active: active })
+        .eq('id', p.id);
+      if (error) throw error;
+      setLocalState(prev => ({ ...prev, [p.id]: active }));
+      onChanged();
+    } catch (e) {
+      console.error('Agent product moderation error:', e);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const pendingCount = products.filter(p => !isLive(p)).length;
+
+  return (
+    <div>
+      <h4 className="font-bold text-foreground text-sm mb-3 flex items-center gap-2">
+        <Icon name="CubeIcon" size={14} className="text-blue-600" />
+        مراجعة المنتجات المرفوعة ({products.length})
+        {pendingCount > 0 && (
+          <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-semibold">
+            {pendingCount} قيد المراجعة
+          </span>
+        )}
+      </h4>
+      {products.length === 0 ? (
+        <div className="bg-muted/30 rounded-xl p-6 text-center text-muted-foreground text-sm">
+          لم يرفع هذا المندوب أي منتجات بعد
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {products.map(p => {
+            const live = isLive(p);
+            return (
+              <div key={p.id} className="flex items-center justify-between gap-3 bg-card border border-border rounded-xl p-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground truncate">{p.name_ar || p.name_en}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {p.wholesale_price ?? p.price} {p.currency} · {formatDate(p.created_at)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                    live ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                  }`}>
+                    {live ? 'معتمد' : 'قيد المراجعة'}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={busyId === p.id}
+                    onClick={() => setActive(p, !live)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-60 ${
+                      live
+                        ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100' :'bg-emerald-600 text-white border-emerald-600 hover:opacity-90'
+                    }`}
+                  >
+                    {live ? 'إيقاف' : 'اعتماد'}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RepDetailModal({
-  rep, onClose }: { rep: FieldRep; onClose: () => void }) {
+  rep, onClose, onProductsChanged }: { rep: FieldRep; onClose: () => void; onProductsChanged: () => void }) {
   const { t, dir, language, isRTL } = useLanguage();
   const ui = t.admin.fieldReps;
   const statusLabels: Record<string, string> = {
@@ -815,6 +902,9 @@ function RepDetailModal({
             </div>
           )}
         </div>
+
+        {/* Product Moderation */}
+        <AgentProductsModeration products={rep.products} onChanged={onProductsChanged} />
       </div>
     </div>
   );
@@ -866,6 +956,7 @@ export default function FieldRepresentativesPanel({
       pendingCount: pending.length,
       approvedCount: approved.length,
       productsCount: myProducts.length,
+      products: myProducts,
       factories: myFactories,
     };
   });
@@ -1052,7 +1143,7 @@ export default function FieldRepresentativesPanel({
 
       {/* Modals */}
       {selectedRep && (
-        <RepDetailModal rep={selectedRep} onClose={() => setSelectedRep(null)} />
+        <RepDetailModal rep={selectedRep} onClose={() => setSelectedRep(null)} onProductsChanged={onRefresh} />
       )}
       {messagingRep && (
         <MessagingModal
