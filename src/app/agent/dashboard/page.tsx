@@ -90,6 +90,10 @@ interface AgentProduct {
   category?: string;
   is_active: boolean;
   created_at: string;
+  is_b2b_only?: boolean | null;
+  retail_price?: number | null;
+  wholesale_price?: number | null;
+  price_tiers?: { min_qty: number; max_qty: number | null; price: number }[] | null;
 }
 
 const CONTACT_STATUS_COLORS: Record<string, string> = {

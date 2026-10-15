@@ -17,6 +17,27 @@ interface AgentFactory {
   country: string;
 }
 
+interface PriceTierRow {
+  min_qty: string;
+  max_qty: string;
+  price: string;
+}
+
+const INITIAL_FORM = {
+  name_ar: '',
+  name_en: '',
+  description_ar: '',
+  description_en: '',
+  category: '',
+  is_b2b_only: true,
+  wholesale_price: '',
+  retail_price: '',
+  currency: 'SAR',
+  moq: '1',
+  unit: 'piece',
+  specifications: '',
+};
+
 function AddProductPageInner() {
   const { t, dir } = useLanguage();
   const ap = t.agentAddProduct;
@@ -33,18 +54,8 @@ function AddProductPageInner() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  const [form, setForm] = useState({
-    name_ar: '',
-    name_en: '',
-    description_ar: '',
-    description_en: '',
-    category: '',
-    price: '',
-    currency: 'SAR',
-    moq: '1',
-    unit: 'piece',
-    specifications: '',
-  });
+  const [form, setForm] = useState(INITIAL_FORM);
+  const [tiers, setTiers] = useState<PriceTierRow[]>([]);
 
   // Auth guard
   useEffect(() => {
@@ -70,8 +81,15 @@ function AddProductPageInner() {
       });
   }, [user, factoryId, supabase]);
 
-  const update = (field: string, value: string) => {
+  const update = (field: string, value: string | boolean) => {
     setForm(prev => ({ ...prev, [field]: value }));
+    setError('');
+  };
+
+  const addTier = () => setTiers(prev => [...prev, { min_qty: '', max_qty: '', price: '' }]);
+  const removeTier = (idx: number) => setTiers(prev => prev.filter((_, i) => i !== idx));
+  const updateTier = (idx: number, field: keyof PriceTierRow, value: string) => {
+    setTiers(prev => prev.map((row, i) => (i === idx ? { ...row, [field]: value } : row)));
     setError('');
   };
 
@@ -79,8 +97,22 @@ function AddProductPageInner() {
     e.preventDefault();
     if (!user || !factory) return;
     if (!form.name_ar.trim()) { setError(ap.errorNameRequired); return; }
-    if (!form.price || isNaN(Number(form.price))) { setError(ap.errorPrice); return; }
+    if (!form.wholesale_price || isNaN(Number(form.wholesale_price)) || Number(form.wholesale_price) <= 0) { setError(ap.errorWholesale); return; }
+    if (!form.is_b2b_only && (!form.retail_price || isNaN(Number(form.retail_price)) || Number(form.retail_price) <= 0)) { setError(ap.errorRetail); return; }
     if (!form.moq || isNaN(Number(form.moq))) { setError(ap.errorMoq); return; }
+
+    const cleanedTiers = tiers
+      .filter(r => r.min_qty || r.max_qty || r.price)
+      .map(r => ({
+        min_qty: Number(r.min_qty),
+        max_qty: r.max_qty ? Number(r.max_qty) : null,
+        price: Number(r.price),
+      }));
+    const tiersInvalid = cleanedTiers.some(
+      r => !Number.isFinite(r.min_qty) || r.min_qty <= 0 || !Number.isFinite(r.price) || r.price <= 0 ||
+        (r.max_qty !== null && (!Number.isFinite(r.max_qty) || r.max_qty < r.min_qty))
+    );
+    if (tiersInvalid) { setError(ap.errorTier); return; }
 
     setLoading(true);
     setError('');
@@ -105,7 +137,11 @@ function AddProductPageInner() {
           description_ar: form.description_ar.trim(),
           description_en: form.description_en.trim(),
           category: form.category.trim(),
-          price: Number(form.price),
+          price: Number(form.wholesale_price),
+          wholesale_price: Number(form.wholesale_price),
+          retail_price: form.is_b2b_only ? null : Number(form.retail_price),
+          is_b2b_only: form.is_b2b_only,
+          price_tiers: cleanedTiers,
           currency: form.currency,
           moq: Number(form.moq),
           unit: form.unit,
@@ -159,7 +195,7 @@ function AddProductPageInner() {
           <p className="text-muted-foreground mb-6">{ap.successDesc.replace('{name}', factory.company_name)}</p>
           <div className="flex flex-col gap-3">
             <button
-              onClick={() => { setSuccess(false); setForm({ name_ar: '', name_en: '', description_ar: '', description_en: '', category: '', price: '', currency: 'SAR', moq: '1', unit: 'piece', specifications: '' }); }}
+              onClick={() => { setSuccess(false); setForm(INITIAL_FORM); setTiers([]); }}
               className="flex items-center justify-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-semibold hover:bg-primary/90 transition-colors"
             >
               <Icon name="PlusIcon" size={16} />
@@ -240,49 +276,155 @@ function AddProductPageInner() {
             />
           </div>
 
-          {/* Price & MOQ */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">{ap.price} <span className="text-red-500">*</span></label>
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  value={form.price}
-                  onChange={e => update('price', e.target.value)}
-                  placeholder="0.00"
-                  min="0"
-                  step="0.01"
-                  className="flex-1 px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-                  dir="ltr"
-                />
-                <select
-                  value={form.currency}
-                  onChange={e => update('currency', e.target.value)}
-                  className="w-20 px-2 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
-                >
-                  {['SAR', 'USD', 'EUR', 'AED', 'CNY', 'YER'].map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
+          {/* B2B / B2C Pricing */}
+          <div className="space-y-3 p-4 bg-muted/40 border border-border rounded-xl">
+            <label className="block text-sm font-medium text-foreground">{ap.pricingModel}</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => update('is_b2b_only', true)}
+                className={`text-start px-3 py-2.5 rounded-xl border text-sm transition-colors ${
+                  form.is_b2b_only ? 'border-primary bg-primary/10 text-foreground' : 'border-border bg-background text-muted-foreground'
+                }`}
+              >
+                <span className="block font-semibold">{ap.b2bOnly}</span>
+                <span className="block text-xs mt-0.5">{ap.b2bOnlyHint}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => update('is_b2b_only', false)}
+                className={`text-start px-3 py-2.5 rounded-xl border text-sm transition-colors ${
+                  !form.is_b2b_only ? 'border-primary bg-primary/10 text-foreground' : 'border-border bg-background text-muted-foreground'
+                }`}
+              >
+                <span className="block font-semibold">{ap.b2bAndB2c}</span>
+                <span className="block text-xs mt-0.5">{ap.b2bAndB2cHint}</span>
+              </button>
             </div>
-            <div>
+
+            <div className="flex flex-col w-full gap-3">
+              <div className="w-full">
+                <label className="block text-sm font-medium text-foreground mb-1.5">{ap.wholesalePrice} <span className="text-red-500">*</span></label>
+                <div className="flex flex-col sm:flex-row w-full gap-2">
+                  <input
+                    type="number"
+                    value={form.wholesale_price}
+                    onChange={e => update('wholesale_price', e.target.value)}
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                    className="w-full sm:flex-1 min-w-0 px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                    dir="ltr"
+                  />
+                  <select
+                    value={form.currency}
+                    onChange={e => update('currency', e.target.value)}
+                    className="w-full sm:w-24 px-2 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
+                  >
+                    {['SAR', 'USD', 'EUR', 'AED', 'CNY', 'YER'].map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              {!form.is_b2b_only && (
+                <div className="w-full">
+                  <label className="block text-sm font-medium text-foreground mb-1.5">{ap.retailPrice} <span className="text-red-500">*</span></label>
+                  <input
+                    type="number"
+                    value={form.retail_price}
+                    onChange={e => update('retail_price', e.target.value)}
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                    className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                    dir="ltr"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="w-full">
               <label className="block text-sm font-medium text-foreground mb-1.5">{ap.moq} <span className="text-red-500">*</span></label>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row w-full gap-2">
                 <input
                   type="number"
                   value={form.moq}
                   onChange={e => update('moq', e.target.value)}
                   placeholder="1"
                   min="1"
-                  className="flex-1 px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                  className="w-full sm:flex-1 min-w-0 px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
                   dir="ltr"
                 />
                 <select
                   value={form.unit}
                   onChange={e => update('unit', e.target.value)}
-                  className="w-24 px-2 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
+                  className="w-full sm:w-28 px-2 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
                 >
                   {['piece', 'kg', 'ton', 'box', 'pallet', 'set', 'meter', 'liter'].map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-foreground">{ap.priceTiers}</label>
+                <button
+                  type="button"
+                  onClick={addTier}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                >
+                  <Icon name="PlusIcon" size={12} />
+                  {ap.addTier}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground mb-2">{ap.priceTiersHint}</p>
+              <div className="space-y-2">
+                {tiers.map((row, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end">
+                    <div>
+                      <span className="block text-[11px] text-muted-foreground mb-1">{ap.tierMinQty}</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={row.min_qty}
+                        onChange={e => updateTier(idx, 'min_qty', e.target.value)}
+                        className="w-full px-2 py-2 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary"
+                        dir="ltr"
+                      />
+                    </div>
+                    <div>
+                      <span className="block text-[11px] text-muted-foreground mb-1">{ap.tierMaxQty}</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={row.max_qty}
+                        placeholder={ap.tierMaxOpen}
+                        onChange={e => updateTier(idx, 'max_qty', e.target.value)}
+                        className="w-full px-2 py-2 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                        dir="ltr"
+                      />
+                    </div>
+                    <div>
+                      <span className="block text-[11px] text-muted-foreground mb-1">{ap.tierPrice}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={row.price}
+                        onChange={e => updateTier(idx, 'price', e.target.value)}
+                        className="w-full px-2 py-2 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary"
+                        dir="ltr"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeTier(idx)}
+                      aria-label={ap.removeTier}
+                      className="w-9 h-9 flex items-center justify-center rounded-lg border border-border text-red-500 hover:bg-red-50 transition-colors"
+                    >
+                      <Icon name="TrashIcon" size={14} />
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
