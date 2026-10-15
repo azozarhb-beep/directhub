@@ -232,6 +232,10 @@ function FactoryDetailCard({ factory }: { factory: AgentFactory }) {
                         >
                           {item.value}
                         </a>
+                      ) : item.label === ui.phone ? (
+                        <p className="text-xs font-semibold text-foreground truncate">
+                          <span dir="ltr" className="font-mono inline-block">{item.value}</span>
+                        </p>
                       ) : (
                         <p className="text-xs font-semibold text-foreground truncate">{item.value}</p>
                       )}
@@ -751,9 +755,14 @@ function AgentProductsModeration({
               <div key={p.id} className="flex items-center justify-between gap-3 bg-card border border-border rounded-xl p-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground truncate">{p.name_ar || p.name_en}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {p.wholesale_price ?? p.price} {p.currency} · {formatDate(p.created_at)}
-                  </p>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
+                      <span dir="ltr" className="font-mono">{p.wholesale_price ?? p.price} {p.currency}</span>
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      <span dir="ltr" className="font-mono">{formatDate(p.created_at)}</span>
+                    </span>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
@@ -929,7 +938,7 @@ function RepDetailModal({
           <Icon name="XMarkIcon" size={16} className="text-muted-foreground" />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto p-5 space-y-5" dir={dir}>
+      <div className="flex-1 overflow-y-auto p-5 pb-24 space-y-5" dir={dir}>
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
@@ -962,7 +971,11 @@ function RepDetailModal({
           ].map(item => (
             <div key={item.label} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
               <span className="text-xs text-muted-foreground">{item.label}</span>
-              <span className="text-xs font-semibold text-foreground">{item.value}</span>
+              {item.label === 'رقم الهاتف' ? (
+                <span dir="ltr" className="text-xs font-semibold text-foreground font-mono">{item.value}</span>
+              ) : (
+                <span className="text-xs font-semibold text-foreground">{item.value}</span>
+              )}
             </div>
           ))}
 
@@ -1254,7 +1267,7 @@ export default function FieldRepresentativesPanel({
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground truncate">{rep.email}</p>
-                  {rep.phone && <p className="text-xs text-muted-foreground">{rep.phone}</p>}
+                  {rep.phone && <p className="text-xs text-muted-foreground"><span dir="ltr" className="font-mono">{rep.phone}</span></p>}
                   <p className="text-xs text-muted-foreground mt-0.5">
                     انضم: {formatDate(rep.created_at)}
                   </p>
