@@ -512,25 +512,43 @@ function AddProductPageInner() {
           <p className="text-muted-foreground mb-6">{ap.successDesc.replace('{name}', factory.company_name)}</p>
           <div className="flex flex-col gap-3">
             <button
+              type="button"
               onClick={() => {
                 setSuccess(false);
+                setError('');
                 setForm(INITIAL_FORM);
                 setTiers([]);
                 imageItems.forEach(i => URL.revokeObjectURL(i.preview));
                 setImageItems([]);
                 removeVideo();
                 setVideoUrlInput('');
+                setVideoThumb('');
+                setVideoUploading(false);
+                setVideoProgress(0);
                 clearDraft();
+                if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
               }}
               className="flex items-center justify-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-semibold hover:bg-primary/90 transition-colors"
             >
               <Icon name="PlusIcon" size={16} />
               {ap.addAnother}
             </button>
-            <Link href="/agent/dashboard" className="flex items-center justify-center gap-2 px-6 py-3 border border-border rounded-xl font-semibold text-muted-foreground hover:bg-muted transition-colors">
+            <button
+              type="button"
+              onClick={() => {
+                clearDraft();
+                router.push('/agent/dashboard');
+                setTimeout(() => {
+                  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/agent/add-product')) {
+                    window.location.href = '/agent/dashboard';
+                  }
+                }, 600);
+              }}
+              className="flex items-center justify-center gap-2 px-6 py-3 border border-border rounded-xl font-semibold text-muted-foreground hover:bg-muted transition-colors"
+            >
               <Icon name="ArrowRightIcon" size={16} />
               {ap.backToDashboard}
-            </Link>
+            </button>
           </div>
         </main>
         <BottomNav />
