@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
+import toast from 'react-hot-toast';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
@@ -35,6 +36,83 @@ const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
 const IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 const VIDEO_TYPES = ['video/mp4', 'video/webm'];
 const MEDIA_BUCKET = 'product-media';
+const DRAFT_KEY = 'form-draft-new-product';
+const VIDEO_DB_NAME = 'form-draft-new-product-db';
+const VIDEO_STORE = 'files';
+const VIDEO_ERR_TOAST = 'حجم الفيديو يتجاوز 30 ميجابايت. يرجى تصوير مقطع أقصر أو تقليل الجودة.';
+
+interface StoredImage {
+  id: string;
+  name: string;
+  type: string;
+  dataUrl: string;
+}
+
+interface ProductDraft {
+  factoryId: string;
+  form: Record<string, string | boolean>;
+  tiers: { min_qty: string; max_qty: string; price: string }[];
+  videoUrlInput: string;
+  images: StoredImage[];
+  hasVideo: boolean;
+  videoName?: string;
+  videoType?: string;
+}
+
+const fileToDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+
+const dataUrlToFile = async (dataUrl: string, name: string, type: string): Promise<File> => {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  return new File([blob], name, { type: type || blob.type });
+};
+
+const openVideoDb = (): Promise<IDBDatabase> =>
+  new Promise((resolve, reject) => {
+    const req = indexedDB.open(VIDEO_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(VIDEO_STORE)) req.result.createObjectStore(VIDEO_STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+
+const saveDraftVideo = async (file: File | null) => {
+  try {
+    const db = await openVideoDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(VIDEO_STORE, 'readwrite');
+      if (file) tx.objectStore(VIDEO_STORE).put(file, 'video');
+      else tx.objectStore(VIDEO_STORE).delete('video');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch {
+    /* storage unavailable – ignore */
+  }
+};
+
+const loadDraftVideo = async (): Promise<File | null> => {
+  try {
+    const db = await openVideoDb();
+    const file = await new Promise<File | null>((resolve, reject) => {
+      const req = db.transaction(VIDEO_STORE, 'readonly').objectStore(VIDEO_STORE).get('video');
+      req.onsuccess = () => resolve((req.result as File) || null);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    return file;
+  } catch {
+    return null;
+  }
+};
 
 const INITIAL_FORM = {
   name_ar: '',
@@ -74,6 +152,109 @@ function AddProductPageInner() {
   const [videoPreview, setVideoPreview] = useState('');
   const [videoUrlInput, setVideoUrlInput] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  const [videoThumb, setVideoThumb] = useState('');
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [videoUploading, setVideoUploading] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
+
+  // Restore draft (survives mobile browser reloads after returning from the camera app)
+  useEffect(() => {
+    if (!factoryId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = localStorage.getItem(DRAFT_KEY);
+        if (raw) {
+          const draft: ProductDraft = JSON.parse(raw);
+          if (draft && draft.factoryId === factoryId) {
+            setForm(prev => ({ ...prev, ...draft.form }));
+            setTiers(Array.isArray(draft.tiers) ? draft.tiers : []);
+            setVideoUrlInput(draft.videoUrlInput || '');
+            const restoredImages: ImageItem[] = [];
+            for (const img of draft.images || []) {
+              const file = await dataUrlToFile(img.dataUrl, img.name, img.type);
+              restoredImages.push({ id: img.id, file, preview: URL.createObjectURL(file) });
+            }
+            if (cancelled) return;
+            if (restoredImages.length) setImageItems(restoredImages);
+            if (draft.hasVideo) {
+              const vf = await loadDraftVideo();
+              if (vf && !cancelled) {
+                const file = vf instanceof File ? vf : new File([vf], draft.videoName || 'video.mp4', { type: draft.videoType || 'video/mp4' });
+                setVideoFile(file);
+                setVideoPreview(URL.createObjectURL(file));
+              }
+            }
+          }
+        }
+      } catch {
+        /* corrupted draft – ignore */
+      } finally {
+        if (!cancelled) setDraftReady(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [factoryId]);
+
+  // Persist draft on every change
+  useEffect(() => {
+    if (!draftReady || !factoryId || success) return;
+    const timer = setTimeout(async () => {
+      try {
+        const images: StoredImage[] = await Promise.all(
+          imageItems.map(async i => ({ id: i.id, name: i.file.name, type: i.file.type, dataUrl: await fileToDataUrl(i.file) }))
+        );
+        const draft: ProductDraft = {
+          factoryId,
+          form,
+          tiers,
+          videoUrlInput,
+          images,
+          hasVideo: !!videoFile,
+          videoName: videoFile?.name,
+          videoType: videoFile?.type,
+        };
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      } catch {
+        // Quota exceeded (large images) – keep text fields at least
+        try {
+          localStorage.setItem(
+            DRAFT_KEY,
+            JSON.stringify({ factoryId, form, tiers, videoUrlInput, images: [], hasVideo: !!videoFile, videoName: videoFile?.name, videoType: videoFile?.type })
+          );
+        } catch { /* ignore */ }
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [draftReady, factoryId, success, form, tiers, videoUrlInput, imageItems, videoFile]);
+
+  const clearDraft = () => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+    saveDraftVideo(null);
+  };
+
+  // Generate a thumbnail from the first frame of the selected video
+  useEffect(() => {
+    if (!videoPreview) { setVideoThumb(''); return; }
+    let cancelled = false;
+    const v = document.createElement('video');
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = 'metadata';
+    v.src = videoPreview;
+    const capture = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = v.videoWidth || 320;
+        canvas.height = v.videoHeight || 180;
+        canvas.getContext('2d')?.drawImage(v, 0, 0, canvas.width, canvas.height);
+        if (!cancelled) setVideoThumb(canvas.toDataURL('image/jpeg', 0.7));
+      } catch { /* ignore */ }
+    };
+    v.onloadeddata = () => { try { v.currentTime = Math.min(0.5, v.duration || 0.5); } catch { capture(); } };
+    v.onseeked = capture;
+    return () => { cancelled = true; v.removeAttribute('src'); v.load(); };
+  }, [videoPreview]);
 
   // Auth guard
   useEffect(() => {
@@ -146,19 +327,60 @@ function AddProductPageInner() {
 
   const handleVideoPick = (file: File | null) => {
     if (!file) return;
+    if (file.size > MAX_VIDEO_BYTES) {
+      toast.error(VIDEO_ERR_TOAST);
+      return;
+    }
     if (!VIDEO_TYPES.includes(file.type)) { setError(ap.mediaErrVideoType); return; }
-    if (file.size > MAX_VIDEO_BYTES) { setError(ap.mediaErrVideoSize); return; }
     if (videoPreview) URL.revokeObjectURL(videoPreview);
     setVideoFile(file);
     setVideoPreview(URL.createObjectURL(file));
     setVideoUrlInput('');
+    setVideoProgress(0);
     setError('');
+    saveDraftVideo(file);
   };
 
   const removeVideo = () => {
     if (videoPreview) URL.revokeObjectURL(videoPreview);
     setVideoFile(null);
     setVideoPreview('');
+    setVideoProgress(0);
+    saveDraftVideo(null);
+  };
+
+  const uploadVideoWithProgress = async (file: File): Promise<string> => {
+    const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
+    const path = `${user?.id}/videos/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+    const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    setVideoUploading(true);
+    setVideoProgress(0);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${baseUrl}/storage/v1/object/${MEDIA_BUCKET}/${path}`);
+        xhr.setRequestHeader('Authorization', `Bearer ${token || anonKey}`);
+        xhr.setRequestHeader('apikey', anonKey);
+        xhr.setRequestHeader('x-upsert', 'false');
+        xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
+        xhr.upload.onprogress = ev => {
+          if (ev.lengthComputable) setVideoProgress(Math.round((ev.loaded / ev.total) * 100));
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) { setVideoProgress(100); resolve(); }
+          else reject(new Error(xhr.responseText || `HTTP ${xhr.status}`));
+        };
+        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.send(file);
+      });
+    } finally {
+      setVideoUploading(false);
+    }
+    const { data } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(path);
+    return data.publicUrl;
   };
 
   const uploadToBucket = async (file: File, folder: string): Promise<string> => {
@@ -211,7 +433,7 @@ function AddProductPageInner() {
       try {
         imageUrls = await Promise.all(imageItems.map(i => uploadToBucket(i.file, 'images')));
         if (videoFile) {
-          videoUrl = await uploadToBucket(videoFile, 'videos');
+          videoUrl = await uploadVideoWithProgress(videoFile);
         } else if (videoUrlInput.trim()) {
           videoUrl = videoUrlInput.trim();
         }
@@ -243,6 +465,7 @@ function AddProductPageInner() {
           is_active: true,
         });
       if (insertError) throw insertError;
+      clearDraft();
       setSuccess(true);
     } catch (err: any) {
       setError(err.message || ap.errorGeneric);
@@ -297,6 +520,7 @@ function AddProductPageInner() {
                 setImageItems([]);
                 removeVideo();
                 setVideoUrlInput('');
+                clearDraft();
               }}
               className="flex items-center justify-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-semibold hover:bg-primary/90 transition-colors"
             >
@@ -647,16 +871,45 @@ function AddProductPageInner() {
               )}
 
               {videoFile && videoPreview && (
-                <div className="relative rounded-xl overflow-hidden border border-border bg-black">
-                  <video src={videoPreview} controls playsInline className="w-full max-h-64" />
-                  <button
-                    type="button"
-                    onClick={removeVideo}
-                    aria-label={ap.mediaRemove}
-                    className="absolute top-2 end-2 w-7 h-7 flex items-center justify-center rounded-full bg-black/60 text-white hover:bg-red-600 transition-colors"
-                  >
-                    <Icon name="XMarkIcon" size={14} />
-                  </button>
+                <div className="space-y-2">
+                  <div className="relative rounded-xl overflow-hidden border border-border bg-black">
+                    <video src={videoPreview} poster={videoThumb || undefined} controls playsInline className="w-full max-h-64" />
+                    <button
+                      type="button"
+                      onClick={removeVideo}
+                      disabled={videoUploading}
+                      aria-label={ap.mediaRemove}
+                      className="absolute top-2 end-2 w-7 h-7 flex items-center justify-center rounded-full bg-black/60 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
+                    >
+                      <Icon name="XMarkIcon" size={14} />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-3 p-2 bg-background border border-border rounded-xl">
+                    {videoThumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={videoThumb} alt="Video thumbnail" className="w-14 h-14 rounded-lg object-cover bg-black shrink-0" />
+                    ) : (
+                      <div className="w-14 h-14 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                        <Icon name="VideoCameraIcon" size={20} className="text-muted-foreground" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate" dir="ltr">{videoFile.name}</p>
+                      <p className="text-[11px] text-muted-foreground" dir="ltr">{(videoFile.size / (1024 * 1024)).toFixed(1)} MB</p>
+                      <div className="mt-1.5 h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${videoProgress === 100 ? 'bg-emerald-500' : 'bg-primary'}`}
+                          style={{ width: `${videoUploading || videoProgress > 0 ? videoProgress : 0}%` }}
+                        />
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-1" dir="ltr">
+                        {videoUploading
+                          ? `Uploading... ${videoProgress}%`
+                          : videoProgress === 100
+                            ? 'Uploaded 100%' :'✓ جاهز للرفع'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
 
