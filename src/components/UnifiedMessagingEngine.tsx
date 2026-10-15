@@ -530,6 +530,11 @@ export default function UnifiedMessagingEngine({
     }
   };
 
+  const handleQuickReplyClick = (reply: string) => {
+    setInput(prev => prev ? `${prev} ${reply}` : reply);
+    void handleSend();
+  };
+
   // ── Create new conversation ────────────────────────────────────────────────
 
   const handleCreateConversation = async () => {
@@ -995,11 +1000,10 @@ export default function UnifiedMessagingEngine({
                     {activeLang.quickReplies.map((reply, idx) => (
                       <button
                         key={idx}
-                        onClick={() => {
-                          setInput(prev => prev ? `${prev} ${reply}` : reply);
-                          setShowQuickReplies(false);
-                        }}
-                        className="px-2.5 py-1 bg-[#D4AF37]/10 border border-[#D4AF37]/25 rounded-lg text-[11px] text-[#D4AF37] hover:bg-[#D4AF37]/20 transition-colors"
+                        type="button"
+                        onClick={() => handleQuickReplyClick(reply)}
+                        disabled={sending || !activeConvId}
+                        className="px-2.5 py-1 bg-[#D4AF37]/10 border border-[#D4AF37]/25 rounded-lg text-[11px] text-[#D4AF37] hover:bg-[#D4AF37]/20 transition-colors disabled:opacity-50"
                         dir={activeLang.dir}
                       >
                         {reply}
