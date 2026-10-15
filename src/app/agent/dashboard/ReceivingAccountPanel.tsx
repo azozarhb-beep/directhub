@@ -38,6 +38,8 @@ interface ReceivingAccount {
 interface Props {
   userId: string;
   factories: Factory[];
+  lockedFactoryId?: string;
+  embedded?: boolean;
 }
 
 const ACCOUNT_TYPE_DEFS = [
@@ -85,11 +87,13 @@ const EMPTY_FORM = {
 function AccountFormModal({
   factories,
   initial,
+  lockedFactoryId,
   onClose,
   onSave,
 }: {
   factories: Factory[];
   initial?: ReceivingAccount | null;
+  lockedFactoryId?: string;
   onClose: () => void;
   onSave: (data: typeof EMPTY_FORM) => Promise<void>;
 }) {
@@ -115,7 +119,7 @@ function AccountFormModal({
           notes: initial.notes || '',
           is_primary: initial.is_primary,
         }
-      : { ...EMPTY_FORM }
+      : { ...EMPTY_FORM, factory_id: lockedFactoryId || '' }
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -180,7 +184,8 @@ function AccountFormModal({
             <select
               value={form.factory_id}
               onChange={e => set('factory_id', e.target.value)}
-              className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
+              disabled={!!lockedFactoryId}
+              className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary disabled:opacity-70"
             >
               <option value="">{ra.selectFactory}</option>
               {factories.map(f => (
@@ -432,7 +437,7 @@ function AccountFormModal({
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
-export default function ReceivingAccountPanel({ userId, factories }: Props) {
+export default function ReceivingAccountPanel({ userId, factories, lockedFactoryId, embedded }: Props) {
   const { t, dir } = useLanguage();
   const ra = t.receivingAccount;
   const supabase = createClient();
@@ -440,13 +445,13 @@ export default function ReceivingAccountPanel({ userId, factories }: Props) {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editAccount, setEditAccount] = useState<ReceivingAccount | null>(null);
-  const [selectedFactory, setSelectedFactory] = useState<string>('');
+  const [selectedFactory, setSelectedFactory] = useState<string>(lockedFactoryId || '');
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const fetchAccounts = useCallback(async () => {
-    setLoading(true);
+  const fetchAccounts = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const { data, error } = await supabase
         .from('agent_receiving_accounts')
@@ -459,7 +464,7 @@ export default function ReceivingAccountPanel({ userId, factories }: Props) {
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : ra.errorLoad);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [userId, supabase, ra.errorLoad]);
 
@@ -496,17 +501,28 @@ export default function ReceivingAccountPanel({ userId, factories }: Props) {
       if (error) throw error;
       setSuccessMsg(ra.successUpdated);
     } else {
-      const { error } = await supabase
+      const { data: inserted, error } = await supabase
         .from('agent_receiving_accounts')
-        .insert(payload);
+        .insert(payload)
+        .select('*')
+        .single();
       if (error) throw error;
+      if (inserted) {
+        const newAccount = inserted as ReceivingAccount;
+        setAccounts(prev => {
+          const base = newAccount.is_primary
+            ? prev.map(a => (a.factory_id === newAccount.factory_id ? { ...a, is_primary: false } : a))
+            : prev;
+          return [newAccount, ...base.filter(a => a.id !== newAccount.id)];
+        });
+      }
       setSuccessMsg(ra.successAdded);
     }
 
     setTimeout(() => setSuccessMsg(''), 4000);
     setShowForm(false);
     setEditAccount(null);
-    fetchAccounts();
+    await fetchAccounts(true);
   };
 
   const handleDelete = async (id: string) => {
@@ -529,8 +545,8 @@ export default function ReceivingAccountPanel({ userId, factories }: Props) {
     }
   };
 
-  const filteredAccounts = selectedFactory
-    ? accounts.filter(a => a.factory_id === selectedFactory)
+  const filteredAccounts = (lockedFactoryId || selectedFactory)
+    ? accounts.filter(a => a.factory_id === (lockedFactoryId || selectedFactory))
     : accounts;
 
   const getAccountTypeInfo = (type: string) => {
@@ -547,19 +563,23 @@ export default function ReceivingAccountPanel({ userId, factories }: Props) {
         <div>
           <h2 className="text-base font-bold text-foreground flex items-center gap-2">
             <Icon name="BanknotesIcon" size={18} className="text-primary" />
-            {ra.panelTitle}
+            {embedded ? 'الحسابات البنكية للمصنع / التحصيل' : ra.panelTitle}
           </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {ra.panelSubtitle}
-          </p>
+          {!embedded && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {ra.panelSubtitle}
+            </p>
+          )}
         </div>
-        <button
-          onClick={() => { setEditAccount(null); setShowForm(true); }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors"
-        >
-          <Icon name="PlusIcon" size={15} />
-          {ra.addAccount}
-        </button>
+        {!lockedFactoryId && factories.length > 1 && (
+          <button
+            onClick={() => { setEditAccount(null); setShowForm(true); }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            <Icon name="PlusIcon" size={15} />
+            {ra.addAccount}
+          </button>
+        )}
       </div>
 
       {successMsg && (
@@ -740,6 +760,7 @@ export default function ReceivingAccountPanel({ userId, factories }: Props) {
         <AccountFormModal
           factories={factories}
           initial={editAccount}
+          lockedFactoryId={lockedFactoryId}
           onClose={() => { setShowForm(false); setEditAccount(null); }}
           onSave={handleSave}
         />

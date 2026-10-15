@@ -534,16 +534,16 @@ export default function AgentCommissionAccountPanel({ userId }: Props) {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  const fetchAccounts = useCallback(async () => {
-    setLoading(true);
+  const fetchAccounts = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     const { data, error } = await supabase
       .from('agent_commission_accounts')
       .select('*')
       .eq('agent_id', userId)
       .order('is_primary', { ascending: false })
       .order('created_at', { ascending: false });
-    if (!error && data) setAccounts(data);
-    setLoading(false);
+    if (!error && data) setAccounts(data as CommissionAccount[]);
+    if (!silent) setLoading(false);
   }, [userId, supabase]);
 
   useEffect(() => {
@@ -577,15 +577,26 @@ export default function AgentCommissionAccountPanel({ userId }: Props) {
       if (error) throw error;
       showSuccess('تم تحديث الحساب بنجاح');
     } else {
-      const { error } = await supabase
+      const { data: inserted, error } = await supabase
         .from('agent_commission_accounts')
-        .insert({ ...form, agent_id: userId });
+        .insert({ ...form, agent_id: userId })
+        .select('*')
+        .single();
       if (error) throw error;
+      if (inserted) {
+        const newAccount = inserted as CommissionAccount;
+        setAccounts(prev => {
+          const base = newAccount.is_primary
+            ? prev.map(a => ({ ...a, is_primary: false }))
+            : prev;
+          return [newAccount, ...base.filter(a => a.id !== newAccount.id)];
+        });
+      }
       showSuccess('تم إضافة حساب الاستلام بنجاح');
     }
     setShowForm(false);
     setEditAccount(null);
-    fetchAccounts();
+    await fetchAccounts(true);
   };
 
   const handleDelete = async (id: string) => {
@@ -632,7 +643,7 @@ export default function AgentCommissionAccountPanel({ userId }: Props) {
               <h2 className="text-lg font-bold" style={{ color: '#D4AF37' }}>حساب استلام العمولة</h2>
             </div>
             <p className="text-sm" style={{ color: '#8899aa' }}>
-              سجّل حسابك البنكي أو محفظتك الإلكترونية لاستلام عمولتك بنسبة <span style={{ color: '#D4AF37', fontWeight: 700 }}>20%</span> بالريال اليمني (YER)
+              سجّل حسابك البنكي أو محفظتك الإلكترونية لاستلام عمولتك — <span style={{ color: '#D4AF37', fontWeight: 700 }}>نسبة 20% من رسوم منصة دايركت هب المحققة</span>
             </p>
           </div>
           <button
@@ -723,8 +734,8 @@ export default function AgentCommissionAccountPanel({ userId }: Props) {
       {/* Info Note */}
       <div className="rounded-xl p-4 flex items-start gap-3" style={{ background: 'rgba(10,25,47,0.6)', border: '1px solid rgba(212,175,55,0.2)' }}>
         <Icon name="InformationCircleIcon" size={16} className="shrink-0 mt-0.5" style={{ color: '#D4AF37' }} />
-        <div className="text-xs space-y-1" style={{ color: '#8899aa' }}>
-          <p>• يتم صرف العمولات (20% من رسوم منصة دايركت هب المحققة) بالريال اليمني (YER) شهرياً.</p>
+        <div className="text-xs space-y-1 text-slate-300 dark:text-zinc-300">
+          <p>• يتم صرف العمولات (نسبة 20% من رسوم منصة دايركت هب المحققة) بالريال اليمني (YER) شهرياً.</p>
           <p>• تأكد من صحة بيانات الحساب لضمان استلام مدفوعاتك في الوقت المحدد.</p>
           <p>• يمكنك تسجيل أكثر من حساب وتحديد الحساب الرئيسي لاستلام العمولات.</p>
         </div>
