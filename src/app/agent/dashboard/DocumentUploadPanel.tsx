@@ -85,8 +85,13 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
   }, [fetchDocuments]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
     const file = e.target.files?.[0];
     if (file) setSelectedFile(file);
+    requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
   };
 
   const handleUpload = async () => {
@@ -240,8 +245,14 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
           <div>
             <label className="block text-xs font-semibold text-foreground mb-1.5">{ui.fileRequired}</label>
             <div
+              role="button"
+              tabIndex={0}
               className="border-2 border-dashed border-border rounded-xl p-3 text-center cursor-pointer hover:border-primary transition-colors"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                fileInputRef.current?.click();
+              }}
             >
               {selectedFile ? (
                 <div className="flex items-center gap-2 justify-center">

@@ -174,7 +174,11 @@ export default function UnifiedMessagingEngine({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = messagesEndRef.current;
+    const container = el?.parentElement;
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    }
   };
 
   // ── Data fetching helpers ──────────────────────────────────────────────────
