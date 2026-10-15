@@ -11,6 +11,17 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error('[Global Error Boundary]', error);
+    if (/ChunkLoadError|Loading chunk .* failed/i.test(`${error?.name} ${error?.message}`)) {
+      try {
+        const last = Number(sessionStorage.getItem('dh_chunk_reload_at') || '0');
+        if (Date.now() - last > 30000) {
+          sessionStorage.setItem('dh_chunk_reload_at', String(Date.now()));
+          window.location.reload();
+        }
+      } catch {
+        window.location.reload();
+      }
+    }
   }, [error]);
 
   return (
