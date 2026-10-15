@@ -445,8 +445,8 @@ export default function ReceivingAccountPanel({ userId, factories }: Props) {
   const [errorMsg, setErrorMsg] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const fetchAccounts = useCallback(async () => {
-    setLoading(true);
+  const fetchAccounts = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const { data, error } = await supabase
         .from('agent_receiving_accounts')
@@ -459,7 +459,7 @@ export default function ReceivingAccountPanel({ userId, factories }: Props) {
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : ra.errorLoad);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [userId, supabase, ra.errorLoad]);
 
@@ -496,17 +496,28 @@ export default function ReceivingAccountPanel({ userId, factories }: Props) {
       if (error) throw error;
       setSuccessMsg(ra.successUpdated);
     } else {
-      const { error } = await supabase
+      const { data: inserted, error } = await supabase
         .from('agent_receiving_accounts')
-        .insert(payload);
+        .insert(payload)
+        .select('*')
+        .single();
       if (error) throw error;
+      if (inserted) {
+        const newAccount = inserted as ReceivingAccount;
+        setAccounts(prev => {
+          const base = newAccount.is_primary
+            ? prev.map(a => (a.factory_id === newAccount.factory_id ? { ...a, is_primary: false } : a))
+            : prev;
+          return [newAccount, ...base.filter(a => a.id !== newAccount.id)];
+        });
+      }
       setSuccessMsg(ra.successAdded);
     }
 
     setTimeout(() => setSuccessMsg(''), 4000);
     setShowForm(false);
     setEditAccount(null);
-    fetchAccounts();
+    await fetchAccounts(true);
   };
 
   const handleDelete = async (id: string) => {
