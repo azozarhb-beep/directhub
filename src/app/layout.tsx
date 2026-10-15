@@ -14,6 +14,7 @@ import VisitorTracker from '@/components/VisitorTracker';
 import ToasterProvider from '@/components/ToasterProvider';
 import AssistantsLoader from '@/components/AssistantsLoader';
 import PushSubscriptionManager from '@/components/PushSubscriptionManager';
+import ChunkErrorRecovery from '@/components/ChunkErrorRecovery';
 
 // cache-bust: 20261013-v3
 
@@ -145,6 +146,7 @@ export default async function RootLayout({
         <script type="module" async src="https://static.rocket.new/rocket-web.js?_cfg=https%3A%2F%2Fdirecthub3220back.builtwithrocket.new&_be=https%3A%2F%2Fappanalytics.rocket.new&_v=0.1.21" />
         <script type="module" defer src="https://static.rocket.new/rocket-shot.js?v=0.0.3" /></head>
       <body className="font-sans">
+        <ChunkErrorRecovery />
         <NavigationProgress />
         <AuthProvider>
           <CartProvider>
