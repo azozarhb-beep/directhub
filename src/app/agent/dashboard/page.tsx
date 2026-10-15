@@ -499,7 +499,44 @@ export default function AgentDashboardPage() {
   const [factories, setFactories] = useState<AgentFactory[]>([]);
   const [products, setProducts] = useState<AgentProduct[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'accounts' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral' | 'dispatch_rooms'>('factories');
+  type AgentTabId = 'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'accounts' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral' | 'dispatch_rooms';
+  const VALID_TABS: AgentTabId[] = ['factories', 'products', 'messaging', 'documents', 'exchange', 'accounts', 'complaints', 'sales', 'admin_msg', 'commission', 'enhanced', 'inspections', 'earnings', 'referral', 'dispatch_rooms'];
+  const TAB_URL_KEYS: Record<AgentTabId, string> = {
+    factories: 'factories', products: 'products', messaging: 'messaging', documents: 'documents',
+    exchange: 'exchange', accounts: 'accounts', complaints: 'complaints', sales: 'sales',
+    admin_msg: 'admin-msg', commission: 'commission', enhanced: 'register', inspections: 'inspections',
+    earnings: 'earnings', referral: 'referral', dispatch_rooms: 'dispatch',
+  };
+  const [activeTab, setActiveTabState] = useState<AgentTabId | null>(null);
+
+  const readTabFromUrl = useCallback((): AgentTabId | null => {
+    if (typeof window === 'undefined') return null;
+    const key = new URLSearchParams(window.location.search).get('tab');
+    if (!key) return null;
+    const found = VALID_TABS.find(id => TAB_URL_KEYS[id] === key);
+    return found ?? null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    setActiveTabState(readTabFromUrl());
+    const onPopState = () => setActiveTabState(readTabFromUrl());
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [readTabFromUrl]);
+
+  const openTab = useCallback((id: AgentTabId) => {
+    setActiveTabState(id);
+    router.push(`/agent/dashboard?tab=${TAB_URL_KEYS[id]}`, { scroll: false });
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
+
+  const closeTab = useCallback(() => {
+    setActiveTabState(null);
+    router.push('/agent/dashboard', { scroll: false });
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
+  }, [router]);
   const [reviewModal, setReviewModal] = useState<AgentFactory | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -824,6 +861,8 @@ export default function AgentDashboardPage() {
       </div>
       <main className="max-w-5xl mx-auto px-4 py-6 mobile-safe-bottom">
 
+        {activeTab === null && (
+        <>
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
@@ -880,45 +919,45 @@ export default function AgentDashboardPage() {
               key: 'overview',
               title: 'نظرة عامة',
               items: [
-                { id: 'sales', icon: 'ChartBarIcon', label: ad.tabSales, badge: 0, badgeColor: '' },
-                { id: 'earnings', icon: 'BanknotesIcon', label: 'الأرباح والعمولات', badge: 0, badgeColor: '' },
+                { id: 'sales', icon: 'ChartBarIcon', label: ad.tabSales, badge: 0, badgeColor: '', iconColor: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' },
+                { id: 'earnings', icon: 'BanknotesIcon', label: 'الأرباح والعمولات', badge: 0, badgeColor: '', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
               ],
             },
             {
               key: 'factories',
               title: 'المصانع والتحقق',
               items: [
-                { id: 'factories', icon: 'BuildingOffice2Icon', label: ad.tabFactories.replace('{count}', String(totalFactories)), badge: 0, badgeColor: '' },
-                { id: 'products', icon: 'CubeIcon', label: ad.tabProducts.replace('{count}', String(totalProducts)), badge: 0, badgeColor: '' },
-                { id: 'inspections', icon: 'ClipboardDocumentListIcon', label: 'مهام التفتيش', badge: inspectionTasks.length, badgeColor: 'bg-amber-500' },
-                { id: 'enhanced', icon: 'BriefcaseIcon', label: 'التسجيل والتحقق', badge: 0, badgeColor: '' },
+                { id: 'factories', icon: 'BuildingOffice2Icon', label: ad.tabFactories.replace('{count}', String(totalFactories)), badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' },
+                { id: 'products', icon: 'CubeIcon', label: ad.tabProducts.replace('{count}', String(totalProducts)), badge: 0, badgeColor: '', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
+                { id: 'inspections', icon: 'ClipboardDocumentListIcon', label: 'مهام التفتيش', badge: inspectionTasks.length, badgeColor: 'bg-amber-500', iconColor: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' },
+                { id: 'enhanced', icon: 'BriefcaseIcon', label: 'التسجيل والتحقق', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
               ],
             },
             {
               key: 'messaging',
               title: 'المراسلات',
               items: [
-                { id: 'messaging', icon: 'ChatBubbleLeftRightIcon', label: ad.tabMessaging, badge: agentUnreadCount, badgeColor: 'bg-red-500' },
-                { id: 'admin_msg', icon: 'ShieldCheckIcon', label: ad.tabAdminMsg, badge: 0, badgeColor: '' },
-                { id: 'complaints', icon: 'ExclamationTriangleIcon', label: ad.tabComplaints, badge: 0, badgeColor: '' },
-                { id: 'dispatch_rooms', icon: 'TruckIcon', label: 'غرف التنسيق الميداني', badge: 0, badgeColor: '' },
+                { id: 'messaging', icon: 'ChatBubbleLeftRightIcon', label: ad.tabMessaging, badge: agentUnreadCount, badgeColor: 'bg-red-500', iconColor: 'bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400' },
+                { id: 'admin_msg', icon: 'ShieldCheckIcon', label: ad.tabAdminMsg, badge: 0, badgeColor: '', iconColor: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' },
+                { id: 'complaints', icon: 'ExclamationTriangleIcon', label: ad.tabComplaints, badge: 0, badgeColor: '', iconColor: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' },
+                { id: 'dispatch_rooms', icon: 'TruckIcon', label: 'غرف التنسيق الميداني', badge: 0, badgeColor: '', iconColor: 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400' },
               ],
             },
             {
               key: 'accounts',
               title: 'الحسابات والعمولات',
               items: [
-                { id: 'commission', icon: 'CurrencyDollarIcon', label: 'حساب العمولة', badge: 0, badgeColor: '' },
-                { id: 'accounts', icon: 'BanknotesIcon', label: ad.tabReceivingAccounts, badge: 0, badgeColor: '' },
-                { id: 'exchange', icon: 'ArrowsRightLeftIcon', label: ad.tabInfoExchange, badge: 0, badgeColor: '' },
+                { id: 'commission', icon: 'CurrencyDollarIcon', label: 'حساب العمولة', badge: 0, badgeColor: '', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
+                { id: 'accounts', icon: 'BanknotesIcon', label: ad.tabReceivingAccounts, badge: 0, badgeColor: '', iconColor: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' },
+                { id: 'exchange', icon: 'ArrowsRightLeftIcon', label: ad.tabInfoExchange, badge: 0, badgeColor: '', iconColor: 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-950/40 dark:text-fuchsia-400' },
               ],
             },
             {
               key: 'tools',
               title: 'الأدوات',
               items: [
-                { id: 'documents', icon: 'FolderOpenIcon', label: ad.tabDocuments, badge: 0, badgeColor: '' },
-                { id: 'referral', icon: 'LinkIcon', label: 'الإحالات والتتبع', badge: 0, badgeColor: '' },
+                { id: 'documents', icon: 'FolderOpenIcon', label: ad.tabDocuments, badge: 0, badgeColor: '', iconColor: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400' },
+                { id: 'referral', icon: 'LinkIcon', label: 'الإحالات والتتبع', badge: 0, badgeColor: '', iconColor: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400' },
               ],
             },
           ]).map(section => (
@@ -931,22 +970,18 @@ export default function AgentDashboardPage() {
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => setActiveTab(item.id as typeof activeTab)}
+                      onClick={() => openTab(item.id as AgentTabId)}
                       aria-pressed={isActive}
-                      className={`relative flex flex-col items-center justify-center gap-2 p-3 min-h-[84px] rounded-xl border text-center text-sm font-semibold transition-all ${
+                      className={`relative flex flex-col items-center justify-center p-3 min-h-[96px] rounded-xl border text-center transition-all active:scale-[0.98] ${
                         isActive
-                          ? 'bg-[#D4AF37]/10 border-[#D4AF37] border-2 text-foreground shadow-sm'
-                          : 'bg-muted/40 border-border text-muted-foreground hover:bg-muted hover:text-foreground hover:border-[#D4AF37]/50'
+                          ? 'bg-[#D4AF37]/10 border-[#D4AF37] border-2 ring-2 ring-[#D4AF37]/25 shadow-md'
+                          : 'bg-white dark:bg-zinc-900 border-slate-100 dark:border-zinc-800 shadow-sm hover:shadow-md hover:border-[#D4AF37]/50'
                       }`}
                     >
-                      <span
-                        className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-                          isActive ? 'bg-[#D4AF37]/20 text-[#B8941F]' : 'bg-card text-muted-foreground'
-                        }`}
-                      >
-                        <Icon name={item.icon as any} size={18} />
+                      <span className={`w-11 h-11 rounded-xl flex items-center justify-center mb-2.5 ${item.iconColor}`}>
+                        <Icon name={item.icon as any} size={22} />
                       </span>
-                      <span className="leading-tight">{item.label}</span>
+                      <span className="leading-tight text-slate-800 dark:text-zinc-100 font-semibold text-sm">{item.label}</span>
                       {item.badge > 0 && (
                         <span className={`absolute top-2 end-2 min-w-[18px] h-[18px] ${item.badgeColor} text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1`}>
                           {item.badge > 99 ? '99+' : item.badge}
@@ -962,6 +997,47 @@ export default function AgentDashboardPage() {
             </div>
           ))}
         </div>
+        </>
+        )}
+
+        {activeTab !== null && (() => {
+          const TAB_META: Record<AgentTabId, { icon: string; title: string; iconColor: string }> = {
+            sales: { icon: 'ChartBarIcon', title: ad.tabSales, iconColor: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' },
+            earnings: { icon: 'BanknotesIcon', title: 'الأرباح والعمولات', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
+            factories: { icon: 'BuildingOffice2Icon', title: ad.tabFactories.replace('{count}', String(totalFactories)), iconColor: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' },
+            products: { icon: 'CubeIcon', title: ad.tabProducts.replace('{count}', String(totalProducts)), iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
+            inspections: { icon: 'ClipboardDocumentListIcon', title: 'مهام التفتيش', iconColor: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' },
+            enhanced: { icon: 'BriefcaseIcon', title: 'التسجيل والتحقق', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
+            messaging: { icon: 'ChatBubbleLeftRightIcon', title: ad.tabMessaging, iconColor: 'bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400' },
+            admin_msg: { icon: 'ShieldCheckIcon', title: ad.tabAdminMsg, iconColor: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' },
+            complaints: { icon: 'ExclamationTriangleIcon', title: ad.tabComplaints, iconColor: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' },
+            dispatch_rooms: { icon: 'TruckIcon', title: 'غرف التنسيق الميداني', iconColor: 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400' },
+            commission: { icon: 'CurrencyDollarIcon', title: 'حساب العمولة', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
+            accounts: { icon: 'BanknotesIcon', title: ad.tabReceivingAccounts, iconColor: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' },
+            exchange: { icon: 'ArrowsRightLeftIcon', title: ad.tabInfoExchange, iconColor: 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-950/40 dark:text-fuchsia-400' },
+            documents: { icon: 'FolderOpenIcon', title: ad.tabDocuments, iconColor: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400' },
+            referral: { icon: 'LinkIcon', title: 'الإحالات والتتبع', iconColor: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400' },
+          };
+          const meta = TAB_META[activeTab];
+          return (
+            <div className="sticky top-0 z-30 -mx-4 px-4 py-3 mb-4 bg-background/95 backdrop-blur border-b border-border flex items-center gap-3">
+              <button
+                type="button"
+                onClick={closeTab}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 text-sm font-semibold hover:shadow-sm active:scale-[0.98] transition-all shrink-0"
+              >
+                <Icon name={dir === 'rtl' ? 'ArrowRightIcon' : 'ArrowLeftIcon'} size={16} />
+                <span>العودة للوحة التحكم</span>
+              </button>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${meta.iconColor}`}>
+                  <Icon name={meta.icon as any} size={18} />
+                </span>
+                <h2 className="text-sm font-bold text-slate-800 dark:text-zinc-100 truncate">{meta.title}</h2>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Inspection Tasks Tab — Milestone Tracking */}
         {activeTab === 'inspections' && (
