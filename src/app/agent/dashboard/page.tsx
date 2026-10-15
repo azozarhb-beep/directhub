@@ -499,7 +499,44 @@ export default function AgentDashboardPage() {
   const [factories, setFactories] = useState<AgentFactory[]>([]);
   const [products, setProducts] = useState<AgentProduct[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'accounts' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral' | 'dispatch_rooms'>('factories');
+  type AgentTabId = 'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'accounts' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral' | 'dispatch_rooms';
+  const VALID_TABS: AgentTabId[] = ['factories', 'products', 'messaging', 'documents', 'exchange', 'accounts', 'complaints', 'sales', 'admin_msg', 'commission', 'enhanced', 'inspections', 'earnings', 'referral', 'dispatch_rooms'];
+  const TAB_URL_KEYS: Record<AgentTabId, string> = {
+    factories: 'factories', products: 'products', messaging: 'messaging', documents: 'documents',
+    exchange: 'exchange', accounts: 'accounts', complaints: 'complaints', sales: 'sales',
+    admin_msg: 'admin-msg', commission: 'commission', enhanced: 'register', inspections: 'inspections',
+    earnings: 'earnings', referral: 'referral', dispatch_rooms: 'dispatch',
+  };
+  const [activeTab, setActiveTabState] = useState<AgentTabId | null>(null);
+
+  const readTabFromUrl = useCallback((): AgentTabId | null => {
+    if (typeof window === 'undefined') return null;
+    const key = new URLSearchParams(window.location.search).get('tab');
+    if (!key) return null;
+    const found = VALID_TABS.find(id => TAB_URL_KEYS[id] === key);
+    return found ?? null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    setActiveTabState(readTabFromUrl());
+    const onPopState = () => setActiveTabState(readTabFromUrl());
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [readTabFromUrl]);
+
+  const openTab = useCallback((id: AgentTabId) => {
+    setActiveTabState(id);
+    router.push(`/agent/dashboard?tab=${TAB_URL_KEYS[id]}`, { scroll: false });
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
+
+  const closeTab = useCallback(() => {
+    setActiveTabState(null);
+    router.push('/agent/dashboard', { scroll: false });
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
+  }, [router]);
   const [reviewModal, setReviewModal] = useState<AgentFactory | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -824,6 +861,8 @@ export default function AgentDashboardPage() {
       </div>
       <main className="max-w-5xl mx-auto px-4 py-6 mobile-safe-bottom">
 
+        {activeTab === null && (
+        <>
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
@@ -931,7 +970,7 @@ export default function AgentDashboardPage() {
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => setActiveTab(item.id as typeof activeTab)}
+                      onClick={() => openTab(item.id as AgentTabId)}
                       aria-pressed={isActive}
                       className={`relative flex flex-col items-center justify-center p-3 min-h-[96px] rounded-xl border text-center transition-all active:scale-[0.98] ${
                         isActive
@@ -958,6 +997,47 @@ export default function AgentDashboardPage() {
             </div>
           ))}
         </div>
+        </>
+        )}
+
+        {activeTab !== null && (() => {
+          const TAB_META: Record<AgentTabId, { icon: string; title: string; iconColor: string }> = {
+            sales: { icon: 'ChartBarIcon', title: ad.tabSales, iconColor: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' },
+            earnings: { icon: 'BanknotesIcon', title: 'الأرباح والعمولات', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
+            factories: { icon: 'BuildingOffice2Icon', title: ad.tabFactories.replace('{count}', String(totalFactories)), iconColor: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' },
+            products: { icon: 'CubeIcon', title: ad.tabProducts.replace('{count}', String(totalProducts)), iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
+            inspections: { icon: 'ClipboardDocumentListIcon', title: 'مهام التفتيش', iconColor: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' },
+            enhanced: { icon: 'BriefcaseIcon', title: 'التسجيل والتحقق', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
+            messaging: { icon: 'ChatBubbleLeftRightIcon', title: ad.tabMessaging, iconColor: 'bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400' },
+            admin_msg: { icon: 'ShieldCheckIcon', title: ad.tabAdminMsg, iconColor: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' },
+            complaints: { icon: 'ExclamationTriangleIcon', title: ad.tabComplaints, iconColor: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' },
+            dispatch_rooms: { icon: 'TruckIcon', title: 'غرف التنسيق الميداني', iconColor: 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400' },
+            commission: { icon: 'CurrencyDollarIcon', title: 'حساب العمولة', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
+            accounts: { icon: 'BanknotesIcon', title: ad.tabReceivingAccounts, iconColor: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' },
+            exchange: { icon: 'ArrowsRightLeftIcon', title: ad.tabInfoExchange, iconColor: 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-950/40 dark:text-fuchsia-400' },
+            documents: { icon: 'FolderOpenIcon', title: ad.tabDocuments, iconColor: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400' },
+            referral: { icon: 'LinkIcon', title: 'الإحالات والتتبع', iconColor: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400' },
+          };
+          const meta = TAB_META[activeTab];
+          return (
+            <div className="sticky top-0 z-30 -mx-4 px-4 py-3 mb-4 bg-background/95 backdrop-blur border-b border-border flex items-center gap-3">
+              <button
+                type="button"
+                onClick={closeTab}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 text-sm font-semibold hover:shadow-sm active:scale-[0.98] transition-all shrink-0"
+              >
+                <Icon name={dir === 'rtl' ? 'ArrowRightIcon' : 'ArrowLeftIcon'} size={16} />
+                <span>العودة للوحة التحكم</span>
+              </button>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${meta.iconColor}`}>
+                  <Icon name={meta.icon as any} size={18} />
+                </span>
+                <h2 className="text-sm font-bold text-slate-800 dark:text-zinc-100 truncate">{meta.title}</h2>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Inspection Tasks Tab — Milestone Tracking */}
         {activeTab === 'inspections' && (
