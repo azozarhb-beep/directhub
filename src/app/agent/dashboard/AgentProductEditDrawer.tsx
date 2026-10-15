@@ -256,10 +256,10 @@ export function AgentProductPreviewModal({ product, factoryName, onClose, onEdit
             <span>{product.is_active ? pa.statusLive : pa.statusPending}</span>
           </div>
 
-          <div className="aspect-video w-full rounded-xl overflow-hidden border border-border bg-muted flex items-center justify-center">
+          <div className="aspect-square w-full max-h-[320px] mx-auto bg-white dark:bg-zinc-900 flex items-center justify-center rounded-xl overflow-hidden border border-border">
             {images[activeImg] ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={images[activeImg]} alt={product.name_ar} className="w-full h-full object-contain" />
+              <img src={images[activeImg]} alt={product.name_ar} className="w-full h-full object-contain p-3" />
             ) : (
               <Icon name="PhotoIcon" size={40} className="text-muted-foreground" />
             )}
