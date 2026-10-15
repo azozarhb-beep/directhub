@@ -10,6 +10,11 @@ const siteUrlHost = (() => {
   }
 })();
 
+const extraDevOrigins = (process.env.ALLOWED_DEV_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   productionBrowserSourceMaps: true,
@@ -18,6 +23,7 @@ const nextConfig = {
     'localhost',
     '127.0.0.1',
     '*.localhost',
+    '**.localhost',
     'dhiwise.com',
     '**.dhiwise.com',
     'dhiwise.dev',
@@ -28,6 +34,10 @@ const nextConfig = {
     '**.rocket.new',
     'builtwithrocket.new',
     '**.builtwithrocket.new',
+    'rocketcdn.com',
+    '**.rocketcdn.com',
+    'rocket.dev',
+    '**.rocket.dev',
     '**.vercel.app',
     '**.app.github.dev',
     '**.csb.app',
@@ -38,7 +48,8 @@ const nextConfig = {
     '**.ngrok.io',
     '**.trycloudflare.com',
     '**.loca.lt',
-    ...(siteUrlHost ? [siteUrlHost] : []),
+    ...(siteUrlHost ? [siteUrlHost, `**.${siteUrlHost}`] : []),
+    ...extraDevOrigins,
   ],
   typescript: {
     ignoreBuildErrors: true,
