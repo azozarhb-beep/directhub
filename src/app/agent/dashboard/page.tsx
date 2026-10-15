@@ -9,6 +9,7 @@ import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import UnifiedMessagingEngine from '@/components/UnifiedMessagingEngine';
+import { AgentProductEditDrawer, AgentProductPreviewModal } from './AgentProductEditDrawer';
 import DocumentUploadPanel from './DocumentUploadPanel';
 import InfoExchangePanel from './InfoExchangePanel';
 import ReceivingAccountPanel from './ReceivingAccountPanel';
@@ -90,6 +91,8 @@ interface AgentProduct {
   category?: string;
   is_active: boolean;
   created_at: string;
+  description_ar?: string | null;
+  description_en?: string | null;
   is_b2b_only?: boolean | null;
   retail_price?: number | null;
   wholesale_price?: number | null;
@@ -517,6 +520,8 @@ export default function AgentDashboardPage() {
 
   const [factories, setFactories] = useState<AgentFactory[]>([]);
   const [products, setProducts] = useState<AgentProduct[]>([]);
+  const [previewProduct, setPreviewProduct] = useState<AgentProduct | null>(null);
+  const [editProduct, setEditProduct] = useState<AgentProduct | null>(null);
   const [loading, setLoading] = useState(true);
   type AgentTabId = 'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral' | 'dispatch_rooms';
   const VALID_TABS: AgentTabId[] = ['factories', 'products', 'messaging', 'documents', 'exchange', 'complaints', 'sales', 'admin_msg', 'commission', 'enhanced', 'inspections', 'earnings', 'referral', 'dispatch_rooms'];
@@ -1711,6 +1716,24 @@ export default function AgentDashboardPage() {
                           <p className="text-sm font-bold text-foreground">{product.category || '—'}</p>
                         </div>
                       </div>
+                      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewProduct(product)}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 border border-border rounded-lg text-xs font-semibold text-foreground hover:bg-muted transition-colors"
+                        >
+                          <Icon name="EyeIcon" size={14} />
+                          {t.agentProductActions.previewInStore}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditProduct(product)}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-primary text-white rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity"
+                        >
+                          <Icon name="PencilSquareIcon" size={14} />
+                          {t.agentProductActions.edit}
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -1719,6 +1742,26 @@ export default function AgentDashboardPage() {
           </div>
         )}
       </main>
+
+      {previewProduct && (
+        <AgentProductPreviewModal
+          product={previewProduct}
+          factoryName={factories.find(f => f.id === previewProduct.factory_id)?.company_name}
+          onClose={() => setPreviewProduct(null)}
+          onEdit={() => { setEditProduct(previewProduct); setPreviewProduct(null); }}
+        />
+      )}
+
+      {editProduct && (
+        <AgentProductEditDrawer
+          product={editProduct}
+          onClose={() => setEditProduct(null)}
+          onSaved={(updated) => {
+            setProducts(prev => prev.map(p => (p.id === updated.id ? { ...p, ...updated } : p)));
+            setEditProduct(null);
+          }}
+        />
+      )}
 
       {reviewModal && user && (
         <ReviewModal

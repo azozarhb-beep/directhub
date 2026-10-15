@@ -462,7 +462,7 @@ function AddProductPageInner() {
           specifications: specs,
           images: imageUrls,
           video_url: videoUrl,
-          is_active: true,
+          is_active: false,
         });
       if (insertError) throw insertError;
       clearDraft();
@@ -509,7 +509,8 @@ function AddProductPageInner() {
             <Icon name="CheckCircleIcon" size={40} className="text-emerald-600" />
           </div>
           <h2 className="text-2xl font-bold text-foreground mb-2">{ap.successTitle}</h2>
-          <p className="text-muted-foreground mb-6">{ap.successDesc.replace('{name}', factory.company_name)}</p>
+          <p className="text-muted-foreground mb-3">{ap.successDesc.replace('{name}', factory.company_name)}</p>
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-6">{ap.successPendingReview}</p>
           <div className="flex flex-col gap-3">
             <button
               type="button"
