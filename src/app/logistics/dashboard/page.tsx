@@ -4164,6 +4164,70 @@ function getTransportLabel(type: string | null) {
   return TRANSPORT_TYPE_OPTIONS.find(t => t.value === type) || { value: type || '', label: type || '—', icon: '📦' };
 }
 
+const INTL_TRANSPORT_TO_DB: Record<string, string> = {
+  sea_fcl: 'FCL',
+  sea_lcl: 'LCL',
+  air: 'Air',
+  express: 'Express',
+};
+
+const INTL_TRANSPORT_FROM_DB: Record<string, string> = {
+  FCL: 'sea_fcl',
+  LCL: 'sea_lcl',
+  Air: 'air',
+  Express: 'express',
+};
+
+const INTL_STATUS_TO_DB: Record<string, string> = {
+  pending: 'Pending',
+  picked_up: 'Departed',
+  in_transit: 'In Transit',
+  arrived_at_hub: 'Arrived',
+  out_for_delivery: 'Customs Clearance',
+  delivered: 'Delivered',
+};
+
+const INTL_STATUS_FROM_DB: Record<string, string> = {
+  'Pending': 'pending',
+  'Departed': 'picked_up',
+  'In Transit': 'in_transit',
+  'Arrived': 'arrived_at_hub',
+  'Customs Clearance': 'out_for_delivery',
+  'Delivered': 'delivered',
+};
+
+function mapInternationalRow(row: any): IntlShipment {
+  return {
+    id: row.id,
+    tracking_number: row.tracking_number,
+    bl_number: row.bl_number ?? null,
+    transport_type: INTL_TRANSPORT_FROM_DB[row.transport_type as string] || row.transport_type || null,
+    origin_address: null,
+    destination_address: null,
+    route_origin_port: row.origin_port ?? null,
+    route_destination_port: row.destination_port ?? null,
+    shipment_status: INTL_STATUS_FROM_DB[row.status as string] || 'in_transit',
+    etd: row.etd ?? null,
+    estimated_delivery: row.eta ?? null,
+    document_url: null,
+    carrier_name: row.carrier ?? null,
+    notes: row.notes ?? null,
+    created_at: row.created_at,
+    updated_at: row.created_at,
+    container_number: row.container_number ?? null,
+    container_type: row.container_type ?? null,
+    shipping_line: row.shipping_line ?? null,
+    port_country: row.port_country ?? null,
+    port_name: row.port_name ?? null,
+    port_role: row.port_role ?? null,
+    discharge_date: row.vessel_arrival_date ?? null,
+    free_days_limit: row.free_time_days ?? null,
+    daily_demurrage_rate: row.daily_demurrage_fee ?? null,
+    demurrage_currency: row.currency ?? 'USD',
+    created_by: row.created_by ?? null,
+  };
+}
+
 function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
   const supabase = createClient();
 
@@ -4182,6 +4246,7 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [podShipment, setPodShipment] = useState<IntlShipment | null>(null);
+  const [manualIds, setManualIds] = useState<Set<string>>(new Set());
 
   // Add shipment form state
   const [addForm, setAddForm] = useState({
@@ -4202,13 +4267,33 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchShipments = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('logistics_shipments')
-      .select('id, tracking_number, bl_number, transport_type, shipment_status, estimated_delivery, order_id, created_by, route_origin_port, route_destination_port, origin_address, destination_address, container_number, container_type, shipping_line, port_country, port_name, port_role, discharge_date, free_days_limit, daily_demurrage_rate, demurrage_currency, free_time_alert_sent_at')
-      .eq('logistics_partner_id', partnerId)
-      .in('shipment_status', ['pending', 'picked_up', 'in_transit', 'arrived_at_hub', 'out_for_delivery'])
-      .order('created_at', { ascending: false });
-    setShipments(sortByFreeTimeUrgency((data as any[]) || []) as any);
+    try {
+      const [assignedRes, manualRes] = await Promise.all([
+        supabase
+          .from('logistics_shipments')
+          .select('id, tracking_number, bl_number, transport_type, shipment_status, estimated_delivery, order_id, created_by, route_origin_port, route_destination_port, origin_address, destination_address, container_number, container_type, shipping_line, port_country, port_name, port_role, discharge_date, free_days_limit, daily_demurrage_rate, demurrage_currency, free_time_alert_sent_at')
+          .eq('logistics_partner_id', partnerId)
+          .in('shipment_status', ['pending', 'picked_up', 'in_transit', 'arrived_at_hub', 'out_for_delivery'])
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('international_shipments')
+          .select('*')
+          .order('created_at', { ascending: false }),
+      ]);
+
+      if (assignedRes.error) console.error('logistics_shipments fetch error:', assignedRes.error.message);
+      if (manualRes.error) console.error('international_shipments fetch error:', manualRes.error.message);
+
+      const assigned = ((assignedRes.data as any[]) || []) as IntlShipment[];
+      const manual = ((manualRes.data as any[]) || []).map(mapInternationalRow);
+      setManualIds(new Set(manual.map(m => m.id)));
+      setShipments(sortByFreeTimeUrgency([...manual, ...assigned]) as any);
+    } catch (err: any) {
+      console.error('fetchShipments failed:', err?.message || err);
+      setShipments([]);
+    } finally {
+      setLoading(false);
+    }
   }, [partnerId, supabase]);
 
   useEffect(() => { fetchShipments(); }, [fetchShipments]);
@@ -4252,7 +4337,9 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
         if (rows.length > 0) {
           const { error: nErr } = await supabase.from('notifications').insert(rows);
           if (!nErr) {
-            await supabase.from('logistics_shipments').update({ free_time_alert_sent_at: now.toISOString() }).eq('id', s.id);
+            if (!manualIds.has(s.id)) {
+              await supabase.from('logistics_shipments').update({ free_time_alert_sent_at: now.toISOString() }).eq('id', s.id);
+            }
             setShipments(prev => prev.map(x => x.id === s.id ? ({ ...x, free_time_alert_sent_at: now.toISOString() } as any) : x));
           }
         }
@@ -4286,11 +4373,33 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
     if (!ftEditId) return;
     setFtSaving(true);
     const payload = { ...portFreeTimePayload(ftEditValues), free_time_alert_sent_at: null };
-    const { error } = await supabase
-      .from('logistics_shipments')
-      .update(payload)
-      .eq('id', ftEditId)
-      .eq('logistics_partner_id', partnerId);
+    let error: { message: string } | null = null;
+    if (manualIds.has(ftEditId)) {
+      const p: any = portFreeTimePayload(ftEditValues);
+      const res = await supabase
+        .from('international_shipments')
+        .update({
+          container_number: p.container_number ?? null,
+          container_type: p.container_type ?? null,
+          shipping_line: p.shipping_line ?? null,
+          port_country: p.port_country ?? null,
+          port_name: p.port_name ?? null,
+          port_role: p.port_role ?? null,
+          vessel_arrival_date: p.discharge_date ?? null,
+          free_time_days: p.free_days_limit ?? null,
+          daily_demurrage_fee: p.daily_demurrage_rate ?? 0,
+          currency: p.demurrage_currency ?? 'USD',
+        })
+        .eq('id', ftEditId);
+      error = res.error;
+    } else {
+      const res = await supabase
+        .from('logistics_shipments')
+        .update(payload)
+        .eq('id', ftEditId)
+        .eq('logistics_partner_id', partnerId);
+      error = res.error;
+    }
     if (error) {
       toast.error(error.message);
     } else {
@@ -4309,7 +4418,7 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
     setSearchResult(null);
     setSearchQuery(q);
 
-    const { data } = await supabase
+    const { data: assignedHit } = await supabase
       .from('logistics_shipments')
       .select('id, tracking_number, bl_number, transport_type, origin_address, destination_address, route_origin_port, route_destination_port, shipment_status, etd, estimated_delivery, document_url, carrier_name, notes, created_at, updated_at, container_number, container_type, shipping_line, port_country, port_name, port_role, discharge_date, free_days_limit, daily_demurrage_rate, demurrage_currency')
       .eq('logistics_partner_id', partnerId)
@@ -4317,7 +4426,18 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
       .limit(1)
       .maybeSingle();
 
-    setSearchResult(data ? (data as IntlShipment) : 'not_found');
+    let data: IntlShipment | null = assignedHit ? (assignedHit as IntlShipment) : null;
+    if (!data) {
+      const { data: manualHit } = await supabase
+        .from('international_shipments')
+        .select('*')
+        .or(`tracking_number.ilike.%${q}%,bl_number.ilike.%${q}%,container_number.ilike.%${q}%`)
+        .limit(1)
+        .maybeSingle();
+      if (manualHit) data = mapInternationalRow(manualHit);
+    }
+
+    setSearchResult(data ? data : 'not_found');
     setSearching(false);
   };
 
@@ -4330,11 +4450,16 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
   // ── Status Update ──────────────────────────────────────────────────────────
   const updateStatus = async (shipmentId: string, newStatus: string) => {
     setUpdatingId(shipmentId);
-    const { error } = await supabase
-      .from('logistics_shipments')
-      .update({ shipment_status: newStatus, updated_at: new Date().toISOString() })
-      .eq('id', shipmentId)
-      .eq('logistics_partner_id', partnerId);
+    const { error } = manualIds.has(shipmentId)
+      ? await supabase
+          .from('international_shipments')
+          .update({ status: INTL_STATUS_TO_DB[newStatus] || newStatus })
+          .eq('id', shipmentId)
+      : await supabase
+          .from('logistics_shipments')
+          .update({ shipment_status: newStatus, updated_at: new Date().toISOString() })
+          .eq('id', shipmentId)
+          .eq('logistics_partner_id', partnerId);
     if (!error) {
       setShipments(prev => prev.map(s => s.id === shipmentId ? { ...s, shipment_status: newStatus } : s));
       if (searchResult && searchResult !== 'not_found' && searchResult.id === shipmentId) {
@@ -4439,33 +4564,56 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
     }
     setAddSaving(true);
     setAddError('');
-    const { data, error } = await supabase
-      .from('logistics_shipments')
-      .insert({
-        logistics_partner_id: partnerId,
-        tracking_number: addForm.tracking_number.trim(),
-        bl_number: addForm.bl_number.trim() || null,
-        transport_type: addForm.transport_type,
-        route_origin_port: addForm.route_origin_port.trim() || null,
-        route_destination_port: addForm.route_destination_port.trim() || null,
-        carrier_name: addForm.carrier_name.trim() || null,
-        etd: addForm.etd || null,
-        estimated_delivery: addForm.estimated_delivery || null,
-        notes: addForm.notes.trim() || null,
-        shipment_status: 'pending',
-        ...portFreeTimePayload(addPortFT),
-      })
-      .select()
-      .single();
-    if (error) {
-      setAddError(error.message);
-    } else {
-      setShipments(prev => sortByFreeTimeUrgency([data as IntlShipment, ...prev]));
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const uid = authData?.user?.id;
+      if (!uid) {
+        setAddError('يجب تسجيل الدخول لإضافة شحنة');
+        return;
+      }
+      const ft = portFreeTimePayload(addPortFT);
+      const { data, error } = await supabase
+        .from('international_shipments')
+        .insert({
+          created_by: uid,
+          tracking_number: addForm.tracking_number.trim(),
+          bl_number: addForm.bl_number.trim() || null,
+          transport_type: INTL_TRANSPORT_TO_DB[addForm.transport_type] || 'FCL',
+          origin_port: addForm.route_origin_port.trim() || null,
+          destination_port: addForm.route_destination_port.trim() || null,
+          carrier: addForm.carrier_name.trim() || null,
+          etd: addForm.etd || null,
+          eta: addForm.estimated_delivery || null,
+          container_number: ft.container_number,
+          container_type: ft.container_type,
+          shipping_line: ft.shipping_line,
+          port_country: ft.port_country,
+          port_name: ft.port_name,
+          port_role: ft.port_role,
+          vessel_arrival_date: ft.discharge_date,
+          free_time_days: ft.free_days_limit ?? 14,
+          daily_demurrage_fee: ft.daily_demurrage_rate ?? 0,
+          currency: ft.demurrage_currency,
+          notes: addForm.notes.trim() || null,
+          status: 'Pending',
+        })
+        .select()
+        .single();
+      if (error) {
+        setAddError(error.message);
+        return;
+      }
+      const mapped = mapInternationalRow(data);
+      setManualIds(prev => new Set(prev).add(mapped.id));
+      setShipments(prev => sortByFreeTimeUrgency([mapped, ...prev]));
       setShowAddModal(false);
       setAddForm({ tracking_number: '', bl_number: '', transport_type: 'sea_fcl', route_origin_port: '', route_destination_port: '', carrier_name: '', etd: '', estimated_delivery: '', notes: '' });
       setAddPortFT(EMPTY_PORT_FREE_TIME);
+    } catch (err: any) {
+      setAddError(err?.message || 'حدث خطأ أثناء إضافة الشحنة');
+    } finally {
+      setAddSaving(false);
     }
-    setAddSaving(false);
   };
 
   // ── Render helpers ─────────────────────────────────────────────────────────
