@@ -4335,6 +4335,26 @@ export default function AdminControlRoomPage() {
                   </button>
                 );
               })}
+
+              {/* Master Products & Catalog Management → /admin/products */}
+              <Link
+                href="/admin/products"
+                className="relative flex flex-col items-center gap-2.5 p-4 rounded-2xl border bg-[#161b22] border-[#30363d] text-[#8b949e] hover:border-[#484f58] hover:bg-[#1c2330] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 text-center overflow-hidden col-span-2 sm:col-span-3 md:col-span-2"
+              >
+                <div className="absolute top-2 left-2 flex items-center gap-1">
+                  <span className="min-w-[20px] h-5 bg-blue-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1.5" title="إجمالي المنتجات">
+                    📦 {analytics.totalProducts}
+                  </span>
+                  <span className="min-w-[20px] h-5 bg-emerald-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1.5" title="طلبات اليوم النشطة">
+                    🔥 {liveOrders.filter((o: any) => o.created_at && new Date(o.created_at).toDateString() === new Date().toDateString()).length}
+                  </span>
+                </div>
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm" style={{ background: 'linear-gradient(135deg,#2563EB,#7C3AED)' }}>
+                  <Icon name="ShoppingBagIcon" size={22} className="text-white" />
+                </div>
+                <span className="text-sm font-bold leading-tight text-slate-100">إدارة المنتجات والكتالوج</span>
+                <span className="text-[11px] leading-snug text-slate-400">مراقبة كافة منتجات المتجر، اعتماد العروض، وتتبع المبيعات والشحنات اليومية مع ربط المصانع والمناديب</span>
+              </Link>
             </div>
           </div>
 
