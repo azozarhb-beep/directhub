@@ -232,6 +232,10 @@ function FactoryDetailCard({ factory }: { factory: AgentFactory }) {
                         >
                           {item.value}
                         </a>
+                      ) : item.label === ui.phone ? (
+                        <p className="text-xs font-semibold text-foreground truncate">
+                          <span dir="ltr" className="font-mono inline-block">{item.value}</span>
+                        </p>
                       ) : (
                         <p className="text-xs font-semibold text-foreground truncate">{item.value}</p>
                       )}
@@ -751,9 +755,14 @@ function AgentProductsModeration({
               <div key={p.id} className="flex items-center justify-between gap-3 bg-card border border-border rounded-xl p-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground truncate">{p.name_ar || p.name_en}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {p.wholesale_price ?? p.price} {p.currency} · {formatDate(p.created_at)}
-                  </p>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
+                      <span dir="ltr" className="font-mono">{p.wholesale_price ?? p.price} {p.currency}</span>
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      <span dir="ltr" className="font-mono">{formatDate(p.created_at)}</span>
+                    </span>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
@@ -786,6 +795,7 @@ function RepDetailModal({
   rep, onClose, onProductsChanged }: { rep: FieldRep; onClose: () => void; onProductsChanged: () => void }) {
   const { t, dir, language, isRTL } = useLanguage();
   const ui = t.admin.fieldReps;
+  const supabase = createClient();
   const statusLabels: Record<string, string> = {
     pending: ui.pending,
     under_review: ui.underReview,
@@ -800,6 +810,115 @@ function RepDetailModal({
   };
   const [typeFilter, setTypeFilter] = useState<'all' | 'factory' | 'supplier'>('all');
 
+  // ── Verification state ──
+  const [isVerified, setIsVerified] = useState<boolean>(!!rep.is_verified);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState('');
+
+  // ── Profile fallbacks (profile → auth metadata → agent's registrations) ──
+  const [authMeta, setAuthMeta] = useState<{ full_name?: string; phone?: string; country?: string }>({});
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('user_profiles')
+          .select('full_name, phone, country, whatsapp_phone')
+          .eq('id', rep.id)
+          .maybeSingle();
+        if (!cancelled && data) {
+          setAuthMeta({
+            full_name: data.full_name || '',
+            phone: data.phone || (data as any).whatsapp_phone || '',
+            country: data.country || '',
+          });
+        }
+      } catch {
+        // ignore — fallbacks below will still apply
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [rep.id]);
+
+  const firstReg = rep.factories.find(f => f.contact_name || f.contact_phone || f.country) || rep.factories[0];
+  const displayName =
+    rep.full_name?.trim() || authMeta.full_name?.trim() || (firstReg as any)?.contact_person?.trim() || firstReg?.contact_name?.trim() || rep.email?.split('@')[0] || '—';
+  const displayPhone =
+    rep.phone?.trim() || authMeta.phone?.trim() || firstReg?.contact_phone?.trim() || '—';
+  const displayCountry =
+    rep.country?.trim() || authMeta.country?.trim() || firstReg?.country?.trim() || '—';
+
+  const handleVerify = async () => {
+    setVerifying(true);
+    setVerifyError('');
+    try {
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ is_verified: true })
+        .eq('id', rep.id);
+      if (error) throw error;
+      setIsVerified(true);
+      onProductsChanged();
+    } catch (err: any) {
+      setVerifyError(err?.message || 'تعذر توثيق الحساب');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  // ── Inspection task assignment ──
+  const [inspectionOpen, setInspectionOpen] = useState(false);
+  const [inspectionOrders, setInspectionOrders] = useState<any[]>([]);
+  const [inspectionLoading, setInspectionLoading] = useState(false);
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [assignedIds, setAssignedIds] = useState<string[]>([]);
+  const [inspectionMsg, setInspectionMsg] = useState('');
+
+  const openInspection = async () => {
+    const next = !inspectionOpen;
+    setInspectionOpen(next);
+    if (!next) return;
+    setInspectionLoading(true);
+    setInspectionMsg('');
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id, order_number, total, created_at, escrow_status, status')
+        .in('escrow_status', ['ready_for_inspection', 'funds_secured'])
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      setInspectionOrders(data || []);
+    } catch (err: any) {
+      setInspectionMsg(err?.message || 'تعذر تحميل الطلبات');
+      setInspectionOrders([]);
+    } finally {
+      setInspectionLoading(false);
+    }
+  };
+
+  const assignInspection = async (order: any) => {
+    setAssigningId(order.id);
+    setInspectionMsg('');
+    try {
+      const { error } = await supabase.from('notifications').insert({
+        user_id: rep.id,
+        type: 'system',
+        title: 'مهمة تفتيش ميداني جديدة',
+        body: `تم إسناد مهمة تفتيش ميداني لك للطلب رقم ${order.order_number}. يرجى التوجه للمصنع وإجراء الفحص.`,
+        link: '/agent/dashboard',
+        is_read: false,
+      });
+      if (error) throw error;
+      setAssignedIds(prev => [...prev, order.id]);
+      setInspectionMsg(`✅ تم إسناد مهمة التفتيش للطلب ${order.order_number}`);
+    } catch (err: any) {
+      setInspectionMsg(err?.message || 'تعذر إسناد المهمة');
+    } finally {
+      setAssigningId(null);
+    }
+  };
+
   const filtered = rep.factories.filter(f => {
     if (typeFilter === 'factory') return f.factory_type !== 'local_supplier';
     if (typeFilter === 'supplier') return f.factory_type === 'local_supplier';
@@ -810,7 +929,7 @@ function RepDetailModal({
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
       <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-card shrink-0">
         <div>
-          <h3 className="font-bold text-foreground text-base">{language === "ar" ? `تفاصيل المندوب: ${rep.full_name || rep.phone}` : `Rep details: ${rep.full_name || rep.phone}`}</h3>
+          <h3 className="font-bold text-foreground text-base">{language === "ar" ? `تفاصيل المندوب: ${displayName !== '—' ? displayName : displayPhone}` : `Rep details: ${displayName !== '—' ? displayName : displayPhone}`}</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
             جميع المصانع والموردين المسجلين مع بياناتهم الكاملة
           </p>
@@ -819,7 +938,7 @@ function RepDetailModal({
           <Icon name="XMarkIcon" size={16} className="text-muted-foreground" />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto p-5 space-y-5" dir={dir}>
+      <div className="flex-1 overflow-y-auto p-5 pb-24 space-y-5" dir={dir}>
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
@@ -842,19 +961,75 @@ function RepDetailModal({
             معلومات المندوب
           </h4>
           {[
-            { label: 'الاسم الكامل', value: rep.full_name },
+            { label: 'الاسم الكامل', value: displayName },
             { label: ui.email, value: rep.email },
-            { label: 'رقم الهاتف', value: rep.phone || '—' },
+            { label: 'رقم الهاتف', value: displayPhone },
             { label: 'الشركة', value: rep.company_name || '—' },
-            { label: 'الدولة', value: rep.country || '—' },
-            { label: 'حالة التوثيق', value: rep.is_verified ? '✅ موثق' : '⏳ غير موثق' },
+            { label: 'الدولة', value: displayCountry },
+            { label: 'حالة التوثيق', value: isVerified ? '✅ معتمد / نشط' : '⏳ غير موثق' },
             { label: 'تاريخ الانضمام', value: formatDate(rep.created_at) },
           ].map(item => (
             <div key={item.label} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
               <span className="text-xs text-muted-foreground">{item.label}</span>
-              <span className="text-xs font-semibold text-foreground">{item.value}</span>
+              {item.label === 'رقم الهاتف' ? (
+                <span dir="ltr" className="text-xs font-semibold text-foreground font-mono">{item.value}</span>
+              ) : (
+                <span className="text-xs font-semibold text-foreground">{item.value}</span>
+              )}
             </div>
           ))}
+
+          {/* Admin quick actions */}
+          <div className="pt-3 flex flex-wrap gap-2">
+            {!isVerified && (
+              <button
+                onClick={handleVerify}
+                disabled={verifying}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-semibold transition-colors"
+              >
+                <Icon name="CheckBadgeIcon" size={14} />
+                {verifying ? 'جارٍ التوثيق...' : 'توثيق وتفعيل الحساب'}
+              </button>
+            )}
+            <button
+              onClick={openInspection}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs font-semibold transition-colors"
+            >
+              <Icon name="ClipboardDocumentCheckIcon" size={14} />
+              + إسناد مهمة تفتيش ميداني
+            </button>
+          </div>
+          {verifyError && <p className="text-xs text-red-600 pt-1">{verifyError}</p>}
+
+          {inspectionOpen && (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/40 p-3 space-y-2">
+              <p className="text-xs font-bold text-amber-800">طلبات بانتظار التفتيش الميداني للمصنع</p>
+              {inspectionLoading ? (
+                <p className="text-xs text-muted-foreground">جارٍ التحميل...</p>
+              ) : inspectionOrders.length === 0 ? (
+                <p className="text-xs text-muted-foreground">لا توجد طلبات بانتظار التفتيش حالياً</p>
+              ) : (
+                inspectionOrders.map(o => (
+                  <div key={o.id} className="flex items-center justify-between gap-2 bg-card rounded-lg border border-border px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-foreground truncate">#{o.order_number}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {o.escrow_status === 'ready_for_inspection' ? '🔍 جاهز للفحص' : 'الأموال محجوزة'} · {formatDate(o.created_at)}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => assignInspection(o)}
+                      disabled={assigningId === o.id || assignedIds.includes(o.id)}
+                      className="shrink-0 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white text-[11px] font-semibold"
+                    >
+                      {assignedIds.includes(o.id) ? 'تم الإسناد' : assigningId === o.id ? '...' : 'إسناد'}
+                    </button>
+                  </div>
+                ))
+              )}
+              {inspectionMsg && <p className="text-xs text-foreground">{inspectionMsg}</p>}
+            </div>
+          )}
         </div>
 
         {/* Factories & Suppliers */}
@@ -1092,7 +1267,7 @@ export default function FieldRepresentativesPanel({
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground truncate">{rep.email}</p>
-                  {rep.phone && <p className="text-xs text-muted-foreground">{rep.phone}</p>}
+                  {rep.phone && <p className="text-xs text-muted-foreground"><span dir="ltr" className="font-mono">{rep.phone}</span></p>}
                   <p className="text-xs text-muted-foreground mt-0.5">
                     انضم: {formatDate(rep.created_at)}
                   </p>
