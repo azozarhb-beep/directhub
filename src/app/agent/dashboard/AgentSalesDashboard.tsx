@@ -60,8 +60,9 @@ function toYER(amount: number, currency: string): number {
   return amount;
 }
 
-function formatYER(amount: number): string {
-  return new Intl.NumberFormat('ar-YE', { maximumFractionDigits: 0 }).format(amount);
+function formatYER(amount: number | null | undefined): string {
+  const safe = Number.isFinite(amount as number) ? (amount as number) : 0;
+  return Math.round(safe).toLocaleString('en-US');
 }
 
 interface Props {
@@ -280,7 +281,7 @@ export default function AgentSalesDashboard({ userId, factories }: Props) {
             </div>
             <div>
               <h3 className="font-bold text-sm" style={{ color: '#D4AF37' }}>المتتبع المالي — عمولة المندوب</h3>
-              <p className="text-xs" style={{ color: '#8899aa' }}>نسبة العمولة: 20% من إجمالي المبيعات بالريال اليمني</p>
+              <p className="text-xs" style={{ color: '#8899aa' }}>نسبة العمولة: 20% من رسوم منصة دايركت هب المحققة</p>
             </div>
           </div>
         </div>
@@ -339,7 +340,7 @@ export default function AgentSalesDashboard({ userId, factories }: Props) {
               <Icon name="ExclamationTriangleIcon" size={16} style={{ color: '#f59e0b' }} />
               <div>
                 <p className="text-sm font-semibold" style={{ color: '#f59e0b' }}>لم يتم تسجيل حساب استلام</p>
-                <p className="text-xs" style={{ color: '#8899aa' }}>انتقل إلى تبويب "حساب العمولة" لإضافة حسابك</p>
+                <p className="text-xs" style={{ color: '#8899aa' }}>انتقل إلى تبويب "حسابات الاستلام" لإضافة حسابك</p>
               </div>
             </div>
           )}

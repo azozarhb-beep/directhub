@@ -724,7 +724,7 @@ export default function AgentCommissionAccountPanel({ userId }: Props) {
       <div className="rounded-xl p-4 flex items-start gap-3" style={{ background: 'rgba(10,25,47,0.6)', border: '1px solid rgba(212,175,55,0.2)' }}>
         <Icon name="InformationCircleIcon" size={16} className="shrink-0 mt-0.5" style={{ color: '#D4AF37' }} />
         <div className="text-xs space-y-1" style={{ color: '#8899aa' }}>
-          <p>• يتم صرف العمولات (20% من قيمة المبيعات) بالريال اليمني (YER) شهرياً.</p>
+          <p>• يتم صرف العمولات (20% من رسوم منصة دايركت هب المحققة) بالريال اليمني (YER) شهرياً.</p>
           <p>• تأكد من صحة بيانات الحساب لضمان استلام مدفوعاتك في الوقت المحدد.</p>
           <p>• يمكنك تسجيل أكثر من حساب وتحديد الحساب الرئيسي لاستلام العمولات.</p>
         </div>
