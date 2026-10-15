@@ -20,7 +20,7 @@ import AgentDispatchRoomsTab from './AgentDispatchRoomsTab';
 import EnhancedAgentDashboard from '@/components/agent/EnhancedAgentDashboard';
 import ReferralTrackingPanel from './ReferralTrackingPanel';
 import { useLanguage } from '@/contexts/LanguageContext';
-import AgentLanguageSelector, { CHAT_LANGUAGES, ChatLanguage } from './AgentLanguageSelector';
+import { CHAT_LANGUAGES, ChatLanguage } from './AgentLanguageSelector';
 import {
   resolvePlatformRole,
   getHomeRoomForRole,
@@ -505,7 +505,7 @@ export default function AgentDashboardPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [agentUnreadCount, setAgentUnreadCount] = useState(0);
-  const [dashboardChatLang, setDashboardChatLang] = useState<ChatLanguage>(
+  const [dashboardChatLang] = useState<ChatLanguage>(
     () => CHAT_LANGUAGES.find(l => l.code === 'ar') || CHAT_LANGUAGES[0]
   );
   const [inspectionTasks, setInspectionTasks] = useState<InspectionTask[]>([]);
@@ -831,11 +831,6 @@ export default function AgentDashboardPage() {
             <p className="text-sm text-muted-foreground mt-1">{ad.welcomeLine.replace('{name}', agentName)}</p>
           </div>
           <div className="flex items-center gap-2">
-            {/* Dashboard Language Selector */}
-            <AgentLanguageSelector
-              selectedLang={dashboardChatLang}
-              onSelect={setDashboardChatLang}
-            />
             <Link
               href="/agent/register-factory"
               className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors"
@@ -878,187 +873,94 @@ export default function AgentDashboardPage() {
           ))}
         </div>
 
-        {/* Tabs — 5 Grouped Sections */}
-        <div className="space-y-4 mb-5">
-          {/* Section 1 — نظرة عامة */}
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2 px-1">نظرة عامة</p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setActiveTab('sales')}
-                className={`shrink-0 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-colors border ${
-                  activeTab === 'sales' ? 'bg-card text-foreground shadow-sm border-border' : 'text-muted-foreground hover:text-foreground border-transparent'
-                }`}
-              >
-                <Icon name="ChartBarIcon" size={15} />
-                {ad.tabSales}
-              </button>
-              <button
-                onClick={() => setActiveTab('earnings')}
-                className={`shrink-0 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-colors border ${
-                  activeTab === 'earnings' ? 'bg-card text-foreground shadow-sm border-border' : 'text-muted-foreground hover:text-foreground border-transparent'
-                }`}
-              >
-                <Icon name="BanknotesIcon" size={15} />
-                الأرباح والعمولات
-              </button>
+        {/* Tabs — 5 Grouped Sections as Grid Cards */}
+        <div className="space-y-5 mb-5">
+          {([
+            {
+              key: 'overview',
+              title: 'نظرة عامة',
+              items: [
+                { id: 'sales', icon: 'ChartBarIcon', label: ad.tabSales, badge: 0, badgeColor: '' },
+                { id: 'earnings', icon: 'BanknotesIcon', label: 'الأرباح والعمولات', badge: 0, badgeColor: '' },
+              ],
+            },
+            {
+              key: 'factories',
+              title: 'المصانع والتحقق',
+              items: [
+                { id: 'factories', icon: 'BuildingOffice2Icon', label: ad.tabFactories.replace('{count}', String(totalFactories)), badge: 0, badgeColor: '' },
+                { id: 'products', icon: 'CubeIcon', label: ad.tabProducts.replace('{count}', String(totalProducts)), badge: 0, badgeColor: '' },
+                { id: 'inspections', icon: 'ClipboardDocumentListIcon', label: 'مهام التفتيش', badge: inspectionTasks.length, badgeColor: 'bg-amber-500' },
+                { id: 'enhanced', icon: 'BriefcaseIcon', label: 'التسجيل والتحقق', badge: 0, badgeColor: '' },
+              ],
+            },
+            {
+              key: 'messaging',
+              title: 'المراسلات',
+              items: [
+                { id: 'messaging', icon: 'ChatBubbleLeftRightIcon', label: ad.tabMessaging, badge: agentUnreadCount, badgeColor: 'bg-red-500' },
+                { id: 'admin_msg', icon: 'ShieldCheckIcon', label: ad.tabAdminMsg, badge: 0, badgeColor: '' },
+                { id: 'complaints', icon: 'ExclamationTriangleIcon', label: ad.tabComplaints, badge: 0, badgeColor: '' },
+                { id: 'dispatch_rooms', icon: 'TruckIcon', label: 'غرف التنسيق الميداني', badge: 0, badgeColor: '' },
+              ],
+            },
+            {
+              key: 'accounts',
+              title: 'الحسابات والعمولات',
+              items: [
+                { id: 'commission', icon: 'CurrencyDollarIcon', label: 'حساب العمولة', badge: 0, badgeColor: '' },
+                { id: 'accounts', icon: 'BanknotesIcon', label: ad.tabReceivingAccounts, badge: 0, badgeColor: '' },
+                { id: 'exchange', icon: 'ArrowsRightLeftIcon', label: ad.tabInfoExchange, badge: 0, badgeColor: '' },
+              ],
+            },
+            {
+              key: 'tools',
+              title: 'الأدوات',
+              items: [
+                { id: 'documents', icon: 'FolderOpenIcon', label: ad.tabDocuments, badge: 0, badgeColor: '' },
+                { id: 'referral', icon: 'LinkIcon', label: 'الإحالات والتتبع', badge: 0, badgeColor: '' },
+              ],
+            },
+          ]).map(section => (
+            <div key={section.key}>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2 px-1">{section.title}</p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {section.items.map(item => {
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setActiveTab(item.id as typeof activeTab)}
+                      aria-pressed={isActive}
+                      className={`relative flex flex-col items-center justify-center gap-2 p-3 min-h-[84px] rounded-xl border text-center text-sm font-semibold transition-all ${
+                        isActive
+                          ? 'bg-[#D4AF37]/10 border-[#D4AF37] border-2 text-foreground shadow-sm'
+                          : 'bg-muted/40 border-border text-muted-foreground hover:bg-muted hover:text-foreground hover:border-[#D4AF37]/50'
+                      }`}
+                    >
+                      <span
+                        className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                          isActive ? 'bg-[#D4AF37]/20 text-[#B8941F]' : 'bg-card text-muted-foreground'
+                        }`}
+                      >
+                        <Icon name={item.icon as any} size={18} />
+                      </span>
+                      <span className="leading-tight">{item.label}</span>
+                      {item.badge > 0 && (
+                        <span className={`absolute top-2 end-2 min-w-[18px] h-[18px] ${item.badgeColor} text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1`}>
+                          {item.badge > 99 ? '99+' : item.badge}
+                        </span>
+                      )}
+                      {isActive && (
+                        <span className="absolute top-2 start-2 w-2 h-2 rounded-full bg-[#D4AF37]" aria-hidden="true" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-
-          {/* Section 2 — المصانع والتحقق */}
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2 px-1">المصانع والتحقق</p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setActiveTab('factories')}
-                className={`shrink-0 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-colors border ${
-                  activeTab === 'factories' ? 'bg-card text-foreground shadow-sm border-border' : 'text-muted-foreground hover:text-foreground border-transparent'
-                }`}
-              >
-                <Icon name="BuildingOffice2Icon" size={15} />
-                {ad.tabFactories.replace('{count}', String(totalFactories))}
-              </button>
-              <button
-                onClick={() => setActiveTab('products')}
-                className={`shrink-0 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-colors border ${
-                  activeTab === 'products' ? 'bg-card text-foreground shadow-sm border-border' : 'text-muted-foreground hover:text-foreground border-transparent'
-                }`}
-              >
-                <Icon name="CubeIcon" size={15} />
-                {ad.tabProducts.replace('{count}', String(totalProducts))}
-              </button>
-              <button
-                onClick={() => setActiveTab('inspections')}
-                className={`shrink-0 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-colors border ${
-                  activeTab === 'inspections' ? 'bg-card text-foreground shadow-sm border-border' : 'text-muted-foreground hover:text-foreground border-transparent'
-                }`}
-              >
-                <Icon name="ClipboardDocumentListIcon" size={15} />
-                مهام التفتيش
-                {inspectionTasks.length > 0 && (
-                  <span className="min-w-[18px] h-[18px] bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
-                    {inspectionTasks.length}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => setActiveTab('enhanced')}
-                className={`shrink-0 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-colors border ${
-                  activeTab === 'enhanced' ? 'bg-card text-foreground shadow-sm border-border' : 'border-transparent'
-                }`}
-                style={activeTab === 'enhanced' ? {} : { color: '#D4AF37' }}
-              >
-                <Icon name="BriefcaseIcon" size={15} />
-                التسجيل والتحقق
-              </button>
-            </div>
-          </div>
-
-          {/* Section 3 — المراسلات */}
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2 px-1">المراسلات</p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setActiveTab('messaging')}
-                className={`shrink-0 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-colors border ${
-                  activeTab === 'messaging' ? 'bg-card text-foreground shadow-sm border-border' : 'text-muted-foreground hover:text-foreground border-transparent'
-                }`}
-              >
-                <Icon name="ChatBubbleLeftRightIcon" size={15} />
-                {ad.tabMessaging}
-                {agentUnreadCount > 0 && (
-                  <span className="min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
-                    {agentUnreadCount > 99 ? '99+' : agentUnreadCount}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => setActiveTab('admin_msg')}
-                className={`shrink-0 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-colors border ${
-                  activeTab === 'admin_msg' ? 'bg-card text-foreground shadow-sm border-border' : 'text-muted-foreground hover:text-foreground border-transparent'
-                }`}
-              >
-                <Icon name="ShieldCheckIcon" size={15} />
-                {ad.tabAdminMsg}
-              </button>
-              <button
-                onClick={() => setActiveTab('complaints')}
-                className={`shrink-0 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-colors border ${
-                  activeTab === 'complaints' ? 'bg-card text-foreground shadow-sm border-border' : 'text-muted-foreground hover:text-foreground border-transparent'
-                }`}
-              >
-                <Icon name="ExclamationTriangleIcon" size={15} />
-                {ad.tabComplaints}
-              </button>
-              <button
-                onClick={() => setActiveTab('dispatch_rooms')}
-                className={`shrink-0 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-colors border ${
-                  activeTab === 'dispatch_rooms' ? 'bg-card text-foreground shadow-sm border-border' : 'text-muted-foreground hover:text-foreground border-transparent'
-                }`}
-              >
-                <Icon name="TruckIcon" size={15} />
-                غرف التنسيق الميداني
-              </button>
-            </div>
-          </div>
-
-          {/* Section 4 — الحسابات والعمولات */}
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2 px-1">الحسابات والعمولات</p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setActiveTab('commission')}
-                className={`shrink-0 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-colors border ${
-                  activeTab === 'commission' ? 'bg-card text-foreground shadow-sm border-border' : 'text-muted-foreground hover:text-foreground border-transparent'
-                }`}
-              >
-                <Icon name="CurrencyDollarIcon" size={15} />
-                حساب العمولة
-              </button>
-              <button
-                onClick={() => setActiveTab('accounts')}
-                className={`shrink-0 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-colors border ${
-                  activeTab === 'accounts' ? 'bg-card text-foreground shadow-sm border-border' : 'text-muted-foreground hover:text-foreground border-transparent'
-                }`}
-              >
-                <Icon name="BanknotesIcon" size={15} />
-                {ad.tabReceivingAccounts}
-              </button>
-              <button
-                onClick={() => setActiveTab('exchange')}
-                className={`shrink-0 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-colors border ${
-                  activeTab === 'exchange' ? 'bg-card text-foreground shadow-sm border-border' : 'text-muted-foreground hover:text-foreground border-transparent'
-                }`}
-              >
-                <Icon name="ArrowsRightLeftIcon" size={15} />
-                {ad.tabInfoExchange}
-              </button>
-            </div>
-          </div>
-
-          {/* Section 5 — الأدوات */}
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2 px-1">الأدوات</p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setActiveTab('documents')}
-                className={`shrink-0 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-colors border ${
-                  activeTab === 'documents' ? 'bg-card text-foreground shadow-sm border-border' : 'text-muted-foreground hover:text-foreground border-transparent'
-                }`}
-              >
-                <Icon name="FolderOpenIcon" size={15} />
-                {ad.tabDocuments}
-              </button>
-              <button
-                onClick={() => setActiveTab('referral')}
-                className={`shrink-0 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-semibold transition-colors border ${
-                  activeTab === 'referral' ? 'bg-card text-foreground shadow-sm border-border' : 'text-muted-foreground hover:text-foreground border-transparent'
-                }`}
-              >
-                🔗 الإحالات والتتبع
-              </button>
-            </div>
-          </div>
+          ))}
         </div>
 
         {/* Inspection Tasks Tab — Milestone Tracking */}
