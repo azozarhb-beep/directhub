@@ -123,10 +123,12 @@ const FACTORY_TYPE_KEYS: Record<string, 'typeLocalFactory' | 'typeIntlFactory' |
 
 function ReviewModal({
   factory,
+  userId,
   onClose,
   onSave,
 }: {
   factory: AgentFactory;
+  userId: string;
   onClose: () => void;
   onSave: (
     factoryId: string,
@@ -156,7 +158,7 @@ function ReviewModal({
   const [agentNotes, setAgentNotes] = useState(factory.agent_notes || '');
   const [adminNote, setAdminNote] = useState(factory.admin_note || '');
   const [saving, setSaving] = useState(false);
-  const [activeSection, setActiveSection] = useState<'details' | 'status'>('details');
+  const [activeSection, setActiveSection] = useState<'details' | 'status' | 'payout'>('details');
 
   const handleSave = async () => {
     setSaving(true);
@@ -209,11 +211,26 @@ function ReviewModal({
           >
             {ad.updateStatus}
           </button>
+          <button
+            onClick={() => setActiveSection('payout')}
+            className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${
+              activeSection === 'payout' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+            }`}
+          >
+            الحسابات البنكية / التحصيل
+          </button>
         </div>
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          {activeSection === 'details' ? (
+          {activeSection === 'payout' ? (
+            <ReceivingAccountPanel
+              userId={userId}
+              lockedFactoryId={factory.id}
+              embedded
+              factories={[{ id: factory.id, company_name: factory.company_name, factory_type: factory.factory_type }]}
+            />
+          ) : activeSection === 'details' ? (
             <>
               {/* Registration Info */}
               <div className="bg-muted/50 rounded-xl p-4 space-y-3">
@@ -443,6 +460,7 @@ function ReviewModal({
         </div>
 
         {/* Footer Actions */}
+        {activeSection !== 'payout' && (
         <div className="flex gap-3 px-5 py-4 border-t border-border shrink-0">
           <button
             onClick={onClose}
@@ -468,6 +486,7 @@ function ReviewModal({
             )}
           </button>
         </div>
+        )}
       </div>
     </div>
   );
@@ -499,11 +518,11 @@ export default function AgentDashboardPage() {
   const [factories, setFactories] = useState<AgentFactory[]>([]);
   const [products, setProducts] = useState<AgentProduct[]>([]);
   const [loading, setLoading] = useState(true);
-  type AgentTabId = 'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'accounts' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral' | 'dispatch_rooms';
-  const VALID_TABS: AgentTabId[] = ['factories', 'products', 'messaging', 'documents', 'exchange', 'accounts', 'complaints', 'sales', 'admin_msg', 'commission', 'enhanced', 'inspections', 'earnings', 'referral', 'dispatch_rooms'];
+  type AgentTabId = 'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral' | 'dispatch_rooms';
+  const VALID_TABS: AgentTabId[] = ['factories', 'products', 'messaging', 'documents', 'exchange', 'complaints', 'sales', 'admin_msg', 'commission', 'enhanced', 'inspections', 'earnings', 'referral', 'dispatch_rooms'];
   const TAB_URL_KEYS: Record<AgentTabId, string> = {
     factories: 'factories', products: 'products', messaging: 'messaging', documents: 'documents',
-    exchange: 'exchange', accounts: 'accounts', complaints: 'complaints', sales: 'sales',
+    exchange: 'exchange', complaints: 'complaints', sales: 'sales',
     admin_msg: 'admin-msg', commission: 'commission', enhanced: 'register', inspections: 'inspections',
     earnings: 'earnings', referral: 'referral', dispatch_rooms: 'dispatch',
   };
@@ -948,7 +967,6 @@ export default function AgentDashboardPage() {
               title: 'الحسابات والعمولات',
               items: [
                 { id: 'commission', icon: 'CurrencyDollarIcon', label: 'حساب العمولة', badge: 0, badgeColor: '', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
-                { id: 'accounts', icon: 'BanknotesIcon', label: ad.tabReceivingAccounts, badge: 0, badgeColor: '', iconColor: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' },
                 { id: 'exchange', icon: 'ArrowsRightLeftIcon', label: ad.tabInfoExchange, badge: 0, badgeColor: '', iconColor: 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-950/40 dark:text-fuchsia-400' },
               ],
             },
@@ -1013,7 +1031,6 @@ export default function AgentDashboardPage() {
             complaints: { icon: 'ExclamationTriangleIcon', title: ad.tabComplaints, iconColor: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' },
             dispatch_rooms: { icon: 'TruckIcon', title: 'غرف التنسيق الميداني', iconColor: 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400' },
             commission: { icon: 'CurrencyDollarIcon', title: 'حساب العمولة', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
-            accounts: { icon: 'BanknotesIcon', title: ad.tabReceivingAccounts, iconColor: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' },
             exchange: { icon: 'ArrowsRightLeftIcon', title: ad.tabInfoExchange, iconColor: 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-950/40 dark:text-fuchsia-400' },
             documents: { icon: 'FolderOpenIcon', title: ad.tabDocuments, iconColor: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400' },
             referral: { icon: 'LinkIcon', title: 'الإحالات والتتبع', iconColor: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400' },
@@ -1407,18 +1424,6 @@ export default function AgentDashboardPage() {
           />
         )}
 
-        {/* Receiving Accounts Tab */}
-        {activeTab === 'accounts' && user && (
-          <ReceivingAccountPanel
-            userId={user.id}
-            factories={factories.map(f => ({
-              id: f.id,
-              company_name: f.company_name,
-              factory_type: f.factory_type,
-            }))}
-          />
-        )}
-
         {/* Complaints Tab */}
         {activeTab === 'complaints' && user && (
           <AgentComplaintsPanel
@@ -1715,9 +1720,10 @@ export default function AgentDashboardPage() {
         )}
       </main>
 
-      {reviewModal && (
+      {reviewModal && user && (
         <ReviewModal
           factory={reviewModal}
+          userId={user.id}
           onClose={() => setReviewModal(null)}
           onSave={handleReviewSave}
         />
