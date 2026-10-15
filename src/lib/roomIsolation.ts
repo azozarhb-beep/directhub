@@ -154,6 +154,35 @@ export function resolvePlatformRole(hints: RoleProfileHints): PlatformRole {
   return 'buyer';
 }
 
+/** Staff role that is strictly contained to the logistics command center. */
+export const LOGISTICS_DISPATCHER_ROLE = 'LOGISTICS_DISPATCHER';
+export const LOGISTICS_DISPATCHER_HOME = '/admin/logistics';
+
+/**
+ * LOGISTICS_DISPATCHER staff may only use /admin/logistics (plus always-open
+ * messaging/auth paths). Any other page redirects to the command center.
+ */
+export function resolveDispatcherRedirect(
+  pathname: string,
+  staffRole?: string | null
+): string | null {
+  if ((staffRole || '').toUpperCase() !== LOGISTICS_DISPATCHER_ROLE) return null;
+  if (isAlwaysOpenPath(pathname)) return null;
+  const p = normalizePath(pathname);
+  if (
+    p === LOGISTICS_DISPATCHER_HOME ||
+    p.startsWith(LOGISTICS_DISPATCHER_HOME + '/') ||
+    p.startsWith('/api/') ||
+    p === '/logistics'|| p.startsWith('/logistics/')
+  ) {
+    return null;
+  }
+  // Only confine privileged areas; public pages remain reachable.
+  const privileged = ['/admin', '/management', '/operations', '/analytics', '/financial-accounts', '/invoices', '/kyc'];
+  if (privileged.some((pre) => matchesPrefix(p, pre))) return LOGISTICS_DISPATCHER_HOME;
+  return null;
+}
+
 export function getHomeRoomForRole(role: PlatformRole): string {
   if (role === 'unknown') return '/my-account';
   return ROLE_HOME_PATH[role];
