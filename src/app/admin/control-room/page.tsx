@@ -4583,6 +4583,52 @@ export default function AdminControlRoomPage() {
 
         </div>
 
+        {/* ── Full-Screen Section View (all tabs except overview) ─────────────── */}
+        <div
+          className={activeTab === 'overview' ? 'contents' : 'fixed inset-0 z-50 w-full h-[100dvh] bg-slate-950 flex flex-col overflow-hidden'}
+          dir={dir}
+        >
+          {activeTab !== 'overview' && (
+            <div className="sticky top-0 z-10 shrink-0 w-full flex items-center justify-between gap-3 px-4 py-3 bg-slate-900 border-b border-slate-800">
+              <button
+                onClick={() => setActiveTab('overview')}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-sm font-bold transition-colors shrink-0"
+              >
+                <Icon name={isRTL ? 'ArrowRightIcon' : 'ArrowLeftIcon'} size={16} className="text-slate-100" />
+                <span className="hidden sm:inline">العودة للوحة الإدارة</span>
+                <span className="sm:hidden">رجوع</span>
+              </button>
+              <div className="flex items-center gap-2 min-w-0 flex-1 justify-center">
+                <h2 className="text-sm sm:text-base font-bold text-white truncate">
+                  {(ui.tabs as Record<string, string>)[activeTab] || activeTab}
+                </h2>
+                {(() => {
+                  const counters: Partial<Record<ActiveTab, number>> = {
+                    escrow: escrowOrders.filter((o: any) => ['pending_verification', 'funds_secured', 'ready_for_inspection', 'pending_admin_payout'].includes(o.escrow_status)).length,
+                    verification: pendingCount,
+                    users: analytics.totalUsers,
+                    factories: analytics.activeFactories,
+                    field_agents: pendingLicenses.length,
+                    rfq_management: liveRFQs.filter((r: any) => r.status === 'pending').length,
+                    amal: criticalAlertCount,
+                  };
+                  const count = counters[activeTab];
+                  return count ? (
+                    <span className="shrink-0 px-2 py-0.5 rounded-full bg-amber-500 text-white text-xs font-bold">{count}</span>
+                  ) : null;
+                })()}
+              </div>
+              <button
+                onClick={() => setActiveTab('overview')}
+                aria-label="إغلاق"
+                className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-800 hover:bg-red-600 text-slate-100 transition-colors shrink-0"
+              >
+                <Icon name="XMarkIcon" size={18} className="text-slate-100" />
+              </button>
+            </div>
+          )}
+          <div className={activeTab === 'overview' ? 'contents' : 'flex-1 overflow-y-auto p-4 pb-28 space-y-4 bg-background'}>
+
         {/* ══════════════════════════════════════════════════════════════════════
             TAB: AMAL — Operations Manager
         ══════════════════════════════════════════════════════════════════════ */}
@@ -7697,6 +7743,9 @@ export default function AdminControlRoomPage() {
         {activeTab === 'supplier_dashboard' && (
           <SupplierManagementPanel adminUserId={user?.id || ''} />
         )}
+
+          </div>
+        </div>
 
       </div>
     </div>
