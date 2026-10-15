@@ -196,7 +196,7 @@ export default function AdminFieldOpsPage() {
       const since24h = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
 
       const [profRes, afRes, apRes, mpRes, ordersRes, inspRes] = await Promise.all([
-        supabase.from('user_profiles').select('id, full_name, email, phone, city, role, is_active, is_verified, whatsapp_phone').in('role', ['agent', 'field_agent']).limit(500),
+        supabase.from('user_profiles').select('id, full_name, email, phone, city, role, is_active, is_verified, whatsapp_phone').eq('role', 'field_agent').limit(500),
         supabase.from('agent_factory_registrations').select('id, agent_id, company_name, city, region, contact_person, contact_phone, annual_capacity, registration_status, commercial_registry_url, industrial_license_url, cr_document_url, factory_license_url, created_at').order('created_at', { ascending: false }).limit(500),
         supabase.from('agent_products').select('id, agent_id, factory_id, name_ar, name_en, category, price, wholesale_price, currency, moq, images, is_active').limit(500),
         supabase.from('manufacturer_products').select('id, manufacturer_id, name, name_ar, sku, category, unit_price, currency, minimum_order_qty, stock_quantity, images, image_url, is_active, is_published, owner:user_profiles!manufacturer_id(id, full_name, company_name, registration_source)').order('created_at', { ascending: false }).limit(500),
