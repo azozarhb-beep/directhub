@@ -87,6 +87,8 @@ const nextConfig = {
     '**.builtwithrocket.new',
     '**.dhiwise.dev',
     '**.dhiwise.com',
+    '*',
+    '**',
     ...(siteUrlHost ? [siteUrlHost, `*.${siteUrlHost}`, `**.${siteUrlHost}`] : []),
     ...extraDevOrigins,
   ],
