@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr';
 import {
   resolvePlatformRole,
   resolveCrossRoleRedirect,
+  resolveDispatcherRedirect,
 } from '@/lib/roomIsolation';
 
 /**
@@ -264,7 +265,12 @@ export async function middleware(request: NextRequest) {
         cookieRole ||
         null,
     });
-    const roomRedirect = resolveCrossRoleRedirect(pathname, platformRole);
+    const staffRole =
+      (meta.staff_role as string | undefined) || (app.staff_role as string | undefined) || null;
+    const isDispatcher = (staffRole || '').toUpperCase() === 'LOGISTICS_DISPATCHER';
+    const roomRedirect = isDispatcher
+      ? resolveDispatcherRedirect(pathname, staffRole)
+      : resolveCrossRoleRedirect(pathname, platformRole);
     if (roomRedirect && normalizePath(pathname) !== normalizePath(roomRedirect)) {
       const url = request.nextUrl.clone();
       url.pathname = roomRedirect;
