@@ -158,6 +158,34 @@ export function resolvePlatformRole(hints: RoleProfileHints): PlatformRole {
 export const LOGISTICS_DISPATCHER_ROLE = 'LOGISTICS_DISPATCHER';
 export const LOGISTICS_DISPATCHER_HOME = '/admin/logistics';
 
+/** Staff role that is strictly contained to the field-ops command center. */
+export const FIELD_OPS_MANAGER_ROLE = 'FIELD_OPS_MANAGER';
+export const FIELD_OPS_MANAGER_HOME = '/admin/field-ops';
+
+/**
+ * FIELD_OPS_MANAGER staff may only use /admin/field-ops (plus always-open
+ * messaging/auth paths). /admin, /admin/finance and any other privileged
+ * area redirect back to the field-ops command center.
+ */
+export function resolveFieldOpsRedirect(
+  pathname: string,
+  staffRole?: string | null
+): string | null {
+  if ((staffRole || '').toUpperCase() !== FIELD_OPS_MANAGER_ROLE) return null;
+  if (isAlwaysOpenPath(pathname)) return null;
+  const p = normalizePath(pathname);
+  if (
+    p === FIELD_OPS_MANAGER_HOME ||
+    p.startsWith(FIELD_OPS_MANAGER_HOME + '/') ||
+    p.startsWith('/api/')
+  ) {
+    return null;
+  }
+  const privileged = ['/admin', '/management', '/operations', '/analytics', '/financial-accounts', '/invoices', '/kyc'];
+  if (privileged.some((pre) => matchesPrefix(p, pre))) return FIELD_OPS_MANAGER_HOME;
+  return null;
+}
+
 /**
  * LOGISTICS_DISPATCHER staff may only use /admin/logistics (plus always-open
  * messaging/auth paths). Any other page redirects to the command center.
