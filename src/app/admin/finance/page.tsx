@@ -7,9 +7,15 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import Icon from '@/components/ui/AppIcon';
 
-type TabKey = 'escrow' | 'deposits' | 'commissions' | 'vault';
+type TabKey = 'escrow' | 'milestones' | 'deposits' | 'commissions' | 'vault';
 type CurrencyCode = 'USD' | 'SAR' | 'YER';
 type StageKey = 'held' | 'inspection' | 'pod' | 'ready';
+
+interface MilestoneRelease {
+  stage: number;
+  amount: number;
+  releasedAt: string;
+}
 
 interface EscrowOrder {
   id: string;
@@ -26,12 +32,15 @@ interface EscrowOrder {
   platformFee: number;
   stage: StageKey;
   createdAt: string;
+  shipped: boolean;
+  releases: MilestoneRelease[];
 }
 
 interface Deposit {
   orderId: string;
   orderNumber: string;
   buyer: string;
+  buyerRole: string;
   bankName: string;
   reference: string;
   amount: number;
@@ -47,6 +56,10 @@ interface AgentLedger {
   city: string;
   orders: number;
   accrued: Record<CurrencyCode, number>;
+  paid: Record<CurrencyCode, number>;
+  volume: Record<CurrencyCode, number>;
+  factories: string[];
+  commissionIds: Record<CurrencyCode, string[]>;
   channel: string;
 }
 
@@ -61,6 +74,12 @@ interface VaultRow {
 }
 
 const CURRENCIES: CurrencyCode[] = ['USD', 'SAR', 'YER'];
+const CURRENCY_LABELS: Record<CurrencyCode, string> = { YER: 'ريال يمني (YER)', SAR: 'ريال سعودي (SAR)', USD: 'دولار (USD)' };
+const MILESTONES: { stage: 1 | 2 | 3; pct: number; label: string }[] = [
+  { stage: 1, pct: 30, label: 'الدفعة المقدمة للمصنع' },
+  { stage: 2, pct: 40, label: 'الشحن / إثبات بوليصة الشحن' },
+  { stage: 3, pct: 30, label: 'التخليص النهائي بعد الفحص' },
+];
 const STAGES: { key: StageKey; label: string; style: string }[] = [
   { key: 'held', label: 'محتجز بالضمان (Held)', style: 'border-amber-700/60 text-amber-300' },
   { key: 'inspection', label: 'اجتاز الفحص الميداني (Inspection Passed)', style: 'border-blue-700/60 text-blue-300' },
@@ -88,11 +107,11 @@ const fmtDate = (iso: string) => {
 
 const isPdf = (url: string) => /\.pdf(\?|$)/i.test(url);
 
-const MoneyLines = ({ totals }: { totals: Record<CurrencyCode, number> }) => (
+const MoneyLines = ({ totals, only }: { totals: Record<CurrencyCode, number>; only?: CurrencyCode }) => (
   <div className="space-y-0.5" dir="ltr">
-    {CURRENCIES.map((c) => (
+    {(only ? [only] : CURRENCIES).map((c) => (
       <div key={c} className="flex items-center justify-between gap-3 text-xs">
-        <span className="text-slate-500 font-semibold">{c}</span>
+        <span className="text-amber-500/80 font-semibold">{c}</span>
         <span className="font-bold text-white tabular-nums">{fmt(totals[c])}</span>
       </div>
     ))}
@@ -110,6 +129,11 @@ export default function AdminFinancePage() {
   const isOfficer = staffRole === 'ESCROW_OFFICER';
   const canAccess = isMasterAdmin || isOfficer;
 
+  const [displayCurrency, setDisplayCurrency] = useState<CurrencyCode | 'ALL'>('ALL');
+  const [payoutFor, setPayoutFor] = useState<{ agent: AgentLedger; currency: CurrencyCode } | null>(null);
+  const [payoutNote, setPayoutNote] = useState('');
+  const [releaseFor, setReleaseFor] = useState<{ order: EscrowOrder; stage: 1 | 2 | 3 } | null>(null);
+  const [releaseNote, setReleaseNote] = useState('');
   const [tab, setTab] = useState<TabKey>('escrow');
   const [orders, setOrders] = useState<EscrowOrder[]>([]);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
@@ -148,7 +172,7 @@ export default function AdminFinancePage() {
     try {
       const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
 
-      const [ordersRes, subsRes, commRes] = await Promise.all([
+      const [ordersRes, subsRes, commRes, relRes] = await Promise.all([
         supabase
           .from('orders')
           .select('id, order_number, user_id, factory_user_id, total, currency, order_category, escrow_status, status, platform_commission, quality_check_at, delivery_pin_verified_at, delivery_otp_verified_at, buyer_confirmed_at, admin_payout_reviewed_at, payout_note, funds_released_at, payment_verified, receipt_url, payment_method, created_at')
@@ -162,8 +186,12 @@ export default function AdminFinancePage() {
           .limit(300),
         supabase
           .from('platform_commissions')
-          .select('id, order_id, order_number, agent_id, commission_amount, platform_fee, currency, status, created_at')
+          .select('id, order_id, order_number, agent_id, commission_amount, order_total, factory_name, platform_fee, currency, status, created_at')
           .not('agent_id', 'is', null)
+          .limit(1000),
+        supabase
+          .from('escrow_milestone_releases')
+          .select('order_id, stage, amount, released_at')
           .limit(1000),
       ]);
 
@@ -188,6 +216,13 @@ export default function AdminFinancePage() {
         const p = id ? profileMap.get(id) : null;
         return p?.company_name || p?.full_name || '—';
       };
+
+      const relMap = new Map<string, MilestoneRelease[]>();
+      ((relRes.data || []) as any[]).forEach((r) => {
+        const arr = relMap.get(r.order_id) || [];
+        arr.push({ stage: Number(r.stage), amount: Number(r.amount || 0), releasedAt: r.released_at });
+        relMap.set(r.order_id, arr);
+      });
 
       const mapped: EscrowOrder[] = orderRows
         .filter((o) => ['funds_secured', 'shipped', 'pending_otp_confirmation', 'pending_admin_payout'].includes(o.escrow_status))
@@ -214,6 +249,8 @@ export default function AdminFinancePage() {
             platformFee: Number(o.platform_commission || 0),
             stage,
             createdAt: o.created_at,
+            shipped: ['shipped', 'pending_otp_confirmation', 'pending_admin_payout'].includes(o.escrow_status),
+            releases: relMap.get(o.id) || [],
           } as EscrowOrder;
         });
       setOrders(mapped);
@@ -228,6 +265,7 @@ export default function AdminFinancePage() {
             orderId: o.id,
             orderNumber: o.order_number,
             buyer: nameOf(o.user_id),
+            buyerRole: o.factory_user_id && o.order_category && o.order_category !== 'retail' ? 'مشتري' : 'مشتري',
             bankName: s.bank_sender_bank_name || s.swift_sender_bank_name || s.wallet_provider || o.payment_method || '—',
             reference: s.bank_transfer_ref || s.swift_ref || s.wallet_transfer_ref || '—',
             amount: Number(o.total || 0),
@@ -261,22 +299,32 @@ export default function AdminFinancePage() {
       setTodayFees(fees);
 
       const byAgent = new Map<string, AgentLedger>();
-      ((commRes.data || []) as any[])
-        .filter((c) => c.status !== 'paid')
-        .forEach((c) => {
-          const p = profileMap.get(c.agent_id);
-          const cur = byAgent.get(c.agent_id) || {
-            agentId: c.agent_id,
-            name: p?.full_name || '—',
-            city: p?.city || '—',
-            orders: 0,
-            accrued: emptyTotals(),
-            channel: '—',
-          };
+      ((commRes.data || []) as any[]).forEach((c) => {
+        const p = profileMap.get(c.agent_id);
+        const cur = byAgent.get(c.agent_id) || {
+          agentId: c.agent_id,
+          name: p?.full_name || '—',
+          city: p?.city || '—',
+          orders: 0,
+          accrued: emptyTotals(),
+          paid: emptyTotals(),
+          volume: emptyTotals(),
+          factories: [],
+          commissionIds: { USD: [], SAR: [], YER: [] },
+          channel: '—',
+        };
+        const cc = normCurrency(c.currency);
+        cur.volume[cc] += Number(c.order_total || 0);
+        if (c.factory_name && !cur.factories.includes(c.factory_name)) cur.factories.push(c.factory_name);
+        if (c.status === 'paid') {
+          cur.paid[cc] += Number(c.commission_amount || 0);
+        } else {
           cur.orders += 1;
-          cur.accrued[normCurrency(c.currency)] += Number(c.commission_amount || 0);
-          byAgent.set(c.agent_id, cur);
-        });
+          cur.accrued[cc] += Number(c.commission_amount || 0);
+          cur.commissionIds[cc].push(c.id);
+        }
+        byAgent.set(c.agent_id, cur);
+      });
 
       const agentIds = Array.from(byAgent.keys());
       if (agentIds.length > 0) {
@@ -323,6 +371,14 @@ export default function AdminFinancePage() {
     ledger.forEach((a) => CURRENCIES.forEach((c) => { accrued[c] += a.accrued[c]; }));
     return { held, ready, pending, accrued };
   }, [orders, deposits, ledger]);
+
+  const treasury = useMemo(() => {
+    const t = emptyTotals();
+    vault.forEach((v) => { t[v.currency] += v.platformFee; });
+    return t;
+  }, [vault]);
+
+  const b2bOrders = useMemo(() => orders.filter((o) => o.tradeType === 'B2B'), [orders]);
 
   const approveDeposit = async (d: Deposit) => {
     setBusyKey(`dep-${d.orderId}`);
@@ -417,6 +473,61 @@ export default function AdminFinancePage() {
     }
   };
 
+  const releaseMilestone = async () => {
+    if (!releaseFor || !isMasterAdmin || frozen) return;
+    const { order, stage } = releaseFor;
+    const m = MILESTONES.find((x) => x.stage === stage)!;
+    setBusyKey(`ms-${order.id}-${stage}`);
+    try {
+      const amount = Math.round(order.amount * m.pct) / 100;
+      const note = releaseNote.trim() || `تحرير ${m.pct}% — ${m.label}`;
+      const { error: e1 } = await supabase.from('escrow_milestone_releases').insert({
+        order_id: order.id, stage, percentage: m.pct, amount, currency: order.currency, note, released_by: user?.id,
+      });
+      if (e1) throw e1;
+      await supabase.from('escrow_ledger').insert({
+        order_id: order.id, user_id: user?.id, event_type: 'funds_released', amount, currency: order.currency, note, performed_by: user?.id,
+      });
+      await supabase.from('order_status_history').insert({
+        order_id: order.id, status: 'processing', note: `💸 تحرير الدفعة ${stage} (${m.pct}%) للمورد — ${fmt(amount)} ${order.currency}`,
+      });
+      showToast(`تم تحرير الدفعة ${stage} للطلب ${order.orderNumber}`);
+      setReleaseFor(null);
+      setReleaseNote('');
+      await load();
+    } catch (e: any) {
+      showToast(e?.message || 'فشل تحرير الدفعة');
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const settleCommission = async () => {
+    if (!payoutFor) return;
+    const { agent, currency } = payoutFor;
+    const ids = agent.commissionIds[currency];
+    if (ids.length === 0) return;
+    setBusyKey(`pay-${agent.agentId}-${currency}`);
+    try {
+      const amount = agent.accrued[currency];
+      const { error: e1 } = await supabase.from('agent_commission_payouts').insert({
+        agent_id: agent.agentId, amount, currency, commission_ids: ids, orders_count: ids.length,
+        note: payoutNote.trim() || null, paid_by: user?.id,
+      });
+      if (e1) throw e1;
+      const { error: e2 } = await supabase.from('platform_commissions').update({ status: 'paid', updated_at: new Date().toISOString() }).in('id', ids);
+      if (e2) throw e2;
+      showToast(`تم صرف وتسوية عمولة ${agent.name} (${fmt(amount)} ${currency})`);
+      setPayoutFor(null);
+      setPayoutNote('');
+      await load();
+    } catch (e: any) {
+      showToast(e?.message || 'فشل صرف العمولة');
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const downloadCsv = () => {
     const header = ['Order', 'Amount', 'Currency', 'PlatformFee', 'ReleasedAt', 'Note'];
     const rows = vault.map((v) => [v.orderNumber, v.amount, v.currency, v.platformFee, v.releasedAt, v.note]);
@@ -468,17 +579,24 @@ export default function AdminFinancePage() {
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'escrow', label: 'دورة الضمان المرحلي — Milestone Escrow Pipeline' },
+    { key: 'milestones', label: 'الضمان المرحلي للصفقات الكبرى (30/40/30)' },
     { key: 'deposits', label: 'مراجعة وتدقيق سندات الإيداع — Bank Deposit Slip Queue' },
     { key: 'commissions', label: 'محرك العمولات ومستحقات الميدان — Agent Commission Clearing Engine' },
     { key: 'vault', label: 'سجل التسويات والتحويلات المكتملة — Settlement & Audit Vault' },
   ];
 
+  const only = displayCurrency === 'ALL' ? undefined : displayCurrency;
   const tickerCards: { label: string; body: React.ReactNode; tone: string }[] = [
-    { label: 'إجمالي السيولة المحتجزة في الضمان', body: <MoneyLines totals={ticker.held} />, tone: 'border-amber-700/50' },
-    { label: 'سندات إيداع بانتظار المطابقة البنكية', body: <MoneyLines totals={ticker.pending} />, tone: 'border-blue-700/50' },
-    { label: 'مبالغ جاهزة للصرف النهائي', body: <MoneyLines totals={ticker.ready} />, tone: 'border-emerald-700/50' },
-    { label: 'مستحقات عمولات المناديب المتراكمة (20% من رسوم المنصة)', body: <MoneyLines totals={ticker.accrued} />, tone: 'border-purple-700/50' },
-    { label: 'صافي أرباح المنصة المحققة اليوم', body: <MoneyLines totals={todayFees} />, tone: 'border-rose-700/50' },
+    { label: 'إجمالي أموال الضمان المعلقة', body: <MoneyLines totals={ticker.held} only={only} />, tone: 'border-amber-600/50' },
+    { label: 'رصيد الخزينة التشغيلي المتاح', body: <MoneyLines totals={treasury} only={only} />, tone: 'border-yellow-600/50' },
+    { label: 'سندات الإيداع البنكي المعلقة', body: (
+      <div>
+        <p className="text-lg font-extrabold text-white mb-1" dir="ltr">{deposits.length}</p>
+        <MoneyLines totals={ticker.pending} only={only} />
+      </div>
+    ), tone: 'border-amber-700/50' },
+    { label: 'عمولات المناديب المستحقة للصرف (20% من رسوم المنصة)', body: <MoneyLines totals={ticker.accrued} only={only} />, tone: 'border-yellow-700/50' },
+    { label: 'مبالغ جاهزة للصرف النهائي', body: <MoneyLines totals={ticker.ready} only={only} />, tone: 'border-emerald-700/50' },
   ];
 
   return (
@@ -537,6 +655,21 @@ export default function AdminFinancePage() {
       )}
 
       {/* Treasury ticker */}
+      <div className="shrink-0 px-4 pt-3 flex items-center gap-2 bg-slate-950">
+        <span className="text-[11px] text-slate-400 font-semibold">عرض العملة:</span>
+        {(['ALL', 'YER', 'SAR', 'USD'] as const).map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => setDisplayCurrency(c)}
+            className={`px-3 py-1 rounded-lg text-[11px] font-bold border ${
+              displayCurrency === c ? 'bg-amber-500 border-amber-400 text-slate-950' : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            {c === 'ALL' ? 'الكل' : c}
+          </button>
+        ))}
+      </div>
       <section className="shrink-0 px-4 py-3 grid grid-cols-2 lg:grid-cols-5 gap-3 border-b border-slate-800 bg-slate-950">
         {tickerCards.map((c) => (
           <div key={c.label} className={`rounded-2xl border ${c.tone} bg-slate-900 p-3`}>
@@ -554,7 +687,7 @@ export default function AdminFinancePage() {
             type="button"
             onClick={() => setTab(t.key)}
             className={`whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${
-              tab === t.key ? 'bg-blue-600 border-blue-500 text-white' : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+              tab === t.key ? 'bg-amber-500 border-amber-400 text-slate-950' : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
             }`}
           >
             {t.label}
@@ -644,6 +777,57 @@ export default function AdminFinancePage() {
           </div>
         )}
 
+        {/* Milestones tab */}
+        {!loading && tab === 'milestones' && (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-400">الصفقات الكبرى B2B: 30% دفعة مقدمة — 40% عند الشحن — 30% بعد الفحص والمطابقة. التحرير للمدير العام فقط.</p>
+            {b2bOrders.length === 0 && <p className="text-sm text-slate-500">لا توجد صفقات B2B نشطة.</p>}
+            {b2bOrders.map((o) => {
+              const releasedStages = new Set(o.releases.map((r) => r.stage));
+              return (
+                <div key={o.id} className="rounded-2xl bg-slate-900 border border-amber-900/40 p-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs">
+                      <span className="font-bold text-sm" dir="ltr">{o.orderNumber}</span>
+                      <span className="text-slate-400 mx-2">المشتري: <span className="text-slate-200">{o.buyer}</span></span>
+                      <span className="text-slate-400">المورّد: <span className="text-slate-200">{o.vendor}</span></span>
+                    </div>
+                    <span className="font-extrabold text-amber-300" dir="ltr">{fmt(o.amount)} {o.currency}</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {MILESTONES.map((m) => {
+                      const done = releasedStages.has(m.stage);
+                      const prevDone = m.stage === 1 || releasedStages.has(m.stage - 1);
+                      const condition = m.stage === 1 ? true : m.stage === 2 ? o.shipped : o.inspectionPassed;
+                      const amount = Math.round(o.amount * m.pct) / 100;
+                      const canRelease = isMasterAdmin && !frozen && !done && prevDone && condition;
+                      return (
+                        <div key={m.stage} className={`rounded-xl border p-3 space-y-2 ${done ? 'border-emerald-700/60 bg-emerald-950/20' : 'border-slate-800 bg-slate-950'}`}>
+                          <div className="flex items-center justify-between text-xs font-bold">
+                            <span className="text-amber-300">المرحلة {m.stage} — {m.pct}%</span>
+                            {done && <span className="text-emerald-300">✓ تم التحرير</span>}
+                          </div>
+                          <p className="text-[11px] text-slate-400">{m.label}</p>
+                          <p className="text-sm font-extrabold" dir="ltr">{fmt(amount)} {o.currency}</p>
+                          {!done && !condition && <p className="text-[10px] text-slate-500">{m.stage === 2 ? 'بانتظار إثبات الشحن' : 'بانتظار اجتياز الفحص'}</p>}
+                          <button
+                            type="button"
+                            disabled={!canRelease || busyKey === `ms-${o.id}-${m.stage}`}
+                            onClick={() => { setReleaseFor({ order: o, stage: m.stage }); setReleaseNote(''); }}
+                            className="w-full px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-xs font-bold"
+                          >
+                            {isMasterAdmin ? 'تحرير الدفعة للمورد' : '🔒 تحرير الدفعة للمورد'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {/* Tab B */}
         {!loading && tab === 'deposits' && (
           <div className="space-y-3">
@@ -652,7 +836,7 @@ export default function AdminFinancePage() {
               <div key={d.orderId} className="rounded-2xl bg-slate-900 border border-slate-800 p-4 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                   <div><p className="text-slate-500">الطلب</p><p className="font-bold" dir="ltr">{d.orderNumber}</p></div>
-                  <div><p className="text-slate-500">المشتري</p><p className="font-semibold">{d.buyer}</p></div>
+                  <div><p className="text-slate-500">المشتري</p><p className="font-semibold">{d.buyer} <span className="text-[10px] text-amber-400">({d.buyerRole})</span></p></div>
                   <div><p className="text-slate-500">البنك</p><p className="font-semibold">{d.bankName}</p></div>
                   <div><p className="text-slate-500">رقم المرجع</p><p className="font-semibold" dir="ltr">{d.reference}</p></div>
                   <div><p className="text-slate-500">المبلغ المودع</p><p className="font-extrabold" dir="ltr">{fmt(d.amount)} {d.currency}</p></div>
@@ -710,22 +894,45 @@ export default function AdminFinancePage() {
                   <tr>
                     <th className="p-3 text-right">المندوب</th>
                     <th className="p-3 text-right">المدينة</th>
+                    <th className="p-3 text-right">المصانع المسندة</th>
+                    <th className="p-3 text-right">حجم المبيعات</th>
                     <th className="p-3 text-right">الطلبات المرتبطة</th>
                     <th className="p-3 text-right">الرصيد المستحق</th>
+                    <th className="p-3 text-right">المصروف</th>
                     <th className="p-3 text-right">قناة الصرف</th>
+                    <th className="p-3 text-right">إجراء</th>
                   </tr>
                 </thead>
                 <tbody>
                   {ledger.length === 0 && (
-                    <tr><td colSpan={5} className="p-4 text-slate-500">لا توجد عمولات مستحقة حالياً.</td></tr>
+                    <tr><td colSpan={9} className="p-4 text-slate-500">لا توجد عمولات مستحقة حالياً.</td></tr>
                   )}
                   {ledger.map((a) => (
                     <tr key={a.agentId} className="border-t border-slate-800">
                       <td className="p-3 font-semibold">{a.name}</td>
                       <td className="p-3">{a.city}</td>
+                      <td className="p-3">{a.factories.length > 0 ? a.factories.join('، ') : '—'}</td>
+                      <td className="p-3"><MoneyLines totals={a.volume} only={only} /></td>
                       <td className="p-3">{a.orders}</td>
-                      <td className="p-3"><MoneyLines totals={a.accrued} /></td>
+                      <td className="p-3"><MoneyLines totals={a.accrued} only={only} /></td>
+                      <td className="p-3"><MoneyLines totals={a.paid} only={only} /></td>
                       <td className="p-3">{a.channel}</td>
+                      <td className="p-3">
+                        <div className="flex flex-col gap-1">
+                          {CURRENCIES.filter((c) => a.commissionIds[c].length > 0).map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              disabled={busyKey === `pay-${a.agentId}-${c}`}
+                              onClick={() => { setPayoutFor({ agent: a, currency: c }); setPayoutNote(''); }}
+                              className="px-2 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 disabled:opacity-40 text-[11px] font-bold whitespace-nowrap"
+                            >
+                              صرف وتسوية العمولة ({c})
+                            </button>
+                          ))}
+                          {CURRENCIES.every((c) => a.commissionIds[c].length === 0) && <span className="text-slate-500">—</span>}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -884,6 +1091,54 @@ export default function AdminFinancePage() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Milestone release confirm */}
+      {releaseFor && (
+        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-700/50 rounded-2xl w-full max-w-md p-5 space-y-3">
+            <h3 className="font-bold text-sm text-amber-300">تحرير الدفعة {releaseFor.stage} — {releaseFor.order.orderNumber}</h3>
+            <p className="text-xs text-slate-300" dir="ltr">
+              {fmt((Math.round(releaseFor.order.amount * (MILESTONES.find((m) => m.stage === releaseFor.stage)?.pct || 0))) / 100)} {releaseFor.order.currency}
+            </p>
+            <textarea className={`${inputCls} min-h-[80px]`} placeholder="ملاحظة (اختياري)" value={releaseNote} onChange={(e) => setReleaseNote(e.target.value)} />
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setReleaseFor(null)} className="px-3 py-2 rounded-xl bg-slate-800 text-xs font-semibold">إلغاء</button>
+              <button
+                type="button"
+                disabled={busyKey === `ms-${releaseFor.order.id}-${releaseFor.stage}`}
+                onClick={releaseMilestone}
+                className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 disabled:opacity-40 text-xs font-bold"
+              >
+                تأكيد التحرير
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Commission payout confirm */}
+      {payoutFor && (
+        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-700/50 rounded-2xl w-full max-w-md p-5 space-y-3">
+            <h3 className="font-bold text-sm text-amber-300">صرف وتسوية العمولة — {payoutFor.agent.name}</h3>
+            <p className="text-xs text-slate-300" dir="ltr">
+              {fmt(payoutFor.agent.accrued[payoutFor.currency])} {payoutFor.currency} · {payoutFor.agent.commissionIds[payoutFor.currency].length} orders
+            </p>
+            <textarea className={`${inputCls} min-h-[80px]`} placeholder="مرجع التحويل / ملاحظة (اختياري)" value={payoutNote} onChange={(e) => setPayoutNote(e.target.value)} />
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setPayoutFor(null)} className="px-3 py-2 rounded-xl bg-slate-800 text-xs font-semibold">إلغاء</button>
+              <button
+                type="button"
+                disabled={busyKey === `pay-${payoutFor.agent.agentId}-${payoutFor.currency}`}
+                onClick={settleCommission}
+                className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 disabled:opacity-40 text-xs font-bold"
+              >
+                تأكيد الصرف
+              </button>
+            </div>
           </div>
         </div>
       )}

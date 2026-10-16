@@ -503,7 +503,7 @@ function RegisterFactoryPageInner() {
                   value={form.agent_notes}
                   onChange={e => update('agent_notes', e.target.value)}
                   rows={4}
-                  placeholder="{arf.notesPlaceholder}"
+                  placeholder={form.factory_type === 'local_supplier' ? arf.notesPlaceholderSupplier : arf.notesPlaceholder}
                   className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none"
                 />
               </div>
@@ -512,7 +512,7 @@ function RegisterFactoryPageInner() {
               <div className="bg-muted/50 rounded-xl p-4 space-y-2">
                 <p className="text-xs font-semibold text-muted-foreground mb-2">{arf.summaryTitle}</p>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">{arf.summaryFactoryName}</span>
+                  <span className="text-muted-foreground">{form.factory_type === 'local_supplier' ? arf.summarySupplierName : arf.summaryFactoryName}</span>
                   <span className="font-semibold text-foreground">{form.company_name}</span>
                 </div>
                 <div className="flex justify-between text-sm">
@@ -566,7 +566,7 @@ function RegisterFactoryPageInner() {
                 ) : (
                   <>
                     <Icon name="CheckIcon" size={16} />
-                    {arf.registerFactoryBtn}
+                    {form.factory_type === 'local_supplier' ? arf.registerSupplierBtn : arf.registerFactoryBtn}
                   </>
                 )}
               </button>

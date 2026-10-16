@@ -198,8 +198,8 @@ export default function AdminFieldOpsPage() {
       const [profRes, afRes, apRes, mpRes, ordersRes, inspRes] = await Promise.all([
         supabase.from('user_profiles').select('id, full_name, email, phone, city, role, is_active, is_verified, whatsapp_phone').eq('role', 'field_agent').limit(500),
         supabase.from('agent_factory_registrations').select('id, agent_id, company_name, city, region, contact_person, contact_phone, annual_capacity, registration_status, commercial_registry_url, industrial_license_url, cr_document_url, factory_license_url, created_at').order('created_at', { ascending: false }).limit(500),
-        supabase.from('agent_products').select('id, agent_id, factory_id, name_ar, name_en, category, price, wholesale_price, currency, moq, images, is_active').limit(500),
-        supabase.from('manufacturer_products').select('id, manufacturer_id, name, name_ar, sku, category, unit_price, currency, minimum_order_qty, stock_quantity, images, image_url, is_active, is_published, owner:user_profiles!manufacturer_id(id, full_name, company_name, registration_source)').order('created_at', { ascending: false }).limit(500),
+        supabase.from('agent_products').select('id, agent_id, factory_id, name_ar, name_en, category, price, wholesale_price, currency, moq, images, is_active, is_published, stock_quantity').limit(500),
+        supabase.from('manufacturer_products').select('id, manufacturer_id, agent_product_id, name, name_ar, sku, category, unit_price, currency, minimum_order_qty, stock_quantity, images, image_url, is_active, is_published, owner:user_profiles!manufacturer_id(id, full_name, company_name, registration_source)').order('created_at', { ascending: false }).limit(500),
         supabase.from('orders').select('id, items, created_at, shipped_at').or(`created_at.gte.${since24h},shipped_at.gte.${startOfToday.toISOString()}`).limit(1000),
         supabase.from('field_inspection_tasks').select('*').order('created_at', { ascending: false }).limit(300),
       ]);
@@ -228,6 +228,7 @@ export default function AdminFieldOpsPage() {
 
       const rows: CatalogProduct[] = [];
       (mpRes.data || []).forEach((p: any) => {
+        if (p.agent_product_id) return;
         rows.push({
           key: `m-${p.id}`, id: p.id, table: 'manufacturer_products',
           title: p.name_ar || p.name || 'منتج بدون اسم',
@@ -265,9 +266,9 @@ export default function AdminFieldOpsPage() {
           price: Number(p.wholesale_price || p.price || 0),
           currency: p.currency || 'SAR',
           moq: Number(p.moq ?? 1),
-          stock: null,
+          stock: p.stock_quantity !== null && p.stock_quantity !== undefined ? Number(p.stock_quantity) : null,
           isActive: p.is_active !== false,
-          isPublished: true,
+          isPublished: p.is_published === true,
           soldToday: sold.get(p.id) || 0,
           shippedToday: shipped.has(p.id),
         });
@@ -413,6 +414,9 @@ export default function AdminFieldOpsPage() {
     setBusyKey(p.key);
     const next = !p.isActive;
     const { error: err } = await supabase.from(p.table).update({ is_active: next, updated_at: new Date().toISOString() }).eq('id', p.id);
+    if (!err && p.table === 'agent_products') {
+      await supabase.from('manufacturer_products').update({ is_active: next, updated_at: new Date().toISOString() }).eq('agent_product_id', p.id);
+    }
     setBusyKey(null);
     if (err) { showToast(`فشل التحديث: ${err.message}`); return; }
     setProducts((prev) => prev.map((x) => (x.key === p.key ? { ...x, isActive: next } : x)));
@@ -439,9 +443,15 @@ export default function AdminFieldOpsPage() {
     } else {
       payload.wholesale_price = price;
       payload.moq = moq;
+      if (editForm.stock !== '') { stock = Math.max(0, parseInt(editForm.stock, 10) || 0); payload.stock_quantity = stock; }
     }
     setEditBusy(true);
     const { error: err } = await supabase.from(editing.table).update(payload).eq('id', editing.id);
+    if (!err && editing.table === 'agent_products') {
+      const mirror: Record<string, unknown> = { unit_price: price, minimum_order_qty: moq, updated_at: new Date().toISOString() };
+      if (stock !== null) mirror.stock_quantity = stock;
+      await supabase.from('manufacturer_products').update(mirror).eq('agent_product_id', editing.id);
+    }
     setEditBusy(false);
     if (err) { showToast(`فشل الحفظ: ${err.message}`); return; }
     setProducts((prev) => prev.map((x) => (x.key === editing.key ? { ...x, price, moq, stock } : x)));

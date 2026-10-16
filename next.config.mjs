@@ -13,7 +13,29 @@ const siteUrlHost = (() => {
 const extraDevOrigins = (process.env.ALLOWED_DEV_ORIGINS || '')
   .split(',')
   .map((o) => o.trim())
-  .filter(Boolean);
+  .filter(Boolean)
+  .map((o) => {
+    try {
+      return o.includes('://') ? new URL(o).hostname : o.replace(/:\d+$/, '');
+    } catch {
+      return o;
+    }
+  });
+
+const envHostOrigins = [
+  process.env.VERCEL_URL,
+  process.env.VERCEL_BRANCH_URL,
+  process.env.NEXT_PUBLIC_VERCEL_URL,
+  process.env.HOSTNAME,
+]
+  .filter(Boolean)
+  .map((o) => {
+    try {
+      return o.includes('://') ? new URL(o).hostname : o.replace(/:\d+$/, '');
+    } catch {
+      return o;
+    }
+  });
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -68,10 +90,8 @@ const nextConfig = {
     '**.netlify.app',
     '**.onrender.com',
     '**.railway.app',
-    '**.rocket.new',
     '**.rocketapp.dev',
     '**.rocketapp.io',
-    '**.e2b.app',
     '**.vercel.run',
     '**.vusercontent.net',
     '**.lovable.app',
@@ -80,13 +100,6 @@ const nextConfig = {
     '**.repl.co',
     '**.pike.replit.dev',
     '**.glitch.me',
-    '192.168.*.*',
-    '10.*.*.*',
-    '172.*.*.*',
-    '**.rocketcdn.com',
-    '**.builtwithrocket.new',
-    '**.dhiwise.dev',
-    '**.dhiwise.com',
     '**.app',
     '**.dev',
     '**.new',
@@ -109,9 +122,8 @@ const nextConfig = {
     '*.ai',
     '*.co',
     '*.me',
-    'direct-hub.net',
-    'www.direct-hub.net',
     ...(siteUrlHost ? [siteUrlHost, `*.${siteUrlHost}`, `**.${siteUrlHost}`] : []),
+    ...envHostOrigins,
     ...extraDevOrigins,
   ],
   typescript: {

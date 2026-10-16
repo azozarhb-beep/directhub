@@ -95,8 +95,11 @@ export function AgentProductEditDrawer({ product, onClose, onSaved }: EditDrawer
         .update(payload)
         .eq('id', product.id);
       if (updateError) throw updateError;
+      // Re-apply auto-approval policy: re-activates when auto-launch is on
+      const { data: pubRes } = await supabase.rpc('publish_agent_product', { p_product_id: product.id, p_initial_stock: 100 });
+      const republished = (pubRes as { published?: boolean } | null)?.published === true;
       toast.success(pa.saved);
-      onSaved({ ...product, ...payload });
+      onSaved({ ...product, ...payload, is_active: republished });
     } catch (err: any) {
       setError(err?.message || pa.errGeneric);
     } finally {
