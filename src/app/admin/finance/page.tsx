@@ -15,6 +15,11 @@ interface MilestoneRelease {
   stage: number;
   amount: number;
   releasedAt: string;
+  netToSupplier: number;
+  platformFee: number;
+  agentShare: number;
+  proofRef: string;
+  releasedBy: string;
 }
 
 interface EscrowOrder {
@@ -34,6 +39,12 @@ interface EscrowOrder {
   createdAt: string;
   shipped: boolean;
   releases: MilestoneRelease[];
+  trackingCode: string;
+  hasBol: boolean;
+  dispatched: boolean;
+  inspectionStatus: string;
+  otpVerified: boolean;
+  hasAgent: boolean;
 }
 
 interface Deposit {
@@ -80,6 +91,12 @@ const MILESTONES: { stage: 1 | 2 | 3; pct: number; label: string }[] = [
   { stage: 2, pct: 40, label: 'الشحن / إثبات بوليصة الشحن' },
   { stage: 3, pct: 30, label: 'التخليص النهائي بعد الفحص' },
 ];
+const TRANCHE_STYLE: Record<TrancheState, { label: string; cls: string }> = {
+  LOCKED: { label: 'LOCKED', cls: 'border-slate-700 bg-slate-950 text-slate-400' },
+  PENDING_VERIFICATION: { label: 'PENDING_VERIFICATION', cls: 'border-blue-700/60 bg-blue-950/20 text-blue-300' },
+  READY_FOR_RELEASE: { label: 'READY_FOR_RELEASE', cls: 'border-amber-500/70 bg-amber-950/20 text-amber-300' },
+  PAID: { label: 'PAID', cls: 'border-emerald-700/60 bg-emerald-950/20 text-emerald-300' },
+};
 const STAGES: { key: StageKey; label: string; style: string }[] = [
   { key: 'held', label: 'محتجز بالضمان (Held)', style: 'border-amber-700/60 text-amber-300' },
   { key: 'inspection', label: 'اجتاز الفحص الميداني (Inspection Passed)', style: 'border-blue-700/60 text-blue-300' },
@@ -88,6 +105,8 @@ const STAGES: { key: StageKey; label: string; style: string }[] = [
 ];
 const QUEUE_MARK = '[QUEUED_FOR_RELEASE]';
 const inputCls = 'w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-blue-500';
+
+type TrancheState = 'LOCKED' | 'PENDING_VERIFICATION' | 'READY_FOR_RELEASE' | 'PAID';
 
 const normCurrency = (c: unknown): CurrencyCode => {
   const v = String(c || 'USD').toUpperCase();
@@ -175,7 +194,7 @@ export default function AdminFinancePage() {
       const [ordersRes, subsRes, commRes, relRes] = await Promise.all([
         supabase
           .from('orders')
-          .select('id, order_number, user_id, factory_user_id, total, currency, order_category, escrow_status, status, platform_commission, quality_check_at, delivery_pin_verified_at, delivery_otp_verified_at, buyer_confirmed_at, admin_payout_reviewed_at, payout_note, funds_released_at, payment_verified, receipt_url, payment_method, created_at')
+          .select('id, order_number, user_id, factory_user_id, total, currency, order_category, escrow_status, status, platform_commission, quality_check_at, delivery_pin_verified_at, delivery_otp_verified_at, buyer_confirmed_at, admin_payout_reviewed_at, payout_note, funds_released_at, payment_verified, receipt_url, payment_method, created_at, tracking_code, bill_of_lading_url, dispatched_at')
           .in('escrow_status', ['pending_verification', 'funds_secured', 'shipped', 'pending_otp_confirmation', 'pending_admin_payout', 'funds_released'])
           .order('created_at', { ascending: false })
           .limit(300),
@@ -191,12 +210,49 @@ export default function AdminFinancePage() {
           .limit(1000),
         supabase
           .from('escrow_milestone_releases')
-          .select('order_id, stage, amount, released_at')
+          .select('order_id, stage, amount, released_at, net_to_supplier, platform_fee, agent_share, proof_ref, released_by_email')
           .limit(1000),
       ]);
 
       if (ordersRes.error) throw ordersRes.error;
       const orderRows = (ordersRes.data || []) as any[];
+
+      const b2bIds = orderRows
+        .filter((o) => o.order_category && o.order_category !== 'retail')
+        .map((o) => o.id);
+      const bolOrders = new Set<string>();
+      const dispatchedOrders = new Set<string>();
+      const inspectionByOrder = new Map<string, string>();
+      if (b2bIds.length > 0) {
+        const [shipRes, inspRes] = await Promise.all([
+          supabase.from('logistics_shipments').select('id, order_id, shipment_status').in('order_id', b2bIds),
+          supabase.from('field_inspection_tasks').select('order_id, status').in('order_id', b2bIds),
+        ]);
+        const shipRows = (shipRes.data || []) as any[];
+        const shipToOrder = new Map<string, string>();
+        shipRows.forEach((s) => {
+          shipToOrder.set(s.id, s.order_id);
+          if (s.shipment_status && s.shipment_status !== 'pending' && s.shipment_status !== 'assigned' && s.shipment_status !== 'cancelled') {
+            dispatchedOrders.add(s.order_id);
+          }
+        });
+        const shipIds = shipRows.map((s) => s.id);
+        if (shipIds.length > 0) {
+          const { data: docs } = await supabase
+            .from('logistics_documents')
+            .select('shipment_id, document_type, status')
+            .in('shipment_id', shipIds)
+            .eq('document_type', 'bill_of_lading');
+          ((docs || []) as any[]).forEach((d) => {
+            if (d.status !== 'rejected' && shipToOrder.get(d.shipment_id)) bolOrders.add(shipToOrder.get(d.shipment_id)!);
+          });
+        }
+        ((inspRes.data || []) as any[]).forEach((t) => {
+          if (!t.order_id) return;
+          const prev = inspectionByOrder.get(t.order_id);
+          if (String(t.status).toLowerCase() === 'passed' || !prev) inspectionByOrder.set(t.order_id, String(t.status || '').toLowerCase());
+        });
+      }
 
       const userIds = Array.from(new Set([
         ...orderRows.map((o) => o.user_id),
@@ -217,10 +273,23 @@ export default function AdminFinancePage() {
         return p?.company_name || p?.full_name || '—';
       };
 
+      const agentOrderIds = new Set<string>(
+        ((commRes.data || []) as any[]).filter((c) => c.agent_id && c.order_id).map((c) => c.order_id as string)
+      );
+
       const relMap = new Map<string, MilestoneRelease[]>();
       ((relRes.data || []) as any[]).forEach((r) => {
         const arr = relMap.get(r.order_id) || [];
-        arr.push({ stage: Number(r.stage), amount: Number(r.amount || 0), releasedAt: r.released_at });
+        arr.push({
+          stage: Number(r.stage),
+          amount: Number(r.amount || 0),
+          releasedAt: r.released_at,
+          netToSupplier: Number(r.net_to_supplier || 0),
+          platformFee: Number(r.platform_fee || 0),
+          agentShare: Number(r.agent_share || 0),
+          proofRef: r.proof_ref || '',
+          releasedBy: r.released_by_email || '',
+        });
         relMap.set(r.order_id, arr);
       });
 
@@ -251,6 +320,12 @@ export default function AdminFinancePage() {
             createdAt: o.created_at,
             shipped: ['shipped', 'pending_otp_confirmation', 'pending_admin_payout'].includes(o.escrow_status),
             releases: relMap.get(o.id) || [],
+            trackingCode: o.tracking_code || '',
+            hasBol: bolOrders.has(o.id) || !!o.bill_of_lading_url,
+            dispatched: dispatchedOrders.has(o.id) || !!o.dispatched_at,
+            inspectionStatus: inspectionByOrder.get(o.id) || '',
+            otpVerified: !!(o.delivery_pin_verified_at || o.delivery_otp_verified_at),
+            hasAgent: agentOrderIds.has(o.id),
           } as EscrowOrder;
         });
       setOrders(mapped);
@@ -473,25 +548,44 @@ export default function AdminFinancePage() {
     }
   };
 
+  const trancheInfo = (o: EscrowOrder, stage: 1 | 2 | 3): { state: TrancheState; reason: string } => {
+    const rel = o.releases.find((r) => r.stage === stage);
+    if (rel) return { state: 'PAID', reason: '' };
+    if (stage > 1 && !o.releases.some((r) => r.stage === stage - 1)) {
+      return { state: 'LOCKED', reason: `مغلق: بانتظار تحرير الدفعة ${stage - 1} أولاً` };
+    }
+    if (stage === 1) return { state: 'READY_FOR_RELEASE', reason: '' };
+    if (stage === 2) {
+      return o.hasBol || o.dispatched
+        ? { state: 'READY_FOR_RELEASE', reason: '' }
+        : { state: 'PENDING_VERIFICATION', reason: 'مغلق: بانتظار رفع بوليصة الشحن' };
+    }
+    return o.inspectionStatus === 'passed' || o.otpVerified
+      ? { state: 'READY_FOR_RELEASE', reason: '' }
+      : { state: 'PENDING_VERIFICATION', reason: 'مغلق: بانتظار مطابقة الفحص الميداني أو رمز OTP' };
+  };
+
+  const trancheBreakdown = (o: EscrowOrder, stage: 1 | 2 | 3) => {
+    const pct = MILESTONES.find((m) => m.stage === stage)?.pct || 0;
+    const gross = Math.round(o.amount * pct) / 100;
+    const fee = Math.round(o.platformFee * pct) / 100;
+    const agentShare = o.hasAgent ? Math.round(fee * 20) / 100 : 0;
+    return { pct, gross, fee, agentShare, net: gross - fee };
+  };
+
   const releaseMilestone = async () => {
-    if (!releaseFor || !isMasterAdmin || frozen) return;
+    if (!releaseFor || !canAccess || frozen) return;
     const { order, stage } = releaseFor;
-    const m = MILESTONES.find((x) => x.stage === stage)!;
     setBusyKey(`ms-${order.id}-${stage}`);
     try {
-      const amount = Math.round(order.amount * m.pct) / 100;
-      const note = releaseNote.trim() || `تحرير ${m.pct}% — ${m.label}`;
-      const { error: e1 } = await supabase.from('escrow_milestone_releases').insert({
-        order_id: order.id, stage, percentage: m.pct, amount, currency: order.currency, note, released_by: user?.id,
+      const { data, error: e1 } = await supabase.rpc('release_escrow_milestone', {
+        p_order_id: order.id,
+        p_stage: stage,
+        p_note: releaseNote.trim() || null,
       });
       if (e1) throw e1;
-      await supabase.from('escrow_ledger').insert({
-        order_id: order.id, user_id: user?.id, event_type: 'funds_released', amount, currency: order.currency, note, performed_by: user?.id,
-      });
-      await supabase.from('order_status_history').insert({
-        order_id: order.id, status: 'processing', note: `💸 تحرير الدفعة ${stage} (${m.pct}%) للمورد — ${fmt(amount)} ${order.currency}`,
-      });
-      showToast(`تم تحرير الدفعة ${stage} للطلب ${order.orderNumber}`);
+      const proof = (data as any)?.proof_ref ? ` — مرجع الإثبات: ${(data as any).proof_ref}` : '';
+      showToast(`تم تحرير الدفعة ${stage} للطلب ${order.orderNumber}${proof}`);
       setReleaseFor(null);
       setReleaseNote('');
       await load();
@@ -780,51 +874,83 @@ export default function AdminFinancePage() {
         {/* Milestones tab */}
         {!loading && tab === 'milestones' && (
           <div className="space-y-3">
-            <p className="text-xs text-slate-400">الصفقات الكبرى B2B: 30% دفعة مقدمة — 40% عند الشحن — 30% بعد الفحص والمطابقة. التحرير للمدير العام فقط.</p>
+            <p className="text-xs text-slate-400">الصفقات الكبرى B2B: 30% دفعة مقدمة — 40% عند الشحن (بوليصة الشحن / DISPATCHED) — 30% بعد الفحص الميداني PASSED أو تحقق OTP. التحرير متاح للمدير العام وضابط الضمان.</p>
             {b2bOrders.length === 0 && <p className="text-sm text-slate-500">لا توجد صفقات B2B نشطة.</p>}
-            {b2bOrders.map((o) => {
-              const releasedStages = new Set(o.releases.map((r) => r.stage));
-              return (
-                <div key={o.id} className="rounded-2xl bg-slate-900 border border-amber-900/40 p-4 space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-xs">
-                      <span className="font-bold text-sm" dir="ltr">{o.orderNumber}</span>
-                      <span className="text-slate-400 mx-2">المشتري: <span className="text-slate-200">{o.buyer}</span></span>
-                      <span className="text-slate-400">المورّد: <span className="text-slate-200">{o.vendor}</span></span>
-                    </div>
-                    <span className="font-extrabold text-amber-300" dir="ltr">{fmt(o.amount)} {o.currency}</span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {MILESTONES.map((m) => {
-                      const done = releasedStages.has(m.stage);
-                      const prevDone = m.stage === 1 || releasedStages.has(m.stage - 1);
-                      const condition = m.stage === 1 ? true : m.stage === 2 ? o.shipped : o.inspectionPassed;
-                      const amount = Math.round(o.amount * m.pct) / 100;
-                      const canRelease = isMasterAdmin && !frozen && !done && prevDone && condition;
-                      return (
-                        <div key={m.stage} className={`rounded-xl border p-3 space-y-2 ${done ? 'border-emerald-700/60 bg-emerald-950/20' : 'border-slate-800 bg-slate-950'}`}>
-                          <div className="flex items-center justify-between text-xs font-bold">
-                            <span className="text-amber-300">المرحلة {m.stage} — {m.pct}%</span>
-                            {done && <span className="text-emerald-300">✓ تم التحرير</span>}
-                          </div>
-                          <p className="text-[11px] text-slate-400">{m.label}</p>
-                          <p className="text-sm font-extrabold" dir="ltr">{fmt(amount)} {o.currency}</p>
-                          {!done && !condition && <p className="text-[10px] text-slate-500">{m.stage === 2 ? 'بانتظار إثبات الشحن' : 'بانتظار اجتياز الفحص'}</p>}
-                          <button
-                            type="button"
-                            disabled={!canRelease || busyKey === `ms-${o.id}-${m.stage}`}
-                            onClick={() => { setReleaseFor({ order: o, stage: m.stage }); setReleaseNote(''); }}
-                            className="w-full px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-xs font-bold"
-                          >
-                            {isMasterAdmin ? 'تحرير الدفعة للمورد' : '🔒 تحرير الدفعة للمورد'}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+            {b2bOrders.map((o) => (
+              <div key={o.id} className="rounded-2xl bg-slate-900 border border-amber-900/40 p-4 space-y-3">
+                <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 text-xs">
+                  <div><p className="text-slate-500">رقم الصفقة</p><p className="font-bold text-sm" dir="ltr">{o.orderNumber}</p></div>
+                  <div><p className="text-slate-500">باركود التتبع</p><p className="font-semibold font-mono" dir="ltr">{o.trackingCode || '—'}</p></div>
+                  <div><p className="text-slate-500">المصنع / المورّد</p><p className="font-semibold text-slate-200">{o.vendor}</p></div>
+                  <div><p className="text-slate-500">المشتري</p><p className="font-semibold text-slate-200">{o.buyer}</p></div>
+                  <div><p className="text-slate-500">إجمالي الصفقة</p><p className="font-extrabold text-amber-300" dir="ltr">{fmt(o.amount)} {o.currency}</p></div>
+                  <div><p className="text-slate-500">مرجع خزنة الضمان</p><p className="font-semibold font-mono" dir="ltr">ESC-{o.orderNumber}</p></div>
                 </div>
-              );
-            })}
+
+                <div className="flex items-center gap-1" dir="ltr">
+                  {MILESTONES.map((m, idx) => {
+                    const info = trancheInfo(o, m.stage);
+                    const st = TRANCHE_STYLE[info.state];
+                    return (
+                      <React.Fragment key={m.stage}>
+                        <div className={`flex-1 rounded-lg border px-2 py-1.5 text-center ${st.cls}`}>
+                          <p className="text-[10px] font-bold">T{m.stage} · {m.pct}%</p>
+                          <p className="text-[9px] font-semibold tracking-wide">{st.label}</p>
+                        </div>
+                        {idx < MILESTONES.length - 1 && <span className="text-slate-600 text-xs">›</span>}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {MILESTONES.map((m) => {
+                    const info = trancheInfo(o, m.stage);
+                    const st = TRANCHE_STYLE[info.state];
+                    const b = trancheBreakdown(o, m.stage);
+                    const rel = o.releases.find((r) => r.stage === m.stage);
+                    const busy = busyKey === `ms-${o.id}-${m.stage}`;
+                    const ready = info.state === 'READY_FOR_RELEASE' && canAccess && !frozen;
+                    const tip = frozen ? 'مغلق: التجميد الطارئ مفعّل' : info.reason;
+                    return (
+                      <div key={m.stage} className={`rounded-xl border p-3 space-y-2 ${st.cls}`}>
+                        <div className="flex items-center justify-between text-xs font-bold">
+                          <span className="text-amber-300">المرحلة {m.stage} — {m.pct}%</span>
+                          {info.state === 'PAID' && <span className="text-emerald-300">✓ RELEASED</span>}
+                        </div>
+                        <p className="text-[11px] text-slate-400">{m.label}</p>
+                        <p className="text-sm font-extrabold text-white" dir="ltr">{fmt(b.gross)} {o.currency}</p>
+                        {rel ? (
+                          <div className="text-[10px] text-slate-400 space-y-0.5" dir="ltr">
+                            <p>Net: {fmt(rel.netToSupplier)} {o.currency}</p>
+                            <p>{fmtDate(rel.releasedAt)}{rel.releasedBy ? ` · ${rel.releasedBy}` : ''}</p>
+                            {rel.proofRef && <p className="truncate" title={rel.proofRef}>Proof: {rel.proofRef}</p>}
+                          </div>
+                        ) : (
+                          <div className="relative group">
+                            <button
+                              type="button"
+                              disabled={!ready || busy}
+                              title={!ready ? tip : undefined}
+                              aria-label="تحرير الدفعة للمورد"
+                              onClick={() => { setReleaseFor({ order: o, stage: m.stage }); setReleaseNote(''); }}
+                              className="w-full px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-xs font-bold"
+                            >
+                              {ready ? 'تحرير الدفعة للمورد' : '🔒 تحرير الدفعة للمورد'}
+                            </button>
+                            {!ready && tip && (
+                              <span role="tooltip" className="pointer-events-none absolute z-10 bottom-full mb-1 right-0 left-0 mx-auto w-max max-w-[260px] rounded-lg bg-black border border-slate-700 px-2 py-1 text-[10px] text-slate-200 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {tip}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
@@ -1096,28 +1222,36 @@ export default function AdminFinancePage() {
       )}
 
       {/* Milestone release confirm */}
-      {releaseFor && (
-        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-amber-700/50 rounded-2xl w-full max-w-md p-5 space-y-3">
-            <h3 className="font-bold text-sm text-amber-300">تحرير الدفعة {releaseFor.stage} — {releaseFor.order.orderNumber}</h3>
-            <p className="text-xs text-slate-300" dir="ltr">
-              {fmt((Math.round(releaseFor.order.amount * (MILESTONES.find((m) => m.stage === releaseFor.stage)?.pct || 0))) / 100)} {releaseFor.order.currency}
-            </p>
-            <textarea className={`${inputCls} min-h-[80px]`} placeholder="ملاحظة (اختياري)" value={releaseNote} onChange={(e) => setReleaseNote(e.target.value)} />
-            <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => setReleaseFor(null)} className="px-3 py-2 rounded-xl bg-slate-800 text-xs font-semibold">إلغاء</button>
-              <button
-                type="button"
-                disabled={busyKey === `ms-${releaseFor.order.id}-${releaseFor.stage}`}
-                onClick={releaseMilestone}
-                className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 disabled:opacity-40 text-xs font-bold"
-              >
-                تأكيد التحرير
-              </button>
+      {releaseFor && (() => {
+        const b = trancheBreakdown(releaseFor.order, releaseFor.stage);
+        const cur = releaseFor.order.currency;
+        return (
+          <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-amber-700/50 rounded-2xl w-full max-w-md p-5 space-y-3">
+              <h3 className="font-bold text-sm text-amber-300">تحرير الدفعة {releaseFor.stage} ({b.pct}%) — {releaseFor.order.orderNumber}</h3>
+              <div className="rounded-xl bg-slate-950 border border-slate-800 divide-y divide-slate-800 text-xs" dir="ltr">
+                <div className="flex justify-between px-3 py-2"><span className="text-slate-400">Tranche Gross</span><span className="font-bold">{fmt(b.gross)} {cur}</span></div>
+                <div className="flex justify-between px-3 py-2"><span className="text-slate-400">Platform Fee</span><span className="font-bold text-red-300">- {fmt(b.fee)} {cur}</span></div>
+                <div className="flex justify-between px-3 py-2"><span className="text-slate-400">Net to Supplier</span><span className="font-extrabold text-emerald-300">{fmt(b.net)} {cur}</span></div>
+                <div className="flex justify-between px-3 py-2"><span className="text-slate-400">Agent 20% share (of fee)</span><span className="font-bold text-amber-300">{fmt(b.agentShare)} {cur}</span></div>
+              </div>
+              {!releaseFor.order.hasAgent && <p className="text-[10px] text-slate-500">لا يوجد مندوب مرتبط بهذه الصفقة — لن يُضاف رصيد لمحفظة عمولات.</p>}
+              <textarea className={`${inputCls} min-h-[80px]`} placeholder="ملاحظة (اختياري)" value={releaseNote} onChange={(e) => setReleaseNote(e.target.value)} />
+              <div className="flex gap-2 justify-end">
+                <button type="button" onClick={() => setReleaseFor(null)} className="px-3 py-2 rounded-xl bg-slate-800 text-xs font-semibold">إلغاء</button>
+                <button
+                  type="button"
+                  disabled={busyKey === `ms-${releaseFor.order.id}-${releaseFor.stage}`}
+                  onClick={releaseMilestone}
+                  className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 disabled:opacity-40 text-xs font-bold"
+                >
+                  تأكيد التحرير
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Commission payout confirm */}
       {payoutFor && (
