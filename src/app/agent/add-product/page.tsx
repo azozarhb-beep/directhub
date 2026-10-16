@@ -16,6 +16,7 @@ interface AgentFactory {
   company_name: string;
   city: string;
   country: string;
+  factory_type?: string | null;
 }
 
 interface PriceTierRow {
@@ -127,6 +128,8 @@ const INITIAL_FORM = {
   moq: '1',
   unit: 'piece',
   specifications: '',
+  shipping_terms: 'CALCULATED_SHIPPING',
+  shipping_port: '',
 };
 
 function AddProductPageInner() {
@@ -270,7 +273,7 @@ function AddProductPageInner() {
     if (!user || !factoryId) { setFetchingFactory(false); return; }
     supabase
       .from('agent_factory_registrations')
-      .select('id, company_name, city, country')
+      .select('id, company_name, city, country, factory_type')
       .eq('id', factoryId)
       .eq('agent_id', user.id)
       .single()
@@ -462,6 +465,8 @@ function AddProductPageInner() {
           specifications: specs,
           images: imageUrls,
           video_url: videoUrl,
+          shipping_terms: form.shipping_terms,
+          shipping_port: form.shipping_terms === 'DELIVERY_INCLUDED' ? null : (form.shipping_port.trim() || null),
           is_active: false,
           is_published: false,
           stock_quantity: Math.max(100, Number(form.moq) * 10),
@@ -522,7 +527,7 @@ function AddProductPageInner() {
             <Icon name="CheckCircleIcon" size={40} className="text-emerald-600" />
           </div>
           <h2 className="text-2xl font-bold text-foreground mb-2">{ap.successTitle}</h2>
-          <p className="text-muted-foreground mb-3">{ap.successDesc.replace('{name}', factory.company_name)}</p>
+          <p className="text-muted-foreground mb-3">{(factory.factory_type === 'local_supplier' ? ap.successDescSupplier : ap.successDesc).replace('{name}', factory.company_name)}</p>
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-6">{ap.successPendingReview}</p>
           <div className="flex flex-col gap-3">
             <button
@@ -809,6 +814,34 @@ function AddProductPageInner() {
               className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none"
               dir="ltr"
             />
+          </div>
+
+          {/* Shipping Terms */}
+          <div className="space-y-3 p-4 bg-muted/40 border border-border rounded-xl">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">{ap.shippingTerms}</label>
+              <select
+                value={form.shipping_terms}
+                onChange={e => update('shipping_terms', e.target.value)}
+                className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
+              >
+                <option value="DELIVERY_INCLUDED">{ap.shippingTermsDeliveryIncluded}</option>
+                <option value="EX_FACTORY">{ap.shippingTermsExFactory}</option>
+                <option value="CALCULATED_SHIPPING">{ap.shippingTermsCalculated}</option>
+              </select>
+            </div>
+            {form.shipping_terms !== 'DELIVERY_INCLUDED' && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">{ap.shippingPort}</label>
+                <input
+                  type="text"
+                  value={form.shipping_port}
+                  onChange={e => update('shipping_port', e.target.value)}
+                  placeholder={ap.shippingPortPlaceholder}
+                  className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                />
+              </div>
+            )}
           </div>
 
           {/* Specifications */}

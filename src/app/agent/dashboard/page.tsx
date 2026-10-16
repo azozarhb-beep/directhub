@@ -141,8 +141,18 @@ function ReviewModal({
     adminNote: string
   ) => Promise<void>;
 }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const ad = t.agentDashboard;
+  const formatSafeDate = (value: string | null | undefined): string => {
+    if (!value) return '—';
+    try {
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '—';
+      return d.toLocaleDateString(language === 'ar' ? 'ar' : language);
+    } catch {
+      return '—';
+    }
+  };
   const CONTACT_STATUS_LABELS: Record<string, { label: string; color: string }> = {
     contacting: { label: ad.contactContacting, color: CONTACT_STATUS_COLORS.contacting },
     awaiting_license_approval: { label: ad.contactAwaitingLicense, color: CONTACT_STATUS_COLORS.awaiting_license_approval },
@@ -165,9 +175,14 @@ function ReviewModal({
 
   const handleSave = async () => {
     setSaving(true);
-    await onSave(factory.id, contactStatus, registrationStatus, agentNotes, adminNote);
-    setSaving(false);
-    onClose();
+    try {
+      await onSave(factory.id, contactStatus, registrationStatus, agentNotes, adminNote);
+      onClose();
+    } catch (err) {
+      console.error('Failed to save facility review:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const regInfo = REG_STATUS_LABELS[registrationStatus] || REG_STATUS_LABELS.pending;
@@ -318,12 +333,12 @@ function ReviewModal({
                 )}
                 {factory.license_submitted_at && (
                   <p className="text-xs text-muted-foreground">
-                    {ad.uploadDate.replace('{date}', new Date(factory.license_submitted_at).toLocaleDateString(language === 'ar' ? 'ar' : language))}
+                    {(ad.uploadDate || '').replace('{date}', formatSafeDate(factory.license_submitted_at))}
                   </p>
                 )}
                 {factory.license_reviewed_at && (
                   <p className="text-xs text-muted-foreground">
-                    {ad.reviewDate.replace('{date}', new Date(factory.license_reviewed_at).toLocaleDateString(language === 'ar' ? 'ar' : language))}
+                    {(ad.reviewDate || '').replace('{date}', formatSafeDate(factory.license_reviewed_at))}
                   </p>
                 )}
                 {factory.license_rejection_reason && (

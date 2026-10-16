@@ -57,6 +57,8 @@ interface ProductDetail {
   leadTime: string;
   paymentTerms: string;
   port: string;
+  shippingTerms?: 'DELIVERY_INCLUDED' | 'EX_FACTORY' | 'CALCULATED_SHIPPING';
+  agentListed?: boolean;
   certifications?: string[];
   priceTiers?: PriceTier[];
   packagingDetails?: string;
@@ -524,7 +526,9 @@ export default function ProductDetailPage() {
             specifications: specs,
             leadTime: leadTimeStr,
             paymentTerms: 'T/T, L/C',
-            port: supplierCountry,
+            port: data.shipping_port || supplierCountry,
+            shippingTerms: (['DELIVERY_INCLUDED', 'EX_FACTORY', 'CALCULATED_SHIPPING'].includes(data.shipping_terms) ? data.shipping_terms : 'CALCULATED_SHIPPING') as 'DELIVERY_INCLUDED' | 'EX_FACTORY' | 'CALCULATED_SHIPPING',
+            agentListed: !!data.agent_product_id,
             certifications: certs.length > 0 ? certs : undefined,
             priceTiers: finalPriceTiers,
             supplyAbility: stockQty > 0 ? `${stockQty} ${data.unit || (language === 'ar' ? 'وحدة' : 'units')}` : undefined,
@@ -578,7 +582,8 @@ export default function ProductDetailPage() {
       verified: product.verified,
       category: product.category,
       isRetailAvailable: false,
-      retailPrice: parseFloat(String(product.price ?? '').replace(/,/g, '')) || 0
+      retailPrice: parseFloat(String(product.price ?? '').replace(/,/g, '')) || 0,
+      shippingTerms: product.shippingTerms || 'CALCULATED_SHIPPING'
     });
     setAddedToCart(true);
     setTimeout(() => setAddedToCart(false), 2500);
@@ -604,10 +609,13 @@ export default function ProductDetailPage() {
 
   const unitPrice = parseFloat(String(product.price ?? '').replace(/,/g, '')) || 0;
   const subtotal = unitPrice * orderQty;
+  const isDeliveryIncluded = product.shippingTerms === 'DELIVERY_INCLUDED';
+  // Shipping is strictly 0 when the price already includes delivery; otherwise it is arranged after order confirmation
+  const shippingCost = 0;
   const escrowFee = parseFloat((subtotal * 0.015).toFixed(2));
   const buyerReserve = parseFloat((subtotal * 0.30).toFixed(2));
   const supplierAdvance = parseFloat((subtotal * 0.70).toFixed(2));
-  const totalEscrow = parseFloat((subtotal + escrowFee).toFixed(2));
+  const totalEscrow = parseFloat((subtotal + escrowFee + shippingCost).toFixed(2));
 
   const handleConfirmOrder = () => {
     setShowConfirmation(false);
@@ -1532,10 +1540,23 @@ export default function ProductDetailPage() {
             {/* Shipping Tab */}
             {activeTab === 'shipping' &&
             <div className="space-y-3">
+                {isDeliveryIncluded &&
+              <div className="flex items-start gap-3 p-4 rounded-xl border-2 border-green-500 bg-green-50">
+                    <div className="w-9 h-9 rounded-lg bg-green-500 flex items-center justify-center shrink-0">
+                      <Icon name="TruckIcon" size={18} className="text-white" />
+                    </div>
+                    <div>
+                      <span className="inline-block px-3 py-1 rounded-full bg-green-600 text-white text-sm font-extrabold">{pp.deliveryIncludedBadge}</span>
+                      <p className="text-sm font-semibold text-green-800 mt-1.5">{pp.deliveryIncludedDesc}</p>
+                    </div>
+                  </div>
+              }
                 {[
               { label: pp.leadTime, value: product.leadTime, icon: 'ClockIcon' },
               { label: pp.paymentTerms, value: product.paymentTerms, icon: 'CreditCardIcon' },
-              { label: pp.shippingPort, value: product.port, icon: 'TruckIcon' },
+              ...(product.shippingTerms === 'EX_FACTORY' ? [{ label: pp.shippingTermsLabel, value: pp.shippingTermExFactory, icon: 'TruckIcon' }] : []),
+              ...(product.shippingTerms === 'CALCULATED_SHIPPING' && product.agentListed ? [{ label: pp.shippingTermsLabel, value: pp.shippingTermCalculated, icon: 'TruckIcon' }] : []),
+              ...(!isDeliveryIncluded ? [{ label: pp.shippingPort, value: product.port, icon: 'TruckIcon' }] : []),
               { label: pp.minimumOrderQuantity, value: product.moq, icon: 'CubeIcon' },
               ...(product.packagingDetails ? [{ label: pp.packagingDetails, value: product.packagingDetails, icon: 'ArchiveBoxIcon' }] : []),
               ...(product.supplyAbility ? [{ label: pp.supplyCapacity, value: product.supplyAbility, icon: 'BuildingStorefrontIcon' }] : [])].
@@ -1883,6 +1904,15 @@ export default function ProductDetailPage() {
                     </div>
                     <span className="text-sm font-bold text-foreground">${subtotal.toLocaleString()}</span>
                   </div>
+                  {isDeliveryIncluded &&
+              <div className="flex items-center justify-between px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <Icon name="TruckIcon" size={13} className="text-green-600" />
+                      <span className="text-xs text-muted-foreground">{pp.shippingLabel}</span>
+                    </div>
+                    <span className="text-sm font-bold text-green-600">{pp.shippingFree} · $0</span>
+                  </div>
+              }
                   <div className="flex items-center justify-between px-4 py-3">
                     <div className="flex items-center gap-2">
                       <Icon name="ShieldCheckIcon" size={13} className="text-muted-foreground" />
