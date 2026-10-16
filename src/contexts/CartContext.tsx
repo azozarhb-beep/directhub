@@ -22,6 +22,7 @@ export interface CartItem {
   category: string;
   isRetailAvailable: boolean;
   retailPrice: number;
+  shippingTerms?: string;
 }
 
 export type OrderMode = 'B2B' | 'B2C';
@@ -75,6 +76,7 @@ function dbRowToCartItem(row: any): CartItem {
     category: row.category,
     isRetailAvailable: row.is_retail_available ?? false,
     retailPrice: Number(row.retail_price ?? row.unit_price),
+    shippingTerms: row.shipping_terms || 'CALCULATED_SHIPPING',
   };
 }
 
@@ -153,6 +155,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
           category: item.category,
           is_retail_available: item.isRetailAvailable,
           retail_price: item.retailPrice,
+          shipping_terms: item.shippingTerms || 'CALCULATED_SHIPPING',
         },
         { onConflict: 'user_id,product_id' }
       )

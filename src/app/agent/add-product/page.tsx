@@ -128,6 +128,8 @@ const INITIAL_FORM = {
   moq: '1',
   unit: 'piece',
   specifications: '',
+  shipping_terms: 'CALCULATED_SHIPPING',
+  shipping_port: '',
 };
 
 function AddProductPageInner() {
@@ -463,6 +465,8 @@ function AddProductPageInner() {
           specifications: specs,
           images: imageUrls,
           video_url: videoUrl,
+          shipping_terms: form.shipping_terms,
+          shipping_port: form.shipping_terms === 'DELIVERY_INCLUDED' ? null : (form.shipping_port.trim() || null),
           is_active: false,
           is_published: false,
           stock_quantity: Math.max(100, Number(form.moq) * 10),
@@ -810,6 +814,34 @@ function AddProductPageInner() {
               className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none"
               dir="ltr"
             />
+          </div>
+
+          {/* Shipping Terms */}
+          <div className="space-y-3 p-4 bg-muted/40 border border-border rounded-xl">
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">{ap.shippingTerms}</label>
+              <select
+                value={form.shipping_terms}
+                onChange={e => update('shipping_terms', e.target.value)}
+                className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
+              >
+                <option value="DELIVERY_INCLUDED">{ap.shippingTermsDeliveryIncluded}</option>
+                <option value="EX_FACTORY">{ap.shippingTermsExFactory}</option>
+                <option value="CALCULATED_SHIPPING">{ap.shippingTermsCalculated}</option>
+              </select>
+            </div>
+            {form.shipping_terms !== 'DELIVERY_INCLUDED' && (
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">{ap.shippingPort}</label>
+                <input
+                  type="text"
+                  value={form.shipping_port}
+                  onChange={e => update('shipping_port', e.target.value)}
+                  placeholder={ap.shippingPortPlaceholder}
+                  className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                />
+              </div>
+            )}
           </div>
 
           {/* Specifications */}

@@ -1025,7 +1025,9 @@ export default function CheckoutPage() {
   // Determine if order is international (not Saudi Arabia)
   const isInternationalOrder = shipping.country && shipping.country !== 'Saudi Arabia' && shipping.country !== 'Yemen' && shipping.country !== '';
 
-  const shippingCost = 150;
+  // Shipping is strictly 0 when every item in the order is sold with delivery included
+  const allDeliveryIncluded = cartItems.length > 0 && cartItems.every((i) => i.shippingTerms === 'DELIVERY_INCLUDED');
+  const shippingCost = allDeliveryIncluded ? 0 : 150;
 
   const displayItems: CartItem[] = cartItems.map((i) => ({
     id: i.productId,
