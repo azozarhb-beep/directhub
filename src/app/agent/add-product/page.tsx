@@ -441,7 +441,7 @@ function AddProductPageInner() {
         throw new Error(`${ap.mediaErrUpload}: ${mediaErr?.message || ''}`);
       }
 
-      const { error: insertError } = await supabase
+      const { data: insertedRow, error: insertError } = await supabase
         .from('agent_products')
         .insert({
           agent_id: user.id,
@@ -463,8 +463,21 @@ function AddProductPageInner() {
           images: imageUrls,
           video_url: videoUrl,
           is_active: false,
-        });
+          is_published: false,
+          stock_quantity: Math.max(100, Number(form.moq) * 10),
+        })
+        .select('id')
+        .single();
       if (insertError) throw insertError;
+
+      // Apply platform auto-approval (initial_auto_launch_batch): publishes the
+      // product as active with initial stock when enabled.
+      if (insertedRow?.id) {
+        await supabase.rpc('publish_agent_product', {
+          p_product_id: insertedRow.id,
+          p_initial_stock: Math.max(100, Number(form.moq) * 10),
+        });
+      }
       clearDraft();
       setSuccess(true);
     } catch (err: any) {
