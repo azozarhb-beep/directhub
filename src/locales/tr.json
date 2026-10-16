@@ -3076,6 +3076,8 @@
         "notesPlaceholder": "Bu fabrika hakkında önemli notlar ekleyin, örn. ürünler, katılım ilgisi, beklenen kayıt tarihi...",
         "successTitle": "Fabrika başarıyla kaydedildi!",
         "successDesc": "Fabrika listenize eklendi. Artık ruhsat yükleyebilir ve ürün ekleyebilirsiniz.",
+        "successTitleSupplier": "Tedarikçi başarıyla kaydedildi!",
+        "successDescSupplier": "Tedarikçi listenize eklendi. Artık ruhsat yükleyebilir ve ürün ekleyebilirsiniz.",
         "newSuffix": "Yeni",
         "stepOf": "Adım {step} / 3",
         "companyNameLabel": "Şirket / Fabrika adı",

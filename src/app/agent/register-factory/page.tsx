@@ -190,8 +190,8 @@ function RegisterFactoryPageInner() {
           <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-5">
             <Icon name="CheckCircleIcon" size={40} className="text-emerald-600" />
           </div>
-          <h2 className="text-2xl font-bold text-foreground mb-2">{arf.successTitle}</h2>
-          <p className="text-muted-foreground mb-6">{arf.successDesc}</p>
+          <h2 className="text-2xl font-bold text-foreground mb-2">{form.factory_type === 'local_supplier' ? arf.successTitleSupplier : arf.successTitle}</h2>
+          <p className="text-muted-foreground mb-6">{form.factory_type === 'local_supplier' ? arf.successDescSupplier : arf.successDesc}</p>
           <div className="flex flex-col gap-3">
             <Link
               href="/agent/dashboard"

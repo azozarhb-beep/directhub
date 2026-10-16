@@ -3075,6 +3075,8 @@
         "notesPlaceholder": "Add important notes about this factory, e.g. products, interest in joining, expected registration date...",
         "successTitle": "Factory registered successfully!",
         "successDesc": "The factory was added to your list. You can now upload licenses and add products.",
+        "successTitleSupplier": "Supplier registered successfully!",
+        "successDescSupplier": "The supplier was added to your list. You can now upload licenses and add products.",
         "newSuffix": "New",
         "stepOf": "Step {step} of 3",
         "companyNameLabel": "Company / Factory name",

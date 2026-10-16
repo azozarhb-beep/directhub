@@ -3076,6 +3076,8 @@
         "notesPlaceholder": "添加关于此工厂的重要备注，例如产品、加入意向、预计注册日期...",
         "successTitle": "工厂注册成功！",
         "successDesc": "工厂已添加到您的列表。现在可以上传执照并添加产品。",
+        "successTitleSupplier": "供应商注册成功！",
+        "successDescSupplier": "供应商已添加到您的列表。现在可以上传执照并添加产品。",
         "newSuffix": "新建",
         "stepOf": "第 {step} 步，共 3 步",
         "companyNameLabel": "公司 / 工厂名称",
