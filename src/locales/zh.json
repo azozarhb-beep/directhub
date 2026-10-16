@@ -3141,6 +3141,7 @@
         "backToDashboard": "返回控制台",
         "successTitle": "产品添加成功！",
         "successDesc": "已为工厂 {name} 上传产品。",
+        "successDescSupplier": "已为供应商 {name} 上传产品。",
         "addAnother": "再添加一个产品",
         "nameAr": "产品名称（阿拉伯语）",
         "nameEn": "产品名称（英语）",

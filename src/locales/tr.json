@@ -3141,6 +3141,7 @@
         "backToDashboard": "Panele Dön",
         "successTitle": "Ürün başarıyla eklendi!",
         "successDesc": "{name} fabrikası için ürün yüklendi.",
+        "successDescSupplier": "{name} tedarikçisi için ürün yüklendi.",
         "addAnother": "Başka Ürün Ekle",
         "nameAr": "Ürün Adı (Arapça)",
         "nameEn": "Ürün Adı (İngilizce)",

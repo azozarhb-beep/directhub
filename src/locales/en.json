@@ -3140,6 +3140,7 @@
         "backToDashboard": "Back to Dashboard",
         "successTitle": "Product added successfully!",
         "successDesc": "Product uploaded for factory {name}.",
+        "successDescSupplier": "Product uploaded for supplier {name}.",
         "addAnother": "Add Another Product",
         "nameAr": "Product Name (Arabic)",
         "nameEn": "Product Name (English)",

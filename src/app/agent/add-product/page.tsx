@@ -16,6 +16,7 @@ interface AgentFactory {
   company_name: string;
   city: string;
   country: string;
+  factory_type?: string | null;
 }
 
 interface PriceTierRow {
@@ -270,7 +271,7 @@ function AddProductPageInner() {
     if (!user || !factoryId) { setFetchingFactory(false); return; }
     supabase
       .from('agent_factory_registrations')
-      .select('id, company_name, city, country')
+      .select('id, company_name, city, country, factory_type')
       .eq('id', factoryId)
       .eq('agent_id', user.id)
       .single()
@@ -522,7 +523,7 @@ function AddProductPageInner() {
             <Icon name="CheckCircleIcon" size={40} className="text-emerald-600" />
           </div>
           <h2 className="text-2xl font-bold text-foreground mb-2">{ap.successTitle}</h2>
-          <p className="text-muted-foreground mb-3">{ap.successDesc.replace('{name}', factory.company_name)}</p>
+          <p className="text-muted-foreground mb-3">{(factory.factory_type === 'local_supplier' ? ap.successDescSupplier : ap.successDesc).replace('{name}', factory.company_name)}</p>
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-6">{ap.successPendingReview}</p>
           <div className="flex flex-col gap-3">
             <button
