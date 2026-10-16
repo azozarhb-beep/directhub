@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import toast from 'react-hot-toast';
 import Icon from '@/components/ui/AppIcon';
 import WishlistButton from '@/components/WishlistButton';
@@ -15,6 +14,8 @@ export interface MarketplaceProduct {
   name: string;
   name_ar?: string | null;
   image_url?: string | null;
+  images?: string[] | null;
+  image?: string | null;
   unit_price: number;
   minimum_order_qty: number;
   unit: string;
@@ -114,7 +115,17 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
   priority = false,
   showChat = true,
 }) => {
-  const imageUrl = product.image_url || '/assets/images/no_image.png';
+  const FALLBACK_IMAGE = '/assets/images/no_image.png';
+  const primaryImage =
+    (Array.isArray(product.images) ? product.images.find((i) => typeof i === 'string' && i.trim()) : null) ||
+    product.image_url ||
+    product.image ||
+    FALLBACK_IMAGE;
+  const [imageSrc, setImageSrc] = useState<string>(primaryImage);
+  useEffect(() => {
+    setImageSrc(primaryImage);
+  }, [primaryImage]);
+  const imageUrl = imageSrc;
   const supplierName = product.company_name || 'مورّد موثّق';
   const rating = product.rating || 4.2;
   const reviewCount = product.review_count ?? ((index * 37 + 42) % 200 + 20);
@@ -152,7 +163,7 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
         productId: product.id,
         name: product.name,
         nameAr: product.name_ar || product.name,
-        image: product.image_url || '/assets/images/no_image.png',
+        image: product.images?.[0] || product.image_url || product.image || '/assets/images/no_image.png',
         alt: product.name_ar || product.name,
         price: unitPrice,
         currency: 'USD',
@@ -178,58 +189,58 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
   return (
     <div className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 hover:shadow-lg transition-all duration-200 flex flex-col">
       {/* ── Image Area ── */}
-      <Link href={`/product/${product.id}`} className="block relative aspect-square bg-muted overflow-hidden shrink-0">
-        <Image
+      <Link href={`/product/${product.id}`} className="block relative w-full h-44 overflow-hidden rounded-t-xl bg-gray-100 shrink-0">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
           src={imageUrl}
           alt={displayNameEn}
-          fill
-          className="object-cover group-hover:scale-105 transition-transform duration-300"
-          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-          priority={priority || index < 4}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading={priority || index < 4 ? 'eager' : 'lazy'}
+          onError={() => {
+            if (imageSrc !== FALLBACK_IMAGE) setImageSrc(FALLBACK_IMAGE);
+          }}
         />
 
-        {/* Overlay badges */}
-        <div className="absolute top-2 left-2 flex flex-col gap-1">
-          {isVerified && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-600 text-white text-[9px] font-bold rounded-full shadow-sm">
-              <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              مورّد موثّق
-            </span>
-          )}
-          {isReadyToShip && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-600 text-white text-[9px] font-bold rounded-full shadow-sm">
-              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              جاهز للشحن
+        {/* Top badges row: verified (left) + category pill (right) */}
+        <div className="absolute top-2 left-2 right-2 flex items-start justify-between gap-2">
+          <div className="flex flex-col gap-1">
+            {isVerified && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-600 text-white text-[9px] font-bold rounded-full shadow-sm">
+                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                مورّد موثّق
+              </span>
+            )}
+            {isReadyToShip && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-600 text-white text-[9px] font-bold rounded-full shadow-sm">
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                جاهز للشحن
+              </span>
+            )}
+          </div>
+
+          {product.category && (
+            <span className="px-2 py-0.5 bg-black/50 backdrop-blur-sm text-white text-[9px] font-semibold rounded-full max-w-[55%] truncate">
+              {translateCategory(product.category)}
             </span>
           )}
         </div>
+      </Link>
 
-        {/* Category badge top-right — translated to Arabic */}
-        {product.category && (
-          <div className="absolute top-2 right-2">
-            <span className="px-2 py-0.5 bg-black/50 backdrop-blur-sm text-white text-[9px] font-semibold rounded-full">
-              {translateCategory(product.category)}
-            </span>
-          </div>
-        )}
-
-        {/* B2B bulk badge bottom */}
+      {/* ── Content ── */}
+      <div className="p-2.5 flex flex-col flex-1 gap-2 pb-3">
+        {/* Wholesale badge (normal flow, no absolute positioning) */}
         {buyerMode === 'b2b' && product.minimum_order_qty >= 10 && (
-          <div className="absolute bottom-2 left-2">
+          <div className="flex">
             <span className="px-2 py-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-full">
               شراء بالجملة
             </span>
           </div>
         )}
-      </Link>
 
-      {/* ── Content ── */}
-      <div className="p-2.5 flex flex-col flex-1 gap-1.5 pb-3">
         {/* Product Title */}
         <Link href={`/product/${product.id}`} className="block">
           <h3 className="text-xs font-bold text-foreground line-clamp-2 leading-snug group-hover:text-primary transition-colors" dir="rtl">
@@ -241,7 +252,7 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
         </Link>
 
         {/* ── Dual Pricing Engine ── */}
-        <div className="bg-muted/40 rounded-lg px-2 py-1.5">
+        <div className="bg-muted/40 rounded-lg px-2 py-1.5 my-1">
           {buyerMode === 'b2b' ? (
             <>
               <div className="flex items-baseline gap-1" dir="ltr">

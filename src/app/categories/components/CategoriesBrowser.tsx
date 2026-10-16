@@ -32,9 +32,11 @@ interface Product {
   unit_price: number | null;
   origin_country: string | null;
   image_url: string | null;
+  images?: unknown;
   minimum_order_qty: number | null;
   unit: string | null;
   is_active?: boolean;
+  target_market?: string | null;
   manufacturer_id?: string | null;
   user_profiles?: { company_name: string | null; full_name: string | null } | null;
 }
@@ -160,7 +162,7 @@ const CategoriesBrowser: React.FC = () => {
             .order('sort_order', { ascending: true }),
           supabase
             .from('manufacturer_products')
-            .select('id, name, name_ar, category, category_id, unit_price, origin_country, image_url, minimum_order_qty, unit, user_profiles!manufacturer_products_manufacturer_id_fkey(company_name, full_name)')
+            .select('id, name, name_ar, category, category_id, unit_price, origin_country, image_url, images, minimum_order_qty, unit, target_market, user_profiles!manufacturer_products_manufacturer_id_fkey(company_name, full_name)')
             .eq('is_active', true)
             .limit(300),
         ]);
@@ -185,18 +187,13 @@ const CategoriesBrowser: React.FC = () => {
   const filteredProducts = useMemo(() => {
     let list = allProducts;
 
-    // B2B/B2C filtering: restrict industrial/bulk products to B2B only
-    if (buyerMode === 'b2c') {
-      list = list.filter((p) => {
-        const cat = allCategories.find((c) => c.id === p.category_id);
-        const catSlug = cat?.slug || '';
-        const isB2BOnly =
-          B2B_ONLY_SLUGS.has(catSlug) ||
-          B2B_ONLY_CATEGORY_STRINGS.has(p.category || '') ||
-          (p.minimum_order_qty !== null && p.minimum_order_qty >= 500);
-        return !isB2BOnly;
-      });
-    }
+    // Strict B2B/B2C isolation based on the product's target_market
+    list = list.filter((p) => {
+      const market = (p.target_market || 'B2B').toUpperCase();
+      return buyerMode === 'b2c'
+        ? market === 'B2C' || market === 'BOTH'
+        : market === 'B2B' || market === 'BOTH';
+    });
 
     if (selectedCategory !== 'all') {
       const cat = allCategories.find((c) => c.id === selectedCategory);
@@ -449,6 +446,9 @@ const CategoriesBrowser: React.FC = () => {
                     name: product.name,
                     name_ar: product.name_ar,
                     image_url: product.image_url,
+                    images: Array.isArray(product.images)
+                      ? (product.images as unknown[]).filter((i): i is string => typeof i === 'string' && i.length > 0)
+                      : null,
                     unit_price: product.unit_price || 0,
                     minimum_order_qty: product.minimum_order_qty || 1,
                     unit: product.unit || (language === 'ar' ? 'قطعة' : 'pcs'),

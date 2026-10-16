@@ -122,6 +122,7 @@ const INITIAL_FORM = {
   description_en: '',
   category: '',
   is_b2b_only: true,
+  target_market: 'B2B' as 'B2B' | 'B2C' | 'BOTH',
   wholesale_price: '',
   retail_price: '',
   currency: 'SAR',
@@ -402,7 +403,7 @@ function AddProductPageInner() {
     if (!user || !factory) return;
     if (!form.name_ar.trim()) { setError(ap.errorNameRequired); return; }
     if (!form.wholesale_price || isNaN(Number(form.wholesale_price)) || Number(form.wholesale_price) <= 0) { setError(ap.errorWholesale); return; }
-    if (!form.is_b2b_only && (!form.retail_price || isNaN(Number(form.retail_price)) || Number(form.retail_price) <= 0)) { setError(ap.errorRetail); return; }
+    if (form.target_market !== 'B2B' && (!form.retail_price || isNaN(Number(form.retail_price)) || Number(form.retail_price) <= 0)) { setError(ap.errorRetail); return; }
     if (!form.moq || isNaN(Number(form.moq))) { setError(ap.errorMoq); return; }
 
     const cleanedTiers = tiers
@@ -456,8 +457,9 @@ function AddProductPageInner() {
           category: form.category.trim(),
           price: Number(form.wholesale_price),
           wholesale_price: Number(form.wholesale_price),
-          retail_price: form.is_b2b_only ? null : Number(form.retail_price),
-          is_b2b_only: form.is_b2b_only,
+          retail_price: form.target_market === 'B2B' ? null : Number(form.retail_price),
+          is_b2b_only: form.target_market === 'B2B',
+          target_market: form.target_market,
           price_tiers: cleanedTiers,
           currency: form.currency,
           moq: Number(form.moq),
@@ -641,28 +643,24 @@ function AddProductPageInner() {
 
           {/* B2B / B2C Pricing */}
           <div className="space-y-3 p-4 bg-muted/40 border border-border rounded-xl">
-            <label className="block text-sm font-medium text-foreground">{ap.pricingModel}</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => update('is_b2b_only', true)}
-                className={`text-start px-3 py-2.5 rounded-xl border text-sm transition-colors ${
-                  form.is_b2b_only ? 'border-primary bg-primary/10 text-foreground' : 'border-border bg-background text-muted-foreground'
-                }`}
-              >
-                <span className="block font-semibold">{ap.b2bOnly}</span>
-                <span className="block text-xs mt-0.5">{ap.b2bOnlyHint}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => update('is_b2b_only', false)}
-                className={`text-start px-3 py-2.5 rounded-xl border text-sm transition-colors ${
-                  !form.is_b2b_only ? 'border-primary bg-primary/10 text-foreground' : 'border-border bg-background text-muted-foreground'
-                }`}
-              >
-                <span className="block font-semibold">{ap.b2bAndB2c}</span>
-                <span className="block text-xs mt-0.5">{ap.b2bAndB2cHint}</span>
-              </button>
+            <label className="block text-sm font-medium text-foreground">نوع البيع (Target Market)</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {([
+                { value: 'B2B', label: 'جملة وشركات فقط (B2B Only)' },
+                { value: 'B2C', label: 'تجزئة وأفراد فقط (B2C Only)' },
+                { value: 'BOTH', label: 'متاح للاثنين (B2B & B2C)' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, target_market: opt.value, is_b2b_only: opt.value === 'B2B' }))}
+                  className={`text-start px-3 py-2.5 rounded-xl border text-sm transition-colors ${
+                    form.target_market === opt.value ? 'border-primary bg-primary/10 text-foreground' : 'border-border bg-background text-muted-foreground'
+                  }`}
+                >
+                  <span className="block font-semibold">{opt.label}</span>
+                </button>
+              ))}
             </div>
 
             <div className="flex flex-col w-full gap-3">
@@ -688,7 +686,7 @@ function AddProductPageInner() {
                   </select>
                 </div>
               </div>
-              {!form.is_b2b_only && (
+              {form.target_market !== 'B2B' && (
                 <div className="w-full">
                   <label className="block text-sm font-medium text-foreground mb-1.5">{ap.retailPrice} <span className="text-red-500">*</span></label>
                   <input

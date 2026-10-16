@@ -1,3 +1,4 @@
+import os from 'node:os';
 import { imageHosts } from './image-hosts.config.mjs';
 
 const siteUrlHost = (() => {
@@ -27,6 +28,39 @@ const envHostOrigins = [
   process.env.VERCEL_BRANCH_URL,
   process.env.NEXT_PUBLIC_VERCEL_URL,
   process.env.HOSTNAME,
+]
+  .filter(Boolean)
+  .map((o) => {
+    try {
+      return o.includes('://') ? new URL(o).hostname : o.replace(/:\d+$/, '');
+    } catch {
+      return o;
+    }
+  });
+
+const localNetworkHosts = (() => {
+  try {
+    const nets = os.networkInterfaces();
+    const hosts = [];
+    for (const key of Object.keys(nets)) {
+      for (const net of nets[key] || []) {
+        if (net && net.address && !net.internal) hosts.push(net.address);
+      }
+    }
+    return hosts;
+  } catch {
+    return [];
+  }
+})();
+
+const previewEnvHosts = [
+  process.env.NEXT_PUBLIC_APP_URL,
+  process.env.APP_URL,
+  process.env.PUBLIC_URL,
+  process.env.CODESPACE_NAME && process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN
+    ? `${process.env.CODESPACE_NAME}-3000.${process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`
+    : null,
+  process.env.E2B_SANDBOX_ID ? `3000-${process.env.E2B_SANDBOX_ID}.e2b.app` : null,
 ]
   .filter(Boolean)
   .map((o) => {
@@ -115,6 +149,24 @@ const nextConfig = {
       '192.168.*.*',
       '10.*.*.*',
       '172.16.*.*',
+      '**.com',
+      '**.net',
+      '**.io',
+      '**.dev',
+      '**.app',
+      '**.new',
+      '**.run',
+      '**.co',
+      '**.org',
+      '**.ai',
+      '**.cloud',
+      '**.site',
+      '**.online',
+      '**.page',
+      '**.sh',
+      '**.me',
+      ...localNetworkHosts,
+      ...previewEnvHosts,
       ...(siteUrlHost ? [siteUrlHost, `*.${siteUrlHost}`, `**.${siteUrlHost}`] : []),
       ...envHostOrigins,
       ...extraDevOrigins,
