@@ -1,10 +1,13 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import toast from 'react-hot-toast';
 import Icon from '@/components/ui/AppIcon';
 import WishlistButton from '@/components/WishlistButton';
+import { useCart } from '@/contexts/CartContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface MarketplaceProduct {
@@ -128,6 +131,49 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
   const displayNameEn = product.name;
 
   const unitLabel = translateUnit(product.unit);
+
+  const { addItem } = useCart();
+  const { user, requireAuth } = useAuth();
+  const [isAdding, setIsAdding] = useState(false);
+
+  const handleAddToCart = async (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (isAdding) return;
+    if (!user) {
+      requireAuth(() => { void handleAddToCart(); }, 'سجّل الدخول لإضافة المنتج إلى السلة');
+      return;
+    }
+    setIsAdding(true);
+    try {
+      const unitPrice = Number(product.unit_price) || 0;
+      const moq = Math.max(1, Number(product.minimum_order_qty) || 1);
+      await addItem({
+        productId: product.id,
+        name: product.name,
+        nameAr: product.name_ar || product.name,
+        image: product.image_url || '/assets/images/no_image.png',
+        alt: product.name_ar || product.name,
+        price: unitPrice,
+        currency: 'USD',
+        moq: `${moq} ${product.unit || ''}`.trim(),
+        moqNumber: moq,
+        quantity: 1,
+        supplier: product.company_name || '',
+        countryFlag: product.origin_country || '',
+        verified: product.is_verified ?? true,
+        category: product.category || '',
+        isRetailAvailable: true,
+        retailPrice: Number((unitPrice * 1.15).toFixed(2)),
+        shippingTerms: 'CALCULATED_SHIPPING',
+      });
+      toast.success('تمت الإضافة إلى السلة');
+    } catch {
+      toast.error('تعذّرت إضافة المنتج إلى السلة');
+    } finally {
+      setIsAdding(false);
+    }
+  };
 
   return (
     <div className="group bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 hover:shadow-lg transition-all duration-200 flex flex-col">
@@ -286,14 +332,16 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
             </>
           ) : (
             <>
-              <Link
-                href={`/cart`}
-                className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-primary text-primary-foreground text-[9px] font-bold rounded-lg hover:opacity-90 transition-opacity"
+              <button
+                type="button"
+                onClick={handleAddToCart}
+                disabled={isAdding}
+                className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-primary text-primary-foreground text-[9px] font-bold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-60"
                 dir="rtl"
               >
                 <Icon name="ShoppingCartIcon" size={11} />
                 أضف للسلة
-              </Link>
+              </button>
               <Link
                 href={`/product/${product.id}`}
                 className="flex items-center justify-center px-2.5 py-1.5 bg-muted text-foreground text-[9px] font-bold rounded-lg hover:bg-muted/80 transition-colors border border-border"
