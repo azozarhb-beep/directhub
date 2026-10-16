@@ -32,6 +32,7 @@ interface Product {
   unit_price: number | null;
   origin_country: string | null;
   image_url: string | null;
+  images?: unknown;
   minimum_order_qty: number | null;
   unit: string | null;
   is_active?: boolean;
@@ -160,7 +161,7 @@ const CategoriesBrowser: React.FC = () => {
             .order('sort_order', { ascending: true }),
           supabase
             .from('manufacturer_products')
-            .select('id, name, name_ar, category, category_id, unit_price, origin_country, image_url, minimum_order_qty, unit, user_profiles!manufacturer_products_manufacturer_id_fkey(company_name, full_name)')
+            .select('id, name, name_ar, category, category_id, unit_price, origin_country, image_url, images, minimum_order_qty, unit, user_profiles!manufacturer_products_manufacturer_id_fkey(company_name, full_name)')
             .eq('is_active', true)
             .limit(300),
         ]);
@@ -449,6 +450,9 @@ const CategoriesBrowser: React.FC = () => {
                     name: product.name,
                     name_ar: product.name_ar,
                     image_url: product.image_url,
+                    images: Array.isArray(product.images)
+                      ? (product.images as unknown[]).filter((i): i is string => typeof i === 'string' && i.length > 0)
+                      : null,
                     unit_price: product.unit_price || 0,
                     minimum_order_qty: product.minimum_order_qty || 1,
                     unit: product.unit || (language === 'ar' ? 'قطعة' : 'pcs'),

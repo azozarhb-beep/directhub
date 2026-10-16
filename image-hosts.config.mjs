@@ -19,4 +19,16 @@ export const imageHosts = [
         protocol: 'https',
         hostname: 'img.rocket.new',
     },
+    {
+        protocol: 'https',
+        hostname: '**.supabase.co',
+    },
+    {
+        protocol: 'https',
+        hostname: 'direct-hub.net',
+    },
+    {
+        protocol: 'https',
+        hostname: '**.direct-hub.net',
+    },
 ];
