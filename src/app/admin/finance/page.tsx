@@ -154,6 +154,10 @@ export default function AdminFinancePage() {
   const [releaseFor, setReleaseFor] = useState<{ order: EscrowOrder; stage: 1 | 2 | 3 } | null>(null);
   const [releaseNote, setReleaseNote] = useState('');
   const [tab, setTab] = useState<TabKey>('escrow');
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('tab') as TabKey | null;
+    if (q && ['escrow', 'milestones', 'deposits', 'commissions', 'vault'].includes(q)) setTab(q);
+  }, []);
   const [orders, setOrders] = useState<EscrowOrder[]>([]);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [ledger, setLedger] = useState<AgentLedger[]>([]);
