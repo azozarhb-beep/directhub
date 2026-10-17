@@ -115,6 +115,7 @@ const categoryMatches = (cat: string, chip: string): boolean => {
 
 const inspectionStatusLabel = (s: string) => {
   switch (s) {
+    case 'assigned': return 'تم الإسناد تلقائياً';
     case 'dispatched': return 'تم الإسناد';
     case 'in_progress': return 'قيد التفتيش';
     case 'report_submitted': return 'تقرير مرفوع';
@@ -338,7 +339,7 @@ export default function AdminFieldOpsPage() {
     activeAgents: agents.filter((a) => a.status === 'approved').length,
     pendingKyc: factories.filter((f) => ['pending', 'under_review', 'contacting', 'awaiting_license_approval'].includes(f.status)).length,
     liveProducts: products.filter((p) => p.isActive && p.isPublished).length,
-    activeInspections: inspections.filter((i) => ['dispatched', 'in_progress'].includes(i.status)).length,
+    activeInspections: inspections.filter((i) => ['assigned', 'dispatched', 'in_progress'].includes(i.status)).length,
     soldToday: products.reduce((s, p) => s + p.soldToday, 0),
   }), [agents, factories, products, inspections]);
 
@@ -804,7 +805,7 @@ export default function AdminFieldOpsPage() {
                   </div>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  {i.status === 'dispatched' && (
+                  {(i.status === 'dispatched' || i.status === 'assigned') && (
                     <button onClick={() => startInspection(i)} disabled={busyKey === `in-${i.id}`} className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-xs font-bold">بدء التفتيش</button>
                   )}
                   {!['passed', 'failed'].includes(i.status) && (

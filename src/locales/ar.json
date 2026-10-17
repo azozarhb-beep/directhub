@@ -2892,7 +2892,7 @@
             "descriptionPlaceholder": "وصف مختصر للملف...",
             "fileRequired": "الملف *",
             "clickChoose": "انقر لاختيار ملف",
-            "fileHint": "PDF, JPG, PNG — حتى 15MB",
+            "fileHint": "PDF, JPG, PNG — حتى 50MB",
             "uploading": "جاري الرفع...",
             "uploadFile": "رفع الملف",
             "uploadedFiles": "الملفات المرفوعة ({count})",

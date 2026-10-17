@@ -2891,7 +2891,7 @@
             "descriptionPlaceholder": "Short file description...",
             "fileRequired": "File *",
             "clickChoose": "Click to choose a file",
-            "fileHint": "PDF, JPG, PNG — up to 15MB",
+            "fileHint": "PDF, JPG, PNG — up to 50MB",
             "uploading": "Uploading...",
             "uploadFile": "Upload file",
             "uploadedFiles": "Uploaded files ({count})",
