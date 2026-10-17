@@ -18,6 +18,7 @@ import AgentSalesDashboard from './AgentSalesDashboard';
 import AgentCommissionAccountPanel from './AgentCommissionAccountPanel';
 import AgentEarningsPanel from './AgentEarningsPanel';
 import AgentDispatchRoomsTab from './AgentDispatchRoomsTab';
+import AgentInspectionTasksPanel from './AgentInspectionTasksPanel';
 import EnhancedAgentDashboard from '@/components/agent/EnhancedAgentDashboard';
 import ReferralTrackingPanel from './ReferralTrackingPanel';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -968,7 +969,7 @@ export default function AgentDashboardPage() {
               items: [
                 { id: 'factories', icon: 'BuildingOffice2Icon', label: ad.tabFactories.replace('{count}', String(totalFactories)), badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' },
                 { id: 'products', icon: 'CubeIcon', label: ad.tabProducts.replace('{count}', String(totalProducts)), badge: 0, badgeColor: '', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
-                { id: 'inspections', icon: 'ClipboardDocumentListIcon', label: 'مهام التفتيش', badge: inspectionTasks.length, badgeColor: 'bg-amber-500', iconColor: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' },
+                { id: 'inspections', icon: 'ClipboardDocumentListIcon', label: 'مهام التفتيش', badge: inspectionTasks.filter(t => !t.id.startsWith('mock-')).length, badgeColor: 'bg-amber-500', iconColor: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' },
                 { id: 'enhanced', icon: 'BriefcaseIcon', label: 'التسجيل والتحقق', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
               ],
             },
@@ -1076,8 +1077,13 @@ export default function AgentDashboardPage() {
           );
         })()}
 
-        {/* Inspection Tasks Tab — Milestone Tracking */}
-        {activeTab === 'inspections' && (
+        {/* Inspection Tasks Tab — field_inspection_tasks based panel */}
+        {activeTab === 'inspections' && user && (
+          <AgentInspectionTasksPanel userId={user.id} />
+        )}
+
+        {/* Legacy escrow-order inspection view (superseded by AgentInspectionTasksPanel) */}
+        {false && activeTab === 'inspections' && (
           <div className="space-y-4">
             {/* Section Header */}
             <div className="flex items-center justify-between">
