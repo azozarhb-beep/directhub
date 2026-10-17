@@ -2034,10 +2034,14 @@ export default function AdminControlRoomPage() {
 
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  const [portalHub, setPortalHub] = useState<string | null>(null);
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const q = new URLSearchParams(window.location.search).get('tab');
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get('tab');
     if (q && q !== 'overview') setActiveTab(q as ActiveTab);
+    const h = params.get('hub');
+    if (h) setPortalHub(h);
   }, []);
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -4271,10 +4275,10 @@ export default function AdminControlRoomPage() {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 pb-24">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 pb-24 flex flex-col">
 
         {/* ── Page Header ─────────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-4 mb-6">
+        <div className="flex items-center gap-4 mb-6 order-[-30]">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-600 to-red-800 flex items-center justify-center shrink-0 shadow-lg">
             <Icon name="ShieldCheckIcon" size={24} className="text-white" />
           </div>
@@ -4307,9 +4311,11 @@ export default function AdminControlRoomPage() {
         </div>
 
         {/* ── Navigation Tabs — Ultra-Luxurious ──────────────────────────────── */}
-        <SmartActionBar onNavigateTab={(tab) => setActiveTab(tab as ActiveTab)} />
+        <div className="order-[-20]">
+          <SmartActionBar onNavigateTab={(tab) => setActiveTab(tab as ActiveTab)} />
+        </div>
 
-        <div className="space-y-6 mb-6">
+        <div className="space-y-6 mb-6 order-[50]">
 
           {/* ── Canonical Hubs (6) — consolidated presentation layer ───────────── */}
           {(() => {
@@ -4450,47 +4456,121 @@ export default function AdminControlRoomPage() {
               </>
             );
 
+            const hubDescriptions: Record<string, string> = {
+              field: 'توثيق المصانع، المناديب الميدانيون، مهام التفتيش، والكتالوج الشامل وملفات PDF.',
+              commerce: 'طلبات عروض الأسعار RFQ، المنتجات الحية، مدقّق الجمارك، والعربات المتروكة.',
+              logistics: 'سوق الشحن، تتبع الشحنات، شركاء النقل، ونزاعات اللوجستيات.',
+              treasury: 'محرك الضمان، اعتماد الدفعات، الخزنة، وتوثيق حسابات IBAN.',
+              comms: 'أتمتة واتساب، محادثات المصانع، تفاوض المشتري والمورد، ومركز البث.',
+              system: 'تشخيص المنصة، تدقيق الذكاء الاصطناعي، سجلات الأخطاء، ومستكشف قاعدة البيانات.',
+            };
+            const hubBadges = (hub: { id: string; cards: HubCard[] }) =>
+              hub.cards.filter(c => (c.badge ?? 0) > 0).slice(0, 3);
+            const openHub = (id: string | null) => {
+              setPortalHub(id);
+              if (typeof window !== 'undefined') {
+                window.history.replaceState(null, '', id ? `/admin/control-room?hub=${id}` : '/admin/control-room');
+              }
+            };
+            const activeHub = hubs.find(h => h.id === portalHub) || null;
+
             return (
-              <div className="space-y-6">
-                {hubs.map(hub => (
-                  <section key={hub.id} className="rounded-3xl border border-[#30363d] bg-[#0d1117]/60 p-4">
-                    <div className="flex items-center gap-3 mb-3 px-1">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm" style={{ background: hub.gradient }}>
-                        <Icon name={hub.icon as any} size={20} className="text-white" />
+              <>
+                {/* ── 6 Executive Portal Cards (full-width) ── */}
+                <div className="space-y-3">
+                  {hubs.map(hub => {
+                    const badges = hubBadges(hub);
+                    return (
+                      <button
+                        key={hub.id}
+                        type="button"
+                        onClick={() => openHub(hub.id)}
+                        className="group w-full flex items-center gap-4 p-4 sm:p-5 rounded-3xl border border-[#30363d] bg-[#0d1117] hover:bg-[#131a24] hover:border-[#484f58] hover:shadow-lg transition-all text-start"
+                      >
+                        <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-md" style={{ background: hub.gradient }}>
+                          <Icon name={hub.icon as any} size={28} className="text-white" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-base font-bold text-slate-100 leading-tight">{hub.title}</h3>
+                          <p className="text-[10px] uppercase tracking-widest text-slate-500 mt-0.5">{hub.subtitle}</p>
+                          <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">{hubDescriptions[hub.id]}</p>
+                          {badges.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              {badges.map(b => (
+                                <span key={b.label} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-[10px] font-semibold text-slate-300">
+                                  {b.label}
+                                  <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{b.badge}</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <Icon name={isRTL ? 'ChevronLeftIcon' : 'ChevronRightIcon'} size={20} className="text-slate-500 group-hover:text-slate-200 shrink-0" />
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* ── Portal full view: all tools / micro-buttons live here ── */}
+                {activeHub && (
+                  <div className="fixed inset-0 z-50 w-full h-[100dvh] bg-slate-950 flex flex-col overflow-hidden" dir={dir}>
+                    <div className="sticky top-0 z-10 shrink-0 w-full flex items-center justify-between gap-3 px-4 py-3 bg-slate-900 border-b border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => openHub(null)}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-sm font-bold transition-colors shrink-0"
+                      >
+                        <Icon name={isRTL ? 'ArrowRightIcon' : 'ArrowLeftIcon'} size={16} className="text-slate-100" />
+                        <span className="hidden sm:inline">العودة للوحة الإدارة</span>
+                        <span className="sm:hidden">رجوع</span>
+                      </button>
+                      <div className="flex items-center gap-2 min-w-0 flex-1 justify-center">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: activeHub.gradient }}>
+                          <Icon name={activeHub.icon as any} size={16} className="text-white" />
+                        </div>
+                        <h2 className="text-sm sm:text-base font-bold text-white truncate">{activeHub.title}</h2>
                       </div>
-                      <div className="min-w-0">
-                        <h3 className="text-sm font-bold text-slate-100 leading-tight">{hub.title}</h3>
-                        <p className="text-[10px] uppercase tracking-widest text-slate-500">{hub.subtitle}</p>
+                      <button
+                        type="button"
+                        onClick={() => openHub(null)}
+                        aria-label="إغلاق"
+                        className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-800 hover:bg-red-600 text-slate-100 transition-colors shrink-0"
+                      >
+                        <Icon name="XMarkIcon" size={18} className="text-slate-100" />
+                      </button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 pb-28 bg-slate-950">
+                      <p className="text-xs text-slate-400 mb-4">{hubDescriptions[activeHub.id]}</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                        {activeHub.cards.map(c =>
+                          c.href ? (
+                            <Link key={`${activeHub.id}-${c.label}`} href={c.href} className={cardClass}>
+                              {renderInner(c)}
+                            </Link>
+                          ) : (
+                            <button
+                              key={`${activeHub.id}-${c.label}`}
+                              type="button"
+                              onClick={() => {
+                                const t = c.tab as ActiveTab;
+                                setPortalHub(null);
+                                setActiveTab(t);
+                                if (typeof window !== 'undefined') window.history.replaceState(null, '', `/admin/control-room?tab=${t}`);
+                                if (t === 'field_agents' && agentFactories.length === 0) fetchFieldAgentsData();
+                                if (t === 'payments' && allPayments.length === 0) fetchPayments();
+                                if (t === 'accounts' && accountsData.users.length === 0) fetchAccountsData();
+                              }}
+                              className={cardClass}
+                            >
+                              {renderInner(c)}
+                            </button>
+                          )
+                        )}
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                      {hub.cards.map(c =>
-                        c.href ? (
-                          <Link key={`${hub.id}-${c.label}`} href={c.href} className={cardClass}>
-                            {renderInner(c)}
-                          </Link>
-                        ) : (
-                          <button
-                            key={`${hub.id}-${c.label}`}
-                            type="button"
-                            onClick={() => {
-                              const t = c.tab as ActiveTab;
-                              setActiveTab(t);
-                              if (typeof window !== 'undefined') window.history.replaceState(null, '', `/admin/control-room?tab=${t}`);
-                              if (t === 'field_agents' && agentFactories.length === 0) fetchFieldAgentsData();
-                              if (t === 'payments' && allPayments.length === 0) fetchPayments();
-                              if (t === 'accounts' && accountsData.users.length === 0) fetchAccountsData();
-                            }}
-                            className={cardClass}
-                          >
-                            {renderInner(c)}
-                          </button>
-                        )
-                      )}
-                    </div>
-                  </section>
-                ))}
-              </div>
+                  </div>
+                )}
+              </>
             );
           })()}
 
@@ -6872,7 +6952,8 @@ export default function AdminControlRoomPage() {
               ))}
             </div>
 
-            {/* Secondary KPIs */}
+            {/* Secondary KPIs — preserved, hidden from condensed root view */}
+            <div className="hidden" aria-hidden="true">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
                 { label: ui.overview.platformCommission, value: `$${analytics.platformCommission.toLocaleString('en-US', { maximumFractionDigits: 0 })}`, icon: 'BanknotesIcon', color: 'text-amber-600' },
@@ -6909,6 +6990,7 @@ export default function AdminControlRoomPage() {
                 تصدير سجل التدقيق
               </button>
             </div>
+            </div>{/* /hidden secondary rows */}
 
             {/* Quick Actions */}
             <div className="bg-card border border-border rounded-2xl p-5">
@@ -6949,7 +7031,8 @@ export default function AdminControlRoomPage() {
               </div>
             </div>
 
-            {/* Recent Orders */}
+            {/* Recent Orders — preserved, hidden from condensed root view */}
+            <div className="hidden" aria-hidden="true">
             <div className="bg-card border border-border rounded-2xl overflow-hidden">
               <div className="flex items-center justify-between px-5 py-4 border-b border-border">
                 <div className="flex items-center gap-2">
@@ -6976,6 +7059,7 @@ export default function AdminControlRoomPage() {
                 )}
               </div>
             </div>
+            </div>{/* /hidden recent orders */}
           </div>
         )}
 
