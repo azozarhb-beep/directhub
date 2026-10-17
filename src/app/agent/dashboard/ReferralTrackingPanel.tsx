@@ -3,12 +3,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
+import { isApprovedOrActiveFacility } from '@/lib/referralStats';
 
 interface ReferredFactory {
   id: string;
   company_name: string;
   created_at: string;
   registration_status: string;
+  is_approved?: boolean | null;
+  is_active?: boolean | null;
   city: string;
   country: string;
 }
@@ -29,10 +32,11 @@ export default function ReferralTrackingPanel({ userId }: Props) {
   const fetchReferrals = useCallback(async () => {
     setLoading(true);
     try {
+      // All facilities linked to this agent (by agent id OR by referral code)
       const { data } = await supabase
         .from('factory_registrations')
-        .select('id, company_name, created_at, registration_status, city, country')
-        .eq('referred_by_agent_id', userId)
+        .select('id, company_name, created_at, registration_status, is_approved, is_active, city, country')
+        .or(`referred_by_agent_id.eq.${userId},referred_by_agent_code.eq.${referralCode}`)
         .order('created_at', { ascending: false });
       setReferredFactories((data as ReferredFactory[]) || []);
     } catch {
@@ -40,7 +44,7 @@ export default function ReferralTrackingPanel({ userId }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [userId, supabase]);
+  }, [userId, supabase, referralCode]);
 
   useEffect(() => { fetchReferrals(); }, [fetchReferrals]);
 
@@ -60,7 +64,7 @@ export default function ReferralTrackingPanel({ userId }: Props) {
   };
 
   const totalReferred = referredFactories.length;
-  const totalActive = referredFactories.filter(f => f.registration_status === 'approved').length;
+  const totalActive = referredFactories.filter(isApprovedOrActiveFacility).length;
 
   return (
     <div className="space-y-5">
@@ -188,10 +192,10 @@ export default function ReferralTrackingPanel({ userId }: Props) {
                     </td>
                     <td className="px-4 py-3">
                       <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
-                        f.registration_status === 'approved' ?'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        isApprovedOrActiveFacility(f) ?'bg-emerald-50 text-emerald-700 border-emerald-200'
                           : f.registration_status === 'rejected' ?'bg-red-50 text-red-700 border-red-200' :'bg-amber-50 text-amber-700 border-amber-200'
                       }`}>
-                        {f.registration_status === 'approved' ? 'معتمد ✓'
+                        {isApprovedOrActiveFacility(f) ? 'معتمد ✓'
                           : f.registration_status === 'rejected'? 'مرفوض' :'قيد المراجعة'}
                       </span>
                     </td>

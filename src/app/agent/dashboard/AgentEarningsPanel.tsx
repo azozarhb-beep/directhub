@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
+import { isApprovedOrActiveFacility } from '@/lib/referralStats';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,17 +63,18 @@ export default function AgentEarningsPanel({ userId }: Props) {
     setLoading(true);
     setError('');
     try {
-      // 1. Fetch factories registered under this agent (via referral link)
+      // 1. Fetch factories registered under this agent (via referral link / code)
+      const agentReferralCode = `AGT-${userId.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
       const { data: factoriesData, error: factoriesErr } = await supabase
         .from('factory_registrations')
-        .select('id, user_id, company_name, registration_status, approval_type, created_at, city, country')
-        .eq('referred_by_agent_id', userId)
+        .select('id, user_id, company_name, registration_status, is_approved, is_active, approval_type, created_at, city, country')
+        .or(`referred_by_agent_id.eq.${userId},referred_by_agent_code.eq.${agentReferralCode}`)
         .order('created_at', { ascending: false });
 
       if (factoriesErr) throw factoriesErr;
 
       const factories = factoriesData || [];
-      const approvedFactories = factories.filter(f => f.registration_status === 'approved');
+      const approvedFactories = factories.filter(isApprovedOrActiveFacility);
       const pendingFactories = factories.filter(f =>
         f.registration_status === 'pending' || f.registration_status === 'under_review' || f.registration_status === 'pending_supplier_approval'
       );

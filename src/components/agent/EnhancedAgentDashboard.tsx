@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 
@@ -9,7 +10,7 @@ import Icon from '@/components/ui/AppIcon';
 interface FactoryRegistration {
   id: string;
   company_name: string;
-  factory_type: 'local_factory' | 'international_factory';
+  factory_type: string;
   country: string;
   city: string;
   region?: string;
@@ -23,6 +24,10 @@ interface FactoryRegistration {
   contact_status: string;
   created_at: string;
   trade_license_url?: string;
+  cr_document_url?: string;
+  factory_license_url?: string;
+  commercial_registry_url?: string;
+  industrial_license_url?: string;
 }
 
 interface CommissionEntry {
@@ -41,32 +46,6 @@ interface Props {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const YEMENI_GOVERNORATES = [
-  'صنعاء', 'عدن', 'تعز', 'الحديدة', 'إب', 'حضرموت', 'مأرب', 'شبوة',
-  'أبين', 'لحج', 'الضالع', 'ذمار', 'حجة', 'عمران', 'صعدة', 'البيضاء',
-  'الجوف', 'المحويت', 'المهرة', 'ريمة', 'سقطرى', 'أمانة العاصمة',
-];
-
-const INTERNATIONAL_COUNTRIES = [
-  'المملكة العربية السعودية', 'الإمارات العربية المتحدة', 'الكويت', 'قطر', 'البحرين', 'عُمان',
-  'مصر', 'الأردن', 'العراق', 'سوريا', 'لبنان', 'ليبيا', 'تونس', 'الجزائر', 'المغرب',
-  'الصين', 'تركيا', 'الهند', 'باكستان', 'بنغلاديش', 'إندونيسيا', 'ماليزيا',
-  'فيتنام', 'تايلاند', 'سنغافورة', 'اليابان', 'كوريا الجنوبية',
-  'ألمانيا', 'فرنسا', 'المملكة المتحدة', 'إيطاليا', 'إسبانيا', 'روسيا',
-  'هولندا', 'بلجيكا', 'السويد', 'سويسرا', 'النمسا', 'بولندا',
-  'الولايات المتحدة الأمريكية', 'كندا', 'البرازيل', 'الأرجنتين',
-  'نيجيريا', 'جنوب أفريقيا', 'كينيا', 'أستراليا', 'نيوزيلندا',
-];
-
-const INDUSTRIES = [
-  'الغذاء والمشروبات', 'النسيج والملابس', 'الأثاث والديكور', 'الإلكترونيات',
-  'المعادن والصلب', 'البلاستيك والمطاط', 'الكيماويات', 'مواد البناء',
-  'الآلات والمعدات', 'السيارات وقطع الغيار', 'الأدوية والمستلزمات الطبية',
-  'الزراعة والمنتجات الزراعية', 'الطاقة والبترول', 'التعبئة والتغليف', 'أخرى',
-];
-
-const EMPLOYEE_RANGES = ['1-10', '11-50', '51-200', '201-500', '500+'];
-
 const KYC_STATUS_META: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   pending: { label: 'قيد الانتظار', color: '#92400e', bg: '#fef3c7', icon: 'ClockIcon' },
   under_review: { label: 'تحت المراجعة', color: '#1e40af', bg: '#dbeafe', icon: 'MagnifyingGlassIcon' },
@@ -81,32 +60,20 @@ const COMMISSION_STATUS_META: Record<string, { label: string; color: string; bg:
   paid: { label: 'مدفوع ✓', color: '#065f46', bg: '#d1fae5' },
 };
 
-const EMPTY_LOCAL_FORM = {
-  company_name: '',
-  city: '',
-  region: '',
-  contact_person: '',
-  contact_phone: '',
-  contact_email: '',
-  industry: '',
-  employee_count: '',
-  annual_capacity: '',
-  agent_notes: '',
-};
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const EMPTY_INTL_FORM = {
-  company_name: '',
-  country: '',
-  city: '',
-  contact_person: '',
-  contact_phone: '',
-  contact_email: '',
-  website: '',
-  industry: '',
-  employee_count: '',
-  annual_capacity: '',
-  agent_notes: '',
-};
+function hasValue(v?: string | null): boolean {
+  return !!(v && v.trim());
+}
+
+/** A facility has all required documents when it has a trade license and any one of the registry / industrial licenses. */
+function getMissingDocs(f: FactoryRegistration): string[] {
+  const missing: string[] = [];
+  if (!hasValue(f.trade_license_url)) missing.push('الرخصة التجارية');
+  if (!hasValue(f.cr_document_url) && !hasValue(f.commercial_registry_url)) missing.push('السجل التجاري');
+  if (!hasValue(f.factory_license_url) && !hasValue(f.industrial_license_url)) missing.push('رخصة المصنع / الترخيص الصناعي');
+  return missing;
+}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -124,312 +91,43 @@ function SectionHeader({ icon, title, subtitle }: { icon: string; title: string;
   );
 }
 
-function FormField({
-  label,
-  required,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-semibold mb-1.5" style={{ color: '#ccc' }}>
-        {label} {required && <span style={{ color: '#D4AF37' }}>*</span>}
-      </label>
-      {children}
-    </div>
-  );
-}
+// ─── Missing Documents Alerts ─────────────────────────────────────────────────
 
-const inputClass =
-  'w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none transition-colors';
-const inputStyle = { background: '#2a2a2a', border: '1px solid #3a3a3a', color: '#fff' };
+function MissingDocsAlerts({ factories }: { factories: FactoryRegistration[] }) {
+  const alerts = factories
+    .map(f => ({ factory: f, missing: getMissingDocs(f) }))
+    .filter(a => a.missing.length > 0 && a.factory.registration_status !== 'rejected');
 
-// ─── Local Factory Registration Form ─────────────────────────────────────────
-
-function LocalFactoryForm({ userId, onSuccess }: { userId: string; onSuccess: () => void }) {
-  const [form, setForm] = useState({ ...EMPTY_LOCAL_FORM });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
-  const supabase = createClient();
-
-  const set = (key: string, val: string) => setForm(prev => ({ ...prev, [key]: val }));
-
-  const handleSubmit = async () => {
-    if (!form.company_name.trim()) { setError('يرجى إدخال اسم المصنع'); return; }
-    if (!form.city.trim()) { setError('يرجى اختيار المحافظة'); return; }
-    if (!form.contact_person.trim()) { setError('يرجى إدخال اسم المسؤول'); return; }
-    if (!form.contact_phone.trim()) { setError('يرجى إدخال رقم الهاتف'); return; }
-
-    setSaving(true);
-    setError('');
-    try {
-      const { error: dbErr } = await supabase.from('agent_factory_registrations').insert({
-        agent_id: userId,
-        company_name: form.company_name.trim(),
-        factory_type: 'local_factory',
-        country: 'اليمن',
-        city: form.city,
-        region: form.region || null,
-        contact_person: form.contact_person.trim(),
-        contact_phone: form.contact_phone.trim(),
-        contact_email: form.contact_email.trim() || null,
-        industry: form.industry || null,
-        employee_count: form.employee_count || null,
-        annual_capacity: form.annual_capacity.trim() || null,
-        agent_notes: form.agent_notes.trim() || null,
-        contact_status: 'contacting',
-        registration_status: 'pending',
-      });
-      if (dbErr) throw dbErr;
-      setSuccess(true);
-      setForm({ ...EMPTY_LOCAL_FORM });
-      setTimeout(() => { setSuccess(false); onSuccess(); }, 1500);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'حدث خطأ أثناء الحفظ');
-    } finally {
-      setSaving(false);
-    }
-  };
+  if (alerts.length === 0) return null;
 
   return (
-    <div className="space-y-4">
-      {success && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold" style={{ background: '#d1fae5', color: '#065f46' }}>
-          <Icon name="CheckCircleIcon" size={16} />
-          تم تسجيل المصنع المحلي بنجاح!
-        </div>
-      )}
-      {error && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm" style={{ background: '#fee2e2', color: '#991b1b' }}>
-          <Icon name="ExclamationCircleIcon" size={16} />
-          {error}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <FormField label="اسم المصنع / الشركة" required>
-          <input value={form.company_name} onChange={e => set('company_name', e.target.value)}
-            placeholder="مثال: مصنع الأمل للنسيج" className={inputClass} style={inputStyle} />
-        </FormField>
-
-        <FormField label="المحافظة" required>
-          <select value={form.city} onChange={e => set('city', e.target.value)} className={inputClass} style={inputStyle}>
-            <option value="">اختر المحافظة</option>
-            {YEMENI_GOVERNORATES.map(g => <option key={g} value={g}>{g}</option>)}
-          </select>
-        </FormField>
-
-        <FormField label="المنطقة / الحي">
-          <input value={form.region} onChange={e => set('region', e.target.value)}
-            placeholder="مثال: المنطقة الصناعية" className={inputClass} style={inputStyle} />
-        </FormField>
-
-        <FormField label="القطاع الصناعي">
-          <select value={form.industry} onChange={e => set('industry', e.target.value)} className={inputClass} style={inputStyle}>
-            <option value="">اختر القطاع</option>
-            {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
-          </select>
-        </FormField>
-
-        <FormField label="اسم المسؤول / المدير" required>
-          <input value={form.contact_person} onChange={e => set('contact_person', e.target.value)}
-            placeholder="الاسم الكامل" className={inputClass} style={inputStyle} />
-        </FormField>
-
-        <FormField label="رقم الهاتف" required>
-          <input value={form.contact_phone} onChange={e => set('contact_phone', e.target.value)}
-            placeholder="مثال: 771234567" className={inputClass} style={inputStyle} dir="ltr" />
-        </FormField>
-
-        <FormField label="البريد الإلكتروني">
-          <input value={form.contact_email} onChange={e => set('contact_email', e.target.value)}
-            placeholder="example@factory.com" className={inputClass} style={inputStyle} dir="ltr" />
-        </FormField>
-
-        <FormField label="عدد الموظفين">
-          <select value={form.employee_count} onChange={e => set('employee_count', e.target.value)} className={inputClass} style={inputStyle}>
-            <option value="">اختر النطاق</option>
-            {EMPLOYEE_RANGES.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </FormField>
-
-        <div className="md:col-span-2">
-          <FormField label="الطاقة الإنتاجية السنوية">
-            <input value={form.annual_capacity} onChange={e => set('annual_capacity', e.target.value)}
-              placeholder="مثال: 50,000 وحدة / سنة" className={inputClass} style={inputStyle} />
-          </FormField>
-        </div>
-
-        <div className="md:col-span-2">
-          <FormField label="ملاحظات المندوب">
-            <textarea value={form.agent_notes} onChange={e => set('agent_notes', e.target.value)}
-              rows={3} placeholder="أي ملاحظات إضافية حول المصنع..."
-              className={inputClass + ' resize-none'} style={inputStyle} />
-          </FormField>
-        </div>
+    <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.4)' }}>
+      <div className="flex items-center gap-2">
+        <Icon name="ExclamationTriangleIcon" size={18} style={{ color: '#f59e0b' }} />
+        <p className="text-sm font-bold" style={{ color: '#f59e0b' }}>
+          تنبيهات الوثائق الناقصة ({alerts.length})
+        </p>
       </div>
-
-      <button
-        onClick={handleSubmit}
-        disabled={saving}
-        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-opacity disabled:opacity-50"
-        style={{ background: '#D4AF37', color: '#1E1E1E' }}
-      >
-        {saving ? (
-          <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />جاري الحفظ...</>
-        ) : (
-          <><Icon name="PlusCircleIcon" size={16} />تسجيل المصنع المحلي</>
-        )}
-      </button>
-    </div>
-  );
-}
-
-// ─── International Factory Registration Form ──────────────────────────────────
-
-function InternationalFactoryForm({ userId, onSuccess }: { userId: string; onSuccess: () => void }) {
-  const [form, setForm] = useState({ ...EMPTY_INTL_FORM });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
-  const supabase = createClient();
-
-  const set = (key: string, val: string) => setForm(prev => ({ ...prev, [key]: val }));
-
-  const handleSubmit = async () => {
-    if (!form.company_name.trim()) { setError('يرجى إدخال اسم المصنع'); return; }
-    if (!form.country.trim()) { setError('يرجى اختيار الدولة'); return; }
-    if (!form.contact_person.trim()) { setError('يرجى إدخال اسم المسؤول'); return; }
-    if (!form.contact_phone.trim()) { setError('يرجى إدخال رقم الهاتف'); return; }
-
-    setSaving(true);
-    setError('');
-    try {
-      const { error: dbErr } = await supabase.from('agent_factory_registrations').insert({
-        agent_id: userId,
-        company_name: form.company_name.trim(),
-        factory_type: 'international_factory',
-        country: form.country,
-        city: form.city.trim() || form.country,
-        contact_person: form.contact_person.trim(),
-        contact_phone: form.contact_phone.trim(),
-        contact_email: form.contact_email.trim() || null,
-        website: form.website.trim() || null,
-        industry: form.industry || null,
-        employee_count: form.employee_count || null,
-        annual_capacity: form.annual_capacity.trim() || null,
-        agent_notes: form.agent_notes.trim() || null,
-        contact_status: 'contacting',
-        registration_status: 'pending',
-      });
-      if (dbErr) throw dbErr;
-      setSuccess(true);
-      setForm({ ...EMPTY_INTL_FORM });
-      setTimeout(() => { setSuccess(false); onSuccess(); }, 1500);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'حدث خطأ أثناء الحفظ');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      {success && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold" style={{ background: '#d1fae5', color: '#065f46' }}>
-          <Icon name="CheckCircleIcon" size={16} />
-          تم تسجيل المصنع الدولي بنجاح!
-        </div>
-      )}
-      {error && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm" style={{ background: '#fee2e2', color: '#991b1b' }}>
-          <Icon name="ExclamationCircleIcon" size={16} />
-          {error}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <FormField label="اسم المصنع / الشركة" required>
-          <input value={form.company_name} onChange={e => set('company_name', e.target.value)}
-            placeholder="Company / Factory Name" className={inputClass} style={inputStyle} />
-        </FormField>
-
-        <FormField label="الدولة" required>
-          <select value={form.country} onChange={e => set('country', e.target.value)} className={inputClass} style={inputStyle}>
-            <option value="">اختر الدولة</option>
-            {INTERNATIONAL_COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </FormField>
-
-        <FormField label="المدينة">
-          <input value={form.city} onChange={e => set('city', e.target.value)}
-            placeholder="City" className={inputClass} style={inputStyle} />
-        </FormField>
-
-        <FormField label="القطاع الصناعي">
-          <select value={form.industry} onChange={e => set('industry', e.target.value)} className={inputClass} style={inputStyle}>
-            <option value="">اختر القطاع</option>
-            {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
-          </select>
-        </FormField>
-
-        <FormField label="اسم المسؤول / المدير" required>
-          <input value={form.contact_person} onChange={e => set('contact_person', e.target.value)}
-            placeholder="Contact Person Name" className={inputClass} style={inputStyle} />
-        </FormField>
-
-        <FormField label="رقم الهاتف / واتساب" required>
-          <input value={form.contact_phone} onChange={e => set('contact_phone', e.target.value)}
-            placeholder="+86 138 0000 0000" className={inputClass} style={inputStyle} dir="ltr" />
-        </FormField>
-
-        <FormField label="البريد الإلكتروني">
-          <input value={form.contact_email} onChange={e => set('contact_email', e.target.value)}
-            placeholder="contact@factory.com" className={inputClass} style={inputStyle} dir="ltr" />
-        </FormField>
-
-        <FormField label="الموقع الإلكتروني">
-          <input value={form.website} onChange={e => set('website', e.target.value)}
-            placeholder="https://www.factory.com" className={inputClass} style={inputStyle} dir="ltr" />
-        </FormField>
-
-        <FormField label="عدد الموظفين">
-          <select value={form.employee_count} onChange={e => set('employee_count', e.target.value)} className={inputClass} style={inputStyle}>
-            <option value="">اختر النطاق</option>
-            {EMPLOYEE_RANGES.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </FormField>
-
-        <FormField label="الطاقة الإنتاجية السنوية">
-          <input value={form.annual_capacity} onChange={e => set('annual_capacity', e.target.value)}
-            placeholder="e.g. 1,000,000 units/year" className={inputClass} style={inputStyle} />
-        </FormField>
-
-        <div className="md:col-span-2">
-          <FormField label="ملاحظات المندوب">
-            <textarea value={form.agent_notes} onChange={e => set('agent_notes', e.target.value)}
-              rows={3} placeholder="أي ملاحظات إضافية حول المصنع الدولي..."
-              className={inputClass + ' resize-none'} style={inputStyle} />
-          </FormField>
-        </div>
+      <div className="space-y-2">
+        {alerts.map(({ factory, missing }) => (
+          <div key={factory.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2.5" style={{ background: '#2a2a2a', border: '1px solid #3a3a3a' }}>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate" style={{ color: '#fff' }}>{factory.company_name}</p>
+              <p className="text-xs mt-0.5" style={{ color: '#f59e0b' }}>
+                ناقص: {missing.join(' · ')}
+              </p>
+            </div>
+            <Link
+              href={`/agent/upload-license?factoryId=${factory.id}`}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold shrink-0"
+              style={{ background: '#D4AF37', color: '#1E1E1E' }}
+            >
+              <Icon name="ArrowUpTrayIcon" size={13} />
+              رفع التراخيص والشهادات
+            </Link>
+          </div>
+        ))}
       </div>
-
-      <button
-        onClick={handleSubmit}
-        disabled={saving}
-        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-opacity disabled:opacity-50"
-        style={{ background: 'linear-gradient(135deg, #1e40af, #3b82f6)', color: '#fff' }}
-      >
-        {saving ? (
-          <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />جاري الحفظ...</>
-        ) : (
-          <><Icon name="GlobeAltIcon" size={16} />تسجيل المصنع الدولي</>
-        )}
-      </button>
     </div>
   );
 }
@@ -465,8 +163,8 @@ function KYCStatusTable({ factories }: { factories: FactoryRegistration[] }) {
           { label: 'الإجمالي', value: stats.total, color: '#D4AF37' },
           { label: 'محلية', value: stats.local, color: '#10b981' },
           { label: 'دولية', value: stats.intl, color: '#3b82f6' },
-          { label: 'معتمدة', value: stats.approved, color: '#065f46' },
-          { label: 'قيد الانتظار', value: stats.pending, color: '#92400e' },
+          { label: 'معتمد', value: stats.approved, color: '#10b981' },
+          { label: 'قيد الانتظار', value: stats.pending, color: '#f59e0b' },
         ].map(s => (
           <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: '#2a2a2a', border: '1px solid #3a3a3a' }}>
             <p className="text-2xl font-bold" style={{ color: s.color }}>{s.value}</p>
@@ -474,6 +172,8 @@ function KYCStatusTable({ factories }: { factories: FactoryRegistration[] }) {
           </div>
         ))}
       </div>
+
+      <MissingDocsAlerts factories={factories} />
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
@@ -520,14 +220,26 @@ function KYCStatusTable({ factories }: { factories: FactoryRegistration[] }) {
       {filtered.length === 0 ? (
         <div className="text-center py-12 rounded-xl" style={{ background: '#2a2a2a', border: '1px solid #3a3a3a' }}>
           <Icon name="BuildingOffice2Icon" size={32} style={{ color: '#3a3a3a' }} className="mx-auto mb-3" />
-          <p className="text-sm" style={{ color: '#8899aa' }}>لا توجد مصانع مطابقة للبحث</p>
+          <p className="text-sm" style={{ color: '#8899aa' }}>
+            {factories.length === 0 ? 'لا توجد مصانع مسجلة بعد' : 'لا توجد مصانع مطابقة للبحث'}
+          </p>
+          {factories.length === 0 && (
+            <Link
+              href="/agent/register-facility"
+              className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-xl text-xs font-bold"
+              style={{ background: '#D4AF37', color: '#1E1E1E' }}
+            >
+              <Icon name="PlusIcon" size={14} />
+              تسجيل جديد
+            </Link>
+          )}
         </div>
       ) : (
         <div className="overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0 rounded-xl" style={{ border: '1px solid #3a3a3a' }}>
           <table className="w-full text-sm min-w-[500px]">
             <thead>
               <tr style={{ background: '#2a2a2a', borderBottom: '1px solid #3a3a3a' }}>
-                {['المصنع', 'النوع', 'الدولة / المحافظة', 'المسؤول', 'حالة KYC', 'حالة التواصل', 'تاريخ التسجيل', 'الوثائق'].map(h => (
+                {['المصنع', 'النوع', 'الدولة / المحافظة', 'المسؤول', 'حالة KYC', 'تاريخ التسجيل', 'الوثائق'].map(h => (
                   <th key={h} className="px-4 py-3 text-right text-xs font-bold" style={{ color: '#D4AF37' }}>{h}</th>
                 ))}
               </tr>
@@ -535,7 +247,7 @@ function KYCStatusTable({ factories }: { factories: FactoryRegistration[] }) {
             <tbody>
               {filtered.map((f, idx) => {
                 const kycMeta = KYC_STATUS_META[f.registration_status] || KYC_STATUS_META.pending;
-                const contactMeta = KYC_STATUS_META[f.contact_status] || KYC_STATUS_META.pending;
+                const missing = getMissingDocs(f);
                 return (
                   <tr key={f.id} style={{ background: idx % 2 === 0 ? '#1E1E1E' : '#222', borderBottom: '1px solid #2a2a2a' }}>
                     <td className="px-4 py-3">
@@ -544,10 +256,10 @@ function KYCStatusTable({ factories }: { factories: FactoryRegistration[] }) {
                     </td>
                     <td className="px-4 py-3">
                       <span className="px-2 py-1 rounded-lg text-xs font-semibold" style={{
-                        background: f.factory_type === 'local_factory' ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)',
-                        color: f.factory_type === 'local_factory' ? '#10b981' : '#60a5fa',
+                        background: f.factory_type === 'international_factory' ? 'rgba(59,130,246,0.15)' : 'rgba(16,185,129,0.15)',
+                        color: f.factory_type === 'international_factory' ? '#60a5fa' : '#10b981',
                       }}>
-                        {f.factory_type === 'local_factory' ? '🏭 محلي' : '🌐 دولي'}
+                        {f.factory_type === 'international_factory' ? '🌐 دولي' : f.factory_type === 'local_supplier' ? '🏪 مورد محلي' : '🏭 محلي'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs" style={{ color: '#ccc' }}>{f.city}, {f.country}</td>
@@ -561,23 +273,24 @@ function KYCStatusTable({ factories }: { factories: FactoryRegistration[] }) {
                         {kycMeta.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-1 rounded-lg text-xs font-semibold" style={{ background: contactMeta.bg, color: contactMeta.color }}>
-                        {contactMeta.label}
-                      </span>
-                    </td>
                     <td className="px-4 py-3 text-xs" style={{ color: '#8899aa' }}>
-                      {new Date(f.created_at).toLocaleDateString('ar')}
+                      {f.created_at ? f.created_at.slice(0, 10) : '—'}
                     </td>
                     <td className="px-4 py-3">
-                      {f.trade_license_url ? (
-                        <a href={f.trade_license_url} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-xs font-semibold" style={{ color: '#D4AF37' }}>
+                      {missing.length === 0 ? (
+                        <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: '#10b981' }}>
                           <Icon name="DocumentCheckIcon" size={13} />
-                          عرض
-                        </a>
+                          مكتملة
+                        </span>
                       ) : (
-                        <span className="text-xs" style={{ color: '#555' }}>—</span>
+                        <Link
+                          href={`/agent/upload-license?factoryId=${f.id}`}
+                          className="flex items-center gap-1 text-xs font-semibold"
+                          style={{ color: '#f59e0b' }}
+                        >
+                          <Icon name="ArrowUpTrayIcon" size={13} />
+                          رفع التراخيص والشهادات
+                        </Link>
                       )}
                     </td>
                   </tr>
@@ -738,7 +451,7 @@ function CommissionsPanel({ userId }: { userId: string }) {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs" style={{ color: '#8899aa' }}>
-                      {new Date(e.created_at).toLocaleDateString('ar')}
+                      {e.created_at ? e.created_at.slice(0, 10) : '—'}
                     </td>
                   </tr>
                 );
@@ -753,12 +466,10 @@ function CommissionsPanel({ userId }: { userId: string }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-type MainTab = 'register' | 'kyc' | 'commissions';
-type RegSubTab = 'local' | 'international';
+type MainTab = 'kyc' | 'commissions';
 
 export default function EnhancedAgentDashboard({ userId }: Props) {
-  const [mainTab, setMainTab] = useState<MainTab>('register');
-  const [regSubTab, setRegSubTab] = useState<RegSubTab>('local');
+  const [mainTab, setMainTab] = useState<MainTab>('kyc');
   const [factories, setFactories] = useState<FactoryRegistration[]>([]);
   const [loadingFactories, setLoadingFactories] = useState(true);
   const supabase = createClient();
@@ -768,7 +479,7 @@ export default function EnhancedAgentDashboard({ userId }: Props) {
     try {
       const { data } = await supabase
         .from('agent_factory_registrations')
-        .select('id, company_name, factory_type, country, city, region, contact_person, contact_phone, contact_email, industry, employee_count, annual_capacity, registration_status, contact_status, created_at, trade_license_url')
+        .select('id, company_name, factory_type, country, city, region, contact_person, contact_phone, contact_email, industry, employee_count, annual_capacity, registration_status, contact_status, created_at, trade_license_url, cr_document_url, factory_license_url, commercial_registry_url, industrial_license_url')
         .eq('agent_id', userId)
         .order('created_at', { ascending: false });
       setFactories((data as FactoryRegistration[]) || []);
@@ -781,9 +492,10 @@ export default function EnhancedAgentDashboard({ userId }: Props) {
 
   useEffect(() => { fetchFactories(); }, [fetchFactories]);
 
+  const incompleteDocsCount = factories.filter(f => getMissingDocs(f).length > 0 && f.registration_status !== 'rejected').length;
+
   const MAIN_TABS: { key: MainTab; icon: string; label: string; badge?: number }[] = [
-    { key: 'register', icon: 'PlusCircleIcon', label: 'تسجيل مصنع جديد' },
-    { key: 'kyc', icon: 'ClipboardDocumentCheckIcon', label: 'متابعة حالة KYC', badge: factories.filter(f => f.registration_status === 'pending').length },
+    { key: 'kyc', icon: 'ClipboardDocumentCheckIcon', label: 'المصانع والتوثيق (KYC)', badge: incompleteDocsCount },
     { key: 'commissions', icon: 'CurrencyDollarIcon', label: 'العمولات والأرباح' },
   ];
 
@@ -796,7 +508,7 @@ export default function EnhancedAgentDashboard({ userId }: Props) {
         </div>
         <div>
           <h1 className="font-bold text-base" style={{ color: '#D4AF37' }}>غرفة تحكم المندوب الميداني</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#8899aa' }}>تسجيل المصانع · متابعة KYC · تتبع العمولات</p>
+          <p className="text-xs mt-0.5" style={{ color: '#8899aa' }}>متابعة المصانع · توثيق KYC · تتبع العمولات</p>
         </div>
         <div className="mr-auto flex items-center gap-2">
           <span className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: 'rgba(212,175,55,0.15)', color: '#D4AF37', border: '1px solid #D4AF37' }}>
@@ -832,58 +544,13 @@ export default function EnhancedAgentDashboard({ userId }: Props) {
 
       {/* Content */}
       <div className="p-5">
-        {/* ── Registration Tab ── */}
-        {mainTab === 'register' && (
-          <div>
-            <SectionHeader
-              icon="PlusCircleIcon"
-              title="نموذج التسجيل المزدوج"
-              subtitle="سجّل المصانع المحلية اليمنية أو المصانع الدولية"
-            />
-
-            {/* Sub-tabs */}
-            <div className="flex gap-1 p-1 rounded-xl mb-5" style={{ background: '#161616' }}>
-              <button
-                onClick={() => setRegSubTab('local')}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all"
-                style={{
-                  background: regSubTab === 'local' ? 'rgba(16,185,129,0.2)' : 'transparent',
-                  color: regSubTab === 'local' ? '#10b981' : '#8899aa',
-                  border: regSubTab === 'local' ? '1px solid #10b981' : '1px solid transparent',
-                }}
-              >
-                <Icon name="HomeModernIcon" size={16} />
-                🏭 مصنع محلي (اليمن)
-              </button>
-              <button
-                onClick={() => setRegSubTab('international')}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all"
-                style={{
-                  background: regSubTab === 'international' ? 'rgba(59,130,246,0.2)' : 'transparent',
-                  color: regSubTab === 'international' ? '#60a5fa' : '#8899aa',
-                  border: regSubTab === 'international' ? '1px solid #3b82f6' : '1px solid transparent',
-                }}
-              >
-                <Icon name="GlobeAltIcon" size={16} />
-                🌐 مصنع دولي
-              </button>
-            </div>
-
-            {regSubTab === 'local' ? (
-              <LocalFactoryForm userId={userId} onSuccess={fetchFactories} />
-            ) : (
-              <InternationalFactoryForm userId={userId} onSuccess={fetchFactories} />
-            )}
-          </div>
-        )}
-
         {/* ── KYC Tab ── */}
         {mainTab === 'kyc' && (
           <div>
             <SectionHeader
               icon="ClipboardDocumentCheckIcon"
-              title="جدول متابعة حالة الاعتماد KYC"
-              subtitle="تتبع حالة التحقق والاعتماد لجميع المصانع المسجلة"
+              title="المصانع والتوثيق (KYC)"
+              subtitle="تتبع حالة الاعتماد (معتمد / قيد الانتظار) والوثائق الناقصة لجميع المصانع المسجلة"
             />
             {loadingFactories ? (
               <div className="flex items-center justify-center py-12">

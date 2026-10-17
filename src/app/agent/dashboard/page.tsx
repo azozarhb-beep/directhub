@@ -21,6 +21,7 @@ import AgentDispatchRoomsTab from './AgentDispatchRoomsTab';
 import AgentInspectionTasksPanel from './AgentInspectionTasksPanel';
 import EnhancedAgentDashboard from '@/components/agent/EnhancedAgentDashboard';
 import ReferralTrackingPanel from './ReferralTrackingPanel';
+import { isApprovedOrActiveFacility } from '@/lib/referralStats';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { CHAT_LANGUAGES, ChatLanguage } from './AgentLanguageSelector';
 import {
@@ -536,6 +537,7 @@ export default function AgentDashboardPage() {
 
   const [factories, setFactories] = useState<AgentFactory[]>([]);
   const [products, setProducts] = useState<AgentProduct[]>([]);
+  const [referredStats, setReferredStats] = useState<{ total: number; approved: number }>({ total: 0, approved: 0 });
   const [previewProduct, setPreviewProduct] = useState<AgentProduct | null>(null);
   const [editProduct, setEditProduct] = useState<AgentProduct | null>(null);
   const [loading, setLoading] = useState(true);
@@ -617,7 +619,8 @@ export default function AgentDashboardPage() {
     if (!user) return;
     if (!hasLoadedOnceRef.current) setLoading(true);
     try {
-      const [factoriesRes, productsRes] = await Promise.all([
+      const referralCodeForAgent = `AGT-${user.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+      const [factoriesRes, productsRes, referredRes] = await Promise.all([
         supabase
           .from('agent_factory_registrations')
           .select('*')
@@ -628,9 +631,19 @@ export default function AgentDashboardPage() {
           .select('*')
           .eq('agent_id', user.id)
           .order('created_at', { ascending: false }),
+        supabase
+          .from('factory_registrations')
+          .select('id, registration_status, is_approved, is_active')
+          .or(`referred_by_agent_id.eq.${user.id},referred_by_agent_code.eq.${referralCodeForAgent}`),
       ]);
       if (factoriesRes.data) setFactories(factoriesRes.data);
       if (productsRes.data) setProducts(productsRes.data);
+      if (referredRes.data) {
+        setReferredStats({
+          total: referredRes.data.length,
+          approved: referredRes.data.filter(isApprovedOrActiveFacility).length,
+        });
+      }
     } catch (err) {
       console.error('Error fetching agent data:', err);
     } finally {
@@ -852,11 +865,13 @@ export default function AgentDashboardPage() {
     pending_admin_payout: { label: 'في انتظار الصرف', color: 'bg-orange-50 text-orange-700 border-orange-200', icon: 'ClockIcon' },
   };
 
-  // Stats
+  // Stats (manually registered + referral-link facilities)
   const totalFactories = factories.length;
   const approvedFactories = factories.filter(f => f.registration_status === 'approved').length;
   const pendingReview = factories.filter(f => f.registration_status === 'pending' || f.registration_status === 'under_review').length;
   const totalProducts = products.length;
+  const statTotalFactories = totalFactories + referredStats.total;
+  const statApprovedFactories = approvedFactories + referredStats.approved;
 
   // Filtered factories
   const filteredFactories = filterStatus
@@ -911,7 +926,7 @@ export default function AgentDashboardPage() {
           </div>
           <div className="flex items-center gap-2">
             <Link
-              href="/agent/register-factory"
+              href="/agent/register-facility"
               className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors"
             >
               <Icon name="PlusIcon" size={16} />
@@ -937,8 +952,8 @@ export default function AgentDashboardPage() {
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           {[
-            { label: ad.statTotal, value: totalFactories, icon: 'BuildingOffice2Icon', color: 'text-blue-600', bg: 'bg-blue-50' },
-            { label: ad.statApproved, value: approvedFactories, icon: 'CheckBadgeIcon', color: 'text-emerald-600', bg: 'bg-emerald-50' },
+            { label: ad.statTotal, value: statTotalFactories, icon: 'BuildingOffice2Icon', color: 'text-blue-600', bg: 'bg-blue-50' },
+            { label: ad.statApproved, value: statApprovedFactories, icon: 'CheckBadgeIcon', color: 'text-emerald-600', bg: 'bg-emerald-50' },
             { label: ad.statPendingReview, value: pendingReview, icon: 'ClockIcon', color: 'text-amber-600', bg: 'bg-amber-50' },
             { label: ad.statProducts, value: totalProducts, icon: 'CubeIcon', color: 'text-purple-600', bg: 'bg-purple-50' },
           ].map(stat => (
@@ -970,7 +985,7 @@ export default function AgentDashboardPage() {
                 { id: 'factories', icon: 'BuildingOffice2Icon', label: ad.tabFactories.replace('{count}', String(totalFactories)), badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' },
                 { id: 'products', icon: 'CubeIcon', label: ad.tabProducts.replace('{count}', String(totalProducts)), badge: 0, badgeColor: '', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
                 { id: 'inspections', icon: 'ClipboardDocumentListIcon', label: 'مهام التفتيش', badge: inspectionTasks.filter(t => !t.id.startsWith('mock-')).length, badgeColor: 'bg-amber-500', iconColor: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' },
-                { id: 'enhanced', icon: 'BriefcaseIcon', label: 'التسجيل والتحقق', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
+                { id: 'enhanced', icon: 'BriefcaseIcon', label: 'المصانع والتوثيق (KYC)', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
               ],
             },
             {
@@ -1046,7 +1061,7 @@ export default function AgentDashboardPage() {
             factories: { icon: 'BuildingOffice2Icon', title: ad.tabFactories.replace('{count}', String(totalFactories)), iconColor: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' },
             products: { icon: 'CubeIcon', title: ad.tabProducts.replace('{count}', String(totalProducts)), iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
             inspections: { icon: 'ClipboardDocumentListIcon', title: 'مهام التفتيش', iconColor: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' },
-            enhanced: { icon: 'BriefcaseIcon', title: 'التسجيل والتحقق', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
+            enhanced: { icon: 'BriefcaseIcon', title: 'المصانع والتوثيق (KYC)', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
             messaging: { icon: 'ChatBubbleLeftRightIcon', title: ad.tabMessaging, iconColor: 'bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400' },
             admin_msg: { icon: 'ShieldCheckIcon', title: ad.tabAdminMsg, iconColor: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' },
             complaints: { icon: 'ExclamationTriangleIcon', title: ad.tabComplaints, iconColor: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' },
@@ -1553,7 +1568,7 @@ export default function AgentDashboardPage() {
                   </p>
                   {!filterStatus && (
                     <Link
-                      href="/agent/register-factory"
+                      href="/agent/register-facility"
                       className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors"
                     >
                       <Icon name="PlusIcon" size={15} />

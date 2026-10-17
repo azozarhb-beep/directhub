@@ -53,6 +53,7 @@ export const EXCLUSIVE_ROOM_PREFIXES: { prefix: string; roles: PlatformRole[] }[
   { prefix: '/agent/dashboard', roles: ['agent'] },
   { prefix: '/agent/upload-license', roles: ['agent'] },
   { prefix: '/agent/register-factory', roles: ['agent'] },
+  { prefix: '/agent/register-facility', roles: ['agent'] },
   { prefix: '/agent/add-product', roles: ['agent'] },
   { prefix: '/logistics/dashboard', roles: ['logistics'] },
   { prefix: '/admin/control-room', roles: ['admin'] },
@@ -212,7 +213,7 @@ export function resolveEscrowOfficerRedirect(
   ) {
     return null;
   }
-  const privileged = ['/admin', '/management', '/operations', '/analytics', '/financial-accounts', '/invoices', '/kyc', '/factory', '/agent/register-factory', '/agent/upload-license', '/manufacturer/erp'];
+  const privileged = ['/admin', '/management', '/operations', '/analytics', '/financial-accounts', '/invoices', '/kyc', '/factory', '/agent/register-factory', '/agent/register-facility', '/agent/upload-license', '/manufacturer/erp'];
   if (privileged.some((pre) => matchesPrefix(p, pre))) return ESCROW_OFFICER_HOME;
   return null;
 }
@@ -235,7 +236,7 @@ export function resolveSystemEngineerRedirect(
   ) {
     return null;
   }
-  const privileged = ['/admin', '/management', '/operations', '/analytics', '/financial-accounts', '/invoices', '/kyc', '/factory', '/agent/register-factory', '/agent/upload-license', '/manufacturer/erp'];
+  const privileged = ['/admin', '/management', '/operations', '/analytics', '/financial-accounts', '/invoices', '/kyc', '/factory', '/agent/register-factory', '/agent/register-facility', '/agent/upload-license', '/manufacturer/erp'];
   if (privileged.some((pre) => matchesPrefix(p, pre))) return SYSTEM_ENGINEER_HOME;
   return null;
 }
