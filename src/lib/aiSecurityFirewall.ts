@@ -52,6 +52,7 @@ export const PROTECTED_ROUTE_PREFIXES: string[] = [
   '/agent/dashboard',
   '/agent/upload-license',
   '/agent/register-factory',
+  '/agent/register-facility',
   '/agent/add-product',
   '/buyer-dashboard',
   '/orders',
