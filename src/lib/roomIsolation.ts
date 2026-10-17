@@ -186,6 +186,7 @@ export function resolveFieldOpsRedirect(
   if (
     p === FIELD_OPS_MANAGER_HOME ||
     p.startsWith(FIELD_OPS_MANAGER_HOME + '/') ||
+    p === '/admin/operations'|| p.startsWith('/admin/operations/') ||
     p.startsWith('/api/')
   ) {
     return null;

@@ -223,8 +223,17 @@ export default function AdminFieldOpsPage() {
   // Deep-link support: /admin/field-ops?tab=factories|agents|inspections|documents|catalog
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get('tab') as TabKey | null;
-    if (q && VALID_TABS.includes(q)) setTab(q);
-  }, []);
+    if (q && VALID_TABS.includes(q)) {
+      const target: Record<TabKey, string> = {
+        agents: '/admin/operations/agents',
+        factories: '/admin/operations/factories',
+        catalog: '/admin/operations/catalog',
+        inspections: '/admin/operations/inspections',
+        documents: '/admin/operations/documents',
+      };
+      router.replace(target[q]);
+    }
+  }, [router]);
 
   const selectTab = (k: TabKey) => {
     setTab(k);
@@ -626,11 +635,11 @@ export default function AdminFieldOpsPage() {
   }
 
   const tickerCards: { label: string; sub: string; value: number; color: string; icon: string; tab?: TabKey; href?: string }[] = [
-    { label: 'إجمالي المناديب النشطين', sub: 'Active Field Agents in Duty', value: ticker.activeAgents, color: 'from-blue-600 to-indigo-700', icon: 'UserGroupIcon', tab: 'agents' },
-    { label: 'مصانع بانتظار التدقيق والتوثيق', sub: 'Pending Factory KYC', value: ticker.pendingKyc, color: 'from-amber-600 to-orange-700', icon: 'ShieldCheckIcon', tab: 'factories' },
-    { label: 'منتجات معروضة بالمتجر', sub: 'Live Marketplace Products', value: ticker.liveProducts, color: 'from-emerald-600 to-teal-700', icon: 'ShoppingBagIcon', href: '/admin/products' },
-    { label: 'مهام تفتيش ميداني نشطة', sub: 'Active Inspection Tasks', value: ticker.activeInspections, color: 'from-purple-600 to-fuchsia-700', icon: 'ClipboardDocumentCheckIcon', tab: 'inspections' },
-    { label: 'مبيعات اليوم من الكتالوج', sub: 'Catalog Items Sold Today', value: ticker.soldToday, color: 'from-rose-600 to-pink-700', icon: 'ChartBarIcon', tab: 'catalog' },
+    { label: 'إجمالي المناديب النشطين', sub: 'Active Field Agents in Duty', value: ticker.activeAgents, color: 'from-blue-600 to-indigo-700', icon: 'UserGroupIcon', href: '/admin/operations/agents?status=approved' },
+    { label: 'مصانع بانتظار التدقيق والتوثيق', sub: 'Pending Factory KYC', value: ticker.pendingKyc, color: 'from-amber-600 to-orange-700', icon: 'ShieldCheckIcon', href: '/admin/operations/factories?status=pending' },
+    { label: 'منتجات معروضة بالمتجر', sub: 'Live Marketplace Products', value: ticker.liveProducts, color: 'from-emerald-600 to-teal-700', icon: 'ShoppingBagIcon', href: '/admin/operations/catalog?status=active' },
+    { label: 'مهام تفتيش ميداني نشطة', sub: 'Active Inspection Tasks', value: ticker.activeInspections, color: 'from-purple-600 to-fuchsia-700', icon: 'ClipboardDocumentCheckIcon', href: '/admin/operations/inspections?status=active' },
+    { label: 'مبيعات اليوم من الكتالوج', sub: 'Catalog Items Sold Today', value: ticker.soldToday, color: 'from-rose-600 to-pink-700', icon: 'ChartBarIcon', href: '/admin/operations/catalog' },
   ];
 
   const tabs: { key: TabKey; label: string; en: string }[] = [
