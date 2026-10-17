@@ -32,6 +32,20 @@ interface RegistrationForm {
   main_products: string;
   certifications: string[];
   industry_sector: string;
+  sector_id: string;
+}
+
+interface SectorRow {
+  id: string;
+  name_ar: string;
+  name_en: string | null;
+  slug: string | null;
+}
+
+interface SectorProductRow {
+  id: string;
+  name_ar: string;
+  name_en: string | null;
 }
 
 // Yemeni governorates for local factory and local supplier
@@ -154,20 +168,6 @@ function getDialInfo(country: string) {
   return COUNTRY_DIAL_INFO[country] ?? { dial: '+967', placeholder: '7XX XXX XXX', maxLen: 9 };
 }
 
-// Master taxonomy sectors for smart routing
-const INDUSTRY_SECTORS = [
-  { value: 'pharmaceuticals-raw-materials', labelAr: 'الأدوية والمواد الخام الدوائية', labelEn: 'Pharmaceuticals & Raw Drug Materials' },
-  { value: 'raw-materials-chemicals', labelAr: 'المواد الخام والمواد الكيميائية', labelEn: 'Raw Materials & Chemicals' },
-  { value: 'electronics-mobile-phones', labelAr: 'الإلكترونيات والهواتف', labelEn: 'Electronics & Mobile Phones' },
-  { value: 'automotive-vehicles', labelAr: 'السيارات والمركبات', labelEn: 'Automotive & Vehicles' },
-  { value: 'beauty-personal-care', labelAr: 'أدوات التجميل والعناية', labelEn: 'Beauty & Personal Care' },
-  { value: 'health-medical-equipment', labelAr: 'الصحة والمعدات الطبية', labelEn: 'Health & Medical Equipment' },
-  { value: 'home-appliances-furniture', labelAr: 'الأدوات المنزلية', labelEn: 'Home Appliances & Furniture' },
-  { value: 'construction-building-materials', labelAr: 'مواد البناء والإنشاءات', labelEn: 'Construction & Building Materials' },
-  { value: 'office-school-supplies', labelAr: 'اللوازم المكتبية والمدرسية', labelEn: 'Office & School Supplies' },
-  { value: 'toys-sports-entertainment', labelAr: 'الألعاب والترفيه', labelEn: 'Toys, Sports & Entertainment' },
-];
-
 const CERTIFICATIONS_OPTIONS = [
   'ISO 9001', 'ISO 14001', 'ISO 45001', 'ISO 22000', 'HACCP',
   'CE Mark', 'FDA', 'SASO', 'SFDA', 'Halal', 'Kosher', 'GMP', 'Other',
@@ -194,6 +194,7 @@ const EMPTY_FORM: RegistrationForm = {
   main_products: '',
   certifications: [],
   industry_sector: '',
+  sector_id: '',
 };
 
 function FactoryRegisterPageInner() {
@@ -244,6 +245,43 @@ function FactoryRegisterPageInner() {
   const [existingReg, setExistingReg] = useState<any>(null);
   const [checkingExisting, setCheckingExisting] = useState(true);
   const [localPhone, setLocalPhone] = useState('');
+  const [sectors, setSectors] = useState<SectorRow[]>([]);
+  const [sectorProducts, setSectorProducts] = useState<SectorProductRow[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error: sectorsErr } = await supabase
+        .from('industry_sectors')
+        .select('id, name_ar, name_en, slug')
+        .order('sort_order', { ascending: true });
+      if (!cancelled && !sectorsErr) setSectors((data as SectorRow[]) ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!form.sector_id) {
+      setSectorProducts([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error: prodErr } = await supabase
+        .from('sector_products')
+        .select('id, name_ar, name_en')
+        .eq('sector_id', form.sector_id)
+        .order('created_at', { ascending: true });
+      if (!cancelled && !prodErr) setSectorProducts((data as SectorProductRow[]) ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.sector_id]);
 
   // Sync dial code when country changes
   useEffect(() => {
@@ -298,6 +336,7 @@ function FactoryRegisterPageInner() {
           main_products: Array.isArray(data.main_products) ? data.main_products.join(', ') : '',
           certifications: Array.isArray(data.certifications) ? data.certifications : [],
           industry_sector: data.industry_sector || '',
+          sector_id: data.sector_id || '',
         });
       } else {
         setForm((f) => ({ ...f, contact_email: '' }));
@@ -391,6 +430,7 @@ function FactoryRegisterPageInner() {
         main_products: form.main_products.split(',').map((p) => p.trim()).filter(Boolean),
         certifications: form.certifications,
         industry_sector: form.industry_sector || null,
+        sector_id: form.sector_id || null,
         registration_status: registrationStatus,
         kyc_status: 'pending',
         is_approved: isApproved,
@@ -702,14 +742,21 @@ function FactoryRegisterPageInner() {
                 <span className="text-red-500 ml-1">*</span>
               </label>
               <select
-                value={form.industry_sector}
-                onChange={(e) => setForm((f) => ({ ...f, industry_sector: e.target.value }))}
+                value={form.sector_id}
+                onChange={(e) => {
+                  const picked = sectors.find((s) => s.id === e.target.value);
+                  setForm((f) => ({
+                    ...f,
+                    sector_id: e.target.value,
+                    industry_sector: picked?.slug ?? '',
+                  }));
+                }}
                 className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors"
               >
                 <option value="">{fr.selectIndustry}</option>
-                {INDUSTRY_SECTORS.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {isRTL ? s.labelAr : s.labelEn}
+                {sectors.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {isRTL ? s.name_ar : (s.name_en || s.name_ar)}
                   </option>
                 ))}
               </select>
@@ -923,7 +970,7 @@ function FactoryRegisterPageInner() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">{fr.mainProductsLabel}</label>
+              <label className="block text-xs font-medium text-foreground mb-2">{fr.mainProductsLabel}</label>
               <textarea
                 value={form.main_products}
                 onChange={(e) => setForm((f) => ({ ...f, main_products: e.target.value }))}
@@ -931,6 +978,35 @@ function FactoryRegisterPageInner() {
                 rows={2}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors resize-none"
               />
+              {sectorProducts.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {sectorProducts.map((sp) => {
+                    const label = isRTL ? sp.name_ar : (sp.name_en || sp.name_ar);
+                    const current = form.main_products.split(',').map((p) => p.trim()).filter(Boolean);
+                    const selected = current.includes(label);
+                    return (
+                      <button
+                        key={sp.id}
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => {
+                            const list = f.main_products.split(',').map((p) => p.trim()).filter(Boolean);
+                            const next = list.includes(label) ? list.filter((p) => p !== label) : [...list, label];
+                            return { ...f, main_products: next.join(', ') };
+                          })
+                        }
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${
+                          selected
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background text-muted-foreground border-border hover:border-primary hover:text-foreground'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div>
