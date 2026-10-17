@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import Icon from '@/components/ui/AppIcon';
 
-type TabKey = 'agents' | 'factories' | 'catalog' | 'inspections';
+type TabKey = 'agents' | 'factories' | 'catalog' | 'inspections' | 'documents';
 type AgentStatus = 'approved' | 'pending' | 'suspended';
 
 interface Agent {
@@ -75,6 +75,19 @@ interface Inspection {
   createdAt: string;
 }
 
+interface FactoryDoc {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  fileUrl: string;
+  mimeType: string;
+  docType: string;
+  factoryId: string | null;
+  factoryName: string;
+  agentName: string;
+  createdAt: string;
+}
+
 const CITIES = ['صنعاء', 'عدن', 'الحديدة', 'حضرموت', 'تعز', 'إب', 'ذمار', 'المكلا', 'مأرب'];
 const CATEGORIES = ['تغليف', 'بلاستيك', 'منظفات', 'مواد خام'];
 const FALLBACK_IMG = '/assets/images/no_image.png';
@@ -135,6 +148,26 @@ const inspectionStatusStyle = (s: string) => {
 
 const inputCls = 'w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-blue-500';
 
+const DOC_TYPE_LABELS: Record<string, string> = {
+  product_catalog: 'كتالوج المنتجات',
+  company_profile: 'بروفايل المصنع',
+  certificate: 'شهادات الجودة',
+  price_sheet: 'قائمة أسعار رسمية',
+  license: 'رخصة تجارية',
+  registration: 'سجل تجاري',
+  image: 'صورة',
+  other: 'أخرى',
+};
+
+const formatFileSize = (bytes: number): string => {
+  if (!bytes || bytes <= 0) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const VALID_TABS: TabKey[] = ['agents', 'factories', 'catalog', 'inspections', 'documents'];
+
 export default function AdminFieldOpsPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -180,6 +213,23 @@ export default function AdminFieldOpsPage() {
   const [reportFor, setReportFor] = useState<Inspection | null>(null);
   const [reportForm, setReportForm] = useState({ batchQuality: '', productionDate: '', reportNotes: '' });
   const [reportBusy, setReportBusy] = useState(false);
+
+  const [docs, setDocs] = useState<FactoryDoc[]>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [docsError, setDocsError] = useState('');
+  const [docSearch, setDocSearch] = useState('');
+  const [docTypeFilter, setDocTypeFilter] = useState('');
+
+  // Deep-link support: /admin/field-ops?tab=factories|agents|inspections|documents|catalog
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('tab') as TabKey | null;
+    if (q && VALID_TABS.includes(q)) setTab(q);
+  }, []);
+
+  const selectTab = (k: TabKey) => {
+    setTab(k);
+    window.history.replaceState(null, '', `/admin/field-ops?tab=${k}`);
+  };
 
   useEffect(() => {
     if (authLoading) return;
@@ -333,7 +383,43 @@ export default function AdminFieldOpsPage() {
     }
   }, [supabase]);
 
+  const loadDocs = useCallback(async () => {
+    setDocsLoading(true);
+    setDocsError('');
+    try {
+      const [docsRes, factoriesRes] = await Promise.all([
+        supabase
+          .from('agent_factory_documents')
+          .select('*, agent:user_profiles!agent_id(id, full_name, email)')
+          .order('created_at', { ascending: false })
+          .limit(1000),
+        supabase.from('agent_factory_registrations').select('id, company_name'),
+      ]);
+      const fMap = new Map<string, string>();
+      (factoriesRes.data || []).forEach((f: any) => fMap.set(f.id, f.company_name));
+      setDocs((docsRes.data || []).map((d: any) => ({
+        id: d.id,
+        fileName: d.file_name || 'ملف بدون اسم',
+        fileSize: Number(d.file_size || 0),
+        fileUrl: d.file_url || '',
+        mimeType: d.mime_type || '',
+        docType: d.doc_type || 'other',
+        factoryId: d.factory_reg_id || null,
+        factoryName: fMap.get(d.factory_reg_id) || 'مصنع غير معروف',
+        agentName: d.agent?.full_name || d.agent?.email || 'مندوب',
+        createdAt: d.created_at,
+      })));
+      if (docsRes.error) setDocsError(docsRes.error.message);
+    } catch (e: any) {
+      setDocsError(e?.message || 'تعذر تحميل الملفات');
+    } finally {
+      setDocsLoading(false);
+    }
+  }, [supabase]);
+
   useEffect(() => { if (canAccess) load(); }, [canAccess, load]);
+
+  useEffect(() => { if (canAccess && tab === 'documents') loadDocs(); }, [canAccess, tab, loadDocs]);
 
   const ticker = useMemo(() => ({
     activeAgents: agents.filter((a) => a.status === 'approved').length,
@@ -368,6 +454,15 @@ export default function AdminFieldOpsPage() {
       return true;
     });
   }, [products, search, fAgent, fFactory, fCategory, fStatus]);
+
+  const filteredDocs = useMemo(() => {
+    const q = docSearch.trim().toLowerCase();
+    return docs.filter((d) => {
+      if (docTypeFilter && d.docType !== docTypeFilter) return false;
+      if (q && !`${d.fileName} ${d.factoryName} ${d.agentName}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [docs, docSearch, docTypeFilter]);
 
   const setAgentStatus = async (a: Agent, next: AgentStatus) => {
     setBusyKey(`ag-${a.id}`);
@@ -530,12 +625,12 @@ export default function AdminFieldOpsPage() {
     );
   }
 
-  const tickerCards = [
-    { label: 'إجمالي المناديب النشطين', sub: 'Active Field Agents in Duty', value: ticker.activeAgents, color: 'from-blue-600 to-indigo-700', icon: 'UserGroupIcon' },
-    { label: 'مصانع بانتظار التدقيق والتوثيق', sub: 'Pending Factory KYC', value: ticker.pendingKyc, color: 'from-amber-600 to-orange-700', icon: 'ShieldCheckIcon' },
-    { label: 'منتجات معروضة بالمتجر', sub: 'Live Marketplace Products', value: ticker.liveProducts, color: 'from-emerald-600 to-teal-700', icon: 'ShoppingBagIcon' },
-    { label: 'مهام تفتيش ميداني نشطة', sub: 'Active Inspection Tasks', value: ticker.activeInspections, color: 'from-purple-600 to-fuchsia-700', icon: 'ClipboardDocumentCheckIcon' },
-    { label: 'مبيعات اليوم من الكتالوج', sub: 'Catalog Items Sold Today', value: ticker.soldToday, color: 'from-rose-600 to-pink-700', icon: 'ChartBarIcon' },
+  const tickerCards: { label: string; sub: string; value: number; color: string; icon: string; tab?: TabKey; href?: string }[] = [
+    { label: 'إجمالي المناديب النشطين', sub: 'Active Field Agents in Duty', value: ticker.activeAgents, color: 'from-blue-600 to-indigo-700', icon: 'UserGroupIcon', tab: 'agents' },
+    { label: 'مصانع بانتظار التدقيق والتوثيق', sub: 'Pending Factory KYC', value: ticker.pendingKyc, color: 'from-amber-600 to-orange-700', icon: 'ShieldCheckIcon', tab: 'factories' },
+    { label: 'منتجات معروضة بالمتجر', sub: 'Live Marketplace Products', value: ticker.liveProducts, color: 'from-emerald-600 to-teal-700', icon: 'ShoppingBagIcon', href: '/admin/products' },
+    { label: 'مهام تفتيش ميداني نشطة', sub: 'Active Inspection Tasks', value: ticker.activeInspections, color: 'from-purple-600 to-fuchsia-700', icon: 'ClipboardDocumentCheckIcon', tab: 'inspections' },
+    { label: 'مبيعات اليوم من الكتالوج', sub: 'Catalog Items Sold Today', value: ticker.soldToday, color: 'from-rose-600 to-pink-700', icon: 'ChartBarIcon', tab: 'catalog' },
   ];
 
   const tabs: { key: TabKey; label: string; en: string }[] = [
@@ -543,6 +638,7 @@ export default function AdminFieldOpsPage() {
     { key: 'factories', label: 'المصانع والموردون', en: 'Factory KYC' },
     { key: 'catalog', label: 'الكتالوج الشامل وسرعة المبيعات', en: 'Master Catalog' },
     { key: 'inspections', label: 'مهام التفتيش الميداني', en: 'Inspection Dispatcher' },
+    { key: 'documents', label: 'ملفات وكتالوجات المصانع', en: 'PDFs & Documents' },
   ];
 
   return (
@@ -586,22 +682,27 @@ export default function AdminFieldOpsPage() {
 
         <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           {tickerCards.map((c) => (
-            <div key={c.label} className={`rounded-2xl p-4 bg-gradient-to-br ${c.color} shadow-lg relative overflow-hidden`}>
+            <button
+              type="button"
+              key={c.label}
+              onClick={() => (c.tab ? selectTab(c.tab) : c.href && router.push(c.href))}
+              className={`text-right rounded-2xl p-4 bg-gradient-to-br ${c.color} shadow-lg relative overflow-hidden hover:brightness-110 transition`}
+            >
               <div className="absolute -left-3 -bottom-3 opacity-20">
                 <Icon name={c.icon} size={64} className="text-white" />
               </div>
               <div className="text-3xl font-black tabular-nums">{c.value}</div>
               <div className="text-[11px] sm:text-xs font-bold mt-1 leading-snug">{c.label}</div>
               <div className="text-[10px] text-white/70 mt-0.5" dir="ltr">{c.sub}</div>
-            </div>
+            </button>
           ))}
         </section>
 
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-1 p-1 bg-slate-900 border border-slate-800 rounded-2xl">
+        <section className="grid grid-cols-2 lg:grid-cols-5 gap-1 p-1 bg-slate-900 border border-slate-800 rounded-2xl">
           {tabs.map((t) => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key)}
+              onClick={() => selectTab(t.key)}
               className={`py-3 px-2 rounded-xl text-xs sm:text-sm font-bold transition-all leading-tight ${
                 tab === t.key ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
@@ -771,6 +872,56 @@ export default function AdminFieldOpsPage() {
                 </div>
               ))}
             </div>
+          </section>
+        )}
+
+        {/* TAB E: Factory PDFs & Catalog Files */}
+        {tab === 'documents' && (
+          <section className="space-y-3">
+            {docsError && <div className="p-3 rounded-xl bg-red-950 border border-red-800 text-red-200 text-xs">{docsError}</div>}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <input value={docSearch} onChange={(e) => setDocSearch(e.target.value)} placeholder="بحث باسم الملف، المصنع، أو المندوب..." className={inputCls} />
+              <select value={docTypeFilter} onChange={(e) => setDocTypeFilter(e.target.value)} className={inputCls}>
+                <option value="">كل أنواع الملفات</option>
+                <option value="product_catalog">كتالوج المنتجات</option>
+                <option value="company_profile">بروفايل المصنع</option>
+                <option value="certificate">شهادات الجودة</option>
+                <option value="price_sheet">قائمة أسعار رسمية</option>
+              </select>
+            </div>
+            <p className="text-[11px] text-slate-500 px-1">عدد الملفات: {filteredDocs.length}</p>
+            {docsLoading ? (
+              <div className="py-12 text-center text-slate-400 text-sm">جاري تحميل الملفات...</div>
+            ) : filteredDocs.length === 0 ? (
+              <div className="text-center text-slate-500 py-12 bg-slate-900 border border-slate-800 rounded-2xl text-sm">لا توجد ملفات مطابقة</div>
+            ) : (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                {filteredDocs.map((d) => (
+                  <div key={d.id} className="p-3 rounded-2xl bg-slate-900 border border-slate-800">
+                    <div className="flex gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-slate-800 flex items-center justify-center shrink-0">
+                        <Icon name={d.mimeType.startsWith('image/') ? 'PhotoIcon' : 'DocumentTextIcon'} size={24} className="text-slate-300" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-sm font-bold text-white truncate" title={d.fileName}>{d.fileName}</h3>
+                        <p className="text-[11px] text-slate-400">{formatFileSize(d.fileSize)} · {DOC_TYPE_LABELS[d.docType] || d.docType}</p>
+                        <div className="mt-1 text-xs text-slate-300 flex flex-wrap gap-x-3 gap-y-0.5">
+                          <span>المصنع: <span className="text-slate-100">{d.factoryName}</span></span>
+                          <span>المندوب: <span className="text-slate-100">{d.agentName}</span></span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex justify-end">
+                      {d.fileUrl ? (
+                        <a href={d.fileUrl} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold">معاينة / فتح الملف</a>
+                      ) : (
+                        <span className="px-3 py-2 rounded-xl bg-slate-800/50 text-slate-500 text-xs font-bold cursor-not-allowed">الملف غير متوفر</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 
