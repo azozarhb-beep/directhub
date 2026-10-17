@@ -438,10 +438,10 @@ export default function AdminProductsPage() {
             المنتجات الفردية (SKUs)
           </button>
           <button
-            onClick={() => setMainView('documents')}
-            className={`px-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors ${mainView === 'documents' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
+            onClick={() => router.push('/admin/field-ops?tab=documents')}
+            className="px-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors text-slate-300 hover:bg-slate-800"
           >
-            ملفات وكتالوجات المصانع (PDFs &amp; Documents)
+            ملفات وكتالوجات المصانع (بوابة الميدان) ↗
           </button>
         </div>
 

@@ -2504,6 +2504,15 @@ export default function AdminControlRoomPage() {
     if (!authLoading && user && !isAdmin) { router.push('/'); }
   }, [user, authLoading, isAdmin, router]);
 
+  // Canonical routing: fragmented factory / field-agent views deep-link to the unified Field Portal
+  useEffect(() => {
+    if (activeTab === 'factories') {
+      router.push('/admin/field-ops?tab=factories');
+    } else if (activeTab === 'field_agents') {
+      router.push('/admin/field-ops?tab=agents');
+    }
+  }, [activeTab, router]);
+
   // ── Data Fetching ───────────────────────────────────────────────────────────
   const fetchAll = useCallback(async (backgroundRefresh = false) => {
     if (!isAdmin) return;
@@ -6655,7 +6664,7 @@ export default function AdminControlRoomPage() {
                 { label: ui.overview.totalFactories, value: analytics.activeFactories.toString(), sub: `${analytics.pendingVerifications} ${ui.overview.pendingVerification}`, icon: 'BuildingOffice2Icon', color: 'text-orange-600 bg-orange-50', drill: 'factories' as const },
                 { label: ui.overview.totalUsers, value: analytics.totalUsers.toString(), sub: `+${analytics.newUsersYesterday} ${ui.overview.newSinceYesterday}`, icon: 'UsersIcon', color: 'text-sky-600 bg-sky-50', drill: 'users' as const },
               ].map(card => (
-                <button key={card.label} onClick={() => setDrillDown(card.drill)} className="bg-card border border-border rounded-2xl p-5 text-left hover:shadow-md transition-all hover:-translate-y-0.5 group">
+                <button key={card.label} onClick={() => (card.drill === 'factories' ? router.push('/admin/field-ops?tab=factories') : setDrillDown(card.drill))} className="bg-card border border-border rounded-2xl p-5 text-left hover:shadow-md transition-all hover:-translate-y-0.5 group">
                   <div className={`w-10 h-10 rounded-xl ${card.color} flex items-center justify-center mb-3`}>
                     <Icon name={card.icon as any} size={20} />
                   </div>
