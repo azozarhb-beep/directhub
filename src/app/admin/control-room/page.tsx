@@ -7003,6 +7003,7 @@ export default function AdminControlRoomPage() {
                   { label: 'مراجعة التحقق', icon: 'DocumentCheckIcon', tab: 'verification' as ActiveTab, badge: analytics.pendingVerifications, color: 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' },
                   { label: 'إدارة الضمان', icon: 'ShieldCheckIcon', tab: 'escrow' as ActiveTab, badge: 0, color: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' },
                   { label: 'مراقبة المحادثات', icon: 'ChatBubbleLeftRightIcon', tab: 'buyer_seller_chat' as ActiveTab, badge: 0, color: 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100' },
+                  { label: 'مراسلة المندوبين', icon: 'PaperAirplaneIcon', tab: 'admin_messaging' as ActiveTab, badge: 0, color: 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100' },
                   { label: 'إعدادات المنصة', icon: 'Cog6ToothIcon', tab: 'platform_settings' as ActiveTab, badge: 0, color: 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100' },
                   { label: 'المدفوعات', icon: 'CreditCardIcon', tab: 'payments' as ActiveTab, badge: 0, color: 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' },
                   { label: 'الحسابات والأرصدة', icon: 'BanknotesIcon', tab: 'accounts' as ActiveTab, badge: 0, color: 'bg-lime-50 border-lime-200 text-lime-700 hover:bg-lime-100' },
