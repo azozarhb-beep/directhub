@@ -9,6 +9,7 @@ import Icon from '@/components/ui/AppIcon';
 
 type Source = 'manufacturer' | 'agent';
 type TabKey = 'all' | 'sold_today' | 'shipped_today' | 'pending';
+type MainView = 'products' | 'documents';
 
 interface MasterProduct {
   key: string;
@@ -42,6 +43,45 @@ interface EditState {
   moq: string;
   specs: string;
 }
+
+interface FactoryDoc {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  fileUrl: string;
+  mimeType: string;
+  docType: string;
+  factoryId: string | null;
+  factoryName: string;
+  agentId: string | null;
+  agentName: string;
+  createdAt: string;
+}
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  product_catalog: 'كتالوج المنتجات',
+  company_profile: 'بروفايل المصنع',
+  certificate: 'شهادات الجودة',
+  price_sheet: 'قائمة أسعار رسمية',
+  license: 'رخصة تجارية',
+  registration: 'سجل تجاري',
+  image: 'صورة',
+  other: 'أخرى',
+};
+
+const DOC_TYPE_BADGES: Record<string, string> = {
+  product_catalog: 'bg-purple-900/60 border-purple-700 text-purple-300',
+  company_profile: 'bg-indigo-900/60 border-indigo-700 text-indigo-300',
+  certificate: 'bg-amber-900/60 border-amber-700 text-amber-300',
+  price_sheet: 'bg-emerald-900/60 border-emerald-700 text-emerald-300',
+};
+
+const formatFileSize = (bytes: number): string => {
+  if (!bytes || bytes <= 0) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 const CATEGORY_LABELS: Record<string, string> = {
   cleaning: 'منظفات',
@@ -82,6 +122,13 @@ export default function AdminProductsPage() {
   const [edit, setEdit] = useState<EditState | null>(null);
   const [saving, setSaving] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [mainView, setMainView] = useState<MainView>('products');
+  const [docs, setDocs] = useState<FactoryDoc[]>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [docsError, setDocsError] = useState('');
+  const [docSearch, setDocSearch] = useState('');
+  const [docFactoryFilter, setDocFactoryFilter] = useState('');
+  const [docTypeFilter, setDocTypeFilter] = useState('');
 
   useEffect(() => {
     if (!authLoading && !user) { router.push('/login'); return; }
@@ -185,6 +232,60 @@ export default function AdminProductsPage() {
   }, [supabase]);
 
   useEffect(() => { if (isAdmin) load(); }, [isAdmin, load]);
+
+  const loadDocs = useCallback(async () => {
+    setDocsLoading(true);
+    setDocsError('');
+    try {
+      const [docsRes, factoriesRes] = await Promise.all([
+        supabase
+          .from('agent_factory_documents')
+          .select('*, agent:user_profiles!agent_id(id, full_name, email)')
+          .order('created_at', { ascending: false })
+          .limit(1000),
+        supabase.from('agent_factory_registrations').select('id, company_name'),
+      ]);
+      const fMap = new Map<string, string>();
+      (factoriesRes.data || []).forEach((f: any) => fMap.set(f.id, f.company_name));
+      const rows: FactoryDoc[] = (docsRes.data || []).map((d: any) => ({
+        id: d.id,
+        fileName: d.file_name || 'ملف بدون اسم',
+        fileSize: Number(d.file_size || 0),
+        fileUrl: d.file_url || '',
+        mimeType: d.mime_type || '',
+        docType: d.doc_type || 'other',
+        factoryId: d.factory_reg_id || null,
+        factoryName: fMap.get(d.factory_reg_id) || 'مصنع غير معروف',
+        agentId: d.agent_id || null,
+        agentName: d.agent?.full_name || d.agent?.email || 'مندوب',
+        createdAt: d.created_at,
+      }));
+      setDocs(rows);
+      if (docsRes.error) setDocsError(docsRes.error.message);
+    } catch (e: any) {
+      setDocsError(e?.message || 'تعذر تحميل الملفات');
+    } finally {
+      setDocsLoading(false);
+    }
+  }, [supabase]);
+
+  useEffect(() => { if (isAdmin && mainView === 'documents') loadDocs(); }, [isAdmin, mainView, loadDocs]);
+
+  const docFactories = useMemo(() => {
+    const m = new Map<string, string>();
+    docs.forEach(d => { if (d.factoryId) m.set(d.factoryId, d.factoryName); });
+    return Array.from(m.entries());
+  }, [docs]);
+
+  const filteredDocs = useMemo(() => {
+    const q = docSearch.trim().toLowerCase();
+    return docs.filter(d => {
+      if (docFactoryFilter && d.factoryId !== docFactoryFilter) return false;
+      if (docTypeFilter && d.docType !== docTypeFilter) return false;
+      if (q && !`${d.fileName} ${d.factoryName} ${d.agentName}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [docs, docSearch, docFactoryFilter, docTypeFilter]);
 
   const isPending = (p: MasterProduct) => !p.isPublished;
   const isOut = (p: MasterProduct) => !p.isActive || (p.stock !== null && p.stock <= 0);
@@ -327,125 +428,205 @@ export default function AdminProductsPage() {
 
       <div className="flex-1 overflow-y-auto p-4 pb-28 space-y-4">
         {toast && <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded-xl bg-slate-100 text-slate-900 text-sm font-semibold shadow-xl">{toast}</div>}
-        {error && <div className="p-3 rounded-xl bg-red-950 border border-red-800 text-red-200 text-xs">{error}</div>}
 
-        {/* KPI bar */}
-        <div>
-          <h2 className="text-xs font-semibold text-slate-400 mb-2 px-1">حركة اليوم</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            {kpiCards.map(k => (
-              <div key={k.label} className="p-3 rounded-2xl bg-[#161b22] border border-[#30363d]">
-                <div className="flex items-center gap-2 mb-1">
-                  <Icon name={k.icon} size={16} className={k.color} />
-                  <span className="text-[11px] text-slate-400 leading-tight">{k.label}</span>
-                </div>
-                <div className={`text-2xl font-bold ${k.color}`}>{k.value}</div>
-              </div>
-            ))}
-          </div>
+        {/* Main view toggle */}
+        <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-slate-900 border border-slate-800">
+          <button
+            onClick={() => setMainView('products')}
+            className={`px-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors ${mainView === 'products' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
+          >
+            المنتجات الفردية (SKUs)
+          </button>
+          <button
+            onClick={() => setMainView('documents')}
+            className={`px-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors ${mainView === 'documents' ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}
+          >
+            ملفات وكتالوجات المصانع (PDFs &amp; Documents)
+          </button>
         </div>
 
-        {/* Quick tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {tabs.map(t => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`shrink-0 px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${tab === t.key ? 'bg-blue-600 border-blue-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        {mainView === 'documents' && (
+          <div className="space-y-4">
+            {docsError && <div className="p-3 rounded-xl bg-red-950 border border-red-800 text-red-200 text-xs">{docsError}</div>}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <input value={docSearch} onChange={e => setDocSearch(e.target.value)} placeholder="بحث باسم الملف، المصنع، أو المندوب..." className={`${inputCls} md:col-span-2`} />
+              <select value={docFactoryFilter} onChange={e => setDocFactoryFilter(e.target.value)} className={inputCls}>
+                <option value="">كل المصانع / الموردين</option>
+                {docFactories.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              </select>
+              <select value={docTypeFilter} onChange={e => setDocTypeFilter(e.target.value)} className={inputCls}>
+                <option value="">كل أنواع الملفات</option>
+                <option value="product_catalog">كتالوج المنتجات</option>
+                <option value="company_profile">بروفايل المصنع</option>
+                <option value="certificate">شهادات الجودة</option>
+                <option value="price_sheet">قائمة أسعار رسمية</option>
+              </select>
+            </div>
+            <p className="text-[11px] text-slate-500 px-1">عدد الملفات: {filteredDocs.length}</p>
 
-        {/* Search & filters */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث باسم المنتج، الكود (SKU)، أو المصنع..." className={`${inputCls} md:col-span-4`} />
-          <select value={agentFilter} onChange={e => setAgentFilter(e.target.value)} className={inputCls}>
-            <option value="">كل المناديب</option>
-            {agents.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-          </select>
-          <select value={factoryFilter} onChange={e => setFactoryFilter(e.target.value)} className={inputCls}>
-            <option value="">كل المصانع</option>
-            {factories.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-          </select>
-          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className={`${inputCls} md:col-span-2`}>
-            <option value="">كل الفئات</option>
-            {categories.map(c => <option key={c} value={c}>{catLabel(c)}</option>)}
-          </select>
-        </div>
-
-        {/* Product list */}
-        {loading ? (
-          <div className="py-16 text-center text-slate-400 text-sm">جاري تحميل المنتجات...</div>
-        ) : filtered.length === 0 ? (
-          <div className="py-16 text-center text-slate-500 text-sm">لا توجد منتجات مطابقة</div>
-        ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-            {filtered.map(p => {
-              const href = previewHref(p);
-              return (
-                <div key={p.key} className={`p-3 rounded-2xl bg-[#161b22] border ${p.isActive ? 'border-[#30363d]' : 'border-red-900/60 opacity-90'}`}>
-                  <div className="flex gap-3">
-                    <div className="w-20 h-20 rounded-xl bg-slate-800 overflow-hidden shrink-0 flex items-center justify-center">
-                      {p.image ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.image} alt={`صورة المنتج ${p.title}`} className="w-full h-full object-cover" />
+            {docsLoading ? (
+              <div className="py-16 text-center text-slate-400 text-sm">جاري تحميل الملفات...</div>
+            ) : filteredDocs.length === 0 ? (
+              <div className="py-16 text-center text-slate-500 text-sm">لا توجد ملفات مطابقة</div>
+            ) : (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                {filteredDocs.map(d => (
+                  <div key={d.id} className="p-3 rounded-2xl bg-[#161b22] border border-[#30363d]">
+                    <div className="flex gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-slate-800 flex items-center justify-center shrink-0">
+                        <Icon name={d.mimeType.startsWith('image/') ? 'PhotoIcon' : 'DocumentTextIcon'} size={24} className="text-slate-300" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-sm font-bold text-white truncate" title={d.fileName}>{d.fileName}</h3>
+                        <p className="text-[11px] text-slate-400">{formatFileSize(d.fileSize)}</p>
+                        <div className="mt-1 text-xs text-slate-300 flex flex-wrap gap-x-3 gap-y-0.5">
+                          <span>المصنع / المورد: <span className="text-slate-100">{d.factoryName}</span></span>
+                          <span>المندوب: <span className="text-slate-100">{d.agentName}</span></span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className={`px-2.5 py-1 rounded-full border text-[11px] font-bold ${DOC_TYPE_BADGES[d.docType] || 'bg-slate-800 border-slate-600 text-slate-300'}`}>
+                        {DOC_TYPE_LABELS[d.docType] || d.docType}
+                      </span>
+                      {d.fileUrl ? (
+                        <a href={d.fileUrl} target="_blank" rel="noopener noreferrer" className="mr-auto px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold">
+                          معاينة / فتح الملف (PDF/Image)
+                        </a>
                       ) : (
-                        <Icon name="PhotoIcon" size={28} className="text-slate-500" />
+                        <span className="mr-auto px-3 py-2 rounded-xl bg-slate-800/50 text-slate-500 text-xs font-bold cursor-not-allowed">الملف غير متوفر</span>
                       )}
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="text-sm font-bold text-white truncate">{p.title}</h3>
-                      <p className="text-[11px] text-slate-400">{catLabel(p.category)}</p>
-                      <div className="mt-1 text-xs text-slate-300 flex flex-wrap gap-x-3 gap-y-0.5">
-                        <span>المصنع: {p.factoryLink ? <Link href={p.factoryLink} className="text-blue-400 hover:underline">{p.factoryName}</Link> : <span className="text-slate-100">{p.factoryName}</span>}</span>
-                        <span>المندوب: <span className="text-slate-100">{p.agentName}</span>{p.agentId ? <span className="text-slate-500"> ({p.agentId.slice(0, 6)})</span> : null}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {mainView === 'products' && (
+          <>
+            {error && <div className="p-3 rounded-xl bg-red-950 border border-red-800 text-red-200 text-xs">{error}</div>}
+
+            {/* KPI bar */}
+            <div>
+              <h2 className="text-xs font-semibold text-slate-400 mb-2 px-1">حركة اليوم</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {kpiCards.map(k => (
+                  <div key={k.label} className="p-3 rounded-2xl bg-[#161b22] border border-[#30363d]">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Icon name={k.icon} size={16} className={k.color} />
+                      <span className="text-[11px] text-slate-400 leading-tight">{k.label}</span>
+                    </div>
+                    <div className={`text-2xl font-bold ${k.color}`}>{k.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick tabs */}
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {tabs.map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={`shrink-0 px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${tab === t.key ? 'bg-blue-600 border-blue-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'}`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Search & filters */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث باسم المنتج، الكود (SKU)، أو المصنع..." className={`${inputCls} md:col-span-4`} />
+              <select value={agentFilter} onChange={e => setAgentFilter(e.target.value)} className={inputCls}>
+                <option value="">كل المناديب</option>
+                {agents.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              </select>
+              <select value={factoryFilter} onChange={e => setFactoryFilter(e.target.value)} className={inputCls}>
+                <option value="">كل المصانع</option>
+                {factories.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              </select>
+              <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className={`${inputCls} md:col-span-2`}>
+                <option value="">كل الفئات</option>
+                {categories.map(c => <option key={c} value={c}>{catLabel(c)}</option>)}
+              </select>
+            </div>
+
+            {/* Product list */}
+            {loading ? (
+              <div className="py-16 text-center text-slate-400 text-sm">جاري تحميل المنتجات...</div>
+            ) : filtered.length === 0 ? (
+              <div className="py-16 text-center text-slate-500 text-sm">لا توجد منتجات مطابقة</div>
+            ) : (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                {filtered.map(p => {
+                  const href = previewHref(p);
+                  return (
+                    <div key={p.key} className={`p-3 rounded-2xl bg-[#161b22] border ${p.isActive ? 'border-[#30363d]' : 'border-red-900/60 opacity-90'}`}>
+                      <div className="flex gap-3">
+                        <div className="w-20 h-20 rounded-xl bg-slate-800 overflow-hidden shrink-0 flex items-center justify-center">
+                          {p.image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={p.image} alt={`صورة المنتج ${p.title}`} className="w-full h-full object-cover" />
+                          ) : (
+                            <Icon name="PhotoIcon" size={28} className="text-slate-500" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-sm font-bold text-white truncate">{p.title}</h3>
+                          <p className="text-[11px] text-slate-400">{catLabel(p.category)}</p>
+                          <div className="mt-1 text-xs text-slate-300 flex flex-wrap gap-x-3 gap-y-0.5">
+                            <span>المصنع: {p.factoryLink ? <Link href={p.factoryLink} className="text-blue-400 hover:underline">{p.factoryName}</Link> : <span className="text-slate-100">{p.factoryName}</span>}</span>
+                            <span>المندوب: <span className="text-slate-100">{p.agentName}</span>{p.agentId ? <span className="text-slate-500"> ({p.agentId.slice(0, 6)})</span> : null}</span>
+                          </div>
+                          <div className="mt-1 text-xs text-slate-300">
+                            الجملة: <span className="font-bold text-emerald-400">{p.price.toLocaleString('en-US')} {p.currency}</span>
+                            <span className="mx-2 text-slate-600">|</span>
+                            الحد الأدنى: <span className="font-bold text-slate-100">{p.moq} {p.unit}</span>
+                            {p.stock !== null && <><span className="mx-2 text-slate-600">|</span>المخزون: <span className={`font-bold ${p.stock <= 0 ? 'text-red-400' : 'text-slate-100'}`}>{p.stock}</span></>}
+                          </div>
+                        </div>
                       </div>
-                      <div className="mt-1 text-xs text-slate-300">
-                        الجملة: <span className="font-bold text-emerald-400">{p.price.toLocaleString('en-US')} {p.currency}</span>
-                        <span className="mx-2 text-slate-600">|</span>
-                        الحد الأدنى: <span className="font-bold text-slate-100">{p.moq} {p.unit}</span>
-                        {p.stock !== null && <><span className="mx-2 text-slate-600">|</span>المخزون: <span className={`font-bold ${p.stock <= 0 ? 'text-red-400' : 'text-slate-100'}`}>{p.stock}</span></>}
+
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {p.soldToday > 0 && <span className="px-2.5 py-1 rounded-full bg-emerald-900/60 border border-emerald-700 text-emerald-300 text-[11px] font-bold">تم بيع {p.soldToday} وحدة اليوم</span>}
+                        {p.shippedToday && <span className="px-2.5 py-1 rounded-full bg-blue-900/60 border border-blue-700 text-blue-300 text-[11px] font-bold">تم شحن الطلب اليوم{p.shippedWith ? ` - مع ${p.shippedWith}` : ''}</span>}
+                        {isPending(p) && <span className="px-2.5 py-1 rounded-full bg-amber-900/60 border border-amber-700 text-amber-300 text-[11px] font-bold">بانتظار الاعتماد</span>}
+                        {!p.isActive && <span className="px-2.5 py-1 rounded-full bg-red-900/60 border border-red-700 text-red-300 text-[11px] font-bold">موقوف</span>}
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {href ? (
+                          <Link href={href} target="_blank" className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold">معاينة بالمتجر</Link>
+                        ) : (
+                          <span className="px-3 py-2 rounded-xl bg-slate-800/50 text-slate-500 text-xs font-bold cursor-not-allowed" title="منتج مندوب غير منشور بصفحة عامة">معاينة بالمتجر</span>
+                        )}
+                        <button onClick={() => openEdit(p)} className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold">تعديل</button>
+                        {isPending(p) && (
+                          <button onClick={() => approve(p)} disabled={busyKey === p.key} className="px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold disabled:opacity-50">اعتماد</button>
+                        )}
+                        <button
+                          onClick={() => toggleActive(p)}
+                          disabled={busyKey === p.key}
+                          role="switch"
+                          aria-checked={p.isActive}
+                          aria-label={p.isActive ? 'إيقاف المنتج' : 'تنشيط المنتج'}
+                          className="mr-auto flex items-center gap-2 text-xs font-bold text-slate-300 disabled:opacity-50"
+                        >
+                          <span>{p.isActive ? 'نشط' : 'موقوف'}</span>
+                          <span className={`relative w-11 h-6 rounded-full transition-colors ${p.isActive ? 'bg-emerald-600' : 'bg-slate-600'}`}>
+                            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${p.isActive ? 'right-0.5' : 'right-[22px]'}`} />
+                          </span>
+                        </button>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {p.soldToday > 0 && <span className="px-2.5 py-1 rounded-full bg-emerald-900/60 border border-emerald-700 text-emerald-300 text-[11px] font-bold">تم بيع {p.soldToday} وحدة اليوم</span>}
-                    {p.shippedToday && <span className="px-2.5 py-1 rounded-full bg-blue-900/60 border border-blue-700 text-blue-300 text-[11px] font-bold">تم شحن الطلب اليوم{p.shippedWith ? ` - مع ${p.shippedWith}` : ''}</span>}
-                    {isPending(p) && <span className="px-2.5 py-1 rounded-full bg-amber-900/60 border border-amber-700 text-amber-300 text-[11px] font-bold">بانتظار الاعتماد</span>}
-                    {!p.isActive && <span className="px-2.5 py-1 rounded-full bg-red-900/60 border border-red-700 text-red-300 text-[11px] font-bold">موقوف</span>}
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {href ? (
-                      <Link href={href} target="_blank" className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold">معاينة بالمتجر</Link>
-                    ) : (
-                      <span className="px-3 py-2 rounded-xl bg-slate-800/50 text-slate-500 text-xs font-bold cursor-not-allowed" title="منتج مندوب غير منشور بصفحة عامة">معاينة بالمتجر</span>
-                    )}
-                    <button onClick={() => openEdit(p)} className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold">تعديل</button>
-                    {isPending(p) && (
-                      <button onClick={() => approve(p)} disabled={busyKey === p.key} className="px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold disabled:opacity-50">اعتماد</button>
-                    )}
-                    <button
-                      onClick={() => toggleActive(p)}
-                      disabled={busyKey === p.key}
-                      role="switch"
-                      aria-checked={p.isActive}
-                      aria-label={p.isActive ? 'إيقاف المنتج' : 'تنشيط المنتج'}
-                      className="mr-auto flex items-center gap-2 text-xs font-bold text-slate-300 disabled:opacity-50"
-                    >
-                      <span>{p.isActive ? 'نشط' : 'موقوف'}</span>
-                      <span className={`relative w-11 h-6 rounded-full transition-colors ${p.isActive ? 'bg-emerald-600' : 'bg-slate-600'}`}>
-                        <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${p.isActive ? 'right-0.5' : 'right-[22px]'}`} />
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
 
