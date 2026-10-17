@@ -207,6 +207,36 @@ function FactoryRegisterPageInner() {
   // Capture agent_id from URL query param (referral tracking)
   const agentIdFromUrl = searchParams.get('agent_id') || null;
 
+  // Referral code (?ref=AGT-XXXXXXXX) — persisted so it survives navigation
+  const [referralCode, setReferralCode] = useState('');
+  const [resolvedAgentId, setResolvedAgentId] = useState<string | null>(agentIdFromUrl);
+
+  useEffect(() => {
+    let code = (searchParams.get('ref') || '').trim();
+    try {
+      if (code) {
+        window.localStorage.setItem('dh_referral_code', code);
+        document.cookie = `dh_referral_code=${encodeURIComponent(code)}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
+      } else {
+        code = window.localStorage.getItem('dh_referral_code') || '';
+      }
+    } catch {
+      // storage unavailable
+    }
+    if (!code) return;
+    setReferralCode(code);
+    let cancelled = false;
+    fetch(`/api/referral/resolve?code=${encodeURIComponent(code)}`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (!cancelled && res?.agentId) setResolvedAgentId(res.agentId);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [searchParams]);
+
+  const effectiveAgentId = agentIdFromUrl || resolvedAgentId;
+
   const [form, setForm] = useState<RegistrationForm>(EMPTY_FORM);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [loading, setLoading] = useState(false);
@@ -310,7 +340,7 @@ function FactoryRegisterPageInner() {
       let approvalType: string | null = null;
 
       // If agent_id is present in URL → apply fast-track approval immediately
-      if (agentIdFromUrl) {
+      if (effectiveAgentId) {
         registrationStatus = 'approved';
         isApproved = true;
         approvalType = 'fast_track_initial';
@@ -369,8 +399,8 @@ function FactoryRegisterPageInner() {
       };
 
       // Attach agent referral if present
-      if (agentIdFromUrl) {
-        payload.referred_by_agent_id = agentIdFromUrl;
+      if (effectiveAgentId) {
+        payload.referred_by_agent_id = effectiveAgentId;
         payload.approval_type = approvalType;
         payload.fast_track_approved_at = new Date().toISOString();
       }
@@ -393,6 +423,13 @@ function FactoryRegisterPageInner() {
         companyName: form.company_name.trim(),
       });
       if (!notifResult.success) console.error('[Notification] Failed:', notifResult.error);
+
+      try {
+        window.localStorage.removeItem('dh_referral_code');
+        document.cookie = 'dh_referral_code=; path=/; max-age=0; SameSite=Lax';
+      } catch {
+        // ignore
+      }
 
       router.push('/manufacturer/dashboard?registered=1');
     } catch (err: any) {
@@ -431,7 +468,7 @@ function FactoryRegisterPageInner() {
         </div>
 
         {/* Agent Referral Banner — shown only when agent_id is in URL */}
-        {agentIdFromUrl && (
+        {effectiveAgentId && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-6 flex items-start gap-3">
             <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5">
               <Icon name="BoltIcon" size={16} className="text-emerald-600" />
@@ -624,6 +661,23 @@ function FactoryRegisterPageInner() {
                 className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
               />
             </div>
+
+            {/* Referral code (locked when provided via link) */}
+            {referralCode && (
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">
+                  رمز الإحالة / كود المندوب
+                </label>
+                <input
+                  type="text"
+                  value={referralCode}
+                  readOnly
+                  disabled
+                  dir="ltr"
+                  className="w-full h-10 px-3 rounded-lg border border-border bg-muted text-foreground text-sm font-mono cursor-not-allowed"
+                />
+              </div>
+            )}
 
             {/* Industry Sector */}
             <div>
