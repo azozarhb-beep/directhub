@@ -132,7 +132,7 @@ export default function AgentSalesDashboard({ userId, factories }: Props) {
       const { data: referralFactories } = await supabase
         .from('factory_registrations')
         .select('user_id, company_name')
-        .eq('referred_by_agent_id', userId);
+        .or(`referred_by_agent_id.eq.${userId},referred_by_agent_code.eq.AGT-${userId.replace(/-/g, '').slice(0, 8).toUpperCase()}`);
       const referralUserMap: Record<string, string> = {};
       (referralFactories || []).forEach(f => { if (f.user_id) referralUserMap[f.user_id] = f.company_name; });
 

@@ -404,7 +404,11 @@ function FactoryRegisterPageInner() {
         payload.approval_type = approvalType;
         payload.fast_track_approved_at = new Date().toISOString();
       }
+      if (referralCode) {
+        payload.referred_by_agent_code = referralCode.trim().toUpperCase();
+      }
 
+      let facilityId: string | null = existingReg?.id ?? null;
       if (existingReg) {
         const { error: updateErr } = await supabase
           .from('factory_registrations')
@@ -412,10 +416,22 @@ function FactoryRegisterPageInner() {
           .eq('id', existingReg.id);
         if (updateErr) throw updateErr;
       } else {
-        const { error: insertErr } = await supabase
+        const { data: inserted, error: insertErr } = await supabase
           .from('factory_registrations')
-          .insert(payload);
+          .insert(payload)
+          .select('id')
+          .single();
         if (insertErr) throw insertErr;
+        facilityId = inserted?.id ?? null;
+      }
+
+      // ── Bind facility → agent (agent_id, referred_by_agent_code, agent_referrals) ──
+      if (facilityId && referralCode) {
+        const { error: bindErr } = await supabase.rpc('bind_facility_referral', {
+          p_facility_id: facilityId,
+          p_code: referralCode.trim(),
+        });
+        if (bindErr) console.error('[Referral] bind failed:', bindErr.message);
       }
 
       // ── Notify user: factory registered ─────────────────────────────────
