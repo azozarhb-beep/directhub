@@ -87,6 +87,12 @@ export interface OpsDoc {
   factoryName: string;
   agentName: string;
   createdAt: string;
+  certSubType: string;
+  certNumber: string;
+  certExpiry: string;
+  issuingBody: string;
+  verificationStatus: string;
+  rejectReason: string;
 }
 
 export const PENDING_KYC_STATUSES = ['pending', 'under_review', 'contacting', 'awaiting_license_approval'];
@@ -135,6 +141,13 @@ export const DOC_TYPE_LABELS: Record<string, string> = {
   registration: 'سجل تجاري',
   image: 'صورة',
   other: 'أخرى',
+};
+
+export const CERT_SUB_TYPE_LABELS: Record<string, string> = {
+  iso_9001: 'ISO 9001 (إدارة الجودة)',
+  saso_saber: 'SASO / سابر',
+  ce_mark: 'CE Mark',
+  ysmo: 'YSMO — الهيئة اليمنية للمواصفات والمقاييس',
 };
 
 export const formatFileSize = (bytes: number): string => {
@@ -328,6 +341,12 @@ export function useOperationsData(options: { withDocs?: boolean } = {}) {
           factoryName: fMap.get(d.factory_reg_id) || 'مصنع غير معروف',
           agentName: d.agent?.full_name || d.agent?.email || 'مندوب',
           createdAt: d.created_at,
+          certSubType: d.cert_sub_type || '',
+          certNumber: d.cert_number || '',
+          certExpiry: d.cert_expiry || '',
+          issuingBody: d.issuing_body || '',
+          verificationStatus: d.verification_status || 'pending',
+          rejectReason: d.reject_reason || '',
         })));
         if (docsRes.error) setError(docsRes.error.message);
       }
@@ -342,6 +361,6 @@ export function useOperationsData(options: { withDocs?: boolean } = {}) {
 
   return {
     supabase, agents, setAgents, factories, setFactories, products, setProducts,
-    inspections, setInspections, docs, loading, error, load,
+    inspections, setInspections, docs, setDocs, loading, error, load,
   };
 }

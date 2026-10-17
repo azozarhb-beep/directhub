@@ -72,6 +72,7 @@ export default function FactoryStorePage() {
   const [rfqSubmitting, setRfqSubmitting] = useState(false);
   const [rfqSuccess, setRfqSuccess] = useState(false);
   const [addedToCart, setAddedToCart] = useState<string | null>(null);
+  const [hasVerifiedCert, setHasVerifiedCert] = useState(false);
 
   useEffect(() => {
     if (!factoryId) return;
@@ -131,6 +132,16 @@ export default function FactoryStorePage() {
         .order('created_at', { ascending: false });
 
       setProducts(productsData || []);
+
+      try {
+        const { data: certOk } = await supabase.rpc('factory_has_verified_certificate', {
+          p_factory_ref: regData.id,
+          p_company_name: regData.company_name || null,
+        });
+        setHasVerifiedCert(certOk === true);
+      } catch {
+        setHasVerifiedCert(false);
+      }
     } catch {
       setNotFound(true);
     } finally {
@@ -244,6 +255,12 @@ export default function FactoryStorePage() {
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <h1 className="text-xl font-bold">{profile.company_name}</h1>
                 <TrustScoreBadge score={profile.trust_percentage} tier={profile.verified_tier} size="sm" />
+                {hasVerifiedCert && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[11px] font-bold">
+                    <Icon name="BadgeCheck" size={12} />
+                    شهادة جودة معتمدة ومفحوصة
+                  </span>
+                )}
               </div>
               <p className="text-slate-300 text-sm">{profile.country}{profile.city ? ` · ${profile.city}` : ''}{profile.established_year ? ` · تأسس ${profile.established_year}` : ''}</p>
               {profile.main_products && <p className="text-slate-400 text-xs mt-1">المنتجات الرئيسية: {profile.main_products}</p>}

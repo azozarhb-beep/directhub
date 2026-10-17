@@ -2,10 +2,11 @@
 
 import React, { useMemo, useState } from 'react';
 import OperationsShell from '../OperationsShell';
+import CertificateVerificationSection from '../CertificateVerificationSection';
 import { DOC_TYPE_LABELS, formatFileSize, inputCls, useOperationsData } from '../useOperationsData';
 
 export default function OperationsDocumentsPage() {
-  const { docs, factories, loading, error, load } = useOperationsData({ withDocs: true });
+  const { supabase, docs, setDocs, factories, loading, error, load } = useOperationsData({ withDocs: true });
 
   const [search, setSearch] = useState('');
   const [docType, setDocType] = useState('');
@@ -23,6 +24,7 @@ export default function OperationsDocumentsPage() {
 
   return (
     <OperationsShell title="ملفات وكتالوجات المصانع" subtitle="أرشيف بروفايلات الشركات والسجلات التجارية والكتالوجات الصناعية" loading={loading} error={error} onRefresh={load}>
+      <CertificateVerificationSection supabase={supabase} docs={docs} setDocs={setDocs} />
       <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
         <input value={search} onChange={(e) => setSearch(e?.target?.value)} placeholder="بحث باسم الملف، المصنع، أو المندوب..." className={`${inputCls} md:col-span-2`} />
         <select value={docType} onChange={(e) => setDocType(e?.target?.value)} className={inputCls}>

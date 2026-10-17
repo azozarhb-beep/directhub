@@ -3,13 +3,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import OperationsShell from '../OperationsShell';
+import CertificateVerificationSection from '../CertificateVerificationSection';
 import { PENDING_KYC_STATUSES, OpsFactory, cleanPhone, inputCls, useOperationsData } from '../useOperationsData';
 
 type FactoryFilter = '' | 'pending' | 'approved';
 
 export default function OperationsFactoriesPage() {
   const { user } = useAuth();
-  const { supabase, agents, factories, setFactories, loading, error, load } = useOperationsData();
+  const { supabase, agents, factories, setFactories, docs, setDocs, loading, error, load } = useOperationsData({ withDocs: true });
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<FactoryFilter>('');
@@ -20,6 +21,7 @@ export default function OperationsFactoriesPage() {
   const [dispatchFor, setDispatchFor] = useState<OpsFactory | null>(null);
   const [dispatchForm, setDispatchForm] = useState({ agentId: '', title: '', notes: '' });
   const [dispatchBusy, setDispatchBusy] = useState(false);
+  const [certFactory, setCertFactory] = useState<OpsFactory | null>(null);
 
   useEffect(() => {
     const s = new URLSearchParams(window.location.search).get('status');
@@ -114,6 +116,15 @@ export default function OperationsFactoriesPage() {
                 <td className="p-3 text-xs space-y-1">
                   {f.commercialRegistry ? <a href={f.commercialRegistry} target="_blank" rel="noopener noreferrer" className="block text-blue-400 font-semibold">السجل التجاري</a> : <span className="block text-slate-500">السجل: غير مرفوع</span>}
                   {f.industrialLicense ? <a href={f.industrialLicense} target="_blank" rel="noopener noreferrer" className="block text-blue-400 font-semibold">الترخيص الصناعي</a> : <span className="block text-slate-500">الترخيص: غير مرفوع</span>}
+                  {(() => {
+                    const fc = docs.filter((d) => d.docType === 'certificate' && d.factoryId === f.id);
+                    const approved = fc.some((d) => d.verificationStatus === 'approved');
+                    return (
+                      <button type="button" onClick={() => setCertFactory(f)} className="block text-amber-300 font-semibold hover:underline">
+                        {approved ? '🏅 شهادة جودة معتمدة ومفحوصة' : `شهادات الجودة (${fc.length})`}
+                      </button>
+                    );
+                  })()}
                 </td>
                 <td className="p-3">
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${f.status === 'approved' ? 'bg-emerald-600/20 text-emerald-300' : 'bg-amber-600/20 text-amber-300'}`}>
@@ -134,6 +145,18 @@ export default function OperationsFactoriesPage() {
       </div>
 
       {toast && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] bg-emerald-600 text-white text-sm font-bold px-4 py-2 rounded-xl shadow-xl">{toast}</div>}
+
+      {certFactory && (
+        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4">
+          <div className="w-full max-w-4xl bg-slate-950 border border-slate-700 rounded-2xl p-4 max-h-[90dvh] overflow-y-auto space-y-3">
+            <div className="flex items-center">
+              <h3 className="text-base font-black">شهادات الجودة والمطابقة — {certFactory.name}</h3>
+              <button type="button" onClick={() => setCertFactory(null)} className="mr-auto w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700">✕</button>
+            </div>
+            <CertificateVerificationSection supabase={supabase} docs={docs} setDocs={setDocs} factoryId={certFactory.id} title="قسم التحقق من الشهادات" />
+          </div>
+        </div>
+      )}
 
       {dispatchFor && (
         <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4">
