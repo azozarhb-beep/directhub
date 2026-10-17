@@ -584,6 +584,7 @@ export default function AgentDashboardPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [agentUnreadCount, setAgentUnreadCount] = useState(0);
+  const [adminUnreadCount, setAdminUnreadCount] = useState(0);
   const [dashboardChatLang] = useState<ChatLanguage>(
     () => CHAT_LANGUAGES.find(l => l.code === 'ar') || CHAT_LANGUAGES[0]
   );
@@ -739,6 +740,37 @@ export default function AgentDashboardPage() {
         table: 'agent_conversations',
         filter: `agent_id=eq.${user.id}`,
       }, () => fetchAgentUnread())
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user, supabase]);
+
+  // Unread admin → agent messages (agent_admin_messages) for the "المراسلة مع الإدارة" card
+  useEffect(() => {
+    if (!user) return;
+    const fetchAdminUnread = async () => {
+      try {
+        const { count } = await supabase
+          .from('agent_admin_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('agent_id', user.id)
+          .eq('sender_role', 'admin')
+          .eq('is_read_by_agent', false);
+        setAdminUnreadCount(count || 0);
+      } catch {
+        setAdminUnreadCount(0);
+      }
+    };
+    fetchAdminUnread();
+
+    const channel = supabase
+      .channel(`agent-dashboard-admin-unread-${user.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'agent_admin_messages',
+        filter: `agent_id=eq.${user.id}`,
+      }, () => fetchAdminUnread())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -993,7 +1025,7 @@ export default function AgentDashboardPage() {
               title: 'المراسلات',
               items: [
                 { id: 'messaging', icon: 'ChatBubbleLeftRightIcon', label: ad.tabMessaging, badge: agentUnreadCount, badgeColor: 'bg-red-500', iconColor: 'bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400' },
-                { id: 'admin_msg', icon: 'ShieldCheckIcon', label: ad.tabAdminMsg, badge: 0, badgeColor: '', iconColor: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' },
+                { id: 'admin_msg', icon: 'ShieldCheckIcon', label: ad.tabAdminMsg, badge: adminUnreadCount, badgeColor: 'bg-red-500', iconColor: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' },
                 { id: 'complaints', icon: 'ExclamationTriangleIcon', label: ad.tabComplaints, badge: 0, badgeColor: '', iconColor: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' },
                 { id: 'dispatch_rooms', icon: 'TruckIcon', label: 'غرف التنسيق الميداني', badge: 0, badgeColor: '', iconColor: 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400' },
               ],
