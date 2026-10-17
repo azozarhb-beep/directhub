@@ -92,6 +92,10 @@ export default function AdminSystemPage() {
   const canAccess = isMasterAdmin || isEngineer;
 
   const [tab, setTab] = useState<TabKey>('infra');
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('tab') as TabKey | null;
+    if (q && ['infra', 'gateways', 'errors', 'audit', 'devops'].includes(q)) setTab(q);
+  }, []);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [buckets, setBuckets] = useState<BucketHealth[]>([]);

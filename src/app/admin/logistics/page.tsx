@@ -112,6 +112,10 @@ export default function AdminLogisticsPage() {
   const canAccess = isAdmin || isDispatcher;
 
   const [tab, setTab] = useState<TabKey>('b2b');
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('tab') as TabKey | null;
+    if (q === 'b2b' || q === 'b2c') setTab(q);
+  }, []);
   const [dir, setDir] = useState<DirKey>('carriers');
   const [b2b, setB2b] = useState<B2BShipment[]>([]);
   const [b2c, setB2c] = useState<B2CParcel[]>([]);

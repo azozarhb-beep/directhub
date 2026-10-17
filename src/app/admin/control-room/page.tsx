@@ -2034,6 +2034,17 @@ export default function AdminControlRoomPage() {
 
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const q = new URLSearchParams(window.location.search).get('tab');
+    if (q && q !== 'overview') setActiveTab(q as ActiveTab);
+  }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (activeTab === 'overview' && window.location.search.includes('tab=')) {
+      window.history.replaceState(null, '', '/admin/control-room');
+    }
+  }, [activeTab]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
@@ -4300,6 +4311,191 @@ export default function AdminControlRoomPage() {
 
         <div className="space-y-6 mb-6">
 
+          {/* ── Canonical Hubs (6) — consolidated presentation layer ───────────── */}
+          {(() => {
+            type HubCard = {
+              label: string;
+              icon: string;
+              gradient: string;
+              tab?: ActiveTab;
+              href?: string;
+              badge?: number;
+            };
+            const hubs: { id: string; title: string; subtitle: string; icon: string; gradient: string; cards: HubCard[] }[] = [
+              {
+                id: 'field',
+                title: 'بوابة الميدان والمورّدين',
+                subtitle: 'Field & Supply Hub',
+                icon: 'UserGroupIcon',
+                gradient: 'linear-gradient(135deg,#10B981,#0EA5E9)',
+                cards: [
+                  { label: 'المصانع والتوثيق (KYC)', icon: 'BuildingOffice2Icon', gradient: 'linear-gradient(135deg,#F97316,#EA580C)', href: '/admin/field-ops?tab=factories', badge: analytics.activeFactories },
+                  { label: 'المناديب الميدانيون', icon: 'UserGroupIcon', gradient: 'linear-gradient(135deg,#14B8A6,#0D9488)', href: '/admin/field-ops?tab=agents', badge: pendingLicenses.length },
+                  { label: 'مهام التفتيش الميداني', icon: 'ClipboardDocumentCheckIcon', gradient: 'linear-gradient(135deg,#0EA5E9,#0284C7)', href: '/admin/field-ops?tab=inspections' },
+                  { label: 'كتالوجات وملفات PDF', icon: 'DocumentTextIcon', gradient: 'linear-gradient(135deg,#6366F1,#4F46E5)', href: '/admin/field-ops?tab=documents' },
+                  { label: 'الكتالوج الشامل', icon: 'ArchiveBoxIcon', gradient: 'linear-gradient(135deg,#10B981,#059669)', href: '/admin/field-ops?tab=catalog' },
+                  { label: 'مراجعة التحقق', icon: 'DocumentCheckIcon', gradient: 'linear-gradient(135deg,#F59E0B,#D97706)', tab: 'verification', badge: pendingCount },
+                  { label: 'المصانع الدولية', icon: 'GlobeAltIcon', gradient: 'linear-gradient(135deg,#0EA5E9,#0284C7)', tab: 'international_factories' },
+                  { label: 'لوحة المورد التجاري', icon: 'BuildingStorefrontIcon', gradient: 'linear-gradient(135deg,#D4AF37,#B8860B)', tab: 'supplier_dashboard' },
+                  { label: 'قائمة المراجعة اليدوية', icon: 'UserGroupIcon', gradient: 'linear-gradient(135deg,#D97706,#B45309)', tab: 'manual_review_queue' },
+                  { label: 'التحقق بالـ OCR', icon: 'DocumentMagnifyingGlassIcon', gradient: 'linear-gradient(135deg,#EA580C,#C2410C)', tab: 'ocr_verification' },
+                ],
+              },
+              {
+                id: 'commerce',
+                title: 'بوابة التجارة والصفقات B2B',
+                subtitle: 'B2B Commerce & Deals Hub',
+                icon: 'ShoppingBagIcon',
+                gradient: 'linear-gradient(135deg,#2563EB,#7C3AED)',
+                cards: [
+                  { label: 'إدارة طلبات عروض الأسعار RFQ', icon: 'DocumentTextIcon', gradient: 'linear-gradient(135deg,#4F46E5,#4338CA)', tab: 'rfq_management', badge: liveRFQs.filter((r: any) => r.status === 'pending').length },
+                  { label: 'المنتجات الحية SKUs والسوق', icon: 'ShoppingBagIcon', gradient: 'linear-gradient(135deg,#2563EB,#7C3AED)', href: '/admin/products', badge: analytics.totalProducts },
+                  { label: 'مدقّق الجمارك', icon: 'DocumentCheckIcon', gradient: 'linear-gradient(135deg,#0D9488,#0F766E)', tab: 'customs_validator' },
+                  { label: 'عربات متروكة', icon: 'ShoppingCartIcon', gradient: 'linear-gradient(135deg,#F97316,#EA580C)', tab: 'abandoned_cart' },
+                  { label: 'توجيه RFQ الذكي', icon: 'SparklesIcon', gradient: 'linear-gradient(135deg,#6D28D9,#5B21B6)', tab: 'smart_rfq_routing' },
+                  { label: 'الطلبات المباشرة', icon: 'PaperAirplaneIcon', gradient: 'linear-gradient(135deg,#06B6D4,#0891B2)', tab: 'direct_orders' },
+                ],
+              },
+              {
+                id: 'logistics',
+                title: 'بوابة اللوجستيات وسلاسل الإمداد',
+                subtitle: 'Logistics & Supply Chain Hub',
+                icon: 'TruckIcon',
+                gradient: 'linear-gradient(135deg,#0EA5E9,#2563EB)',
+                cards: [
+                  { label: 'سوق الشحن التجاري B2B', icon: 'TruckIcon', gradient: 'linear-gradient(135deg,#0EA5E9,#0284C7)', href: '/admin/logistics?tab=b2b' },
+                  { label: 'التوصيل السريع B2C', icon: 'PaperAirplaneIcon', gradient: 'linear-gradient(135deg,#06B6D4,#0891B2)', href: '/admin/logistics?tab=b2c' },
+                  { label: 'تتبع الشحنات (لوحة اللوجستيات)', icon: 'ChartBarSquareIcon', gradient: 'linear-gradient(135deg,#EA580C,#C2410C)', tab: 'logistics_dashboard' },
+                  { label: 'شركاء النقل', icon: 'TruckIcon', gradient: 'linear-gradient(135deg,#0EA5E9,#0284C7)', tab: 'logistics' },
+                  { label: 'نزاعات اللوجستيات', icon: 'ScaleIcon', gradient: 'linear-gradient(135deg,#DC2626,#991B1B)', tab: 'logistics_disputes' },
+                ],
+              },
+              {
+                id: 'treasury',
+                title: 'بوابة الضمان المالي والخزينة',
+                subtitle: 'Treasury & Escrow Hub',
+                icon: 'BanknotesIcon',
+                gradient: 'linear-gradient(135deg,#F59E0B,#EF4444)',
+                cards: [
+                  { label: 'محرك الضمان', icon: 'ShieldCheckIcon', gradient: 'linear-gradient(135deg,#10B981,#059669)', tab: 'escrow', badge: escrowOrders.filter((o: any) => ['pending_verification', 'funds_secured', 'ready_for_inspection', 'pending_admin_payout'].includes(o.escrow_status)).length },
+                  { label: 'الضمان المرحلي (30/40/30)', icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#C026D3,#A21CAF)', href: '/admin/finance?tab=milestones' },
+                  { label: 'اعتماد الدفعات والمستحقات', icon: 'ClockIcon', gradient: 'linear-gradient(135deg,#D97706,#B45309)', tab: 'pending_payment_approval' },
+                  { label: 'مراجعة سندات الإيداع', icon: 'DocumentCheckIcon', gradient: 'linear-gradient(135deg,#F59E0B,#D97706)', href: '/admin/finance?tab=deposits' },
+                  { label: 'عمولات المناديب', icon: 'UserGroupIcon', gradient: 'linear-gradient(135deg,#14B8A6,#0D9488)', href: '/admin/finance?tab=commissions' },
+                  { label: 'سجل التسويات (الخزنة)', icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#065F46,#047857)', href: '/admin/finance?tab=vault' },
+                  { label: 'الحسابات والأرصدة', icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#65A30D,#4D7C0F)', tab: 'accounts' },
+                  { label: 'المدفوعات', icon: 'CreditCardIcon', gradient: 'linear-gradient(135deg,#16A34A,#15803D)', tab: 'payments' },
+                  { label: 'توثيق IBAN', icon: 'ShieldCheckIcon', gradient: 'linear-gradient(135deg,#2563EB,#1D4ED8)', tab: 'iban_verification' },
+                  { label: 'خزينة المنصة', icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#065F46,#047857)', tab: 'treasury' },
+                  { label: 'الضمان المرحلي (لوحة الإدارة)', icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#C026D3,#A21CAF)', tab: 'phased_escrow' },
+                ],
+              },
+              {
+                id: 'comms',
+                title: 'بوابة المراسلة والتواصل',
+                subtitle: 'Communications & Messaging Hub',
+                icon: 'ChatBubbleLeftRightIcon',
+                gradient: 'linear-gradient(135deg,#16A34A,#6366F1)',
+                cards: [
+                  { label: 'أتمتة واتساب', icon: 'ChatBubbleLeftRightIcon', gradient: 'linear-gradient(135deg,#16A34A,#15803D)', tab: 'whatsapp_automation' },
+                  { label: 'محادثات المصانع المباشرة', icon: 'ChatBubbleLeftRightIcon', gradient: 'linear-gradient(135deg,#6366F1,#4F46E5)', tab: 'messages' },
+                  { label: 'تفاوض المشتري والمورد', icon: 'ChatBubbleLeftRightIcon', gradient: 'linear-gradient(135deg,#7C3AED,#6D28D9)', tab: 'buyer_seller_chat' },
+                  { label: 'مركز البث', icon: 'MegaphoneIcon', gradient: 'linear-gradient(135deg,#A855F7,#7C3AED)', tab: 'broadcast_center' },
+                  { label: 'المراسلة المتكاملة', icon: 'ChatBubbleLeftRightIcon', gradient: 'linear-gradient(135deg,#D97706,#B45309)', tab: 'admin_messaging' },
+                  { label: 'جدولة الإشعارات', icon: 'BellAlertIcon', gradient: 'linear-gradient(135deg,#7C3AED,#5B21B6)', tab: 'push_scheduler' },
+                  { label: 'سجل التحديثات', icon: 'MegaphoneIcon', gradient: 'linear-gradient(135deg,#F97316,#EA580C)', tab: 'changelog' },
+                  { label: 'تنبيهات الموردين', icon: 'BellAlertIcon', gradient: 'linear-gradient(135deg,#DC2626,#B91C1C)', tab: 'supplier_alerts' },
+                  { label: 'رادار الإشعارات التنفيذية', icon: 'SignalIcon', gradient: 'linear-gradient(135deg,#1E293B,#0F172A)', tab: 'executive_radar' },
+                ],
+              },
+              {
+                id: 'system',
+                title: 'بوابة الهندسة والذكاء الاصطناعي',
+                subtitle: 'System Engine & AI Hub',
+                icon: 'CpuChipIcon',
+                gradient: 'linear-gradient(135deg,#6366F1,#06B6D4)',
+                cards: [
+                  { label: 'رادار البنية التحتية', icon: 'ServerStackIcon', gradient: 'linear-gradient(135deg,#475569,#334155)', href: '/admin/system?tab=infra' },
+                  { label: 'بوابات الربط والتكاملات', icon: 'SignalIcon', gradient: 'linear-gradient(135deg,#10B981,#059669)', href: '/admin/system?tab=gateways' },
+                  { label: 'سجل الأخطاء الحي', icon: 'BugAntIcon', gradient: 'linear-gradient(135deg,#DC2626,#B91C1C)', href: '/admin/system?tab=errors' },
+                  { label: 'سجل التدقيق الأمني', icon: 'ShieldCheckIcon', gradient: 'linear-gradient(135deg,#1E293B,#0F172A)', href: '/admin/system?tab=audit' },
+                  { label: 'مفاتيح الصيانة DevOps', icon: 'Cog6ToothIcon', gradient: 'linear-gradient(135deg,#6366F1,#06B6D4)', href: '/admin/system?tab=devops' },
+                  { label: 'تشخيص المنصة', icon: 'BugAntIcon', gradient: 'linear-gradient(135deg,#DC2626,#B91C1C)', tab: 'platform_diagnostics' },
+                  { label: 'مدقّق النظام بالذكاء الاصطناعي', icon: 'ShieldCheckIcon', gradient: 'linear-gradient(135deg,#1E293B,#0F172A)', tab: 'ai_auditor' },
+                  { label: 'سجلات أمل', icon: 'ChatBubbleLeftEllipsisIcon', gradient: 'linear-gradient(135deg,#F97316,#EA580C)', tab: 'amal_logs' },
+                  { label: 'مستكشف قاعدة البيانات', icon: 'CircleStackIcon', gradient: 'linear-gradient(135deg,#334155,#1E293B)', tab: 'db_explorer' },
+                  { label: 'محاكاة الأدوار', icon: 'UserGroupIcon', gradient: 'linear-gradient(135deg,#4F46E5,#6366F1)', tab: 'role_simulation' },
+                  { label: 'صحة النظام', icon: 'ServerStackIcon', gradient: 'linear-gradient(135deg,#475569,#334155)', tab: 'system_health' },
+                  { label: 'البنية الحية', icon: 'SignalIcon', gradient: 'linear-gradient(135deg,#10B981,#059669)', tab: 'live_infra' },
+                  { label: 'بطاقات المشاكل', icon: 'RectangleStackIcon', gradient: 'linear-gradient(135deg,#7C3AED,#6D28D9)', tab: 'issue_cards' },
+                  { label: 'مولّد الأفكار', icon: 'LightBulbIcon', gradient: 'linear-gradient(135deg,#7C3AED,#6D28D9)', tab: 'idea_generator' },
+                  { label: 'دليل الصفحات', icon: 'MapIcon', gradient: 'linear-gradient(135deg,#E11D48,#BE123C)', tab: 'sitemap_hub' },
+                  { label: 'مساعد أمل (AI)', icon: 'CpuChipIcon', gradient: 'linear-gradient(135deg,#8B5CF6,#7C3AED)', tab: 'amal', badge: criticalAlertCount },
+                  { label: 'إعدادات المنصة', icon: 'Cog6ToothIcon', gradient: 'linear-gradient(135deg,#475569,#334155)', tab: 'platform_settings' },
+                  { label: 'المستخدمون', icon: 'UsersIcon', gradient: 'linear-gradient(135deg,#0EA5E9,#0284C7)', tab: 'users', badge: analytics.totalUsers },
+                ],
+              },
+            ];
+
+            const cardClass = 'relative flex flex-col items-center gap-2 p-3 rounded-2xl border bg-[#161b22] border-[#30363d] text-[#8b949e] hover:border-[#484f58] hover:bg-[#1c2330] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 text-center overflow-hidden';
+            const renderInner = (c: HubCard) => (
+              <>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm" style={{ background: c.gradient }}>
+                  <Icon name={c.icon as any} size={20} className="text-white" />
+                </div>
+                <span className="text-xs font-bold leading-tight text-slate-200">{c.label}</span>
+                {c.badge !== undefined && c.badge > 0 && (
+                  <span className="absolute top-2 right-2 min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1.5">{c.badge}</span>
+                )}
+              </>
+            );
+
+            return (
+              <div className="space-y-6">
+                {hubs.map(hub => (
+                  <section key={hub.id} className="rounded-3xl border border-[#30363d] bg-[#0d1117]/60 p-4">
+                    <div className="flex items-center gap-3 mb-3 px-1">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm" style={{ background: hub.gradient }}>
+                        <Icon name={hub.icon as any} size={20} className="text-white" />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-bold text-slate-100 leading-tight">{hub.title}</h3>
+                        <p className="text-[10px] uppercase tracking-widest text-slate-500">{hub.subtitle}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                      {hub.cards.map(c =>
+                        c.href ? (
+                          <Link key={`${hub.id}-${c.label}`} href={c.href} className={cardClass}>
+                            {renderInner(c)}
+                          </Link>
+                        ) : (
+                          <button
+                            key={`${hub.id}-${c.label}`}
+                            type="button"
+                            onClick={() => {
+                              const t = c.tab as ActiveTab;
+                              setActiveTab(t);
+                              if (typeof window !== 'undefined') window.history.replaceState(null, '', `/admin/control-room?tab=${t}`);
+                              if (t === 'field_agents' && agentFactories.length === 0) fetchFieldAgentsData();
+                              if (t === 'payments' && allPayments.length === 0) fetchPayments();
+                              if (t === 'accounts' && accountsData.users.length === 0) fetchAccountsData();
+                            }}
+                            className={cardClass}
+                          >
+                            {renderInner(c)}
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* Legacy loose-card sections — preserved (not deleted), hidden from the presentation layer */}
+          <div className="hidden" aria-hidden="true">
           {/* Section 1: Core Operations */}
           <div>
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3 px-1">العمليات الأساسية</h3>
@@ -4657,6 +4853,7 @@ export default function AdminControlRoomPage() {
               })}
             </div>
           </div>
+          </div>{/* /legacy hidden sections */}
 
         </div>
 
