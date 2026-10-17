@@ -2035,6 +2035,7 @@ export default function AdminControlRoomPage() {
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [portalHub, setPortalHub] = useState<string | null>(null);
+  const [agentMsgUnread, setAgentMsgUnread] = useState(0);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
@@ -4407,7 +4408,7 @@ export default function AdminControlRoomPage() {
                   { label: 'محادثات المصانع المباشرة', icon: 'ChatBubbleLeftRightIcon', gradient: 'linear-gradient(135deg,#6366F1,#4F46E5)', tab: 'messages' },
                   { label: 'تفاوض المشتري والمورد', icon: 'ChatBubbleLeftRightIcon', gradient: 'linear-gradient(135deg,#7C3AED,#6D28D9)', tab: 'buyer_seller_chat' },
                   { label: 'مركز البث', icon: 'MegaphoneIcon', gradient: 'linear-gradient(135deg,#A855F7,#7C3AED)', tab: 'broadcast_center' },
-                  { label: 'المراسلة المتكاملة', icon: 'ChatBubbleLeftRightIcon', gradient: 'linear-gradient(135deg,#D97706,#B45309)', tab: 'admin_messaging' },
+                  { label: 'المراسلة المتكاملة', icon: 'ChatBubbleLeftRightIcon', gradient: 'linear-gradient(135deg,#D97706,#B45309)', tab: 'admin_messaging', badge: agentMsgUnread },
                   { label: 'جدولة الإشعارات', icon: 'BellAlertIcon', gradient: 'linear-gradient(135deg,#7C3AED,#5B21B6)', tab: 'push_scheduler' },
                   { label: 'سجل التحديثات', icon: 'MegaphoneIcon', gradient: 'linear-gradient(135deg,#F97316,#EA580C)', tab: 'changelog' },
                   { label: 'تنبيهات الموردين', icon: 'BellAlertIcon', gradient: 'linear-gradient(135deg,#DC2626,#B91C1C)', tab: 'supplier_alerts' },
@@ -4491,7 +4492,14 @@ export default function AdminControlRoomPage() {
                           <Icon name={hub.icon as any} size={28} className="text-white" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h3 className="text-base font-bold text-slate-100 leading-tight">{hub.title}</h3>
+                          <h3 className="text-base font-bold text-slate-100 leading-tight flex items-center gap-2">
+                            {hub.title}
+                            {hub.id === 'comms' && agentMsgUnread > 0 && (
+                              <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold inline-flex items-center justify-center">
+                                {agentMsgUnread > 99 ? '99+' : agentMsgUnread}
+                              </span>
+                            )}
+                          </h3>
                           <p className="text-[10px] uppercase tracking-widest text-slate-500 mt-0.5">{hub.subtitle}</p>
                           <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">{hubDescriptions[hub.id]}</p>
                           {badges.length > 0 && (
@@ -7003,6 +7011,7 @@ export default function AdminControlRoomPage() {
                   { label: 'مراجعة التحقق', icon: 'DocumentCheckIcon', tab: 'verification' as ActiveTab, badge: analytics.pendingVerifications, color: 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' },
                   { label: 'إدارة الضمان', icon: 'ShieldCheckIcon', tab: 'escrow' as ActiveTab, badge: 0, color: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' },
                   { label: 'مراقبة المحادثات', icon: 'ChatBubbleLeftRightIcon', tab: 'buyer_seller_chat' as ActiveTab, badge: 0, color: 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100' },
+                  { label: 'مراسلة المندوبين', icon: 'PaperAirplaneIcon', tab: 'admin_messaging' as ActiveTab, badge: agentMsgUnread, color: 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100' },
                   { label: 'إعدادات المنصة', icon: 'Cog6ToothIcon', tab: 'platform_settings' as ActiveTab, badge: 0, color: 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100' },
                   { label: 'المدفوعات', icon: 'CreditCardIcon', tab: 'payments' as ActiveTab, badge: 0, color: 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' },
                   { label: 'الحسابات والأرصدة', icon: 'BanknotesIcon', tab: 'accounts' as ActiveTab, badge: 0, color: 'bg-lime-50 border-lime-200 text-lime-700 hover:bg-lime-100' },
