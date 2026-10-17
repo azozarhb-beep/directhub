@@ -39,6 +39,8 @@ const DOC_TYPE_CONFIG: Record<string, { labelKey: string; icon: string; color: s
 
 const UPLOAD_DOC_TYPES = ['product_catalog', 'company_profile', 'certificate', 'price_sheet'] as const;
 
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
+
 const FACTORY_TYPE_KEYS: Record<string, string> = {
   local_factory: 'localFactory',
   international_factory: 'intlFactory',
@@ -90,7 +92,16 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
     const scrollX = window.scrollX;
     const scrollY = window.scrollY;
     const file = e.target.files?.[0];
-    if (file) setSelectedFile(file);
+    if (file) {
+      if (file.size > MAX_FILE_SIZE) {
+        setError(ui.fileHint);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
+        return;
+      }
+      setError('');
+      setSelectedFile(file);
+    }
     requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
   };
 
@@ -222,7 +233,6 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
               onChange={e => setDocType(e.target.value)}
               className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
             >
-              <option value="">{ui.allTypes}</option>
               {UPLOAD_DOC_TYPES.map(key => (
                 <option key={key} value={key}>{(ui as any)[DOC_TYPE_CONFIG[key].labelKey]}</option>
               ))}
@@ -299,18 +309,18 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
 
       {/* Documents List */}
       <div className="bg-card border border-border rounded-2xl p-5">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col gap-3 mb-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center shrink-0">
               <Icon name="FolderOpenIcon" size={16} className="text-blue-600" />
             </div>
             <h3 className="font-bold text-foreground text-sm">{ui.uploadedFiles.replace('{count}', String(filteredDocs.length))}</h3>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 w-full">
             <select
               value={filterFactory}
               onChange={e => setFilterFactory(e.target.value)}
-              className="px-2.5 py-1.5 bg-background border border-border rounded-lg text-xs text-foreground focus:outline-none focus:border-primary"
+              className="w-full sm:w-auto sm:min-w-[160px] max-w-full px-2.5 py-1.5 bg-background border border-border rounded-lg text-xs text-foreground focus:outline-none focus:border-primary"
             >
               <option value="">{ui.allFactories}</option>
               {factories.map(f => (
@@ -320,9 +330,8 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
             <select
               value={filterType}
               onChange={e => setFilterType(e.target.value)}
-              className="px-2.5 py-1.5 bg-background border border-border rounded-lg text-xs text-foreground focus:outline-none focus:border-primary"
+              className="w-full sm:w-auto sm:min-w-[160px] max-w-full px-2.5 py-1.5 bg-background border border-border rounded-lg text-xs text-foreground focus:outline-none focus:border-primary"
             >
-              <option value="">{ui.allTypes}</option>
               {UPLOAD_DOC_TYPES.map(key => (
                 <option key={key} value={key}>{(ui as any)[DOC_TYPE_CONFIG[key].labelKey]}</option>
               ))}

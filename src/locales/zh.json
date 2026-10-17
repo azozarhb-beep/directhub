@@ -2892,7 +2892,7 @@
             "descriptionPlaceholder": "简短文件描述...",
             "fileRequired": "文件 *",
             "clickChoose": "点击选择文件",
-            "fileHint": "PDF、JPG、PNG — 最大15MB",
+            "fileHint": "PDF、JPG、PNG — 最大50MB",
             "uploading": "上传中...",
             "uploadFile": "上传文件",
             "uploadedFiles": "已上传文件（{count}）",

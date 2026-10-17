@@ -2892,7 +2892,7 @@
             "descriptionPlaceholder": "Kısa dosya açıklaması...",
             "fileRequired": "Dosya *",
             "clickChoose": "Dosya seçmek için tıklayın",
-            "fileHint": "PDF, JPG, PNG — en fazla 15MB",
+            "fileHint": "PDF, JPG, PNG — en fazla 50MB",
             "uploading": "Yükleniyor...",
             "uploadFile": "Dosyayı yükle",
             "uploadedFiles": "Yüklenen dosyalar ({count})",
