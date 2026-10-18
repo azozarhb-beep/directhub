@@ -1135,6 +1135,7 @@ function LiveMessagingContent() {
   const [acceptingQuoteId, setAcceptingQuoteId] = useState<string | null>(null);
   const [quoteAcceptMsg, setQuoteAcceptMsg] = useState<{ success: boolean; text: string } | null>(null);
   const [dealStatusUpdating, setDealStatusUpdating] = useState(false);
+  const [dealToken, setDealToken] = useState<string | null>(null);
   const [newMessageAlert, setNewMessageAlert] = useState<{ convId: string; senderName: string } | null>(null);
 
   // ── Chat header extra state ────────────────────────────────────────────────
@@ -2484,7 +2485,7 @@ function LiveMessagingContent() {
 
                     {/* Place Order */}
                     {activeConv.deal_status === 'agreed' && (
-                      <Link href="/checkout" className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 transition-colors">
+                      <Link href={dealToken ? `/pay/deal/${dealToken}` : '/checkout'} className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 transition-colors">
                         <Icon name="ShoppingBagIcon" size={12} />
                         {m.placeOrder}
                       </Link>

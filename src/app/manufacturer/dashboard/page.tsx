@@ -42,6 +42,7 @@ import DisputesPanel from './DisputesPanel';
 import FinancialHubPanel from './FinancialHubPanel';
 import SellerFulfillmentPanel from './SellerFulfillmentPanel';
 import ShipmentBidsPanel from '@/components/ShipmentBidsPanel';
+import DealLinkGeneratorModal from '@/components/manufacturer/DealLinkGeneratorModal';
 
 // ── Sales Rep interfaces ─────────────────────────────────────────────────────
 interface SalesRep {
@@ -290,6 +291,7 @@ export default function ManufacturerDashboard() {
   };
 
   const [activeTab, setActiveTab] = useState<DashboardTab>('products');
+  const [showDealLinkModal, setShowDealLinkModal] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [fetchLoading, setFetchLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -1985,6 +1987,16 @@ export default function ManufacturerDashboard() {
               </button>
             )}
             {!isSalesRep && (
+              <button
+                type="button"
+                onClick={() => setShowDealLinkModal(true)}
+                className="flex items-center gap-2 px-3 py-2 border border-emerald-300 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-semibold hover:bg-emerald-100 transition-colors"
+              >
+                <Icon name="LinkIcon" size={15} />
+                <span className="hidden sm:inline">إنشاء رابط صفقة مخصصة</span>
+              </button>
+            )}
+            {!isSalesRep && (
               <Link
                 href="/seller/products"
                 className="flex items-center gap-2 px-3 py-2 border border-primary/30 bg-primary/5 text-primary rounded-lg text-sm font-semibold hover:bg-primary/10 transition-colors"
@@ -1995,6 +2007,8 @@ export default function ManufacturerDashboard() {
             )}
           </div>
         </div>
+
+        <DealLinkGeneratorModal open={showDealLinkModal} onClose={() => setShowDealLinkModal(false)} />
 
         {/* Sales Rep Permission Banner */}
         {isSalesRep && (

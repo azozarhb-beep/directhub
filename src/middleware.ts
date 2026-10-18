@@ -99,6 +99,7 @@ const PROTECTED_PAGE_ROUTES = [
   '/order-confirmation',
   '/disputes',
   '/checkout',
+  '/pay',
   '/cart',
   '/rfq-management',
   '/notifications',

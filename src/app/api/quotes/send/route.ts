@@ -53,12 +53,16 @@ export async function POST(req: NextRequest) {
       notes,
       shipping_type,
       factory_tax_ref,
+      product_title,
+      expires_in_days,
       // legacy fields kept for backward compat
       incoterm,
       port_of_loading,
     } = await req.json();
 
-    if (!buyer_user_id || !quoted_price || !quantity || !delivery_days) {
+    // buyer_user_id is optional only for standalone deal links (no conversation)
+    const isStandaloneDeal = !conversation_id && !buyer_user_id;
+    if ((!buyer_user_id && !isStandaloneDeal) || !quoted_price || !quantity || !delivery_days) {
       return NextResponse.json({ error: 'Missing required fields: buyer_user_id, quoted_price, quantity, delivery_days' }, { status: 400 });
     }
 
@@ -117,6 +121,11 @@ export async function POST(req: NextRequest) {
         incoterm: !shipping_type ? (incoterm || null) : null,
         port_of_loading: !shipping_type && incoterm === 'FOB' ? (port_of_loading || null) : null,
         status: 'pending',
+        product_title: product_title || null,
+        payment_mode: 'escrow',
+        ...(expires_in_days && Number(expires_in_days) > 0 && Number(expires_in_days) <= 90
+          ? { expires_at: new Date(Date.now() + Number(expires_in_days) * 86400000).toISOString() }
+          : {}),
       })
       .select()
       .single();
@@ -211,16 +220,20 @@ export async function POST(req: NextRequest) {
     if (!notifFactory.success) console.error('[Notification] Failed:', notifFactory.error);
 
     // ── Notify buyer: new quote received ────────────────────────────────────
-    const notifBuyer = await createNotification(supabaseAdmin, 'rfq_responded', buyer_user_id, 'ar', {
-      quoteId: quote.id,
-      price: String(quoted_price),
-      currency,
-    });
-    if (!notifBuyer.success) console.error('[Notification] Failed:', notifBuyer.error);
+    if (buyer_user_id) {
+      const notifBuyer = await createNotification(supabaseAdmin, 'rfq_responded', buyer_user_id, 'ar', {
+        quoteId: quote.id,
+        price: String(quoted_price),
+        currency,
+      });
+      if (!notifBuyer.success) console.error('[Notification] Failed:', notifBuyer.error);
+    }
 
     return NextResponse.json({
       success: true,
       quote_id: quote.id,
+      public_token: quote.public_token || null,
+      deal_path: quote.public_token ? `/pay/deal/${quote.public_token}` : null,
       message: 'تم إرسال عرض السعر المخصص بنجاح',
     });
   } catch (err: any) {
