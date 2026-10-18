@@ -224,8 +224,8 @@ const isValidDevOriginPattern = (h) => {
   if (!h || /[\s/]/.test(h)) return false;
   if (h.includes('**') && !h.startsWith('**.')) return false;
   const labels = h.split('.');
-  // Drop bare TLD wildcards like "**.com" / "*.io" (too broad, not meaningful)
-  if (labels.length === 2 && (labels[0] === '*' || labels[0] === '**')) return false;
+  // Single-label wildcard on a bare TLD ("*.com") is meaningless; multi-label ("**.com") is allowed
+  if (labels.length === 2 && labels[0] === '*') return false;
   // Partial label replacement (e.g. "team-*.example.com") is unsupported
   if (labels.some((l) => l.includes('*') && l !== '*' && l !== '**')) return false;
   return true;
