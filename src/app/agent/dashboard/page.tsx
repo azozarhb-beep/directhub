@@ -583,6 +583,8 @@ export default function AgentDashboardPage() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
+  const [activeStatCard, setActiveStatCard] = useState<'total' | 'approved' | 'pending' | 'products' | null>(null);
+  const factoryListRef = useRef<HTMLDivElement | null>(null);
   const [agentUnreadCount, setAgentUnreadCount] = useState(0);
   const [adminUnreadCount, setAdminUnreadCount] = useState(0);
   const [dashboardChatLang] = useState<ChatLanguage>(
@@ -595,7 +597,7 @@ export default function AgentDashboardPage() {
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [milestoneModal, setMilestoneModal] = useState<{ taskId: string; currentStage: number } | null>(null);
   const [milestoneNote, setMilestoneNote] = useState('');
-  const [milestoneUpdating, setMilestoneUpdating] = useState(false);
+  const [milestoneUpdating] = useState(false);
   const hasLoadedOnceRef = React.useRef(false);
 
   // Auth guard — wrong roles redirect to their room (never 403)
@@ -910,6 +912,30 @@ export default function AgentDashboardPage() {
     ? factories.filter(f => f.registration_status === filterStatus)
     : factories;
 
+  const scrollToFactoryList = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    window.setTimeout(() => {
+      factoryListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+  }, []);
+
+  const handleStatCardClick = useCallback((card: 'total' | 'approved' | 'pending' | 'products') => {
+    setActiveStatCard(card);
+    if (card === 'products') {
+      setFilterStatus('');
+      openTab('products');
+      return;
+    }
+    setFilterStatus(card === 'approved' ? 'approved' : card === 'pending' ? 'pending' : '');
+    openTab('factories');
+    scrollToFactoryList();
+  }, [openTab, scrollToFactoryList]);
+
+  const resetStatFilter = useCallback(() => {
+    setFilterStatus('');
+    setActiveStatCard(null);
+  }, []);
+
   if ((authLoading || loading) && !hasLoadedOnceRef.current) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -983,21 +1009,45 @@ export default function AgentDashboardPage() {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          {[
-            { label: ad.statTotal, value: statTotalFactories, icon: 'BuildingOffice2Icon', color: 'text-blue-600', bg: 'bg-blue-50' },
-            { label: ad.statApproved, value: statApprovedFactories, icon: 'CheckBadgeIcon', color: 'text-emerald-600', bg: 'bg-emerald-50' },
-            { label: ad.statPendingReview, value: pendingReview, icon: 'ClockIcon', color: 'text-amber-600', bg: 'bg-amber-50' },
-            { label: ad.statProducts, value: totalProducts, icon: 'CubeIcon', color: 'text-purple-600', bg: 'bg-purple-50' },
-          ].map(stat => (
-            <div key={stat.label} className="bg-card border border-border rounded-xl p-4">
-              <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center mb-3`}>
-                <Icon name={stat.icon as any} size={18} className={stat.color} />
-              </div>
-              <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
-            </div>
-          ))}
+          {([
+            { id: 'total', label: ad.statTotal, value: statTotalFactories, icon: 'BuildingOffice2Icon', color: 'text-blue-600', bg: 'bg-blue-50', activeBorder: 'border-blue-500 ring-2 ring-blue-500/25' },
+            { id: 'approved', label: ad.statApproved, value: statApprovedFactories, icon: 'CheckBadgeIcon', color: 'text-emerald-600', bg: 'bg-emerald-50', activeBorder: 'border-emerald-500 ring-2 ring-emerald-500/25' },
+            { id: 'pending', label: ad.statPendingReview, value: pendingReview, icon: 'ClockIcon', color: 'text-amber-600', bg: 'bg-amber-50', activeBorder: 'border-amber-500 ring-2 ring-amber-500/25' },
+            { id: 'products', label: ad.statProducts, value: totalProducts, icon: 'CubeIcon', color: 'text-purple-600', bg: 'bg-purple-50', activeBorder: 'border-purple-500 ring-2 ring-purple-500/25' },
+          ] as const).map(stat => {
+            const isStatActive = activeStatCard === stat.id;
+            return (
+              <button
+                key={stat.label}
+                type="button"
+                onClick={() => handleStatCardClick(stat.id)}
+                aria-pressed={isStatActive}
+                className={`text-start cursor-pointer bg-card border rounded-xl p-4 min-h-[88px] transition-all hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] ${
+                  isStatActive ? `${stat.activeBorder} border-2 shadow-md` : 'border-border hover:border-primary/40'
+                }`}
+              >
+                <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center mb-3`}>
+                  <Icon name={stat.icon as any} size={18} className={stat.color} />
+                </div>
+                <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
+              </button>
+            );
+          })}
         </div>
+
+        {activeStatCard !== null && (
+          <div className="-mt-3 mb-5 flex justify-end">
+            <button
+              type="button"
+              onClick={resetStatFilter}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card text-xs font-semibold text-foreground hover:bg-muted active:scale-[0.98] transition-all"
+            >
+              <Icon name="ArrowPathIcon" size={14} />
+              عرض الكل / إعادة ضبط
+            </button>
+          </div>
+        )}
 
         {/* Tabs — 5 Grouped Sections as Grid Cards */}
         <div className="space-y-5 mb-5">
@@ -1557,9 +1607,10 @@ export default function AgentDashboardPage() {
         {/* Factories Tab */}
         {activeTab === 'factories' && (
           <>
+            <div ref={factoryListRef} className="scroll-mt-20" />
             {/* Filter Bar */}
             {factories.length > 0 && (
-              <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+              <div className="flex gap-2 mb-4 overflow-x-auto pb-1 items-center">
                 {[
                   { value: '', label: ad.filterAll },
                   { value: 'pending', label: ad.filterPending },
@@ -1569,7 +1620,10 @@ export default function AgentDashboardPage() {
                 ].map(f => (
                   <button
                     key={f.value}
-                    onClick={() => setFilterStatus(f.value)}
+                    onClick={() => {
+                      setFilterStatus(f.value);
+                      setActiveStatCard(f.value === 'approved' ? 'approved' : f.value === 'pending' ? 'pending' : f.value === '' ? null : null);
+                    }}
                     className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                       filterStatus === f.value
                         ? 'bg-primary text-white border-primary' :'bg-card border-border text-muted-foreground hover:bg-muted'
@@ -1583,6 +1637,16 @@ export default function AgentDashboardPage() {
                     )}
                   </button>
                 ))}
+                {(filterStatus !== '' || activeStatCard !== null) && (
+                  <button
+                    type="button"
+                    onClick={resetStatFilter}
+                    className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border border-primary/40 text-primary bg-primary/5 hover:bg-primary/10 transition-colors"
+                  >
+                    <Icon name="ArrowPathIcon" size={12} />
+                    عرض الكل / إعادة ضبط
+                  </button>
+                )}
               </div>
             )}
 
