@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -110,6 +110,11 @@ export default function SellerProductManagerPage() {
   const supabase = createClient();
   const { t, dir, isRTL } = useLanguage();
   const sp = t.sellerProducts;
+  const f = sp.form;
+  const catLabel = (v: string) => (f.categories as Record<string, string>)[v] || v;
+  const unitLabel = (v: string) => (f.units as Record<string, string>)[v] || v;
+  const invLabel = (v: string) => (f.inventory as Record<string, string>)[v] || v;
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [fetchLoading, setFetchLoading] = useState(true);
@@ -222,8 +227,8 @@ export default function SellerProductManagerPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    if (!formData.name.trim()) { setFormError('Product name is required'); return; }
-    if (!formData.unit_price || isNaN(Number(formData.unit_price))) { setFormError('Valid unit price is required'); return; }
+    if (!formData.name.trim()) { setFormError(f.errNameRequired); return; }
+    if (!formData.unit_price || isNaN(Number(formData.unit_price))) { setFormError(f.errPriceRequired); return; }
 
     setFormLoading(true);
     setFormError('');
@@ -269,16 +274,16 @@ export default function SellerProductManagerPage() {
       if (editingProduct) {
         const { error } = await supabase.from('manufacturer_products').update(payload).eq('id', editingProduct.id);
         if (error) throw error;
-        setFormSuccess('Product updated successfully!');
+        setFormSuccess(f.successUpdated);
       } else {
         const { error } = await supabase.from('manufacturer_products').insert(payload);
         if (error) throw error;
-        setFormSuccess('Product added successfully!');
+        setFormSuccess(f.successAdded);
       }
       await fetchProducts();
       setTimeout(() => { setShowModal(false); setFormSuccess(''); }, 1200);
     } catch (err: any) {
-      setFormError(err.message || 'Failed to save product');
+      setFormError(err.message || f.errSaveFailed);
     } finally {
       setFormLoading(false);
     }
@@ -345,7 +350,7 @@ export default function SellerProductManagerPage() {
   );
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" dir={dir}>
       <Header />
       <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 pb-28 md:pb-10">
         {/* Page Header */}
@@ -353,11 +358,11 @@ export default function SellerProductManagerPage() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <Link href="/manufacturer/dashboard" className="text-muted-foreground hover:text-foreground transition-colors">
-                <Icon name="ArrowLeftIcon" size={16} />
+                <Icon name="ArrowLeftIcon" size={16} className={isRTL ? 'rotate-180' : ''} />
               </Link>
-              <h1 className="text-xl font-extrabold text-foreground">Product Manager</h1>
+              <h1 className="text-xl font-extrabold text-foreground">{f.pageTitle}</h1>
             </div>
-            <p className="text-sm text-muted-foreground">Add, edit, and manage your product catalog</p>
+            <p className="text-sm text-muted-foreground">{f.pageSubtitle}</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -365,7 +370,7 @@ export default function SellerProductManagerPage() {
               className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity shrink-0"
             >
               <Icon name="PlusIcon" size={16} />
-              Add Product
+              {f.addProduct}
             </button>
           </div>
         </div>
@@ -391,13 +396,13 @@ export default function SellerProductManagerPage() {
         {/* Filters */}
         <div className="bg-card border border-border rounded-xl p-4 mb-4 flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <Icon name="MagnifyingGlassIcon" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Icon name="MagnifyingGlassIcon" size={16} className="absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
               placeholder={t.manufacturerDashboard.searchByNameOrSku}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-9 pl-9 pr-3 rounded-lg border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+              className="w-full h-9 ps-9 pe-3 rounded-lg border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
             />
           </div>
           <select
@@ -416,25 +421,25 @@ export default function SellerProductManagerPage() {
             className="h-9 px-3 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:border-primary"
           >
             <option value="all">{t.manufacturerDashboard.allCategories}</option>
-            {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+            {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{catLabel(c.value)}</option>)}
           </select>
         </div>
 
         {/* Bulk Actions */}
         {selectedProducts.size > 0 && (
           <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 mb-4 flex items-center gap-3 flex-wrap">
-            <span className="text-sm font-bold text-primary">{selectedProducts.size} selected</span>
+            <span className="text-sm font-bold text-primary">{selectedProducts.size} {f.selected}</span>
             <button onClick={() => bulkToggleActive(true)} disabled={bulkLoading} className="px-3 py-1.5 bg-green-100 text-green-700 text-xs font-bold rounded-lg hover:bg-green-200 transition-colors">
-              Activate
+              {f.activate}
             </button>
             <button onClick={() => bulkToggleActive(false)} disabled={bulkLoading} className="px-3 py-1.5 bg-yellow-100 text-yellow-700 text-xs font-bold rounded-lg hover:bg-yellow-200 transition-colors">
-              Deactivate
+              {f.deactivate}
             </button>
             <button onClick={bulkDelete} disabled={bulkLoading} className="px-3 py-1.5 bg-red-100 text-red-700 text-xs font-bold rounded-lg hover:bg-red-200 transition-colors">
-              Delete
+              {f.delete}
             </button>
-            <button onClick={() => setSelectedProducts(new Set())} className="ml-auto text-xs text-muted-foreground hover:text-foreground">
-              Clear
+            <button onClick={() => setSelectedProducts(new Set())} className="ms-auto text-xs text-muted-foreground hover:text-foreground">
+              {f.clear}
             </button>
           </div>
         )}
@@ -447,13 +452,13 @@ export default function SellerProductManagerPage() {
         ) : filteredProducts.length === 0 ? (
           <div className="bg-card border border-border rounded-xl p-12 text-center">
             <Icon name="CubeIcon" size={40} className="text-muted mx-auto mb-3" />
-            <p className="font-bold text-foreground mb-1">No products found</p>
+            <p className="font-bold text-foreground mb-1">{f.noProductsFound}</p>
             <p className="text-sm text-muted-foreground mb-4">
-              {products.length === 0 ? 'Start by adding your first product to the catalog.' : 'Try adjusting your filters.'}
+              {products.length === 0 ? f.startAdding : f.adjustFilters}
             </p>
             {products.length === 0 && (
               <button onClick={openAdd} className="px-5 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity">
-                Add First Product
+                {f.addFirstProduct}
               </button>
             )}
           </div>
@@ -464,12 +469,12 @@ export default function SellerProductManagerPage() {
               <div className="flex items-center">
                 <input type="checkbox" checked={selectedProducts.size === filteredProducts.length && filteredProducts.length > 0} onChange={selectAll} className="rounded" />
               </div>
-              <span>Product</span>
-              <span>Category</span>
-              <span>Price</span>
-              <span>Stock</span>
-              <span>Status</span>
-              <span>Actions</span>
+              <span>{f.colProduct}</span>
+              <span>{f.colCategory}</span>
+              <span>{f.colPrice}</span>
+              <span>{f.colStock}</span>
+              <span>{f.colStatus}</span>
+              <span>{f.colActions}</span>
             </div>
 
             <div className="divide-y divide-border">
@@ -493,26 +498,26 @@ export default function SellerProductManagerPage() {
                     </div>
                     <div className="min-w-0">
                       <p className="font-bold text-sm text-foreground line-clamp-1">{product.name}</p>
-                      {product.name_ar && <p className="text-xs text-muted-foreground line-clamp-1 text-right" dir={dir}>{product.name_ar}</p>}
-                      {product.sku && <p className="text-[10px] text-muted-foreground">SKU: {product.sku}</p>}
+                      {product.name_ar && <p className="text-xs text-muted-foreground line-clamp-1 text-start" dir="rtl">{product.name_ar}</p>}
+                      {product.sku && <p className="text-[10px] text-muted-foreground">{f.sku}: <bdi dir="ltr">{product.sku}</bdi></p>}
                     </div>
                   </div>
 
                   {/* Category */}
                   <span className="hidden md:inline-flex text-xs font-medium px-2 py-1 bg-muted rounded-lg text-muted-foreground capitalize">
-                    {product.category?.replace('_', ' ')}
+                    {product.category ? (catLabel(product.category) !== product.category ? catLabel(product.category) : product.category.replace('_', ' ')) : ''}
                   </span>
 
                   {/* Price */}
-                  <div className="hidden md:block text-right">
-                    <p className="text-sm font-bold text-foreground">{product.unit_price?.toLocaleString()}</p>
-                    <p className="text-[10px] text-muted-foreground">/{product.unit}</p>
+                  <div className="hidden md:block text-end">
+                    <p className="text-sm font-bold text-foreground"><bdi dir="ltr">{product.unit_price?.toLocaleString('en-US')}</bdi></p>
+                    <p className="text-[10px] text-muted-foreground">/{unitLabel(product.unit)}</p>
                   </div>
 
                   {/* Stock */}
-                  <div className="hidden md:block text-right">
-                    <p className="text-sm font-semibold text-foreground">{product.stock_quantity ?? '—'}</p>
-                    <p className="text-[10px] text-muted-foreground">units</p>
+                  <div className="hidden md:block text-end">
+                    <p className="text-sm font-semibold text-foreground"><bdi dir="ltr">{product.stock_quantity ?? '—'}</bdi></p>
+                    <p className="text-[10px] text-muted-foreground">{f.units_label}</p>
                   </div>
 
                   {/* Status */}
@@ -530,14 +535,14 @@ export default function SellerProductManagerPage() {
                     <button
                       onClick={() => openEdit(product)}
                       className="p-2 rounded-lg hover:bg-primary/10 text-primary transition-colors"
-                      title="Edit"
+                      title={f.titleEdit}
                     >
                       <Icon name="PencilSquareIcon" size={16} />
                     </button>
                     <Link
                       href={`/product/${product.id}`}
                       className="p-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors"
-                      title="View"
+                      title={f.titleView}
                     >
                       <Icon name="EyeIcon" size={16} />
                     </Link>
@@ -550,7 +555,7 @@ export default function SellerProductManagerPage() {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="p-2 rounded-lg hover:bg-[#25D366]/10 text-[#128C7E] transition-colors"
-                      title="Share on WhatsApp"
+                      title={f.titleShare}
                     >
                       <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
                         <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
@@ -559,7 +564,7 @@ export default function SellerProductManagerPage() {
                     <button
                       onClick={() => setDeleteId(product.id)}
                       className="p-2 rounded-lg hover:bg-red-50 text-red-500 transition-colors"
-                      title="Delete"
+                      title={f.titleDelete}
                     >
                       <Icon name="TrashIcon" size={16} />
                     </button>
@@ -573,14 +578,14 @@ export default function SellerProductManagerPage() {
 
       {/* Add/Edit Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-background">
+        <div className="fixed inset-0 z-50 flex flex-col bg-background" dir={dir}>
           <div className="bg-card w-full h-full flex flex-col">
             {/* Modal Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0 bg-card">
               <h2 className="font-extrabold text-lg text-foreground">
-                {editingProduct ? 'Edit Product' : 'Add New Product'}
+                {editingProduct ? f.editProduct : f.addNewProduct}
               </h2>
-              <button onClick={() => setShowModal(false)} className="p-2 rounded-xl hover:bg-muted transition-colors">
+              <button type="button" onClick={() => setShowModal(false)} aria-label={f.close} title={f.close} className="p-2 rounded-xl hover:bg-muted transition-colors">
                 <Icon name="XMarkIcon" size={20} />
               </button>
             </div>
@@ -590,13 +595,14 @@ export default function SellerProductManagerPage() {
               {(['basic', 'specs', 'logistics'] as const).map((tab) => (
                 <button
                   key={tab}
+                  type="button"
                   onClick={() => setActiveFormTab(tab)}
                   className={`flex-1 py-3 text-xs font-bold capitalize transition-colors ${
                     activeFormTab === tab
                       ? 'text-primary border-b-2 border-primary' :'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  {tab === 'basic' ? 'Basic Info' : tab === 'specs' ? 'Specifications' : 'Logistics & Details'}
+                  {tab === 'basic' ? f.tabBasic : tab === 'specs' ? f.tabSpecs : f.tabLogistics}
                 </button>
               ))}
             </div>
@@ -608,13 +614,14 @@ export default function SellerProductManagerPage() {
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-bold text-foreground mb-1.5">Product Name (EN) *</label>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">{f.nameEn} *</label>
                         <input
                           type="text"
                           value={formData.name}
                           onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
-                          placeholder="e.g. Industrial Hydraulic Pump"
-                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                          placeholder={f.nameEnPlaceholder}
+                          dir="auto"
+                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
                         />
                       </div>
                       <div>
@@ -624,49 +631,51 @@ export default function SellerProductManagerPage() {
                           value={formData.name_ar}
                           onChange={(e) => setFormData((p) => ({ ...p, name_ar: e.target.value }))}
                           placeholder={sp.nameArPlaceholder}
-                          dir={dir}
-                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-right"
+                          dir="auto"
+                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-foreground mb-1.5">Description (EN)</label>
+                      <label className="block text-xs font-bold text-foreground mb-1.5">{f.descEn}</label>
                       <textarea
                         value={formData.description}
                         onChange={(e) => setFormData((p) => ({ ...p, description: e.target.value }))}
                         rows={3}
-                        placeholder="Describe your product..."
-                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none"
+                        placeholder={f.descEnPlaceholder}
+                        dir="auto"
+                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none text-start"
                       />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-bold text-foreground mb-1.5">Category *</label>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">{f.category} *</label>
                         <select
                           value={formData.category}
                           onChange={(e) => setFormData((p) => ({ ...p, category: e.target.value }))}
                           className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:border-primary"
                         >
-                          {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                          {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{catLabel(c.value)}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-foreground mb-1.5">SKU</label>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">{f.sku}</label>
                         <input
                           type="text"
                           value={formData.sku}
                           onChange={(e) => setFormData((p) => ({ ...p, sku: e.target.value }))}
-                          placeholder="e.g. HYD-001"
-                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                          placeholder={f.skuPlaceholder}
+                          dir="ltr"
+                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
                         />
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div>
-                        <label className="block text-xs font-bold text-foreground mb-1.5">Unit Price *</label>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">{f.unitPrice} *</label>
                         <input
                           type="number"
                           value={formData.unit_price}
@@ -674,80 +683,96 @@ export default function SellerProductManagerPage() {
                           placeholder="0.00"
                           min="0"
                           step="0.01"
-                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                          dir="ltr"
+                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-foreground mb-1.5">Unit</label>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">{f.unit}</label>
                         <select
                           value={formData.unit}
                           onChange={(e) => setFormData((p) => ({ ...p, unit: e.target.value }))}
                           className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:border-primary"
                         >
-                          {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                          {UNITS.map((u) => <option key={u} value={u}>{unitLabel(u)}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-foreground mb-1.5">Min. Order Qty</label>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">{f.minOrderQty}</label>
                         <input
                           type="number"
                           value={formData.minimum_order_qty}
                           onChange={(e) => setFormData((p) => ({ ...p, minimum_order_qty: e.target.value }))}
                           min="1"
-                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:border-primary"
+                          dir="ltr"
+                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:border-primary text-start"
                         />
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-bold text-foreground mb-1.5">Stock Quantity</label>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">{f.stockQuantity}</label>
                         <input
                           type="number"
                           value={formData.stock_quantity}
                           onChange={(e) => setFormData((p) => ({ ...p, stock_quantity: e.target.value }))}
                           placeholder="0"
                           min="0"
-                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                          dir="ltr"
+                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-foreground mb-1.5">Inventory Status</label>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">{f.inventoryStatus}</label>
                         <select
                           value={formData.inventory_status}
                           onChange={(e) => setFormData((p) => ({ ...p, inventory_status: e.target.value }))}
                           className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:border-primary"
                         >
-                          {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-                            <option key={k} value={k}>{v.label}</option>
+                          {Object.keys(STATUS_CONFIG).map((k) => (
+                            <option key={k} value={k}>{invLabel(k)}</option>
                           ))}
                         </select>
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-foreground mb-1.5">Product Image</label>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          setFormData((prev) => ({
-                            ...prev,
-                            imageFile: file,
-                            imagePreview: URL.createObjectURL(file),
-                          }));
-                        }}
-                        className="w-full text-sm text-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
-                      />
+                      <label className="block text-xs font-bold text-foreground mb-1.5">{f.productImage}</label>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setFormData((prev) => ({
+                              ...prev,
+                              imageFile: file,
+                              imagePreview: URL.createObjectURL(file),
+                            }));
+                          }}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="py-1.5 px-3 rounded-lg text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                        >
+                          {f.browse}
+                        </button>
+                        <span className="text-sm text-muted-foreground truncate max-w-[16rem]" dir="auto">
+                          {formData.imageFile ? formData.imageFile.name : f.noFileSelected}
+                        </span>
+                      </div>
                       {formData.imagePreview && (
-                        <img src={formData.imagePreview} alt="Preview" className="w-24 h-24 object-cover rounded-lg mt-2 border border-border" />
+                        <img src={formData.imagePreview} alt={f.imagePreviewAlt} className="w-24 h-24 object-cover rounded-lg mt-2 border border-border" />
                       )}
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-foreground mb-1.5">Sales Model</label>
+                      <label className="block text-xs font-bold text-foreground mb-1.5">{f.salesModel}</label>
                       <select
                         value={formData.sales_model}
                         onChange={(e) => setFormData((prev) => ({ ...prev, sales_model: e.target.value as 'B2B' | 'B2C' | 'both' }))}
@@ -755,18 +780,19 @@ export default function SellerProductManagerPage() {
                       >
                         <option value="B2B">B2B</option>
                         <option value="B2C">B2C</option>
-                        <option value="both">B2B + B2C</option>
+                        <option value="both">{f.salesModelBoth}</option>
                       </select>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-foreground mb-1.5">Origin Country</label>
+                      <label className="block text-xs font-bold text-foreground mb-1.5">{f.originCountry}</label>
                       <input
                         type="text"
                         value={formData.origin_country}
                         onChange={(e) => setFormData((p) => ({ ...p, origin_country: e.target.value }))}
-                        placeholder="e.g. Saudi Arabia"
-                        className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                        placeholder={f.originCountryPlaceholder}
+                        dir="auto"
+                        className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
                       />
                     </div>
                   </>
@@ -776,15 +802,16 @@ export default function SellerProductManagerPage() {
                 {activeFormTab === 'specs' && (
                   <>
                     <div>
-                      <label className="block text-xs font-bold text-foreground mb-1.5">Technical Specifications (EN)</label>
+                      <label className="block text-xs font-bold text-foreground mb-1.5">{f.specsEn}</label>
                       <textarea
                         value={formData.specifications_en}
                         onChange={(e) => setFormData((p) => ({ ...p, specifications_en: e.target.value }))}
                         rows={5}
-                        placeholder="Flow Rate: 80 L/min&#10;Max Pressure: 350 bar&#10;Power: 15 kW"
-                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none font-mono"
+                        placeholder={f.specsEnPlaceholder}
+                        dir="auto"
+                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none font-mono text-start"
                       />
-                      <p className="text-[10px] text-muted-foreground mt-1">One spec per line: Label: Value</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">{f.specsHint}</p>
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-foreground mb-1.5">{sp.specsArLabel}</label>
@@ -792,29 +819,31 @@ export default function SellerProductManagerPage() {
                         value={formData.specifications_ar}
                         onChange={(e) => setFormData((p) => ({ ...p, specifications_ar: e.target.value }))}
                         rows={5}
-                        dir={dir}
+                        dir="auto"
                         placeholder={sp.specsArPlaceholder}
-                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none font-mono text-right"
+                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none font-mono text-start"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-foreground mb-1.5">Certifications</label>
+                      <label className="block text-xs font-bold text-foreground mb-1.5">{f.certifications}</label>
                       <input
                         type="text"
                         value={formData.certifications}
                         onChange={(e) => setFormData((p) => ({ ...p, certifications: e.target.value }))}
-                        placeholder="ISO 9001, CE Mark, RoHS (comma-separated)"
-                        className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                        placeholder={f.certificationsPlaceholder}
+                        dir="auto"
+                        className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-foreground mb-1.5">Tags / Keywords</label>
+                      <label className="block text-xs font-bold text-foreground mb-1.5">{f.tags}</label>
                       <input
                         type="text"
                         value={formData.tags}
                         onChange={(e) => setFormData((p) => ({ ...p, tags: e.target.value }))}
-                        placeholder="hydraulic, pump, industrial (comma-separated)"
-                        className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                        placeholder={f.tagsPlaceholder}
+                        dir="auto"
+                        className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
                       />
                     </div>
                   </>
@@ -823,55 +852,59 @@ export default function SellerProductManagerPage() {
                 {/* Logistics Tab */}
                 {activeFormTab === 'logistics' && (
                   <>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-bold text-foreground mb-1.5">Delivery Time (days)</label>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">{f.deliveryTime}</label>
                         <input
                           type="number"
                           value={formData.delivery_time_days}
                           onChange={(e) => setFormData((p) => ({ ...p, delivery_time_days: e.target.value }))}
-                          placeholder="e.g. 14"
+                          placeholder={f.deliveryTimePlaceholder}
                           min="1"
-                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                          dir="ltr"
+                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-foreground mb-1.5">Weight (kg)</label>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">{f.weight}</label>
                         <input
                           type="number"
                           value={formData.weight_kg}
                           onChange={(e) => setFormData((p) => ({ ...p, weight_kg: e.target.value }))}
-                          placeholder="e.g. 48"
+                          placeholder={f.weightPlaceholder}
                           min="0"
                           step="0.1"
-                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                          dir="ltr"
+                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-bold text-foreground mb-1.5">Dimensions (L×W×H)</label>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">{f.dimensions}</label>
                         <input
                           type="text"
                           value={formData.dimensions}
                           onChange={(e) => setFormData((p) => ({ ...p, dimensions: e.target.value }))}
-                          placeholder="e.g. 60×50×40 cm"
-                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                          placeholder={f.dimensionsPlaceholder}
+                          dir="auto"
+                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-foreground mb-1.5">Warranty (months)</label>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">{f.warranty}</label>
                         <input
                           type="number"
                           value={formData.warranty_months}
                           onChange={(e) => setFormData((p) => ({ ...p, warranty_months: e.target.value }))}
-                          placeholder="e.g. 24"
+                          placeholder={f.warrantyPlaceholder}
                           min="0"
-                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                          dir="ltr"
+                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
                         />
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-xl border border-border">
+                    <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-xl border border-border flex-wrap">
                       <input
                         type="checkbox"
                         id="sample_available"
@@ -880,11 +913,11 @@ export default function SellerProductManagerPage() {
                         className="rounded"
                       />
                       <label htmlFor="sample_available" className="text-sm font-medium text-foreground cursor-pointer">
-                        Sample Available
+                        {f.sampleAvailable}
                       </label>
                       {formData.sample_available && (
-                        <div className="ml-auto flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">Sample Price:</span>
+                        <div className="ms-auto flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">{f.samplePrice}</span>
                           <input
                             type="number"
                             value={formData.sample_price}
@@ -892,7 +925,8 @@ export default function SellerProductManagerPage() {
                             placeholder="0.00"
                             min="0"
                             step="0.01"
-                            className="w-24 h-8 px-2 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:border-primary"
+                            dir="ltr"
+                            className="w-24 h-8 px-2 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:border-primary text-start"
                           />
                         </div>
                       )}
@@ -905,13 +939,13 @@ export default function SellerProductManagerPage() {
               <div className="px-5 py-4 border-t border-border bg-muted/20 shrink-0 flex items-center gap-3">
                 {formError && <p className="text-xs text-red-600 flex-1">{formError}</p>}
                 {formSuccess && <p className="text-xs text-green-600 flex-1">{formSuccess}</p>}
-                <div className="flex items-center gap-3 ml-auto">
+                <div className="flex items-center gap-3 ms-auto">
                   <button
                     type="button"
                     onClick={() => setShowModal(false)}
                     className="px-4 py-2 border border-border text-sm font-bold rounded-xl hover:bg-muted transition-colors"
                   >
-                    Cancel
+                    {f.cancel}
                   </button>
                   <button
                     type="submit"
@@ -919,7 +953,7 @@ export default function SellerProductManagerPage() {
                     className="px-5 py-2 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
                   >
                     {formLoading && <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />}
-                    {editingProduct ? 'Save Changes' : 'Add Product'}
+                    {editingProduct ? f.saveChanges : f.addProduct}
                   </button>
                 </div>
               </div>
@@ -930,10 +964,10 @@ export default function SellerProductManagerPage() {
 
       {/* Delete Confirm Modal */}
       {deleteId && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-background">
+        <div className="fixed inset-0 z-50 flex flex-col bg-background" dir={dir}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-card shrink-0">
-            <h3 className="font-extrabold text-lg text-foreground">Delete Product?</h3>
-            <button onClick={() => setDeleteId(null)} className="p-2 rounded-xl hover:bg-muted transition-colors">
+            <h3 className="font-extrabold text-lg text-foreground">{f.deleteTitle}</h3>
+            <button type="button" onClick={() => setDeleteId(null)} aria-label={f.close} title={f.close} className="p-2 rounded-xl hover:bg-muted transition-colors">
               <Icon name="XMarkIcon" size={20} />
             </button>
           </div>
@@ -941,13 +975,13 @@ export default function SellerProductManagerPage() {
             <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center mx-auto mb-4">
               <Icon name="TrashIcon" size={24} className="text-red-600" />
             </div>
-            <p className="text-sm text-muted-foreground text-center mb-6">This action cannot be undone.</p>
+            <p className="text-sm text-muted-foreground text-center mb-6">{f.deleteWarning}</p>
             <div className="flex gap-3 w-full max-w-sm">
               <button onClick={() => setDeleteId(null)} className="flex-1 py-2.5 border border-border text-sm font-bold rounded-xl hover:bg-muted transition-colors">
-                Cancel
+                {f.cancel}
               </button>
               <button onClick={() => handleDelete(deleteId)} className="flex-1 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 transition-colors">
-                Delete
+                {f.delete}
               </button>
             </div>
           </div>
