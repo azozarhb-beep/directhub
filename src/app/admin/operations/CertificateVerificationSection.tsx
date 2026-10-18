@@ -74,6 +74,7 @@ export default function CertificateVerificationSection({
           : x
       )
     );
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('hub-counts-refresh'));
     showToast(status === 'approved' ? 'تم اعتماد الشهادة' : 'تم رفض الشهادة وطلب إعادة التصوير');
   };
 

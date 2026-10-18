@@ -482,6 +482,7 @@ export default function AdminFieldOpsPage() {
     setBusyKey(null);
     if (err) { showToast(`فشل التحديث: ${err.message}`); return; }
     setAgents((prev) => prev.map((x) => (x.id === a.id ? { ...x, status: next } : x)));
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('hub-counts-refresh'));
     showToast('تم تحديث حالة المندوب');
   };
 

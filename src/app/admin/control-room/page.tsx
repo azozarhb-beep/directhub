@@ -2515,6 +2515,48 @@ export default function AdminControlRoomPage() {
     setMounted(true);
   }, []);
 
+  // ── Field & Supply Hub live badge counters ─────────────────────────────────
+  const [hubCounts, setHubCounts] = useState({ documents: 0, agents: 0, inspections: 0, manualReview: 0 });
+
+  const loadHubCounts = useCallback(async () => {
+    try {
+      const [docsRes, agentsRes, inspRes, manualRes, fastTrackRes] = await Promise.all([
+        supabase.from('agent_factory_documents').select('id', { count: 'exact', head: true }).eq('verification_status', 'pending'),
+        supabase.from('user_profiles').select('id', { count: 'exact', head: true }).eq('role', 'field_agent').eq('is_active', true),
+        supabase.from('field_inspection_tasks').select('id', { count: 'exact', head: true }).in('status', ['assigned', 'dispatched', 'in_progress']),
+        supabase.from('manual_review_queue').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('factory_registrations').select('id', { count: 'exact', head: true }).eq('approval_type', 'fast_track_initial').not('registration_status', 'in', '(approved,rejected)'),
+      ]);
+      setHubCounts({
+        documents: docsRes.count || 0,
+        agents: agentsRes.count || 0,
+        inspections: inspRes.count || 0,
+        manualReview: (manualRes.count || 0) + (fastTrackRes.count || 0),
+      });
+    } catch {
+      // keep previous counts on failure
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!mounted || authLoading || !user || !isAdmin) return;
+    loadHubCounts();
+    const onRefresh = () => { loadHubCounts(); };
+    window.addEventListener('hub-counts-refresh', onRefresh);
+    const channel = supabase
+      .channel('hub-badge-counters')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'agent_factory_documents' }, onRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'field_inspection_tasks' }, onRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'manual_review_queue' }, onRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'factory_registrations' }, onRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_profiles' }, onRefresh)
+      .subscribe();
+    return () => {
+      window.removeEventListener('hub-counts-refresh', onRefresh);
+      supabase.removeChannel(channel);
+    };
+  }, [mounted, authLoading, user, isAdmin, supabase, loadHubCounts]);
+
   useEffect(() => {
     if (!authLoading && !user) { router.push('/login'); return; }
     if (!authLoading && user && !isAdmin) { router.push('/'); }
