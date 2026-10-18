@@ -234,7 +234,15 @@ const isValidDevOriginPattern = (h) => {
 const allowedDevOrigins = Array.from(
   new Set(
     allDevOriginCandidates
-      .map((h) => String(h).trim().replace(/^\[|\]$/g, '').replace(/:\d+$/, ''))
+      .map((h) => {
+        const v = String(h).trim();
+        // Keep IPv6 literals intact (port-stripping would mangle "::1")
+        if (v.includes('::') || (v.match(/:/g) || []).length > 1) {
+          return v.replace(/^\[|\]$/g, '');
+        }
+        return v.replace(/^\[|\]$/g, '').replace(/:\d+$/, '');
+      })
+      .filter((h) => h && h !== ':')
       .filter(isValidDevOriginPattern)
   )
 );
