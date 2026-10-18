@@ -198,7 +198,7 @@ export default function AdminFinancePage() {
       const [ordersRes, subsRes, commRes, relRes] = await Promise.all([
         supabase
           .from('orders')
-          .select('id, order_number, user_id, factory_user_id, total, currency, order_category, escrow_status, status, platform_commission, quality_check_at, delivery_pin_verified_at, delivery_otp_verified_at, buyer_confirmed_at, admin_payout_reviewed_at, payout_note, funds_released_at, payment_verified, receipt_url, payment_method, created_at, tracking_code, bill_of_lading_url, dispatched_at')
+          .select('id, order_number, user_id, factory_user_id, total, currency, order_category, escrow_status, status, platform_commission, platform_fee, net_factory_payout, quality_check_at, delivery_pin_verified_at, delivery_otp_verified_at, buyer_confirmed_at, admin_payout_reviewed_at, payout_note, funds_released_at, payment_verified, receipt_url, payment_method, created_at, tracking_code, bill_of_lading_url, dispatched_at')
           .in('escrow_status', ['pending_verification', 'funds_secured', 'shipped', 'pending_otp_confirmation', 'pending_admin_payout', 'funds_released'])
           .order('created_at', { ascending: false })
           .limit(300),
@@ -319,7 +319,7 @@ export default function AdminFinancePage() {
             inspectionPassed,
             deliveryConfirmed,
             queuedForRelease: queued,
-            platformFee: Number(o.platform_commission || 0),
+            platformFee: Number(o.platform_fee || o.platform_commission || 0),
             stage,
             createdAt: o.created_at,
             shipped: ['shipped', 'pending_otp_confirmation', 'pending_admin_payout'].includes(o.escrow_status),

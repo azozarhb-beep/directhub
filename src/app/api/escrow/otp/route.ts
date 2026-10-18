@@ -135,10 +135,10 @@ async function postHandler(req: NextRequest) {
     }
 
     if (action === 'verify') {
-      // Fetch order
+      // Fetch order (internal accounting fields are read for the admin notification only, never returned to the buyer)
       const { data: order, error: orderError } = await supabase
         .from('orders')
-        .select('id, order_number, escrow_status, user_id')
+        .select('id, order_number, escrow_status, user_id, platform_fee, net_factory_payout')
         .eq('id', order_id)
         .eq('user_id', user.id)
         .single();
@@ -210,7 +210,12 @@ async function postHandler(req: NextRequest) {
           type: 'payout_review_required',
           title: `🔔 الطلب #${order.order_number} جاهز لصرف المستحقات`,
           message: `المشتري أكد استلام وفحص الطلب رقم ${order.order_number}. يرجى مراجعة الطلب والضغط على "صرف المستحقات" في لوحة التحكم.`,
-          data: { order_id, order_number: order.order_number },
+          data: {
+            order_id,
+            order_number: order.order_number,
+            platform_fee: Number((order as any).platform_fee || 0),
+            net_factory_payout: Number((order as any).net_factory_payout || 0),
+          },
           is_read: false,
         }));
 

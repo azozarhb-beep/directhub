@@ -371,7 +371,7 @@ export default function EscrowOrdersPanel({
                       <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center shrink-0">
                         <Icon name="CheckBadgeIcon" size={20} className="text-green-700" />
                       </div>
-                      <div>
+                      <div className="flex-1">
                         <h4 className="text-sm font-bold text-green-900">{md.orderCompleteReleased}</h4>
                         <p className="text-xs text-green-700 mt-1">{md.pinVerifiedFundsReady}</p>
                         {selectedEscrowOrder.funds_released_at && (
@@ -380,6 +380,21 @@ export default function EscrowOrdersPanel({
                             {md.releaseDate} {new Date(selectedEscrowOrder.funds_released_at).toLocaleString(language === 'ar' ? 'ar-SA' : language === 'zh' ? 'zh-CN' : language === 'tr' ? 'tr-TR' : 'en-US')}
                           </p>
                         )}
+                        <div className="mt-3 bg-white/70 border border-green-200 rounded-xl p-3 space-y-1.5">
+                          <p className="text-xs font-bold text-green-900">كشف تسوية المصنع</p>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-green-700">إجمالي الطلب</span>
+                            <span className="font-semibold text-green-900">${Number(selectedEscrowOrder.subtotal ?? selectedEscrowOrder.total ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-green-700">عمولة المنصة</span>
+                            <span className="font-semibold text-amber-700">-${Number(selectedEscrowOrder.platform_fee ?? selectedEscrowOrder.platform_commission ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          </div>
+                          <div className="flex justify-between text-xs border-t border-green-200 pt-1.5">
+                            <span className="font-bold text-green-900">صافي المستحق للمصنع</span>
+                            <span className="font-bold text-green-900">${Number(selectedEscrowOrder.net_factory_payout ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
