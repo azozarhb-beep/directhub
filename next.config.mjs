@@ -179,15 +179,22 @@ const baseDevOrigins = [
   '**.pro',
   '**.top',
   '**.vercel.sh',
-  '**.dhiwise.app',
-  '**.rocket.app',
   '**.rocketsandbox.com',
   '**.rocketsandbox.dev',
-  '*.rocketsandbox.com',
-  '*.rocketsandbox.dev',
-  '**.rocket.new',
-  '**.vercel.run',
-  '**.vercel.sh',
+  '**.rocketsandbox.io',
+  '**.rocketsandbox.app',
+  '**.rocketsandbox.new',
+  '**.rocket.run',
+  '**.rocket.page',
+  '**.rocket.site',
+  '**.rocket.cloud',
+  '**.rocket.live',
+  '**.dhiwise.io',
+  '**.dhiwise.app',
+  '**.dhiwise.cloud',
+  '**.dhiwise.run',
+  '**.direct-hub.com',
+  '**.direct-hub.app',
   ...localNetworkHosts,
   ...previewEnvHosts,
   ...(siteUrlHost ? [siteUrlHost, `**.${siteUrlHost}`] : []),
@@ -204,11 +211,22 @@ const allDevOriginCandidates = [
   ...extraDevOrigins,
 ];
 
+const isValidDevOriginPattern = (h) => {
+  if (!h || /[\s/]/.test(h)) return false;
+  if (h.includes('**') && !h.startsWith('**.')) return false;
+  const labels = h.split('.');
+  // Drop bare TLD wildcards like "**.com" / "*.io" (too broad, not meaningful)
+  if (labels.length === 2 && (labels[0] === '*' || labels[0] === '**')) return false;
+  // Partial label replacement (e.g. "team-*.example.com") is unsupported
+  if (labels.some((l) => l.includes('*') && l !== '*' && l !== '**')) return false;
+  return true;
+};
+
 const allowedDevOrigins = Array.from(
   new Set(
     allDevOriginCandidates
-      .map((h) => String(h).replace(/^\[|\]$/g, '').replace(/:\d+$/, ''))
-      .filter(Boolean)
+      .map((h) => String(h).trim().replace(/^\[|\]$/g, '').replace(/:\d+$/, ''))
+      .filter(isValidDevOriginPattern)
   )
 );
 
