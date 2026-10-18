@@ -19,6 +19,7 @@ import AgentCommissionAccountPanel from './AgentCommissionAccountPanel';
 import AgentEarningsPanel from './AgentEarningsPanel';
 import AgentDispatchRoomsTab from './AgentDispatchRoomsTab';
 import AgentInspectionTasksPanel from './AgentInspectionTasksPanel';
+import AgentOrderTrackingPanel from './AgentOrderTrackingPanel';
 import EnhancedAgentDashboard from '@/components/agent/EnhancedAgentDashboard';
 import ReferralTrackingPanel from './ReferralTrackingPanel';
 import { isApprovedOrActiveFacility } from '@/lib/referralStats';
@@ -541,13 +542,13 @@ export default function AgentDashboardPage() {
   const [previewProduct, setPreviewProduct] = useState<AgentProduct | null>(null);
   const [editProduct, setEditProduct] = useState<AgentProduct | null>(null);
   const [loading, setLoading] = useState(true);
-  type AgentTabId = 'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral' | 'dispatch_rooms';
-  const VALID_TABS: AgentTabId[] = ['factories', 'products', 'messaging', 'documents', 'exchange', 'complaints', 'sales', 'admin_msg', 'commission', 'enhanced', 'inspections', 'earnings', 'referral', 'dispatch_rooms'];
+  type AgentTabId = 'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral' | 'dispatch_rooms' | 'order_tracking';
+  const VALID_TABS: AgentTabId[] = ['factories', 'products', 'messaging', 'documents', 'exchange', 'complaints', 'sales', 'admin_msg', 'commission', 'enhanced', 'inspections', 'earnings', 'referral', 'dispatch_rooms', 'order_tracking'];
   const TAB_URL_KEYS: Record<AgentTabId, string> = {
     factories: 'factories', products: 'products', messaging: 'messaging', documents: 'documents',
     exchange: 'exchange', complaints: 'complaints', sales: 'sales',
     admin_msg: 'admin-msg', commission: 'commission', enhanced: 'register', inspections: 'inspections',
-    earnings: 'earnings', referral: 'referral', dispatch_rooms: 'dispatch',
+    earnings: 'earnings', referral: 'referral', dispatch_rooms: 'dispatch', order_tracking: 'orders',
   };
   const [activeTab, setActiveTabState] = useState<AgentTabId | null>(null);
 
@@ -1067,6 +1068,7 @@ export default function AgentDashboardPage() {
                 { id: 'factories', icon: 'BuildingOffice2Icon', label: ad.tabFactories.replace('{count}', String(totalFactories)), badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' },
                 { id: 'products', icon: 'CubeIcon', label: ad.tabProducts.replace('{count}', String(totalProducts)), badge: 0, badgeColor: '', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
                 { id: 'inspections', icon: 'ClipboardDocumentListIcon', label: 'مهام التفتيش', badge: inspectionTasks.filter(t => !t.id.startsWith('mock-')).length, badgeColor: 'bg-amber-500', iconColor: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' },
+                { id: 'order_tracking', icon: 'TruckIcon', label: 'متابعة الطلبات وتجهيز المنتجات', badge: 0, badgeColor: '', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
                 { id: 'enhanced', icon: 'BriefcaseIcon', label: 'المصانع والتوثيق (KYC)', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
               ],
             },
@@ -1148,6 +1150,7 @@ export default function AgentDashboardPage() {
             admin_msg: { icon: 'ShieldCheckIcon', title: ad.tabAdminMsg, iconColor: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' },
             complaints: { icon: 'ExclamationTriangleIcon', title: ad.tabComplaints, iconColor: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' },
             dispatch_rooms: { icon: 'TruckIcon', title: 'غرف التنسيق الميداني', iconColor: 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400' },
+            order_tracking: { icon: 'TruckIcon', title: 'متابعة الطلبات وتجهيز المنتجات', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
             commission: { icon: 'CurrencyDollarIcon', title: 'حساب العمولة', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
             exchange: { icon: 'ArrowsRightLeftIcon', title: ad.tabInfoExchange, iconColor: 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-950/40 dark:text-fuchsia-400' },
             documents: { icon: 'FolderOpenIcon', title: ad.tabDocuments, iconColor: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400' },
@@ -1597,6 +1600,11 @@ export default function AgentDashboardPage() {
         {/* Enhanced Agent Dashboard Tab */}
         {activeTab === 'enhanced' && user && (
           <EnhancedAgentDashboard userId={user.id} />
+        )}
+
+        {/* Order Tracking Tab */}
+        {activeTab === 'order_tracking' && user && (
+          <AgentOrderTrackingPanel userId={user.id} />
         )}
 
         {/* Dispatch Rooms Tab */}
