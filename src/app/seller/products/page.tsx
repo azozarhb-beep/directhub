@@ -151,6 +151,19 @@ export default function SellerProductManagerPage() {
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
+  useEffect(() => {
+    if (authLoading || !user) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('add') !== '1') return;
+    setEditingProduct(null);
+    setFormData(EMPTY_FORM);
+    setFormError('');
+    setFormSuccess('');
+    setActiveFormTab('basic');
+    setShowModal(true);
+    router.replace('/seller/products', { scroll: false });
+  }, [authLoading, user, router]);
+
   const filteredProducts = products.filter((p) => {
     if (filterStatus !== 'all' && p.inventory_status !== filterStatus) return false;
     if (filterCategory !== 'all' && p.category !== filterCategory) return false;

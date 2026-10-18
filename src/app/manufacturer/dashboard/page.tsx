@@ -1448,7 +1448,7 @@ export default function ManufacturerDashboard() {
       setShowDocGate(true);
       return;
     }
-    openAddModal();
+    router.push('/seller/products?add=1');
   };
 
   const handleSavePaymentSettings = async (e: React.FormEvent) => {
