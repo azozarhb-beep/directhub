@@ -177,13 +177,24 @@ Current factory status:
     sendMessage(input);
   };
 
+  const isAgentManaged = !!(
+    factoryRegistration?.agent_id ||
+    factoryRegistration?.referred_by_agent_id ||
+    factoryRegistration?.referred_by_agent_code ||
+    factoryRegistration?.registration_type === 'agent'
+  );
+
   const quickActions = !hasDocuments
     ? [
-        {
-          label: language === 'ar' ? '📄 رفع الوثائق الآن' : '📄 Upload Documents Now',
-          action: onUploadDocs,
-          primary: true,
-        },
+        ...(isAgentManaged
+          ? []
+          : [
+              {
+                label: language === 'ar' ? '📄 رفع الوثائق الآن' : '📄 Upload Documents Now',
+                action: onUploadDocs,
+                primary: true,
+              },
+            ]),
         {
           label: language === 'ar' ? 'ما المستندات المطلوبة؟' : 'What documents are needed?',
           action: () => sendMessage(language === 'ar' ? 'ما المستندات المطلوبة للتسجيل؟' : 'What documents are required for registration?'),

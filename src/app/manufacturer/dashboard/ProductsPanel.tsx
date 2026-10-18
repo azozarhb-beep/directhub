@@ -198,6 +198,13 @@ export default function ProductsPanel({
 }: ProductsPanelProps) {
   const { language } = useLanguage();
   const { user: authUser } = useAuth();
+  const isAgentManaged = !!(
+    factoryRegistration?.agent_id ||
+    factoryRegistration?.referred_by_agent_id ||
+    factoryRegistration?.referred_by_agent_code ||
+    factoryRegistration?.registration_type === 'agent'
+  );
+  const noopUploadDocs = () => {};
 
   return (
     <>
@@ -215,7 +222,7 @@ export default function ProductsPanel({
           hasDocuments={hasDocuments}
           canListProducts={canListProducts}
           factoryRegistration={factoryRegistration}
-          onUploadDocs={() => setShowDocGate(true)}
+          onUploadDocs={isAgentManaged ? noopUploadDocs : () => setShowDocGate(true)}
           onAddProduct={handleOpenAddModal}
         />
       )}
@@ -263,7 +270,7 @@ export default function ProductsPanel({
                 </div>
               ))}
             </div>
-            {verifiedTier !== 'verified' && missingDocuments.length > 0 && (
+            {verifiedTier !== 'verified' && missingDocuments.length > 0 && !isAgentManaged && (
               <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-white/70 border border-amber-200 rounded-xl">
                 <Icon name="ArrowUpTrayIcon" size={13} className="text-amber-600 shrink-0" />
                 <span className="text-[11px] text-amber-700 font-medium">
@@ -300,10 +307,14 @@ export default function ProductsPanel({
                   )}
                 </div>
                 <p className="text-xs text-amber-700 leading-relaxed">
-                  {hasDocuments ? t.manufacturerDashboard.documentsUnderReviewDesc : t.manufacturerDashboard.completeDocumentsDesc}
+                  {hasDocuments
+                    ? t.manufacturerDashboard.documentsUnderReviewDesc
+                    : isAgentManaged
+                    ? (language === 'ar' ?'مندوبك المعتمد مسؤول عن جمع ورفع مستندات التوثيق الخاصة بمصنعك. لا حاجة لرفعها بنفسك.' :'Your assigned agent is responsible for collecting and uploading your KYC documents. No action is needed from you.')
+                    : t.manufacturerDashboard.completeDocumentsDesc}
                 </p>
                 <div className="flex flex-wrap items-center gap-2.5 mt-3">
-                  {!hasDocuments && (
+                  {!hasDocuments && !isAgentManaged && (
                     <button onClick={() => setShowDocGate(true)} className="inline-flex items-center gap-1.5 px-4 py-2 text-white text-xs font-bold rounded-xl shadow-sm transition-all hover:shadow-md active:scale-95" style={{ background: 'linear-gradient(135deg, #D97706, #B45309)' }}>
                       <Icon name="ArrowUpTrayIcon" size={13} />
                       {t.manufacturerDashboard.uploadDocumentsNow}
@@ -616,7 +627,7 @@ export default function ProductsPanel({
       )}
 
       {/* Document Gate Modal */}
-      {showDocGate && (
+      {showDocGate && !isAgentManaged && (
         <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/60 px-4 py-6 overflow-y-auto">
           <div className="w-full max-w-3xl bg-card rounded-2xl border border-border shadow-xl overflow-hidden">
             <div className="bg-amber-50 border-b border-amber-200 px-6 py-4 flex items-start gap-3">
