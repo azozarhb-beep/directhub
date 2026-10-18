@@ -1981,9 +1981,7 @@ export default function ManufacturerDashboard() {
                 onClick={handleOpenAddModal}
                 className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground text-sm font-semibold rounded-lg active:opacity-80 transition-opacity"
               >
-                <Icon name="PlusIcon" size={16} />
-                <span className="hidden sm:inline">{t.manufacturerDashboard.addProduct}</span>
-                <span className="sm:hidden">{t.manufacturerDashboard.add}</span>
+                <span>{t.manufacturerDashboard.licenseVerification}</span>
               </button>
             )}
             {!isSalesRep && (
