@@ -28,6 +28,9 @@ const envHostOrigins = [
   process.env.VERCEL_BRANCH_URL,
   process.env.NEXT_PUBLIC_VERCEL_URL,
   process.env.HOSTNAME,
+  process.env.HOST,
+  process.env.PUBLIC_HOST,
+  process.env.NEXT_PUBLIC_HOST,
 ]
   .filter(Boolean)
   .map((o) => {
@@ -184,12 +187,17 @@ const nextConfig = {
       '**.rocket.app',
       '**.rocketsandbox.com',
       '**.rocketsandbox.dev',
+      '*.rocketsandbox.com',
+      '*.rocketsandbox.dev',
+      '**.rocket.new',
+      '**.vercel.run',
+      '**.vercel.sh',
       ...localNetworkHosts,
       ...previewEnvHosts,
       ...(siteUrlHost ? [siteUrlHost, `**.${siteUrlHost}`] : []),
       ...envHostOrigins,
       ...extraDevOrigins,
-    ])
+    ].map((h) => String(h).replace(/^\[|\]$/g, '').replace(/:\d+$/, '')).filter(Boolean))
   ),
   typescript: {
     ignoreBuildErrors: true,
