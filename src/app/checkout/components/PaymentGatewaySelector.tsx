@@ -196,8 +196,9 @@ function LocalWalletSection({
   data: LocalWalletData;
   onChange: (d: LocalWalletData) => void;
 }) {
-  const { t, dir } = useLanguage();
+  const { t, dir, language } = useLanguage();
   const pg = t.paymentGateway;
+  const isAr = language === 'ar';
   const walletName = (id: string) => (pg.wallets as Record<string, string>)[id] || id;
   const bankName = (key: string) => (pg.banks as Record<string, string>)[key] || key;
 
@@ -307,7 +308,7 @@ function LocalWalletSection({
             <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
               <Icon name="LinkIcon" size={13} className="text-indigo-600" />
             </div>
-            <label className="text-xs font-bold text-indigo-900">{pg.transferRef}<span className="mr-1 text-red-500">*</span>
+            <label className="text-xs font-bold text-indigo-900">{isAr ? 'رقم عملية المحفظة (Transaction ID)' : pg.transferRef}<span className="mr-1 text-red-500">*</span>
             </label>
             <span className="mr-auto text-[10px] font-semibold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">{pg.mandatory}</span>
           </div>
@@ -328,12 +329,12 @@ function LocalWalletSection({
       {/* Receipt Upload */}
       <div>
         <label className="block text-xs font-semibold text-foreground mb-2 uppercase tracking-wide flex items-center gap-1.5">
-          <Icon name="PhotoIcon" size={13} className="text-primary" />{pg.x7}</label>
+          <Icon name="PhotoIcon" size={13} className="text-primary" />{isAr ? 'إرفاق إشعار المحفظة' : pg.x7}</label>
         <FileUploadZone
           file={data.receiptFile}
           onFileChange={(f) => onChange({ ...data, receiptFile: f })}
           onClear={() => onChange({ ...data, receiptFile: null })}
-          label={pg.clickUploadReceipt}
+          label={isAr ? 'انقر لإرفاق إشعار المحفظة' : pg.clickUploadReceipt}
           hint={pg.x0}
         />
       </div>
@@ -349,8 +350,9 @@ function LocalBankSection({
   data: LocalBankData;
   onChange: (d: LocalBankData) => void;
 }) {
-  const { t, dir } = useLanguage();
+  const { t, dir, language } = useLanguage();
   const pg = t.paymentGateway;
+  const isAr = language === 'ar';
   const bankName = (key: string) => (pg.banks as Record<string, string>)[key] || key;
 
   return (
@@ -447,7 +449,7 @@ function LocalBankSection({
             <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
               <Icon name="LinkIcon" size={13} className="text-indigo-600" />
             </div>
-            <label className="text-xs font-bold text-indigo-900">{pg.transferRef}<span className="mr-1 text-red-500">*</span>
+            <label className="text-xs font-bold text-indigo-900">{isAr ? 'رقم الإيداع / السند البنكي' : pg.transferRef}<span className="mr-1 text-red-500">*</span>
             </label>
             <span className="mr-auto text-[10px] font-semibold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">{pg.mandatory}</span>
           </div>
@@ -468,12 +470,12 @@ function LocalBankSection({
       {/* Receipt Upload */}
       <div>
         <label className="block text-xs font-semibold text-foreground mb-2 uppercase tracking-wide flex items-center gap-1.5">
-          <Icon name="DocumentArrowUpIcon" size={13} className="text-primary" />{pg.x11}</label>
+          <Icon name="DocumentArrowUpIcon" size={13} className="text-primary" />{isAr ? 'إشعار السند البنكي' : pg.x11}</label>
         <FileUploadZone
           file={data.receiptFile}
           onFileChange={(f) => onChange({ ...data, receiptFile: f })}
           onClear={() => onChange({ ...data, receiptFile: null })}
-          label={pg.clickUploadVoucher}
+          label={isAr ? 'انقر لرفع إشعار السند البنكي' : pg.clickUploadVoucher}
           hint={pg.x0}
         />
         <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">

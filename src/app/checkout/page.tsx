@@ -1591,19 +1591,23 @@ export default function CheckoutPage() {
                             </div>
                           </div>
                         </div>
-                        <WireTransferOCRVerifier
-                          onVerified={(result) => {
-                            setWireOcrVerified(true);
-                            setWireOcrResult(result);
-                          }}
-                        />
-                        {wireOcrVerified && (
-                          <div className="flex items-center gap-2 px-3 py-2 bg-emerald-100 border border-emerald-300 rounded-lg">
-                            <Icon name="CheckBadgeIcon" size={16} className="text-emerald-700" />
-                            <p className="text-xs font-bold text-emerald-800">
-                              {language === 'ar' ? 'تم التحقق من إيصال التحويل البنكي ✓' : 'Wire transfer receipt verified ✓'}
-                            </p>
-                          </div>
+                        {paymentGateway.gateway === 'international_swift' && (
+                          <>
+                            <WireTransferOCRVerifier
+                              onVerified={(result) => {
+                                setWireOcrVerified(true);
+                                setWireOcrResult(result);
+                              }}
+                            />
+                            {wireOcrVerified && (
+                              <div className="flex items-center gap-2 px-3 py-2 bg-emerald-100 border border-emerald-300 rounded-lg">
+                                <Icon name="CheckBadgeIcon" size={16} className="text-emerald-700" />
+                                <p className="text-xs font-bold text-emerald-800">
+                                  {language === 'ar' ? 'تم التحقق من إيصال التحويل البنكي ✓' : 'Wire transfer receipt verified ✓'}
+                                </p>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )}
