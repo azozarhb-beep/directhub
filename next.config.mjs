@@ -213,11 +213,6 @@ const baseDevOrigins = [
 
 const allDevOriginCandidates = [
   ...baseDevOrigins,
-  ...localNetworkHosts,
-  ...previewEnvHosts,
-  ...(siteUrlHost ? [siteUrlHost, `**.${siteUrlHost}`] : []),
-  ...envHostOrigins,
-  ...extraDevOrigins,
 ];
 
 const isValidDevOriginPattern = (h) => {
