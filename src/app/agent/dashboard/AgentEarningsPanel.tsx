@@ -40,19 +40,15 @@ interface CommissionRecord {
 
 interface Props {
   userId: string;
+  embedded?: boolean;
 }
 
 // Commission rule: 20% of Direct Hub's platform fee on each completed order (not of order value)
 const COMMISSION_RATE = 0.20;
 
-// Currency conversion rates (YER base)
-const YER_TO_USD = 1 / 250;
-const YER_TO_SAR = 1 / 66.5;
-const YER_TO_AED = 1 / 68;
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function AgentEarningsPanel({ userId }: Props) {
+export default function AgentEarningsPanel({ userId, embedded = false }: Props) {
   const supabase = createClient();
   const [summary, setSummary] = useState<EarningsSummary | null>(null);
   const [commissions, setCommissions] = useState<CommissionRecord[]>([]);
@@ -239,15 +235,9 @@ export default function AgentEarningsPanel({ userId }: Props) {
     maximumFractionDigits: 2,
   });
   const orderValueFormatted = summary.totalOrderValue.toLocaleString('ar-SA', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
-
-  // Multi-currency conversions (YER base)
-  const commYER = summary.estimatedCommission * 250; // if estimatedCommission is in USD
-  const commUSD = summary.estimatedCommission;
-  const commSAR = commYER * YER_TO_SAR;
-  const commAED = commYER * YER_TO_AED;
 
   const filteredCommissions = commissionFilter === 'all'
     ? commissions
@@ -261,6 +251,7 @@ export default function AgentEarningsPanel({ userId }: Props) {
   return (
     <div className="space-y-5">
       {/* Header */}
+      {!embedded && (
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-bold text-foreground flex items-center gap-2">
@@ -279,6 +270,7 @@ export default function AgentEarningsPanel({ userId }: Props) {
           تحديث
         </button>
       </div>
+      )}
 
       {/* KPI Cards Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -329,13 +321,13 @@ export default function AgentEarningsPanel({ userId }: Props) {
           </div>
           <div>
             <p className="text-xs font-medium mb-0.5" style={{ color: 'rgba(212,175,55,0.7)' }}>
-              العمولة التقديرية (20% من رسوم المنصة)
+              العمولة التقديرية (20% من رسوم المنصة) — بالدولار الأمريكي
             </p>
-            <p className="text-3xl font-bold" style={{ color: '#D4AF37' }}>
-              {commissionFormatted} <span className="text-lg">{summary.currency}</span>
+            <p className="text-3xl font-bold" style={{ color: '#D4AF37' }} dir="ltr">
+              {commissionFormatted} <span className="text-lg">USD</span>
             </p>
             <p className="text-xs mt-1" style={{ color: '#8899aa' }}>
-              بناءً على رسوم المنصة المحققة: {orderValueFormatted} {summary.currency}
+              بناءً على رسوم المنصة المحققة: {orderValueFormatted} USD
             </p>
           </div>
         </div>
@@ -358,36 +350,6 @@ export default function AgentEarningsPanel({ userId }: Props) {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Multi-Currency Cards */}
-      <div>
-        <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
-          <Icon name="CurrencyDollarIcon" size={15} className="text-primary" />
-          العمولة التقديرية بالعملات المختلفة
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { flag: '🇾🇪', code: 'YER', amount: commYER, approx: false },
-            { flag: '🇺🇸', code: 'USD', amount: commUSD, approx: true },
-            { flag: '🇸🇦', code: 'SAR', amount: commSAR, approx: true },
-            { flag: '🇦🇪', code: 'AED', amount: commAED, approx: true },
-          ].map(c => (
-            <div key={c.code} className="bg-card border border-border rounded-xl p-4 text-center">
-              <p className="text-2xl mb-1">{c.flag}</p>
-              <p className="text-xs font-bold text-muted-foreground mb-1">{c.code}</p>
-              <p className="text-lg font-bold text-foreground">
-                {c.amount.toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </p>
-              {c.approx && (
-                <p className="text-[10px] text-muted-foreground mt-0.5">* تقريبي</p>
-              )}
-            </div>
-          ))}
-        </div>
-        <p className="text-[10px] text-muted-foreground mt-2">
-          * أسعار التحويل التقريبية: 1 USD = 250 YER · 1 SAR = 66.5 YER · 1 AED = 68 YER
-        </p>
       </div>
 
       {/* Commission Breakdown Table */}
@@ -480,7 +442,7 @@ export default function AgentEarningsPanel({ userId }: Props) {
       </div>
 
       {/* Recent Factories List */}
-      {summary.recentFactories.length > 0 ? (
+      {!embedded && summary.recentFactories.length > 0 ? (
         <div>
           <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
             <Icon name="ClockIcon" size={15} className="text-muted-foreground" />
@@ -525,7 +487,7 @@ export default function AgentEarningsPanel({ userId }: Props) {
             ))}
           </div>
         </div>
-      ) : (
+      ) : !embedded ? (
         <div className="bg-card border border-border rounded-xl p-10 text-center">
           <div className="w-14 h-14 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-3">
             <Icon name="LinkIcon" size={26} className="text-muted-foreground" />
@@ -540,10 +502,10 @@ export default function AgentEarningsPanel({ userId }: Props) {
               : '/factory/register?agent_id=YOUR_ID'}
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Referral Link Copy */}
-      {summary.totalFactories > 0 && (
+      {!embedded && summary.totalFactories > 0 && (
         <div className="bg-muted/50 border border-border rounded-xl p-4">
           <p className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1.5">
             <Icon name="LinkIcon" size={13} className="text-primary" />

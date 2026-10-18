@@ -14,6 +14,7 @@ interface CommissionAccount {
   account_label: string;
   account_holder: string;
   currency: string;
+  country: string | null;
   bank_name: string | null;
   bank_branch: string | null;
   account_number: string | null;
@@ -22,6 +23,10 @@ interface CommissionAccount {
   wallet_provider: string | null;
   wallet_phone: string | null;
   transfer_details: string | null;
+  transfer_network: string | null;
+  recipient_name: string | null;
+  recipient_city: string | null;
+  recipient_phone: string | null;
   notes: string | null;
   is_primary: boolean;
   is_active: boolean;
@@ -32,15 +37,21 @@ interface CommissionAccount {
 
 interface Props {
   userId: string;
+  embedded?: boolean;
 }
 
 const ACCOUNT_TYPES = [
   { value: 'bank_account', icon: 'BuildingLibraryIcon', labelAr: 'حساب بنكي', labelEn: 'Bank Account' },
-  { value: 'mobile_wallet', icon: 'DevicePhoneMobileIcon', labelAr: 'محفظة إلكترونية', labelEn: 'Mobile Wallet' },
-  { value: 'collection_transfer', icon: 'ArrowsRightLeftIcon', labelAr: 'تحويل تحصيل', labelEn: 'Collection Transfer' },
+  { value: 'mobile_wallet', icon: 'DevicePhoneMobileIcon', labelAr: 'محفظة إلكترونية', labelEn: 'E-Wallet' },
+  { value: 'collection_transfer', icon: 'ArrowsRightLeftIcon', labelAr: 'تحويل / حوالة', labelEn: 'Remittance' },
 ];
 
 const WALLET_PROVIDERS = [
+  'Alipay',
+  'WeChat Pay',
+  'USDT (TRC20 / ERC20)',
+  'PayPal',
+  'Wise',
   'بنك كريمي',
   'سبأفون كاش',
   'MTN كاش',
@@ -53,13 +64,25 @@ const WALLET_PROVIDERS = [
   'نقطة حاسب الكريمي',
 ];
 
-const CURRENCIES = ['YER', 'USD', 'SAR', 'AED'];
+const TRANSFER_NETWORKS = [
+  'Western Union',
+  'MoneyGram',
+  'Wise Transfer',
+  'SWIFT',
+  'الكريمي للصرافة',
+  'النجم للصرافة',
+  'العمقي للصرافة',
+  'شبكة حوالات محلية أخرى',
+];
+
+const CURRENCIES = ['USD', 'SAR', 'AED', 'YER'];
 
 const EMPTY_FORM = {
   account_type: 'bank_account',
   account_label: '',
   account_holder: '',
-  currency: 'YER',
+  currency: 'USD',
+  country: '',
   bank_name: '',
   bank_branch: '',
   account_number: '',
@@ -68,6 +91,10 @@ const EMPTY_FORM = {
   wallet_provider: '',
   wallet_phone: '',
   transfer_details: '',
+  transfer_network: '',
+  recipient_name: '',
+  recipient_city: '',
+  recipient_phone: '',
   notes: '',
   is_primary: false,
 };
@@ -90,7 +117,8 @@ function AccountFormModal({
           account_type: initial.account_type,
           account_label: initial.account_label,
           account_holder: initial.account_holder,
-          currency: initial.currency,
+          currency: CURRENCIES.includes(initial.currency) ? initial.currency : 'USD',
+          country: initial.country || '',
           bank_name: initial.bank_name || '',
           bank_branch: initial.bank_branch || '',
           account_number: initial.account_number || '',
@@ -99,6 +127,10 @@ function AccountFormModal({
           wallet_provider: initial.wallet_provider || '',
           wallet_phone: initial.wallet_phone || '',
           transfer_details: initial.transfer_details || '',
+          transfer_network: initial.transfer_network || '',
+          recipient_name: initial.recipient_name || '',
+          recipient_city: initial.recipient_city || '',
+          recipient_phone: initial.recipient_phone || '',
           notes: initial.notes || '',
           is_primary: initial.is_primary,
         }
@@ -118,7 +150,11 @@ function AccountFormModal({
       return;
     }
     if (form.account_type === 'mobile_wallet' && !form.wallet_phone.trim()) {
-      setError('يرجى إدخال رقم المحفظة');
+      setError('يرجى إدخال رقم المحفظة أو عنوانها');
+      return;
+    }
+    if (form.account_type === 'collection_transfer' && (!form.recipient_name.trim() || !form.recipient_phone.trim())) {
+      setError('يرجى إدخال اسم المستلم الكامل ورقم هاتفه');
       return;
     }
     setSaving(true);
@@ -151,7 +187,7 @@ function AccountFormModal({
               <h3 className="font-bold text-sm" style={{ color: '#D4AF37' }}>
                 {initial ? 'تعديل حساب الاستلام' : 'إضافة حساب استلام العمولة'}
               </h3>
-              <p className="text-xs" style={{ color: '#8899aa' }}>استلام العمولة بالريال اليمني (YER)</p>
+              <p className="text-xs" style={{ color: '#8899aa' }}>متاح للمناديب المحليين والدوليين — اختر وسيلة وعملة الاستلام المناسبة</p>
             </div>
           </div>
           <button
@@ -218,7 +254,7 @@ function AccountFormModal({
           {/* Currency */}
           <div>
             <label className="block text-xs font-semibold mb-1.5" style={{ color: '#ccc' }}>العملة</label>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {CURRENCIES.map(c => (
                 <button
                   key={c}
@@ -237,6 +273,18 @@ function AccountFormModal({
             </div>
           </div>
 
+          {/* Country */}
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: '#ccc' }}>Country / الدولة</label>
+            <input
+              value={form.country}
+              onChange={e => set('country', e.target.value)}
+              placeholder="مثال: اليمن / Yemen / China / UAE"
+              className="w-full px-3 py-2 rounded-xl text-sm focus:outline-none"
+              style={{ background: '#2a2a2a', border: '1px solid #444', color: '#fff' }}
+            />
+          </div>
+
           {/* Bank Account Fields */}
           {form.account_type === 'bank_account' && (
             <div className="space-y-3">
@@ -246,7 +294,7 @@ function AccountFormModal({
                   <input
                     value={form.bank_name}
                     onChange={e => set('bank_name', e.target.value)}
-                    placeholder="مثال: بنك اليمن والخليج"
+                    placeholder="مثال: بنك الكريمي / HSBC / Emirates NBD"
                     className="w-full px-3 py-2 rounded-xl text-sm focus:outline-none"
                     style={{ background: '#2a2a2a', border: '1px solid #444', color: '#fff' }}
                   />
@@ -277,11 +325,11 @@ function AccountFormModal({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold mb-1" style={{ color: '#ccc' }}>IBAN</label>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: '#ccc' }}>IBAN / رقم الحساب الدولي</label>
                   <input
                     value={form.iban}
                     onChange={e => set('iban', e.target.value)}
-                    placeholder="YE..."
+                    placeholder="IBAN (any country format)"
                     dir="ltr"
                     className="w-full px-3 py-2 rounded-xl text-sm focus:outline-none"
                     style={{ background: '#2a2a2a', border: '1px solid #444', color: '#fff' }}
@@ -337,16 +385,69 @@ function AccountFormModal({
 
           {/* Collection Transfer Fields */}
           {form.account_type === 'collection_transfer' && (
-            <div>
-              <label className="block text-xs font-semibold mb-1" style={{ color: '#ccc' }}>تفاصيل التحويل</label>
-              <textarea
-                value={form.transfer_details}
-                onChange={e => set('transfer_details', e.target.value)}
-                rows={3}
-                placeholder="أدخل تفاصيل طريقة التحصيل والتحويل..."
-                className="w-full px-3 py-2 rounded-xl text-sm focus:outline-none resize-none"
-                style={{ background: '#2a2a2a', border: '1px solid #444', color: '#fff' }}
-              />
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: '#ccc' }}>شبكة الحوالة</label>
+                <select
+                  value={form.transfer_network}
+                  onChange={e => set('transfer_network', e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl text-sm focus:outline-none"
+                  style={{ background: '#2a2a2a', border: '1px solid #444', color: '#fff' }}
+                >
+                  <option value="">اختر شبكة الحوالة</option>
+                  {TRANSFER_NETWORKS.map(n => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: '#ccc' }}>
+                    الاسم الكامل للمستلم <span style={{ color: '#D4AF37' }}>*</span>
+                  </label>
+                  <input
+                    value={form.recipient_name}
+                    onChange={e => set('recipient_name', e.target.value)}
+                    placeholder="الاسم الرباعي كما في الهوية"
+                    className="w-full px-3 py-2 rounded-xl text-sm focus:outline-none"
+                    style={{ background: '#2a2a2a', border: '1px solid #444', color: '#fff' }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: '#ccc' }}>
+                    رقم الهاتف <span style={{ color: '#D4AF37' }}>*</span>
+                  </label>
+                  <input
+                    value={form.recipient_phone}
+                    onChange={e => set('recipient_phone', e.target.value)}
+                    placeholder="+967..."
+                    dir="ltr"
+                    className="w-full px-3 py-2 rounded-xl text-sm focus:outline-none"
+                    style={{ background: '#2a2a2a', border: '1px solid #444', color: '#fff' }}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: '#ccc' }}>المدينة</label>
+                <input
+                  value={form.recipient_city}
+                  onChange={e => set('recipient_city', e.target.value)}
+                  placeholder="مدينة الاستلام"
+                  className="w-full px-3 py-2 rounded-xl text-sm focus:outline-none"
+                  style={{ background: '#2a2a2a', border: '1px solid #444', color: '#fff' }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: '#ccc' }}>تفاصيل إضافية</label>
+                <textarea
+                  value={form.transfer_details}
+                  onChange={e => set('transfer_details', e.target.value)}
+                  rows={2}
+                  placeholder="أي تفاصيل إضافية عن الحوالة..."
+                  className="w-full px-3 py-2 rounded-xl text-sm focus:outline-none resize-none"
+                  style={{ background: '#2a2a2a', border: '1px solid #444', color: '#fff' }}
+                />
+              </div>
             </div>
           )}
 
@@ -464,7 +565,7 @@ function AccountCard({
               )}
             </div>
             <p className="text-xs mt-0.5" style={{ color: '#8899aa' }}>
-              {typeInfo?.labelAr} · {account.currency}
+              {typeInfo?.labelAr} · {account.currency}{account.country ? ` · ${account.country}` : ''}
             </p>
           </div>
         </div>
@@ -510,8 +611,13 @@ function AccountCard({
             {account.wallet_phone && <p className="text-xs font-mono" dir="ltr" style={{ color: '#8899aa' }}>{account.wallet_phone}</p>}
           </>
         )}
-        {account.account_type === 'collection_transfer' && account.transfer_details && (
-          <p className="text-xs" style={{ color: '#8899aa' }}>{account.transfer_details}</p>
+        {account.account_type === 'collection_transfer' && (
+          <>
+            {account.transfer_network && <p className="text-xs" style={{ color: '#8899aa' }}>🔁 {account.transfer_network}</p>}
+            {account.recipient_name && <p className="text-xs" style={{ color: '#8899aa' }}>👤 {account.recipient_name}{account.recipient_city ? ` — ${account.recipient_city}` : ''}</p>}
+            {account.recipient_phone && <p className="text-xs font-mono" dir="ltr" style={{ color: '#8899aa' }}>{account.recipient_phone}</p>}
+            {account.transfer_details && <p className="text-xs" style={{ color: '#8899aa' }}>{account.transfer_details}</p>}
+          </>
         )}
         {account.notes && (
           <p className="text-xs italic" style={{ color: '#667788' }}>📝 {account.notes}</p>
@@ -523,7 +629,7 @@ function AccountCard({
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
-export default function AgentCommissionAccountPanel({ userId }: Props) {
+export default function AgentCommissionAccountPanel({ userId, embedded = false }: Props) {
   const { dir } = useLanguage();
   const supabase = createClient();
 
@@ -630,6 +736,33 @@ export default function AgentCommissionAccountPanel({ userId }: Props) {
   return (
     <div dir={dir} className="space-y-5">
       {/* Header Banner */}
+      {embedded ? (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+              <Icon name="BanknotesIcon" size={16} className="text-primary" />
+              حساب استلام العمولة
+            </h3>
+            {primaryAccount ? (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                الحساب الرئيسي: {primaryAccount.account_label}
+                {primaryAccount.wallet_provider ? ` — ${primaryAccount.wallet_provider}` : ''}
+                {primaryAccount.bank_name ? ` — ${primaryAccount.bank_name}` : ''} ({primaryAccount.currency})
+              </p>
+            ) : (
+              <p className="text-xs text-amber-600 mt-0.5">لم يتم تسجيل أي حساب بعد — أضف حسابك لاستلام العمولات</p>
+            )}
+          </div>
+          <button
+            onClick={() => { setEditAccount(null); setShowForm(true); }}
+            className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all"
+            style={{ background: '#D4AF37', color: '#1E1E1E' }}
+          >
+            <Icon name="PlusIcon" size={15} />
+            إضافة حساب
+          </button>
+        </div>
+      ) : (
       <div
         className="rounded-2xl p-5"
         style={{ background: 'linear-gradient(135deg, #0A192F 0%, #1E1E1E 100%)', border: '1px solid #D4AF37' }}
@@ -681,6 +814,7 @@ export default function AgentCommissionAccountPanel({ userId }: Props) {
           </div>
         )}
       </div>
+      )}
 
       {/* Alerts */}
       {successMsg && (
@@ -732,14 +866,16 @@ export default function AgentCommissionAccountPanel({ userId }: Props) {
       )}
 
       {/* Info Note */}
+      {!embedded && (
       <div className="rounded-xl p-4 flex items-start gap-3" style={{ background: 'rgba(10,25,47,0.6)', border: '1px solid rgba(212,175,55,0.2)' }}>
         <Icon name="InformationCircleIcon" size={16} className="shrink-0 mt-0.5" style={{ color: '#D4AF37' }} />
         <div className="text-xs space-y-1 text-slate-300 dark:text-zinc-300">
-          <p>• يتم صرف العمولات (نسبة 20% من رسوم منصة دايركت هب المحققة) بالريال اليمني (YER) شهرياً.</p>
+          <p>• يتم احتساب العمولات (نسبة 20% من رسوم منصة دايركت هب المحققة) بالدولار الأمريكي (USD) وتُصرف بالعملة المختارة شهرياً.</p>
           <p>• تأكد من صحة بيانات الحساب لضمان استلام مدفوعاتك في الوقت المحدد.</p>
           <p>• يمكنك تسجيل أكثر من حساب وتحديد الحساب الرئيسي لاستلام العمولات.</p>
         </div>
       </div>
+      )}
 
       {/* Form Modal */}
       {showForm && (

@@ -15,13 +15,12 @@ import InfoExchangePanel from './InfoExchangePanel';
 import ReceivingAccountPanel from './ReceivingAccountPanel';
 import AgentComplaintsPanel from './AgentComplaintsPanel';
 import AgentSalesDashboard from './AgentSalesDashboard';
-import AgentCommissionAccountPanel from './AgentCommissionAccountPanel';
-import AgentEarningsPanel from './AgentEarningsPanel';
 import AgentDispatchRoomsTab from './AgentDispatchRoomsTab';
 import AgentInspectionTasksPanel from './AgentInspectionTasksPanel';
 import AgentOrderTrackingPanel from './AgentOrderTrackingPanel';
 import EnhancedAgentDashboard from '@/components/agent/EnhancedAgentDashboard';
 import ReferralTrackingPanel from './ReferralTrackingPanel';
+import AgentUnifiedEarningsCard from './AgentUnifiedEarningsCard';
 import { isApprovedOrActiveFacility } from '@/lib/referralStats';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { CHAT_LANGUAGES, ChatLanguage } from './AgentLanguageSelector';
@@ -1086,7 +1085,6 @@ export default function AgentDashboardPage() {
               key: 'accounts',
               title: 'الحسابات والعمولات',
               items: [
-                { id: 'commission', icon: 'CurrencyDollarIcon', label: 'حساب العمولة', badge: 0, badgeColor: '', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
                 { id: 'exchange', icon: 'ArrowsRightLeftIcon', label: ad.tabInfoExchange, badge: 0, badgeColor: '', iconColor: 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-950/40 dark:text-fuchsia-400' },
               ],
             },
@@ -1151,7 +1149,7 @@ export default function AgentDashboardPage() {
             complaints: { icon: 'ExclamationTriangleIcon', title: ad.tabComplaints, iconColor: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' },
             dispatch_rooms: { icon: 'TruckIcon', title: 'غرف التنسيق الميداني', iconColor: 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400' },
             order_tracking: { icon: 'TruckIcon', title: 'متابعة الطلبات وتجهيز المنتجات', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
-            commission: { icon: 'CurrencyDollarIcon', title: 'حساب العمولة', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
+            commission: { icon: 'BanknotesIcon', title: 'الأرباح والعمولات', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
             exchange: { icon: 'ArrowsRightLeftIcon', title: ad.tabInfoExchange, iconColor: 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-950/40 dark:text-fuchsia-400' },
             documents: { icon: 'FolderOpenIcon', title: ad.tabDocuments, iconColor: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400' },
             referral: { icon: 'LinkIcon', title: 'الإحالات والتتبع', iconColor: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400' },
@@ -1587,14 +1585,9 @@ export default function AgentDashboardPage() {
           />
         )}
 
-        {/* Commission Account Tab */}
-        {activeTab === 'commission' && user && (
-          <AgentCommissionAccountPanel userId={user.id} />
-        )}
-
-        {/* Earnings & Commissions Tab */}
-        {activeTab === 'earnings' && user && (
-          <AgentEarningsPanel userId={user.id} />
+        {/* Unified Earnings, Referral & Payout Account Tab ('commission' kept as legacy alias) */}
+        {(activeTab === 'earnings' || activeTab === 'commission') && user && (
+          <AgentUnifiedEarningsCard userId={user.id} />
         )}
 
         {/* Enhanced Agent Dashboard Tab */}

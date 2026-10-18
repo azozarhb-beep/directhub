@@ -167,6 +167,8 @@ const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnTyp
   if (workspaceRole === 'buyer' || workspaceRole === 'unknown') return null;
 
   const accountRole = (profile?.account_role || '').toLowerCase().trim();
+  // Field-agent control room is strictly for field agents and admins
+  const canSeeAgentRoom = workspaceRole === 'agent' || workspaceRole === 'admin';
 
   // Determine title, description, and destination based on account_role
   let title = '';
@@ -189,7 +191,7 @@ const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnTyp
     title = 'غرفة تحكم المندوب اللوجستي';
     description = 'إدارة الشحنات والتوصيلات وتتبع الطلبات';
     destination = '/logistics/dashboard';
-  } else if (accountRole === 'field_agent') {
+  } else if (accountRole === 'field_agent' && (workspaceRole === 'agent' || workspaceRole === 'admin')) {
     title = 'غرفة تحكم المندوب الميداني';
     description = 'إدارة مهامك الميدانية وتسجيل المصانع والعمولات';
     destination = '/agent/dashboard';
@@ -201,7 +203,7 @@ const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnTyp
     title = 'غرفة تحكم اللوجستيات';
     description = 'إدارة الشحنات والتوصيلات';
     destination = '/logistics/dashboard';
-  } else if (workspaceRole === 'agent') {
+  } else if (canSeeAgentRoom && workspaceRole === 'agent') {
     title = 'غرفة تحكم المندوب الميداني';
     description = 'إدارة مهامك الميدانية والعمولات';
     destination = '/agent/dashboard';

@@ -18,9 +18,10 @@ interface ReferredFactory {
 
 interface Props {
   userId: string;
+  embedded?: boolean;
 }
 
-export default function ReferralTrackingPanel({ userId }: Props) {
+export default function ReferralTrackingPanel({ userId, embedded = false }: Props) {
   const supabase = createClient();
   const [referredFactories, setReferredFactories] = useState<ReferredFactory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,6 +70,7 @@ export default function ReferralTrackingPanel({ userId }: Props) {
   return (
     <div className="space-y-5">
       {/* Header */}
+      {!embedded && (
       <div>
         <h2 className="text-base font-bold text-foreground flex items-center gap-2">
           <span>🔗</span>
@@ -78,8 +80,10 @@ export default function ReferralTrackingPanel({ userId }: Props) {
           رمز الإحالة الخاص بك وتتبع المصانع المسجلة عبره
         </p>
       </div>
+      )}
 
       {/* Summary Stats */}
+      {!embedded && (
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-card border border-border rounded-xl p-4 text-center">
           <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center mb-2 mx-auto">
@@ -96,8 +100,10 @@ export default function ReferralTrackingPanel({ userId }: Props) {
           <p className="text-xs text-muted-foreground mt-0.5">مصانع نشطة (معتمدة)</p>
         </div>
       </div>
+      )}
 
       {/* Referral Code Card */}
+      {!embedded && (
       <div className="bg-card border border-border rounded-xl p-5">
         <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-widest">رمز الإحالة الخاص بك</p>
         <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -121,9 +127,10 @@ export default function ReferralTrackingPanel({ userId }: Props) {
           </button>
         </div>
       </div>
+      )}
 
       {/* Referral Link Card */}
-      <div className="bg-card border border-border rounded-xl p-4">
+      <div className={embedded ? 'bg-muted/40 border border-border rounded-xl p-4' : 'bg-card border border-border rounded-xl p-4'}>
         <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-widest">رابط الإحالة الكامل</p>
         <div className="flex items-center gap-2 mb-3">
           <code className="flex-1 text-xs bg-muted border border-border rounded-lg px-3 py-2 text-muted-foreground truncate font-mono" dir="ltr">
