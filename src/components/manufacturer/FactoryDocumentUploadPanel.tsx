@@ -23,7 +23,9 @@ interface FactoryDocument {
 }
 
 const DOC_TYPE_CONFIG: Record<string, { labelKey: string; icon: string; color: string }> = {
-  trade_license: { labelKey: 'typeTradeLicense', icon: 'DocumentCheckIcon', color: 'text-emerald-600' },
+  commercial_register: { labelKey: 'typeCommercialRegister', icon: 'DocumentCheckIcon', color: 'text-emerald-600' },
+  // Legacy type: kept so previously uploaded files stored as trade_license still render
+  trade_license: { labelKey: 'typeCommercialRegister', icon: 'DocumentCheckIcon', color: 'text-emerald-600' },
   manufacturing_license: { labelKey: 'typeManufacturingLicense', icon: 'ClipboardDocumentListIcon', color: 'text-blue-600' },
   product_catalog: { labelKey: 'typeCatalog', icon: 'BookOpenIcon', color: 'text-purple-600' },
   company_profile: { labelKey: 'typeCompanyProfile', icon: 'BuildingOffice2Icon', color: 'text-indigo-600' },
@@ -33,7 +35,7 @@ const DOC_TYPE_CONFIG: Record<string, { labelKey: string; icon: string; color: s
 };
 
 const UPLOAD_DOC_TYPES = [
-  'trade_license',
+  'commercial_register',
   'manufacturing_license',
   'product_catalog',
   'company_profile',
@@ -77,7 +79,7 @@ export default function FactoryDocumentUploadPanel({ userId, onUploaded }: Facto
   const [documents, setDocuments] = useState<FactoryDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [docType, setDocType] = useState<string>('trade_license');
+  const [docType, setDocType] = useState<string>('commercial_register');
   const [description, setDescription] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -180,8 +182,8 @@ export default function FactoryDocumentUploadPanel({ userId, onUploaded }: Facto
       if (dbError) throw dbError;
 
       // Keep the existing license-approval gate in sync (factory_registrations)
-      if (docType === 'trade_license' || docType === 'manufacturing_license') {
-        const column = docType === 'trade_license' ? 'trade_license_url' : 'manufacturing_license_url';
+      if (docType === 'commercial_register' || docType === 'trade_license' || docType === 'manufacturing_license') {
+        const column = docType === 'manufacturing_license' ? 'manufacturing_license_url' : 'trade_license_url';
         const { data: existing } = await supabase
           .from('factory_registrations')
           .select('id, trade_license_url, manufacturing_license_url')
@@ -249,7 +251,13 @@ export default function FactoryDocumentUploadPanel({ userId, onUploaded }: Facto
     }
   };
 
-  const filteredDocs = documents.filter((d) => !filterType || d.doc_type === filterType);
+  const filteredDocs = documents.filter((d) => {
+    if (!filterType) return true;
+    if (filterType === 'commercial_register') {
+      return d.doc_type === 'commercial_register' || d.doc_type === 'trade_license';
+    }
+    return d.doc_type === filterType;
+  });
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
