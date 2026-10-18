@@ -1976,14 +1976,6 @@ export default function ManufacturerDashboard() {
                 )}
               </>
             )}
-            {activeTab === 'products' && (
-              <button
-                onClick={handleOpenAddModal}
-                className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground text-sm font-semibold rounded-lg active:opacity-80 transition-opacity"
-              >
-                <span>{t.manufacturerDashboard.licenseVerification}</span>
-              </button>
-            )}
             {!isSalesRep && (
               <button
                 type="button"
