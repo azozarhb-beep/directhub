@@ -9,6 +9,8 @@ import { MultilingualProductFields, SupplierLanguageBadge } from '@/components/L
 import { buildProductShareLinkNoPhone } from '@/lib/whatsappOrderLinks';
 import TrustScoreBadge from '@/components/TrustScoreBadge';
 import WarrantyInlineForm from './WarrantyInlineForm';
+import FactoryDocumentUploadPanel from '@/components/manufacturer/FactoryDocumentUploadPanel';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Product {
   id: string;
@@ -124,6 +126,7 @@ interface ProductsPanelProps {
   SortIcon: React.FC<{ col: string }>;
   t: any;
   md: any;
+  onDocumentsChanged?: () => void;
 }
 
 export default function ProductsPanel({
@@ -191,8 +194,10 @@ export default function ProductsPanel({
   SortIcon,
   t,
   md,
+  onDocumentsChanged,
 }: ProductsPanelProps) {
   const { language } = useLanguage();
+  const { user: authUser } = useAuth();
 
   return (
     <>
@@ -612,8 +617,8 @@ export default function ProductsPanel({
 
       {/* Document Gate Modal */}
       {showDocGate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-          <div className="w-full max-w-md bg-card rounded-2xl border border-border shadow-xl overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/60 px-4 py-6 overflow-y-auto">
+          <div className="w-full max-w-3xl bg-card rounded-2xl border border-border shadow-xl overflow-hidden">
             <div className="bg-amber-50 border-b border-amber-200 px-6 py-4 flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
                 <Icon name="LockClosedIcon" size={20} className="text-amber-600" />
@@ -626,81 +631,15 @@ export default function ProductsPanel({
                 <Icon name="XMarkIcon" size={20} />
               </button>
             </div>
-            <div className="p-6">
-              <div className="mb-5">
-                <label className="block text-sm font-semibold text-foreground mb-2">{md.accountTypeBilingual}</label>
-                <div className="flex rounded-xl border border-border overflow-hidden">
-                  <button type="button" onClick={() => { setAccountType('factory'); setSecondDocFile(null); setMfgLicenseFile(null); }} className={`flex-1 py-2.5 text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${accountType === 'factory' ? 'bg-amber-600 text-white' : 'bg-card text-muted-foreground hover:bg-muted'}`}>
-                    <Icon name="BuildingOffice2Icon" size={16} /> Factory
-                  </button>
-                  <button type="button" onClick={() => { setAccountType('supplier'); setMfgLicenseFile(null); setSecondDocFile(null); }} className={`flex-1 py-2.5 text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${accountType === 'supplier' ? 'bg-amber-600 text-white' : 'bg-card text-muted-foreground hover:bg-muted'}`}>
-                    <Icon name="TruckIcon" size={16} /> {md.supplierAgentBilingual}
-                  </button>
-                </div>
-              </div>
-              {docUploadError && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2.5 text-sm mb-4 flex items-center gap-2">
-                  <Icon name="ExclamationCircleIcon" size={14} /> {docUploadError}
-                </div>
+            <div className="p-4 sm:p-6 max-h-[80vh] overflow-y-auto">
+              {authUser?.id && (
+                <FactoryDocumentUploadPanel userId={authUser.id} onUploaded={onDocumentsChanged} />
               )}
-              <form onSubmit={handleDocumentUpload} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1.5">{md.tradeLicenseBilingual}</label>
-                  <label className="block">
-                    {tradeLicenseFile ? (
-                      <div className="border-2 border-dashed border-green-400 bg-green-50 rounded-xl p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-2"><Icon name="DocumentCheckIcon" size={18} className="text-green-600" /><span className="text-sm text-green-700 font-medium truncate max-w-[200px]">{tradeLicenseFile.name}</span></div>
-                        <button type="button" onClick={() => setTradeLicenseFile(null)} className="text-muted-foreground hover:text-red-600"><Icon name="XMarkIcon" size={16} /></button>
-                      </div>
-                    ) : (
-                      <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { const f = e.target.files?.[0] || null; if (f && f.size > 15 * 1024 * 1024) { return; } setTradeLicenseFile(f); }} className="block w-full text-xs text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer" />
-                    )}
-                  </label>
-                </div>
-                {accountType === 'factory' ? (
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-1.5">{md.mfgLicenseBilingual}</label>
-                    <label className="block">
-                      {mfgLicenseFile ? (
-                        <div className="border-2 border-dashed border-green-400 bg-green-50 rounded-xl p-4 flex items-center justify-between">
-                          <div className="flex items-center gap-2"><Icon name="DocumentCheckIcon" size={18} className="text-green-600" /><span className="text-sm text-green-700 font-medium truncate max-w-[200px]">{mfgLicenseFile.name}</span></div>
-                          <button type="button" onClick={() => setMfgLicenseFile(null)} className="text-muted-foreground hover:text-red-600"><Icon name="XMarkIcon" size={16} /></button>
-                        </div>
-                      ) : (
-                        <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { const f = e.target.files?.[0] || null; if (f && f.size > 15 * 1024 * 1024) { return; } setMfgLicenseFile(f); }} className="block w-full text-xs text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer" />
-                      )}
-                    </label>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-1.5">{md.importLicenseBilingual} *</label>
-                    <label className="block">
-                      {secondDocFile ? (
-                        <div className="border-2 border-dashed border-green-400 bg-green-50 rounded-xl p-4 flex items-center justify-between">
-                          <div className="flex items-center gap-2"><Icon name="DocumentCheckIcon" size={18} className="text-green-600" /><span className="text-sm text-green-700 font-medium truncate max-w-[200px]">{secondDocFile.name}</span></div>
-                          <button type="button" onClick={() => setSecondDocFile(null)} className="text-muted-foreground hover:text-red-600"><Icon name="XMarkIcon" size={16} /></button>
-                        </div>
-                      ) : (
-                        <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { const f = e.target.files?.[0] || null; if (f && f.size > 15 * 1024 * 1024) { return; } setSecondDocFile(f); }} className="block w-full text-xs text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer" />
-                      )}
-                    </label>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1.5">{md.taxIdBilingual}</label>
-                  <input type="text" value={taxId} onChange={(e) => setTaxId(e.target.value)} placeholder="Enter your official Tax Identification Number" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1.5">{md.establishedYearBilingual}</label>
-                  <input type="number" min="1900" max={new Date().getFullYear()} value={establishedYear} onChange={(e) => setEstablishedYear(e.target.value)} placeholder="e.g. 2004" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
-                </div>
-                <div className="flex gap-3 pt-1">
-                  <button type="button" onClick={() => setShowDocGate(false)} className="flex-1 h-10 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">Cancel</button>
-                  <button type="submit" disabled={uploadingDocs || !tradeLicenseFile || (accountType === 'factory' ? !mfgLicenseFile : !secondDocFile)} className="flex-1 h-10 bg-amber-600 text-white rounded-lg text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2 hover:bg-amber-700 transition-colors">
-                    {uploadingDocs ? <><Icon name="ArrowPathIcon" size={15} className="animate-spin" /> Uploading...</> : <><Icon name="ArrowUpTrayIcon" size={15} /> Submit Documents</>}
-                  </button>
-                </div>
-              </form>
+              <div className="flex justify-end pt-4">
+                <button type="button" onClick={() => setShowDocGate(false)} className="h-10 px-5 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">
+                  {t?.common?.close || 'Close'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
