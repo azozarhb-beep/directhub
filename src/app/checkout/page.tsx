@@ -1463,21 +1463,6 @@ export default function CheckoutPage() {
                   </h2>
                   <p className="text-xs text-muted-foreground mb-5">{C.choosePaymentGateway}</p>
 
-                  {/* ── Cash-Only Policy Banner ── */}
-                  <div className="mb-4 flex items-start gap-3 p-4 bg-amber-50 border border-amber-300 rounded-xl">
-                    <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-                      <Icon name="ShieldCheckIcon" size={18} className="text-amber-700" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-amber-900">
-                        {language === 'ar' ? 'دفع فوري — نقداً فقط' : 'Immediate Payment Required — Cash Only'}
-                      </p>
-                      <p className="text-xs text-amber-800 leading-relaxed mt-0.5">
-                        {language === 'ar' ?'جميع المعاملات المحلية بالريال اليمني (YER). لا ائتمان، لا ديون، لا دفع مؤجل. لا شراء بدون دفع كامل ومسبق.' :'All local transactions are in Yemeni Rial (YER). No credit, no debt, no deferred payments. No purchase without full upfront payment.'}
-                      </p>
-                    </div>
-                  </div>
-
                   {/* ── Escrow Info Banner ── */}
                   <div className="mb-5 flex items-start gap-3 p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
                     <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
