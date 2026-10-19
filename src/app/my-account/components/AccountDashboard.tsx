@@ -331,8 +331,79 @@ const TrackingCodeInput: React.FC<{ orderId: string }> = ({ orderId }) => {
   );
 };
 
+/* ─── My RFQs list (price requests) ─── */
+interface AccountRfq {
+  id: string;
+  product_name: string;
+  quantity: number;
+  unit: string;
+  target_price: number | null;
+  currency: string | null;
+  destination_country: string | null;
+  status: string;
+  created_at: string;
+}
+
+const RFQ_STATUS_LABELS: Record<string, { ar: string; en: string; cls: string }> = {
+  pending: { ar: 'معلق', en: 'Pending', cls: 'bg-yellow-100 text-yellow-700' },
+  responded: { ar: 'تم الرد', en: 'Responded', cls: 'bg-purple-100 text-purple-700' },
+  accepted: { ar: 'مقبول', en: 'Accepted', cls: 'bg-green-100 text-green-700' },
+  rejected: { ar: 'مرفوض', en: 'Rejected', cls: 'bg-red-100 text-red-700' },
+  expired: { ar: 'منتهي', en: 'Expired', cls: 'bg-muted text-muted-foreground' },
+};
+
+const MyRfqList: React.FC<{ rfqs: AccountRfq[]; dataLoading: boolean }> = ({ rfqs, dataLoading }) => {
+  const { language, dir } = useLanguage();
+  const isAr = language === 'ar';
+  if (dataLoading || rfqs.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-3 mb-6" dir={dir}>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-extrabold text-foreground">{isAr ? 'طلباتي للأسعار' : 'My Price Requests'}</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">{rfqs.length} {isAr ? 'طلب' : 'requests'}</p>
+        </div>
+        <Link href="/rfq-management" className="px-3 py-1.5 text-xs font-bold border border-border rounded-lg hover:bg-muted transition-colors text-foreground">
+          {isAr ? 'عرض الكل' : 'View all'}
+        </Link>
+      </div>
+      {rfqs.map((rfq) => {
+        const st = RFQ_STATUS_LABELS[rfq.status] || RFQ_STATUS_LABELS.pending;
+        return (
+          <div key={rfq.id} className="bg-card border border-border rounded-2xl p-4 md:p-5 hover:shadow-sm transition-shadow">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+                <Icon name="ClipboardDocumentListIcon" size={22} className="text-orange-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <p className="text-sm font-extrabold text-foreground truncate">{rfq.product_name}</p>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{isAr ? st.ar : st.en}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {rfq.quantity} {rfq.unit}
+                  {rfq.destination_country ? ` · ${rfq.destination_country}` : ''}
+                </p>
+                <p className="text-xs text-muted-foreground font-mono mt-0.5">{formatDateSafe(rfq.created_at)}</p>
+              </div>
+              <div className="flex sm:flex-col items-center sm:items-end gap-3 shrink-0">
+                {rfq.target_price ? (
+                  <p className="text-base font-extrabold text-foreground">{rfq.currency || 'USD'} {formatNumber(rfq.target_price)}</p>
+                ) : null}
+                <Link href="/rfq-management" className="px-3 py-1.5 text-xs font-bold border border-border rounded-lg hover:bg-muted transition-colors text-foreground">
+                  {isAr ? 'عرض التفاصيل' : 'View details'}
+                </Link>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 /* ─── My Orders Tab ─── */
-const MyOrdersTab: React.FC<{ orders: Order[]; dataLoading: boolean; orderStats: { total: number; pending: number; completed: number; totalSpent: number } }> = ({ orders, dataLoading, orderStats }) => {
+const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: boolean; orderStats: { total: number; pending: number; completed: number; totalSpent: number } }> = ({ orders, rfqs, dataLoading, orderStats }) => {
   const { t, dir, isRTL, language } = useLanguage();
   const ma = t.myAccount;
   const [activeOrderTab, setActiveOrderTab] = useState<'processing' | 'ready' | 'shipped' | 'completed' | 'history'>('processing');
@@ -390,6 +461,9 @@ const MyOrdersTab: React.FC<{ orders: Order[]; dataLoading: boolean; orderStats:
   }
 
   if (orders.length === 0) {
+    if (rfqs.length > 0) {
+      return <MyRfqList rfqs={rfqs} dataLoading={dataLoading} />;
+    }
     return (
       <div className="text-center py-20 bg-card border border-border rounded-2xl">
         <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -409,6 +483,7 @@ const MyOrdersTab: React.FC<{ orders: Order[]; dataLoading: boolean; orderStats:
 
   return (
     <div className="flex flex-col gap-6" dir={dir}>
+      <MyRfqList rfqs={rfqs} dataLoading={dataLoading} />
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -1108,6 +1183,7 @@ const AccountDashboard: React.FC = () => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [rfqs, setRfqs] = useState<AccountRfq[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [orderStats, setOrderStats] = useState({ total: 0, pending: 0, completed: 0, totalSpent: 0 });
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
@@ -1143,10 +1219,11 @@ const AccountDashboard: React.FC = () => {
     const fetchData = async () => {
       setDataLoading(true);
       try {
-        const [profileRes, ordersRes, productsRes] = await Promise.all([
+        const [profileRes, ordersRes, productsRes, rfqsRes] = await Promise.all([
           supabase.from('user_profiles').select('*').eq('id', user.id).single(),
           supabase.from('orders').select('id, order_number, status, total, created_at, items').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
           supabase.from('manufacturer_products').select('id, name, name_ar, unit_price, minimum_order_qty, unit, inventory_status, is_active, image_url, created_at').eq('manufacturer_id', user.id).order('created_at', { ascending: false }),
+          supabase.from('rfq_requests').select('id, product_name, quantity, unit, target_price, currency, destination_country, status, created_at').eq('buyer_id', user.id).order('created_at', { ascending: false }).limit(20),
         ]);
         if (profileRes.data) {
           setProfile(profileRes.data);
@@ -1167,6 +1244,7 @@ const AccountDashboard: React.FC = () => {
           setOrderStats({ total, pending, completed, totalSpent });
         }
         if (productsRes.data) setProducts(productsRes.data);
+        if (rfqsRes.data) setRfqs(rfqsRes.data as AccountRfq[]);
         const identities = user.identities ?? [];
         setIsGoogleUser(!!identities.find((id: any) => id.provider === 'google'));
         setHasLocalPassword(!!identities.find((id: any) => id.provider === 'email'));
@@ -1647,6 +1725,9 @@ const AccountDashboard: React.FC = () => {
             {dataLoading ? (
               <div className="flex flex-col gap-3">{[...Array(5)].map((_, i) => <div key={i} className="bg-card border border-border rounded-2xl p-5 animate-pulse h-24" />)}</div>
             ) : orders.length === 0 ? (
+              rfqs.length > 0 ? (
+                <MyRfqList rfqs={rfqs} dataLoading={dataLoading} />
+              ) : (
               <div className="text-center py-20 bg-card border border-border rounded-2xl">
                 <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <Icon name="ShoppingBagIcon" size={28} className="text-muted-foreground" />
@@ -1655,8 +1736,10 @@ const AccountDashboard: React.FC = () => {
                 <p className="text-sm text-muted-foreground mb-4">{t.myAccount.noOrdersSub}</p>
                 <Link href="/search" className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl">{t.myAccount.browseProducts}</Link>
               </div>
+              )
             ) : (
               <div className="flex flex-col gap-3">
+                <MyRfqList rfqs={rfqs} dataLoading={dataLoading} />
                 {orders.map((order) => (
                   <div key={order.id} className="bg-card border border-border rounded-2xl p-4 md:p-5 hover:shadow-sm transition-shadow">
                     <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -1774,7 +1857,7 @@ const AccountDashboard: React.FC = () => {
 
         {/* ════ MY ORDERS TAB (buyers only) ════ */}
         {activeTab === 'my-orders' && (
-          <MyOrdersTab orders={orders} dataLoading={dataLoading} orderStats={orderStats} />
+          <MyOrdersTab orders={orders} rfqs={rfqs} dataLoading={dataLoading} orderStats={orderStats} />
         )}
 
         {/* ════ SETTINGS TAB ════ */}
