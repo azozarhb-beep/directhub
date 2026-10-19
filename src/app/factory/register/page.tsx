@@ -487,7 +487,22 @@ function FactoryRegisterPageInner() {
         // ignore
       }
 
-      router.push('/manufacturer/dashboard?registered=1');
+      // Keep the profile in sync so every later routing check agrees with the chosen type
+      if (form.factory_type !== 'local_supplier') {
+        try {
+          await supabase
+            .from('user_profiles')
+            .update({ seller_category: sellerCategory, country: form.country })
+            .eq('id', user!.id);
+        } catch {
+          // non-blocking
+        }
+      }
+
+      // Strict routing by factory type: international → International Control Room, local → Local Dashboard
+      router.push(
+        form.factory_type === 'international' ?'/manufacturer/international-dashboard?registered=1' :'/manufacturer/dashboard?registered=1'
+      );
     } catch (err: any) {
       setError(err.message || t.common.error);
     } finally {

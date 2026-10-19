@@ -24,7 +24,7 @@ import ChatImageAttachment, { uploadChatImage, isImageAttachment, type Attachmen
 
 
 
-import { resolvePlatformRole, getHomeRoomForRole, canAccessLocalErp,  } from '@/lib/roomIsolation';
+import { resolvePlatformRole, getHomeRoomForRole, canAccessLocalErp, resolveManufacturerRoomForUser, INTERNATIONAL_FACTORY_ROOM_PATH } from '@/lib/roomIsolation';
 
 import PaymentSettingsPanel from './PaymentSettingsPanel';
 import FinancePanel from './FinancePanel';
@@ -598,6 +598,18 @@ export default function ManufacturerDashboard() {
         null;
       const platformRole = resolvePlatformRole({ metadataRole });
       if (platformRole === 'manufacturer' || platformRole === 'admin') {
+        // International factories are routed strictly to their own control room.
+        const accountRoleMeta = user.user_metadata?.account_role as string | undefined;
+        if (
+          platformRole === 'manufacturer' &&
+          accountRoleMeta !== 'commercial_supplier' &&
+          !(typeof window !== 'undefined' && localStorage.getItem('impersonated_factory_id'))
+        ) {
+          const targetRoom = await resolveManufacturerRoomForUser(supabase, user.id, user.email);
+          if (targetRoom === INTERNATIONAL_FACTORY_ROOM_PATH) {
+            router.replace(INTERNATIONAL_FACTORY_ROOM_PATH);
+          }
+        }
         return;
       }
       // Verify the user is an active sales rep linked to a factory

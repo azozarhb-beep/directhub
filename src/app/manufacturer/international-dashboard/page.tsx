@@ -30,6 +30,7 @@ import BankAccountsPanel from '@/app/manufacturer/dashboard/BankAccountsPanel';
 import PaymentSettingsPanel from '@/app/manufacturer/dashboard/PaymentSettingsPanel';
 import FinancePanel from '@/app/manufacturer/dashboard/FinancePanel';
 import ArchivePanel from '@/app/manufacturer/dashboard/ArchivePanel';
+import { resolveManufacturerRoomForUser, INTERNATIONAL_FACTORY_ROOM_PATH } from '@/lib/roomIsolation';
 
 // ─── Local Room Guard Helpers ────────────────────────────────────────────────
 
@@ -627,11 +628,9 @@ export default function InternationalDashboardPage() {
         router.replace(getHomeRoomForRole(platformRole));
         return;
       }
-      const isIntl = isInternationalFactory({
-        seller_category: profile?.seller_category || null,
-        factory_type: (regRes?.data as { factory_type?: string } | null)?.factory_type || null,
-      });
-      if (!isIntl) {
+      const targetRoom = await resolveManufacturerRoomForUser(supabase, user.id, user.email);
+      if (cancelled) return;
+      if (targetRoom !== INTERNATIONAL_FACTORY_ROOM_PATH) {
         router.replace(LOCAL_FACTORY_ROOM_PATH);
       }
     };

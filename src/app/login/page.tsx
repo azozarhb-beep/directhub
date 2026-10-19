@@ -8,6 +8,8 @@ import Icon from '@/components/ui/AppIcon';
 import AppLogo from '@/components/ui/AppLogo';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getPlatformName } from '@/lib/i18n';
+import { createClient } from '@/lib/supabase/client';
+import { resolveManufacturerRoomForUser } from '@/lib/roomIsolation';
 
 import { sendWelcomeEmail } from '@/lib/email';
 
@@ -80,16 +82,26 @@ function LoginPageInner() {
     if (authLoading) return; // Wait for AuthContext to resolve session
     if (user) {
       const redirect = searchParams?.get('redirect');
+      const userRole = user.user_metadata?.role ?? user.app_metadata?.role;
+      const accountRoleMeta = user.user_metadata?.account_role as string | undefined;
+      // Manufacturers are routed strictly by factory type (local vs international)
+      if (userRole === 'manufacturer' && accountRoleMeta !== 'commercial_supplier') {
+        if (redirect) {
+          router.replace(redirect);
+          return;
+        }
+        resolveManufacturerRoomForUser(createClient(), user.id, user.email).then((dest) => {
+          router.replace(dest);
+        });
+        return;
+      }
       // Try to get dashboard_path from user metadata first
       const dashboardPath = user.user_metadata?.dashboard_path;
       if (dashboardPath) {
         router.replace(redirect || dashboardPath);
         return;
       }
-      const userRole = user.user_metadata?.role ?? user.app_metadata?.role;
-      if (userRole === 'manufacturer') {
-        router.replace(redirect || '/manufacturer/dashboard');
-      } else if (userRole === 'admin') {
+      if (userRole === 'admin') {
         router.replace(redirect || '/admin/control-room');
       } else if (userRole === 'field_agent') {
         router.replace(redirect || '/agent/dashboard');
@@ -128,16 +140,25 @@ function LoginPageInner() {
     try {
       const data = await signIn(loginEmail, loginPassword);
       const redirect = searchParams?.get('redirect');
+      const userRole = data?.user?.user_metadata?.role ?? data?.user?.app_metadata?.role;
+      const accountRoleMeta = data?.user?.user_metadata?.account_role as string | undefined;
+      // Manufacturers are routed strictly by factory type (local vs international)
+      if (userRole === 'manufacturer' && accountRoleMeta !== 'commercial_supplier' && data?.user) {
+        if (redirect) {
+          router.push(redirect);
+        } else {
+          const dest = await resolveManufacturerRoomForUser(createClient(), data.user.id, data.user.email);
+          router.push(dest);
+        }
+        return;
+      }
       // Prefer dashboard_path from user metadata
       const dashboardPath = data?.user?.user_metadata?.dashboard_path;
       if (dashboardPath) {
         router.push(redirect || dashboardPath);
         return;
       }
-      const userRole = data?.user?.user_metadata?.role ?? data?.user?.app_metadata?.role;
-      if (userRole === 'manufacturer') {
-        router.push(redirect || '/manufacturer/dashboard');
-      } else if (userRole === 'admin') {
+      if (userRole === 'admin') {
         router.push(redirect || '/admin/control-room');
       } else if (userRole === 'field_agent') {
         router.push(redirect || '/agent/dashboard');
