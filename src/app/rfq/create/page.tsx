@@ -88,6 +88,13 @@ function Toast({ message, type }: { message: string; type: 'success' | 'error' }
 export default function CreateRFQPage() {
   const router = useRouter();
   const { user, loading: authLoading, requireAuth } = useAuth();
+  const handleExit = useCallback(() => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push('/');
+    }
+  }, [router]);
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -369,12 +376,13 @@ export default function CreateRFQPage() {
       <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-6 pb-24 md:pb-8">
         {/* Page header */}
         <div className="flex items-center gap-3 mb-6">
-          <Link
-            href="/rfq-management"
+          <button
+            type="button"
+            onClick={handleExit}
             className="w-9 h-9 flex items-center justify-center rounded-xl border border-border hover:bg-muted transition-colors shrink-0"
           >
             <Icon name="ChevronRightIcon" size={18} />
-          </Link>
+          </button>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
               <Icon name="DocumentTextIcon" size={20} className="text-primary" />
@@ -677,12 +685,13 @@ export default function CreateRFQPage() {
 
           {/* ── Submit button ── */}
           <div className="flex gap-3 pt-1">
-            <Link
-              href="/rfq-management"
+            <button
+              type="button"
+              onClick={handleExit}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 border border-border rounded-xl text-sm font-medium text-foreground hover:bg-muted transition-colors"
             >
               إلغاء
-            </Link>
+            </button>
             <button
               type="submit"
               disabled={submitting}
