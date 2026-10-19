@@ -223,6 +223,9 @@ const baseDevOrigins = [
   '**.localhost',
   '**.localdomain',
   '**.test',
+  '192.168.*.*',
+  '10.*.*.*',
+  '172.*.*.*',
   ...localNetworkHosts,
   ...previewEnvHosts,
   ...(siteUrlHost ? [siteUrlHost, `**.${siteUrlHost}`] : []),
@@ -242,6 +245,8 @@ const isValidDevOriginPattern = (h) => {
   if (labels.length === 2 && labels[0] === '*') return false;
   // Partial label replacement (e.g. "team-*.example.com") is unsupported
   if (labels.some((l) => l.includes('*') && l !== '*' && l !== '**')) return false;
+  // Always allow IPv4 literals and IPv4 wildcard ranges (e.g. 192.168.*.*)
+  if (/^(\d{1,3}|\*)(\.(\d{1,3}|\*)){3}$/.test(h)) return true;
   return true;
 };
 
