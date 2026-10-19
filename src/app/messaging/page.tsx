@@ -2266,10 +2266,7 @@ function LiveMessagingContent() {
                   <Icon name="ChatBubbleLeftRightIcon" size={28} className="text-gray-400" />
                 </div>
                 <p className="text-sm font-semibold text-gray-700 mb-1">{m.noConversations}</p>
-                <p className="text-xs text-gray-400 mb-5">{m.noConversationsHint}</p>
-                <Link href="/rfq-board" className="px-5 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:opacity-90 transition-opacity">
-                  {m.submitRfq}
-                </Link>
+                <p className="text-xs text-gray-400">{m.noConversationsSubtitle}</p>
               </div>
             ) : filteredConvs.map(conv => {
               const threadInfo = THREAD_LABELS[conv.thread_type || 'negotiation'];
@@ -2335,17 +2332,6 @@ function LiveMessagingContent() {
                 </button>
               );
             })}
-          </div>
-
-          {/* ── Bottom: New RFQ button ─────────────────────────────────────── */}
-          <div className="p-3 border-t border-gray-100 bg-white shrink-0 mb-16 md:mb-0">
-            <Link
-              href="/rfq-board"
-              className="flex items-center justify-center gap-2 w-full py-2.5 bg-primary text-white text-sm font-bold rounded-xl hover:opacity-90 transition-opacity"
-            >
-              <Icon name="PlusIcon" size={16} />
-              {m.newRfqRequest}
-            </Link>
           </div>
         </div>
 

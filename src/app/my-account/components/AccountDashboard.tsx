@@ -1423,9 +1423,6 @@ const AccountDashboard: React.FC = () => {
               >
                 {t.myAccount.editProfile}
               </button>
-              <button onClick={() => router.push('/rfq/create')} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 transition-opacity">
-                {t.myAccount.postRFQ}
-              </button>
             </div>
           </div>
 
@@ -1558,9 +1555,9 @@ const AccountDashboard: React.FC = () => {
               <div className="bg-card border border-border rounded-2xl p-5">
                 <h3 className="text-sm font-extrabold text-foreground mb-4">{t.myAccount.quickActions}</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  {/* Post RFQ */}
+                  {/* RFQ Management Center */}
                   <button
-                    onClick={() => router.push('/rfq/create')}
+                    onClick={() => router.push('/rfq-management')}
                     className="flex flex-col items-center gap-3 p-4 bg-card border border-border rounded-2xl hover:shadow-md hover:border-primary/40 transition-all text-center group w-full"
                   >
                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
