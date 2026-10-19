@@ -271,10 +271,17 @@ const allowedDevOrigins = Array.from(
   )
 );
 
+// Next 15 dev server: when `allowedDevOrigins` is defined, cross-site `no-cors`
+// requests to /_next/* (e.g. <script> chunks loaded by the preview iframe, which
+// carry no Origin header) are rejected with 403 regardless of the host list.
+// When it is left undefined, Next only logs a warning and serves the request.
+// Therefore the strict allow-list is opt-in via STRICT_DEV_ORIGINS=true.
+const strictDevOrigins = process.env.STRICT_DEV_ORIGINS === 'true';
+
 const nextConfig = {
   productionBrowserSourceMaps: true,
   distDir: process.env.DIST_DIR || '.next',
-  allowedDevOrigins,
+  ...(strictDevOrigins ? { allowedDevOrigins } : {}),
   typescript: {
     ignoreBuildErrors: true,
   },
