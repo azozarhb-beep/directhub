@@ -102,37 +102,46 @@ function ManufacturerLoginPageInner() {
   }, [user, loading, router, searchParams]);
 
   /**
-   * Determines the correct dashboard for a manufacturer based on their country.
-   * Yemen (YE / "اليمن") → /manufacturer/dashboard (local control room)
-   * Any other country → /international-factory/dashboard (global control room)
+   * Determines the correct room for a manufacturer.
+   * International factory (factory_type = 'international' / seller_category = 'international_factory')
+   *   → /manufacturer/international-dashboard (International Factory Control Room)
+   * Local factory → /manufacturer/dashboard (Local Factory Dashboard)
+   * Falls back to country (Yemen = local) when no explicit factory type exists.
    */
   const resolveManufacturerDashboard = async (userId: string): Promise<string> => {
+    const INTL_ROOM = '/manufacturer/international-dashboard';
+    const LOCAL_ROOM = '/manufacturer/dashboard';
     try {
-      // Try user_profiles first
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('country')
-        .eq('id', userId)
-        .maybeSingle();
+      const [{ data: profile }, { data: reg }] = await Promise.all([
+        supabase
+          .from('user_profiles')
+          .select('country, seller_category')
+          .eq('id', userId)
+          .maybeSingle(),
+        supabase
+          .from('factory_registrations')
+          .select('country, factory_type')
+          .eq('user_id', userId)
+          .maybeSingle(),
+      ]);
 
-      if (profile?.country) {
-        return isYemen(profile.country) ? '/manufacturer/dashboard' : '/international-factory/dashboard';
+      const factoryType = (reg?.factory_type || '').toLowerCase();
+      const sellerCategory = (profile?.seller_category || '').toLowerCase();
+      if (factoryType === 'international' || sellerCategory === 'international_factory') {
+        return INTL_ROOM;
+      }
+      if (factoryType === 'local' || sellerCategory === 'local_factory') {
+        return LOCAL_ROOM;
       }
 
-      // Fallback: factory_registrations
-      const { data: reg } = await supabase
-        .from('factory_registrations')
-        .select('country')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (reg?.country) {
-        return isYemen(reg.country) ? '/manufacturer/dashboard' : '/international-factory/dashboard';
+      const country = profile?.country || reg?.country;
+      if (country) {
+        return isYemen(country) ? LOCAL_ROOM : INTL_ROOM;
       }
     } catch { /* silently fall back */ }
 
-    // Default: local dashboard if country is unknown
-    return '/manufacturer/dashboard';
+    // Default: local dashboard if type/country is unknown
+    return LOCAL_ROOM;
   };
 
   /** Returns true if the country value represents Yemen. */

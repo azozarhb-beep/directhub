@@ -359,6 +359,25 @@ export function canAccessLocalErp(hints: {
 /** Fallback home when local ERP is denied for a manufacturer. */
 export const MANUFACTURER_DASHBOARD_PATH = ROLE_HOME_PATH.manufacturer;
 
+/** International Factory Control Room path (strict room for international manufacturers). */
+export const INTERNATIONAL_FACTORY_ROOM_PATH = '/manufacturer/international-dashboard';
+
+/** Local Factory Dashboard path (strict room for local Yemeni manufacturers). */
+export const LOCAL_FACTORY_ROOM_PATH = '/manufacturer/dashboard';
+
+/**
+ * True when the manufacturer is an international factory
+ * (factory_type = 'international' OR seller_category = 'international_factory').
+ */
+export function isInternationalFactory(hints: {
+  seller_category?: string | null;
+  factory_type?: string | null;
+}): boolean {
+  const seller = (hints.seller_category || '').toLowerCase().trim();
+  const factoryType = (hints.factory_type || '').toLowerCase().trim();
+  return INTERNATIONAL_MARKERS.has(seller) || INTERNATIONAL_MARKERS.has(factoryType);
+}
+
 // ─── Room Metadata ─────────────────────────────────────────────────────────────
 /**
  * Metadata for each isolated control room.

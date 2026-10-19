@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import Link from 'next/link';
+
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
@@ -16,7 +16,7 @@ import AllSalesMethodsPanel from '@/components/AllSalesMethodsPanel';
 import ManufacturerAdvancedModules from '@/components/manufacturer/ManufacturerAdvancedModules';
 import UnifiedMessagingEngine from '@/components/UnifiedMessagingEngine';
 import IncomingRFQsPanel from '@/components/manufacturer/IncomingRFQsPanel';
-import { Globe, ArrowLeft, Database, TrendingUp, Ship, FileText, AlertTriangle } from 'lucide-react';
+import { Globe, TrendingUp, Ship, FileText, AlertTriangle } from 'lucide-react';
 import FactoryTeamManagement from '@/components/manufacturer/FactoryTeamManagement';
 import ProductsPanel from '@/app/manufacturer/dashboard/ProductsPanel';
 import InventoryPanel from '@/app/manufacturer/dashboard/InventoryPanel';
@@ -28,6 +28,38 @@ import BankAccountsPanel from '@/app/manufacturer/dashboard/BankAccountsPanel';
 import PaymentSettingsPanel from '@/app/manufacturer/dashboard/PaymentSettingsPanel';
 import FinancePanel from '@/app/manufacturer/dashboard/FinancePanel';
 import ArchivePanel from '@/app/manufacturer/dashboard/ArchivePanel';
+
+// ─── Local Room Guard Helpers ────────────────────────────────────────────────
+
+const LOCAL_FACTORY_ROOM_PATH = '/manufacturer/dashboard';
+
+function resolvePlatformRole(input: {
+  role?: string | null;
+  metadataRole?: string | null;
+  account_type?: string | null;
+  seller_category?: string | null;
+}): string {
+  const raw = (input.role || input.metadataRole || input.account_type || '').toString().toLowerCase();
+  if (raw === 'admin') return 'admin';
+  if (raw === 'manufacturer' || raw === 'factory') return 'manufacturer';
+  if (raw) return raw;
+  return 'manufacturer';
+}
+
+function getHomeRoomForRole(role: string): string {
+  if (role === 'admin') return '/admin';
+  if (role === 'manufacturer') return LOCAL_FACTORY_ROOM_PATH;
+  return '/';
+}
+
+function isInternationalFactory(input: {
+  seller_category?: string | null;
+  factory_type?: string | null;
+}): boolean {
+  const sc = (input.seller_category || '').toLowerCase();
+  const ft = (input.factory_type || '').toLowerCase();
+  return sc.includes('international') || ft.includes('international');
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -557,6 +589,54 @@ export default function InternationalDashboardPage() {
     }
   }, [user, authLoading, router]);
 
+  // Strict room guard: only international factories (or admins) may stay here.
+  useEffect(() => {
+    if (authLoading || !user) return;
+    let cancelled = false;
+    const enforceInternationalRoom = async () => {
+      const metadataRole =
+        (user.user_metadata?.role as string | undefined) ||
+        (user.app_metadata?.role as string | undefined) ||
+        null;
+      const [profileRes, regRes] = await Promise.all([
+        supabase
+          .from('user_profiles')
+          .select('role, account_type, seller_category')
+          .eq('id', user.id)
+          .maybeSingle(),
+        supabase
+          .from('factory_registrations')
+          .select('factory_type')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+      ]);
+      if (cancelled) return;
+      const profile = profileRes?.data;
+      const platformRole = resolvePlatformRole({
+        role: profile?.role,
+        metadataRole,
+        account_type: profile?.account_type,
+        seller_category: profile?.seller_category || null,
+      });
+      if (platformRole === 'admin') return;
+      if (platformRole !== 'manufacturer') {
+        router.replace(getHomeRoomForRole(platformRole));
+        return;
+      }
+      const isIntl = isInternationalFactory({
+        seller_category: profile?.seller_category || null,
+        factory_type: (regRes?.data as { factory_type?: string } | null)?.factory_type || null,
+      });
+      if (!isIntl) {
+        router.replace(LOCAL_FACTORY_ROOM_PATH);
+      }
+    };
+    enforceInternationalRoom();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, authLoading, router, supabase]);
+
   // ── Real-time order sync ─────────────────────────────────────────────────
   useRealtimeOrders({
     channelName: 'intl-dashboard-orders-rt',
@@ -614,24 +694,12 @@ export default function InternationalDashboardPage() {
       <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-40">
         <div className="max-w-screen-2xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Link href="/manufacturer/dashboard">
-              <AppLogo className="h-8 w-auto" />
-            </Link>
+            <AppLogo className="h-8 w-auto" />
             <div className="hidden sm:block w-px h-6 bg-slate-700" />
             <div className="hidden sm:flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
               <span className="text-sm font-semibold text-cyan-300">غرفة التحكم الدولية</span>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link href="/manufacturer/dashboard" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm text-slate-300 transition-colors">
-              <ArrowLeft size={14} />
-              <span className="hidden sm:inline">لوحة التحكم</span>
-            </Link>
-            <Link href="/manufacturer/erp" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-sm text-white transition-colors">
-              <Database size={14} />
-              <span className="hidden sm:inline">نظام ERP</span>
-            </Link>
           </div>
         </div>
       </header>

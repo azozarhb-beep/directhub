@@ -24,11 +24,7 @@ import ChatImageAttachment, { uploadChatImage, isImageAttachment, type Attachmen
 
 
 
-import {
-  resolvePlatformRole,
-  getHomeRoomForRole,
-  canAccessLocalErp,
-} from '@/lib/roomIsolation';
+import { resolvePlatformRole, getHomeRoomForRole, canAccessLocalErp,  } from '@/lib/roomIsolation';
 
 import PaymentSettingsPanel from './PaymentSettingsPanel';
 import FinancePanel from './FinancePanel';
