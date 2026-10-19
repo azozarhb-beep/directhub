@@ -16,7 +16,9 @@ import AllSalesMethodsPanel from '@/components/AllSalesMethodsPanel';
 import ManufacturerAdvancedModules from '@/components/manufacturer/ManufacturerAdvancedModules';
 import UnifiedMessagingEngine from '@/components/UnifiedMessagingEngine';
 import IncomingRFQsPanel from '@/components/manufacturer/IncomingRFQsPanel';
-import { Globe, TrendingUp, Ship, FileText, AlertTriangle } from 'lucide-react';
+import DealLinkGeneratorModal from '@/components/manufacturer/DealLinkGeneratorModal';
+import { SUPPORTED_LANGUAGES } from '@/lib/i18n';
+import { Globe, TrendingUp, Ship, FileText, AlertTriangle, Link2, Check } from 'lucide-react';
 import FactoryTeamManagement from '@/components/manufacturer/FactoryTeamManagement';
 import ProductsPanel from '@/app/manufacturer/dashboard/ProductsPanel';
 import InventoryPanel from '@/app/manufacturer/dashboard/InventoryPanel';
@@ -210,7 +212,9 @@ type Tab = 'exports' | 'production' | 'documents' | 'supply_chain' | 'buying_sel
 export default function InternationalDashboardPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const { dir, isRTL, language, t } = useLanguage();
+  const { dir, isRTL, language, setLanguage, t } = useLanguage();
+  const [showDealLinkModal, setShowDealLinkModal] = React.useState(false);
+  const [showLangMenu, setShowLangMenu] = React.useState(false);
   const supabase = React.useMemo(() => {
     const { createClient } = require('@/lib/supabase/client');
     return createClient();
@@ -701,7 +705,69 @@ export default function InternationalDashboardPage() {
               <span className="text-sm font-semibold text-cyan-300">غرفة التحكم الدولية</span>
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowDealLinkModal(true)}
+              className="flex items-center gap-2 px-3 py-2 border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 rounded-lg text-sm font-semibold hover:bg-emerald-500/20 transition-colors"
+            >
+              <Link2 size={15} />
+              <span className="hidden sm:inline">إنشاء رابط صفقة مخصصة</span>
+            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowLangMenu((v) => !v)}
+                aria-label="Change language"
+                aria-haspopup="menu"
+                aria-expanded={showLangMenu}
+                className="flex items-center gap-2 px-3 py-2 border border-slate-700 bg-slate-800 text-slate-200 rounded-lg text-sm font-semibold hover:bg-slate-700 transition-colors"
+              >
+                <Globe size={16} className="text-cyan-300" />
+                <span className="hidden sm:inline">
+                  {language === 'ar' ? 'عربي' : language === 'zh' ? '中文' : language === 'tr' ? 'Türkçe' : 'English'}
+                </span>
+              </button>
+              {showLangMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowLangMenu(false)} />
+                  <div
+                    role="menu"
+                    className="absolute end-0 mt-2 w-40 bg-slate-800 border border-slate-700 rounded-xl shadow-xl z-50 overflow-hidden"
+                  >
+                    {[
+                      { code: 'ar', label: 'عربي' },
+                      { code: 'en', label: 'English' },
+                      { code: 'zh', label: '中文' },
+                      { code: 'tr', label: 'Türkçe' },
+                    ].map((opt) => {
+                      const supported = SUPPORTED_LANGUAGES.find((l) => l.code === opt.code);
+                      if (!supported) return null;
+                      return (
+                        <button
+                          key={opt.code}
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setLanguage(supported.code);
+                            setShowLangMenu(false);
+                          }}
+                          className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-sm text-start hover:bg-slate-700 transition-colors ${
+                            language === opt.code ? 'text-cyan-300 font-semibold' : 'text-slate-200'
+                          }`}
+                        >
+                          <span>{opt.label}</span>
+                          {language === opt.code && <Check size={14} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
+        <DealLinkGeneratorModal open={showDealLinkModal} onClose={() => setShowDealLinkModal(false)} />
       </header>
 
       <div className="max-w-screen-2xl mx-auto px-4 py-6 space-y-6">
