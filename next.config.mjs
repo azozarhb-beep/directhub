@@ -60,6 +60,11 @@ const previewEnvHosts = [
   process.env.NEXT_PUBLIC_APP_URL,
   process.env.APP_URL,
   process.env.PUBLIC_URL,
+  process.env.DEV_ORIGIN,
+  process.env.NEXT_PUBLIC_DEV_ORIGIN,
+  process.env.WEBSITE_HOSTNAME,
+  process.env.REPLIT_DEV_DOMAIN,
+  process.env.GITPOD_WORKSPACE_URL,
   process.env.CODESPACE_NAME && process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN
     ? `${process.env.CODESPACE_NAME}-3000.${process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`
     : null,
