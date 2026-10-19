@@ -15,7 +15,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import AllSalesMethodsPanel from '@/components/AllSalesMethodsPanel';
 import ManufacturerAdvancedModules from '@/components/manufacturer/ManufacturerAdvancedModules';
 import UnifiedMessagingEngine from '@/components/UnifiedMessagingEngine';
-import RFQCopilot from '@/components/RFQCopilot';
+import IncomingRFQsPanel from '@/components/manufacturer/IncomingRFQsPanel';
+import { Globe, ArrowLeft, Database, TrendingUp, Ship, FileText, AlertTriangle } from 'lucide-react';
 import FactoryTeamManagement from '@/components/manufacturer/FactoryTeamManagement';
 import ProductsPanel from '@/app/manufacturer/dashboard/ProductsPanel';
 import InventoryPanel from '@/app/manufacturer/dashboard/InventoryPanel';
@@ -592,7 +593,7 @@ export default function InternationalDashboardPage() {
         <div className="max-w-screen-2xl mx-auto flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-cyan-500/20 rounded-xl flex items-center justify-center border border-cyan-500/30">
-              <Icon name="Globe" size={18} className="text-cyan-300" />
+              <Globe size={18} className="text-cyan-300" />
             </div>
             <div>
               <h2 className="text-sm font-bold text-white leading-tight">غرفة تحكم المصنع الدولي</h2>
@@ -624,11 +625,11 @@ export default function InternationalDashboardPage() {
           </div>
           <div className="flex items-center gap-2">
             <Link href="/manufacturer/dashboard" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm text-slate-300 transition-colors">
-              <Icon name="ArrowLeft" size={14} />
+              <ArrowLeft size={14} />
               <span className="hidden sm:inline">لوحة التحكم</span>
             </Link>
             <Link href="/manufacturer/erp" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-sm text-white transition-colors">
-              <Icon name="Database" size={14} />
+              <Database size={14} />
               <span className="hidden sm:inline">نظام ERP</span>
             </Link>
           </div>
@@ -651,10 +652,10 @@ export default function InternationalDashboardPage() {
         {/* KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { label: 'إجمالي قيمة الصادرات', value: `$${(totalExportValue / 1000).toFixed(0)}K`, icon: 'TrendingUp', color: 'from-cyan-600 to-cyan-800', sub: 'هذا الشهر' },
-            { label: 'شحنات في الطريق', value: inTransitCount.toString(), icon: 'Ship', color: 'from-indigo-600 to-indigo-800', sub: 'شحنة نشطة' },
-            { label: 'بانتظار المستندات', value: pendingDocsCount.toString(), icon: 'FileText', color: 'from-amber-600 to-amber-800', sub: 'تحتاج إجراء' },
-            { label: 'شحنات محتجزة', value: heldCount.toString(), icon: 'AlertTriangle', color: 'from-red-600 to-red-800', sub: 'تحتاج مراجعة' },
+            { label: 'إجمالي قيمة الصادرات', value: `$${(totalExportValue / 1000).toFixed(0)}K`, icon: TrendingUp, color: 'from-cyan-600 to-cyan-800', sub: 'هذا الشهر' },
+            { label: 'شحنات في الطريق', value: inTransitCount.toString(), icon: Ship, color: 'from-indigo-600 to-indigo-800', sub: 'شحنة نشطة' },
+            { label: 'بانتظار المستندات', value: pendingDocsCount.toString(), icon: FileText, color: 'from-amber-600 to-amber-800', sub: 'تحتاج إجراء' },
+            { label: 'شحنات محتجزة', value: heldCount.toString(), icon: AlertTriangle, color: 'from-red-600 to-red-800', sub: 'تحتاج مراجعة' },
           ].map((kpi) => (
             <div key={kpi.label} className={`bg-gradient-to-br ${kpi.color} rounded-xl p-4 border border-white/10`}>
               <div className="flex items-start justify-between">
@@ -664,7 +665,7 @@ export default function InternationalDashboardPage() {
                   <p className="text-white/50 text-xs mt-1">{kpi.sub}</p>
                 </div>
                 <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center">
-                  <Icon name={kpi.icon as any} size={18} className="text-white" />
+                  <kpi.icon size={18} className="text-white" />
                 </div>
               </div>
             </div>
@@ -976,7 +977,7 @@ export default function InternationalDashboardPage() {
         {/* Tab: RFQ */}
         {activeTab === 'rfq' && (
           <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <RFQCopilot />
+            <IncomingRFQsPanel userId={user?.id ?? ''} />
           </div>
         )}
 
