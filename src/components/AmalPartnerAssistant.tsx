@@ -527,6 +527,7 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
       const decoder = new TextDecoder();
       let accumulated = '';
       let buffer = '';
+      let streamError: string | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -556,6 +557,7 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
                 });
               }
             } else if (data.type === 'done') {
+              if (!accumulated.trim()) continue;
               // Process AMAL_ACTION blocks
               const finalContent = await processAmalActions(accumulated);
               setMessages(prev => {
@@ -567,18 +569,21 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
                 return updated;
               });
             } else if (data.type === 'error') {
-              throw new Error(data.error || 'Assistant error');
+              streamError = data.error || 'Assistant error';
             }
           } catch (_) {}
         }
       }
+
+      if (streamError && !accumulated.trim()) throw new Error(streamError);
+      if (!accumulated.trim()) throw new Error('Empty response from assistant');
     } catch (err) {
       setMessages(prev => {
         const updated = [...prev];
         const lastIdx = updated.length - 1;
         if (updated[lastIdx]?.isStreaming) {
           const errMsg = (err instanceof Error ? err.message : String(err)) || '';
-          const isQuota = errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED');
+          const isQuota = /quota|RESOURCE_EXHAUSTED|rate limit|temporarily unavailable|غير متاحة|429/i.test(errMsg);
           const fallback = isQuota ? ui.unavailable : ui.tempError;
           updated[lastIdx] = { role: 'assistant', content: fallback, isStreaming: false, type: isQuota ? 'info' : 'error' };
         }
@@ -640,6 +645,7 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
       const decoder = new TextDecoder();
       let accumulated = '';
       let buffer = '';
+      let streamError: string | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -669,6 +675,7 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
                 });
               }
             } else if (data.type === 'done') {
+              if (!accumulated.trim()) continue;
               // Process AMAL_ACTION blocks — execute and replace
               const finalContent = await processAmalActions(accumulated);
               setMessages(prev => {
@@ -680,18 +687,21 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
                 return updated;
               });
             } else if (data.type === 'error') {
-              throw new Error(data.error || 'Assistant error');
+              streamError = data.error || 'Assistant error';
             }
           } catch (_) {}
         }
       }
+
+      if (streamError && !accumulated.trim()) throw new Error(streamError);
+      if (!accumulated.trim()) throw new Error('Empty response from assistant');
     } catch (err) {
       setMessages(prev => {
         const updated = [...prev];
         const lastIdx = updated.length - 1;
         if (updated[lastIdx]?.isStreaming) {
           const errMsg = (err instanceof Error ? err.message : String(err)) || '';
-          const isQuota = errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('temporarily unavailable') || errMsg.includes('غير متاحة');
+          const isQuota = /quota|RESOURCE_EXHAUSTED|rate limit|temporarily unavailable|غير متاحة|429/i.test(errMsg);
           const fallback = isQuota ? ui.quotaError : ui.tempError;
           updated[lastIdx] = { role: 'assistant', content: fallback, isStreaming: false, type: isQuota ? 'info' : 'error' };
         }
@@ -998,11 +1008,12 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
       {/* Hidden audio element for Gemini TTS playback */}
       <audio ref={ttsAudioRef} onEnded={handleTTSEnded} className="hidden" suppressHydrationWarning />
 
-      {/* Floating Button — Orange to match DirectHub visual identity */}
+      {/* Floating Button — Orange to match DirectHub visual identity.
+          Placed at mid-screen side edge so it never covers bottom action bars / bottom nav. */}
       {!isOpen && (
         <button
           onClick={handleOpen}
-          className={`fixed bottom-20 z-50 flex items-center gap-2 px-4 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-full shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-200 ${positionClass}`}
+          className={`fixed top-1/2 -translate-y-1/2 z-40 flex items-center gap-2 p-2.5 sm:px-4 sm:py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-full shadow-xl hover:shadow-2xl transition-all duration-200 opacity-90 hover:opacity-100 ${positionClass}`}
           aria-label={assistantTitle}
           suppressHydrationWarning
         >
@@ -1022,9 +1033,9 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
       {/* Chat Panel */}
       {isOpen && (
         <div
-          className={`fixed bottom-20 z-50 w-[350px] sm:w-[400px] bg-card border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden ${positionClass}`}
+          className={`fixed bottom-24 md:bottom-6 z-[60] w-[calc(100vw-2rem)] max-w-[400px] bg-card border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden ${positionClass}`}
           style={{
-            maxHeight: '600px',
+            maxHeight: 'min(600px, calc(100vh - 8rem))',
             height: '600px',
           }}
           dir={dir}
