@@ -628,6 +628,14 @@ export default function InternationalDashboardPage() {
         router.replace(getHomeRoomForRole(platformRole));
         return;
       }
+      // Users who explicitly chose "international manufacturer" at registration
+      // (account_role) always stay in the International Factory Control Room.
+      const metaAccountRole = String(
+        (user.user_metadata?.account_role as string | undefined) ||
+          (user.app_metadata?.account_role as string | undefined) ||
+          ''
+      ).toLowerCase();
+      if (metaAccountRole === 'international_manufacturer') return;
       const targetRoom = await resolveManufacturerRoomForUser(supabase, user.id, user.email);
       if (cancelled) return;
       if (targetRoom !== INTERNATIONAL_FACTORY_ROOM_PATH) {

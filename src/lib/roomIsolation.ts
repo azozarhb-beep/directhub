@@ -399,9 +399,13 @@ export function resolveManufacturerRoomPath(hints: {
   seller_category?: string | null;
   factory_type?: string | null;
   country?: string | null;
+  account_role?: string | null;
+  dashboard_path?: string | null;
 }): string {
   const seller = (hints.seller_category || '').toLowerCase().trim();
   const factoryType = (hints.factory_type || '').toLowerCase().trim();
+  const accountRole = (hints.account_role || '').toLowerCase().trim();
+  const dashboardPath = (hints.dashboard_path || '').toLowerCase().trim();
 
   if (
     INTERNATIONAL_MARKERS.has(seller) ||
@@ -418,6 +422,17 @@ export function resolveManufacturerRoomPath(hints: {
     seller === 'محلي' ||
     factoryType === 'محلي'
   ) {
+    return LOCAL_FACTORY_ROOM_PATH;
+  }
+
+  // Explicit account choice made at registration (account_role / dashboard_path)
+  if (
+    accountRole === 'international_manufacturer' ||
+    dashboardPath.startsWith(INTERNATIONAL_FACTORY_ROOM_PATH)
+  ) {
+    return INTERNATIONAL_FACTORY_ROOM_PATH;
+  }
+  if (accountRole === 'local_manufacturer') {
     return LOCAL_FACTORY_ROOM_PATH;
   }
 
@@ -439,10 +454,10 @@ export async function resolveManufacturerRoomForUser(
   email?: string | null
 ): Promise<string> {
   try {
-    const [{ data: profile }, { data: reg }] = await Promise.all([
+    const [{ data: profile }, { data: reg }, authRes] = await Promise.all([
       supabase
         .from('user_profiles')
-        .select('country, seller_category')
+        .select('country, seller_category, account_role, dashboard_path')
         .eq('id', userId)
         .maybeSingle(),
       supabase
@@ -450,13 +465,23 @@ export async function resolveManufacturerRoomForUser(
         .select('country, factory_type, seller_category')
         .eq('user_id', userId)
         .maybeSingle(),
+      supabase.auth?.getUser?.().catch?.(() => null) ?? Promise.resolve(null),
     ]);
+
+    const authMeta = (authRes as any)?.data?.user?.user_metadata || {};
+    const authAppMeta = (authRes as any)?.data?.user?.app_metadata || {};
+    const accountRole: string | null =
+      profile?.account_role || authMeta.account_role || authAppMeta.account_role || null;
+    const dashboardPath: string | null =
+      profile?.dashboard_path || authMeta.dashboard_path || null;
 
     let agentReg: { factory_type?: string | null; country?: string | null } | null = null;
     const hasExplicitType = !!(
       profile?.seller_category ||
       reg?.factory_type ||
-      reg?.seller_category
+      reg?.seller_category ||
+      accountRole === 'international_manufacturer' ||
+      accountRole === 'local_manufacturer'
     );
     if (!hasExplicitType && email) {
       // Factory registered through the representative (agent) dashboard
@@ -474,6 +499,8 @@ export async function resolveManufacturerRoomForUser(
       seller_category: profile?.seller_category || reg?.seller_category || null,
       factory_type: reg?.factory_type || agentReg?.factory_type || null,
       country: profile?.country || reg?.country || agentReg?.country || null,
+      account_role: accountRole,
+      dashboard_path: dashboardPath,
     });
   } catch {
     return LOCAL_FACTORY_ROOM_PATH;
