@@ -18,6 +18,7 @@ import UnifiedMessagingEngine from '@/components/UnifiedMessagingEngine';
 import IncomingRFQsPanel from '@/components/manufacturer/IncomingRFQsPanel';
 import DealLinkGeneratorModal from '@/components/manufacturer/DealLinkGeneratorModal';
 import { SUPPORTED_LANGUAGES } from '@/lib/i18n';
+import { getIntlRoomStrings, type IntlRoomStrings } from '@/lib/internationalRoomI18n';
 import { Globe, TrendingUp, Ship, FileText, AlertTriangle, Link2, Check } from 'lucide-react';
 import FactoryTeamManagement from '@/components/manufacturer/FactoryTeamManagement';
 import ProductsPanel from '@/app/manufacturer/dashboard/ProductsPanel';
@@ -159,36 +160,36 @@ const DESTINATION_DATA = [
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function statusBadge(status: ExportOrder['status']) {
+function statusBadge(status: ExportOrder['status'], s: IntlRoomStrings) {
   const map: Record<ExportOrder['status'], { label: string; cls: string }> = {
-    pending_docs: { label: 'بانتظار المستندات', cls: 'bg-amber-100 text-amber-700 border border-amber-200' },
-    customs_review: { label: 'مراجعة جمركية', cls: 'bg-blue-100 text-blue-700 border border-blue-200' },
-    in_transit: { label: 'في الطريق', cls: 'bg-indigo-100 text-indigo-700 border border-indigo-200' },
-    delivered: { label: 'تم التسليم', cls: 'bg-emerald-100 text-emerald-700 border border-emerald-200' },
-    held: { label: 'محتجز', cls: 'bg-red-100 text-red-700 border border-red-200' },
+    pending_docs: { label: s.statusPendingDocs, cls: 'bg-amber-100 text-amber-700 border border-amber-200' },
+    customs_review: { label: s.statusCustomsReview, cls: 'bg-blue-100 text-blue-700 border border-blue-200' },
+    in_transit: { label: s.statusInTransit, cls: 'bg-indigo-100 text-indigo-700 border border-indigo-200' },
+    delivered: { label: s.statusDelivered, cls: 'bg-emerald-100 text-emerald-700 border border-emerald-200' },
+    held: { label: s.statusHeld, cls: 'bg-red-100 text-red-700 border border-red-200' },
   };
   const { label, cls } = map[status];
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{label}</span>;
 }
 
-function docTypeName(type: ShippingDoc['type']) {
+function docTypeName(type: ShippingDoc['type'], s: IntlRoomStrings) {
   const map: Record<ShippingDoc['type'], string> = {
-    bill_of_lading: 'بوليصة الشحن',
-    certificate_of_origin: 'شهادة المنشأ',
-    packing_list: 'قائمة التعبئة',
-    commercial_invoice: 'الفاتورة التجارية',
-    customs_declaration: 'إقرار جمركي',
-    phytosanitary: 'شهادة صحة نباتية',
+    bill_of_lading: s.docBillOfLading,
+    certificate_of_origin: s.docCertOrigin,
+    packing_list: s.docPackingList,
+    commercial_invoice: s.docCommercialInvoice,
+    customs_declaration: s.docCustomsDeclaration,
+    phytosanitary: s.docPhytosanitary,
   };
   return map[type];
 }
 
-function docStatusBadge(status: ShippingDoc['status']) {
+function docStatusBadge(status: ShippingDoc['status'], s: IntlRoomStrings) {
   const map: Record<ShippingDoc['status'], { label: string; cls: string }> = {
-    draft: { label: 'مسودة', cls: 'bg-slate-100 text-slate-600' },
-    submitted: { label: 'مُقدَّم', cls: 'bg-blue-100 text-blue-700' },
-    approved: { label: 'معتمد', cls: 'bg-emerald-100 text-emerald-700' },
-    rejected: { label: 'مرفوض', cls: 'bg-red-100 text-red-700' },
+    draft: { label: s.docDraft, cls: 'bg-slate-100 text-slate-600' },
+    submitted: { label: s.docSubmitted, cls: 'bg-blue-100 text-blue-700' },
+    approved: { label: s.docApproved, cls: 'bg-emerald-100 text-emerald-700' },
+    rejected: { label: s.docRejected, cls: 'bg-red-100 text-red-700' },
   };
   const { label, cls } = map[status];
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{label}</span>;
@@ -221,6 +222,7 @@ export default function InternationalDashboardPage() {
     return createClient();
   }, []);
   const md = (t as any)?.manufacturerDashboard ?? {};
+  const s = getIntlRoomStrings(language);
   const [activeTab, setActiveTab] = useState<Tab>('exports');
   const [selectedOrder, setSelectedOrder] = useState<ExportOrder | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -473,10 +475,10 @@ export default function InternationalDashboardPage() {
         .from('manufacturer_payment_settings')
         .upsert({ ...paymentSettings, manufacturer_id: user.id }, { onConflict: 'manufacturer_id' });
       if (error) throw error;
-      setPaymentSuccess('تم الحفظ بنجاح');
+      setPaymentSuccess(s.saved);
       setTimeout(() => setPaymentSuccess(''), 3000);
     } catch (e: any) {
-      setPaymentError(e.message || 'حدث خطأ');
+      setPaymentError(e.message || s.errorGeneric);
     } finally { setPaymentSaving(false); }
   };
 
@@ -490,11 +492,11 @@ export default function InternationalDashboardPage() {
         .from('manufacturer_bank_accounts')
         .insert({ ...bankFormData, manufacturer_id: user.id, status: 'pending_review' });
       if (error) throw error;
-      setBankFormSuccess('تم إضافة الحساب بنجاح');
+      setBankFormSuccess(s.accountAdded);
       setShowAddBankModal(false);
       fetchBankAccounts();
     } catch (e: any) {
-      setBankFormError(e.message || 'حدث خطأ');
+      setBankFormError(e.message || s.errorGeneric);
     } finally { setBankFormLoading(false); }
   };
 
@@ -514,11 +516,11 @@ export default function InternationalDashboardPage() {
         .update({ status: newStatus, factory_note: factoryOrderNoteInput })
         .eq('id', orderId);
       if (error) throw error;
-      setFactoryOrderStatusMsg('تم تحديث الحالة');
+      setFactoryOrderStatusMsg(s.statusUpdated);
       setFactoryOrderStatusSuccess(true);
       fetchFactoryOrders();
     } catch (e: any) {
-      setFactoryOrderStatusMsg(e.message || 'حدث خطأ');
+      setFactoryOrderStatusMsg(e.message || s.errorGeneric);
       setFactoryOrderStatusSuccess(false);
     } finally { setFactoryOrderStatusUpdating(false); }
   };
@@ -535,15 +537,15 @@ export default function InternationalDashboardPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setDeliveryPinMsg('تم التحقق بنجاح');
+        setDeliveryPinMsg(s.verifiedOk);
         setDeliveryPinSuccess(true);
         fetchEscrowOrders();
       } else {
-        setDeliveryPinMsg(data.error || 'رمز غير صحيح');
+        setDeliveryPinMsg(data.error || s.invalidPin);
         setDeliveryPinSuccess(false);
       }
     } catch (e: any) {
-      setDeliveryPinMsg('حدث خطأ');
+      setDeliveryPinMsg(s.errorGeneric);
       setDeliveryPinSuccess(false);
     } finally { setDeliveryPinVerifying(false); }
   };
@@ -558,15 +560,15 @@ export default function InternationalDashboardPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setMarkReadyMsg('تم تحديث الحالة');
+        setMarkReadyMsg(s.statusUpdated);
         setMarkReadySuccess(true);
         fetchEscrowOrders();
       } else {
-        setMarkReadyMsg(data.error || 'حدث خطأ');
+        setMarkReadyMsg(data.error || s.errorGeneric);
         setMarkReadySuccess(false);
       }
     } catch (e: any) {
-      setMarkReadyMsg('حدث خطأ');
+      setMarkReadyMsg(s.errorGeneric);
       setMarkReadySuccess(false);
     } finally { setMarkReadyLoading(false); }
   };
@@ -581,10 +583,10 @@ export default function InternationalDashboardPage() {
         .update({ factory_resolution_type: factoryResolutionType, factory_resolution_note: factoryResolutionNote, status: 'factory_resolved' })
         .eq('id', selectedFactoryDispute.id);
       if (error) throw error;
-      setFactoryResolveMsg('تم إرسال الرد');
+      setFactoryResolveMsg(s.replySent);
       fetchFactoryDisputes();
     } catch (e: any) {
-      setFactoryResolveMsg(e.message || 'حدث خطأ');
+      setFactoryResolveMsg(e.message || s.errorGeneric);
     } finally { setFactoryResolveLoading(false); }
   };
 
@@ -687,13 +689,13 @@ export default function InternationalDashboardPage() {
               <Globe size={18} className="text-cyan-300" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white leading-tight">غرفة تحكم المصنع الدولي</h2>
-              <p className="text-cyan-400 text-xs">International Factory Control Room · الأسواق الدولية</p>
+              <h2 className="text-sm font-bold text-white leading-tight">{s.roomTitle}</h2>
+              <p className="text-cyan-400 text-xs">{s.roomSubtitle}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="bg-cyan-500/20 text-cyan-300 text-xs px-3 py-1 rounded-full border border-cyan-500/30">
-              🌐 تصدير دولي
+              {s.intlExportBadge}
             </span>
             <span className="bg-white/10 text-slate-300 text-xs px-3 py-1 rounded-full border border-white/20">
               ID: international-factory-control-room
@@ -709,7 +711,7 @@ export default function InternationalDashboardPage() {
             <div className="hidden sm:block w-px h-6 bg-slate-700" />
             <div className="hidden sm:flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-              <span className="text-sm font-semibold text-cyan-300">غرفة التحكم الدولية</span>
+              <span className="text-sm font-semibold text-cyan-300">{s.headerRoom}</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -719,13 +721,13 @@ export default function InternationalDashboardPage() {
               className="flex items-center gap-2 px-3 py-2 border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 rounded-lg text-sm font-semibold hover:bg-emerald-500/20 transition-colors"
             >
               <Link2 size={15} />
-              <span className="hidden sm:inline">إنشاء رابط صفقة مخصصة</span>
+              <span className="hidden sm:inline">{s.createDealLink}</span>
             </button>
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowLangMenu((v) => !v)}
-                aria-label="Change language"
+                aria-label={s.changeLanguage}
                 aria-haspopup="menu"
                 aria-expanded={showLangMenu}
                 className="flex items-center gap-2 px-3 py-2 border border-slate-700 bg-slate-800 text-slate-200 rounded-lg text-sm font-semibold hover:bg-slate-700 transition-colors"
@@ -781,22 +783,22 @@ export default function InternationalDashboardPage() {
         {/* Page Title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-white">🌐 غرفة تحكم المصنع الدولي</h1>
-            <p className="text-slate-400 text-sm mt-1">إدارة الصادرات، خطوط الإنتاج العالمية، والمستندات الجمركية</p>
+            <h1 className="text-2xl font-bold text-white">{s.pageTitle}</h1>
+            <p className="text-slate-400 text-sm mt-1">{s.pageSubtitle}</p>
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span>آخر تحديث: الآن</span>
+            <span>{s.lastUpdate}: {s.now}</span>
           </div>
         </div>
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { label: 'إجمالي قيمة الصادرات', value: `$${(totalExportValue / 1000).toFixed(0)}K`, icon: TrendingUp, color: 'from-cyan-600 to-cyan-800', sub: 'هذا الشهر' },
-            { label: 'شحنات في الطريق', value: inTransitCount.toString(), icon: Ship, color: 'from-indigo-600 to-indigo-800', sub: 'شحنة نشطة' },
-            { label: 'بانتظار المستندات', value: pendingDocsCount.toString(), icon: FileText, color: 'from-amber-600 to-amber-800', sub: 'تحتاج إجراء' },
-            { label: 'شحنات محتجزة', value: heldCount.toString(), icon: AlertTriangle, color: 'from-red-600 to-red-800', sub: 'تحتاج مراجعة' },
+            { label: s.kpiTotalExport, value: `$${(totalExportValue / 1000).toFixed(0)}K`, icon: TrendingUp, color: 'from-cyan-600 to-cyan-800', sub: s.kpiThisMonth },
+            { label: s.kpiInTransit, value: inTransitCount.toString(), icon: Ship, color: 'from-indigo-600 to-indigo-800', sub: s.kpiActiveShipment },
+            { label: s.kpiPendingDocs, value: pendingDocsCount.toString(), icon: FileText, color: 'from-amber-600 to-amber-800', sub: s.kpiNeedsAction },
+            { label: s.kpiHeld, value: heldCount.toString(), icon: AlertTriangle, color: 'from-red-600 to-red-800', sub: s.kpiNeedsReview },
           ].map((kpi) => (
             <div key={kpi.label} className={`bg-gradient-to-br ${kpi.color} rounded-xl p-4 border border-white/10`}>
               <div className="flex items-start justify-between">
@@ -816,7 +818,7 @@ export default function InternationalDashboardPage() {
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <h3 className="text-sm font-semibold text-slate-300 mb-4">حجم الصادرات الشهري (USD)</h3>
+            <h3 className="text-sm font-semibold text-slate-300 mb-4">{s.chartMonthlyExport}</h3>
             <ResponsiveContainer width="100%" height={180}>
               <AreaChart data={EXPORT_VOLUME_DATA}>
                 <defs>
@@ -828,19 +830,19 @@ export default function InternationalDashboardPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v / 1000}K`} />
-                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8 }} labelStyle={{ color: '#e2e8f0' }} formatter={(v: any) => [`$${(v / 1000).toFixed(0)}K`, 'الحجم']} />
+                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8 }} labelStyle={{ color: '#e2e8f0' }} formatter={(v: any) => [`$${(v / 1000).toFixed(0)}K`, s.chartVolume]} />
                 <Area type="monotone" dataKey="volume" stroke="#06b6d4" strokeWidth={2} fill="url(#exportGrad)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
           <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <h3 className="text-sm font-semibold text-slate-300 mb-4">توزيع الأسواق</h3>
+            <h3 className="text-sm font-semibold text-slate-300 mb-4">{s.chartMarketDist}</h3>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={DESTINATION_DATA} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
                 <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
                 <YAxis type="category" dataKey="country" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
-                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8 }} formatter={(v: any) => [`${v}%`, 'الحصة']} />
+                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8 }} formatter={(v: any) => [`${v}%`, s.chartShare]} />
                 <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -850,14 +852,14 @@ export default function InternationalDashboardPage() {
         {/* Tabs — Original 8 */}
         <div className="flex gap-1 bg-slate-900 rounded-xl p-1 border border-slate-800 w-full overflow-x-auto">
           {([
-            { id: 'exports', label: '📦 إدارة الصادرات', icon: 'Package' },
-            { id: 'production', label: '🏭 خطوط الإنتاج', icon: 'Settings' },
-            { id: 'documents', label: '📄 المستندات الجمركية', icon: 'FileText' },
-            { id: 'supply_chain', label: '🔗 سلاسل الإمداد', icon: 'GitBranch' },
-            { id: 'buying_selling', label: '🛒 البيع والشراء', icon: 'ShoppingCart' },
-            { id: 'accounts', label: '💰 الحسابات والمالية', icon: 'DollarSign' },
-            { id: 'messaging', label: '💬 المراسلات', icon: 'MessageCircle' },
-            { id: 'rfq', label: '📋 إدارة RFQ', icon: 'ClipboardList' },
+            { id: 'exports', label: s.tabExports, icon: 'Package' },
+            { id: 'production', label: s.tabProduction, icon: 'Settings' },
+            { id: 'documents', label: s.tabDocuments, icon: 'FileText' },
+            { id: 'supply_chain', label: s.tabSupplyChain, icon: 'GitBranch' },
+            { id: 'buying_selling', label: s.tabBuyingSelling, icon: 'ShoppingCart' },
+            { id: 'accounts', label: s.tabAccounts, icon: 'DollarSign' },
+            { id: 'messaging', label: s.tabMessaging, icon: 'MessageCircle' },
+            { id: 'rfq', label: s.tabRfq, icon: 'ClipboardList' },
           ] as { id: Tab; label: string; icon: string }[]).map(tab => (
             <button
               key={tab.id}
@@ -880,7 +882,7 @@ export default function InternationalDashboardPage() {
         <div className="flex items-center gap-3">
           <div className="flex-1 h-px bg-slate-700/60" />
           <span className="text-xs text-slate-500 font-medium px-3 py-1 bg-slate-800 rounded-full border border-slate-700 whitespace-nowrap">
-            🏭 أدوات إدارة المصنع
+            {s.toolsDivider}
           </span>
           <div className="flex-1 h-px bg-slate-700/60" />
         </div>
@@ -888,17 +890,17 @@ export default function InternationalDashboardPage() {
         {/* Tabs — New 11 */}
         <div className="flex gap-1 bg-slate-900 rounded-xl p-1 border border-slate-800 w-full overflow-x-auto">
           {([
-            { id: 'products', label: '🛍️ المنتجات', color: 'bg-teal-600' },
-            { id: 'inventory', label: '📦 المخزون', color: 'bg-amber-600' },
-            { id: 'factory_orders', label: '🏭 طلبات المصنع', color: 'bg-orange-600' },
-            { id: 'escrow_orders', label: '🔒 طلبات الضمان', color: 'bg-indigo-600' },
-            { id: 'analytics', label: '📊 التحليلات', color: 'bg-violet-600' },
-            { id: 'disputes', label: '⚖️ النزاعات', color: 'bg-red-600' },
-            { id: 'bank_accounts', label: '🏦 الحسابات البنكية', color: 'bg-emerald-600' },
-            { id: 'payment_settings', label: '💳 إعدادات الدفع', color: 'bg-green-600' },
-            { id: 'finance', label: '💵 المالية', color: 'bg-lime-600' },
-            { id: 'sales_team', label: '👥 فريق المبيعات', color: 'bg-cyan-600' },
-            { id: 'archive', label: '🗂️ الأرشيف', color: 'bg-slate-600' },
+            { id: 'products', label: s.tabProducts, color: 'bg-teal-600' },
+            { id: 'inventory', label: s.tabInventory, color: 'bg-amber-600' },
+            { id: 'factory_orders', label: s.tabFactoryOrders, color: 'bg-orange-600' },
+            { id: 'escrow_orders', label: s.tabEscrowOrders, color: 'bg-indigo-600' },
+            { id: 'analytics', label: s.tabAnalytics, color: 'bg-violet-600' },
+            { id: 'disputes', label: s.tabDisputes, color: 'bg-red-600' },
+            { id: 'bank_accounts', label: s.tabBankAccounts, color: 'bg-emerald-600' },
+            { id: 'payment_settings', label: s.tabPaymentSettings, color: 'bg-green-600' },
+            { id: 'finance', label: s.tabFinance, color: 'bg-lime-600' },
+            { id: 'sales_team', label: s.tabSalesTeam, color: 'bg-cyan-600' },
+            { id: 'archive', label: s.tabArchive, color: 'bg-slate-600' },
           ] as { id: Tab; label: string; color: string }[]).map(tab => (
             <button
               key={tab.id}
@@ -928,13 +930,13 @@ export default function InternationalDashboardPage() {
         {activeTab === 'exports' && (
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">
-              {['all', 'pending_docs', 'customs_review', 'in_transit', 'delivered', 'held'].map(s => (
+              {['all', 'pending_docs', 'customs_review', 'in_transit', 'delivered', 'held'].map(st => (
                 <button
-                  key={s}
-                  onClick={() => setFilterStatus(s)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === s ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+                  key={st}
+                  onClick={() => setFilterStatus(st)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === st ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
                 >
-                  {s === 'all' ? 'الكل' : s === 'pending_docs' ? 'بانتظار المستندات' : s === 'customs_review' ? 'مراجعة جمركية' : s === 'in_transit' ? 'في الطريق' : s === 'delivered' ? 'تم التسليم' : 'محتجز'}
+                  {st === 'all' ? s.filterAll : st === 'pending_docs' ? s.statusPendingDocs : st === 'customs_review' ? s.statusCustomsReview : st === 'in_transit' ? s.statusInTransit : st === 'delivered' ? s.statusDelivered : s.statusHeld}
                 </button>
               ))}
             </div>
@@ -953,24 +955,24 @@ export default function InternationalDashboardPage() {
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold text-white text-sm">{order.id}</span>
-                          {statusBadge(order.status)}
+                          {statusBadge(order.status, s)}
                         </div>
                         <p className="text-slate-300 text-sm mt-0.5">{order.product_name}</p>
                         <p className="text-slate-500 text-xs mt-0.5">{order.buyer_name} · {order.destination_country}</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-white font-bold">${order.total_value.toLocaleString()}</p>
-                      <p className="text-slate-500 text-xs">{order.incoterm} · {order.container_count} حاوية</p>
+                    <div className="text-end">
+                      <p className="text-white font-bold">${order.total_value.toLocaleString('en-US')}</p>
+                      <p className="text-slate-500 text-xs">{order.incoterm} · {order.container_count} {s.containers}</p>
                     </div>
                   </div>
                   {selectedOrder?.id === order.id && (
                     <div className="mt-4 pt-4 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {[
-                        { label: 'كمية', value: `${order.quantity.toLocaleString()} ${order.unit}` },
-                        { label: 'كود HS', value: order.hs_code },
-                        { label: 'تاريخ الشحن', value: order.shipment_date },
-                        { label: 'الوصول المتوقع', value: order.eta },
+                        { label: s.quantity, value: `${order.quantity.toLocaleString('en-US')} ${order.unit}` },
+                        { label: s.hsCode, value: order.hs_code },
+                        { label: s.shipmentDate, value: order.shipment_date },
+                        { label: s.eta, value: order.eta },
                       ].map(d => (
                         <div key={d.label} className="bg-slate-800 rounded-lg p-3">
                           <p className="text-slate-500 text-xs">{d.label}</p>
@@ -995,12 +997,12 @@ export default function InternationalDashboardPage() {
                     <div className={`w-3 h-3 rounded-full ${lineStatusColor(line.status)} flex-shrink-0 mt-0.5`} />
                     <div>
                       <p className="font-semibold text-white text-sm">{line.name}</p>
-                      <p className="text-slate-500 text-xs">{line.region} · هدف التصدير: {line.export_target_country}</p>
+                      <p className="text-slate-500 text-xs">{line.region} · {s.exportTarget}: {line.export_target_country}</p>
                     </div>
                   </div>
-                  <div className="text-right flex-shrink-0">
+                  <div className="text-end flex-shrink-0">
                     <p className="text-white font-bold text-sm">{line.current_load}%</p>
-                    <p className="text-slate-500 text-xs">{line.capacity_per_day.toLocaleString()} وحدة/يوم</p>
+                    <p className="text-slate-500 text-xs">{line.capacity_per_day.toLocaleString('en-US')} {s.unitsPerDay}</p>
                   </div>
                 </div>
                 <div className="mt-3">
@@ -1021,28 +1023,28 @@ export default function InternationalDashboardPage() {
           <div className="space-y-3">
             <div className="bg-amber-900/30 border border-amber-700/40 rounded-xl p-3 flex items-start gap-3">
               <Icon name="AlertTriangle" size={16} className="text-amber-400 flex-shrink-0 mt-0.5" />
-              <p className="text-amber-300 text-sm">يوجد {MOCK_DOCS.filter(d => d.status === 'draft' || d.status === 'rejected').length} مستندات تحتاج إجراء فوري</p>
+              <p className="text-amber-300 text-sm">{s.docsNeedAction(MOCK_DOCS.filter(d => d.status === 'draft' || d.status === 'rejected').length)}</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-800">
-                    {['نوع المستند', 'رقم الطلب', 'الحالة', 'تاريخ الإصدار', 'تاريخ الانتهاء', 'إجراء'].map(h => (
-                      <th key={h} className="text-right text-slate-500 font-medium py-2 px-3 whitespace-nowrap">{h}</th>
+                    {[s.docType, s.orderNo, s.docStatus, s.issuedAt, s.expiresAt, s.action].map(h => (
+                      <th key={h} className="text-start text-slate-500 font-medium py-2 px-3 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
                   {MOCK_DOCS.map(doc => (
                     <tr key={doc.id} className="hover:bg-slate-900/50 transition-colors">
-                      <td className="py-3 px-3 text-slate-200 whitespace-nowrap">{docTypeName(doc.type)}</td>
+                      <td className="py-3 px-3 text-slate-200 whitespace-nowrap">{docTypeName(doc.type, s)}</td>
                       <td className="py-3 px-3 text-cyan-400 font-mono text-xs">{doc.order_id}</td>
-                      <td className="py-3 px-3">{docStatusBadge(doc.status)}</td>
+                      <td className="py-3 px-3">{docStatusBadge(doc.status, s)}</td>
                       <td className="py-3 px-3 text-slate-400 text-xs">{doc.issued_at}</td>
                       <td className="py-3 px-3 text-slate-400 text-xs">{doc.expires_at}</td>
                       <td className="py-3 px-3">
                         <button className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors">
-                          {doc.status === 'draft' ? 'رفع المستند' : doc.status === 'rejected' ? 'إعادة الرفع' : 'عرض'}
+                          {doc.status === 'draft' ? s.uploadDoc : doc.status === 'rejected' ? s.reuploadDoc : s.view}
                         </button>
                       </td>
                     </tr>
@@ -1063,21 +1065,21 @@ export default function InternationalDashboardPage() {
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-white text-sm">{sc.material}</p>
                       <span className={`text-xs font-medium ${supplyStatusColor(sc.status)}`}>
-                        {sc.status === 'active' ? '● نشط' : sc.status === 'delayed' ? '⚠ متأخر' : '✕ مضطرب'}
+                        {sc.status === 'active' ? s.scActive : sc.status === 'delayed' ? s.scDelayed : s.scDisrupted}
                       </span>
                     </div>
-                    <p className="text-slate-500 text-xs mt-0.5">المورد: {sc.supplier_country}</p>
+                    <p className="text-slate-500 text-xs mt-0.5">{s.supplier}: {sc.supplier_country}</p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-end">
                     <p className="text-white font-bold text-sm">{sc.reliability_score}%</p>
-                    <p className="text-slate-500 text-xs">موثوقية</p>
+                    <p className="text-slate-500 text-xs">{s.reliability}</p>
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   {[
-                    { label: 'مدة التوريد', value: `${sc.lead_time_days} يوم` },
-                    { label: 'آخر شحنة', value: sc.last_shipment },
-                    { label: 'مؤشر الموثوقية', value: `${sc.reliability_score}%` },
+                    { label: s.leadTime, value: s.daysUnit(sc.lead_time_days) },
+                    { label: s.lastShipment, value: sc.last_shipment },
+                    { label: s.reliabilityIndex, value: `${sc.reliability_score}%` },
                   ].map(d => (
                     <div key={d.label} className="bg-slate-800 rounded-lg p-2 text-center">
                       <p className="text-slate-500 text-xs">{d.label}</p>
