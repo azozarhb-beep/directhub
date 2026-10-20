@@ -20,6 +20,7 @@ export interface IntlRoomStrings {
   kpiNeedsAction: string;
   kpiHeld: string;
   kpiNeedsReview: string;
+  heldReasonLabel: string;
   chartMonthlyExport: string;
   chartVolume: string;
   chartMarketDist: string;
@@ -115,6 +116,7 @@ const ar: IntlRoomStrings = {
   kpiNeedsAction: 'تحتاج إجراء',
   kpiHeld: 'شحنات محتجزة',
   kpiNeedsReview: 'تحتاج مراجعة',
+  heldReasonLabel: 'سبب الاحتجاز: الشحنة محتجزة وبانتظار المراجعة',
   chartMonthlyExport: 'حجم الصادرات الشهري (USD)',
   chartVolume: 'الحجم',
   chartMarketDist: 'توزيع الأسواق',
@@ -210,6 +212,7 @@ const en: IntlRoomStrings = {
   kpiNeedsAction: 'Action required',
   kpiHeld: 'Held Shipments',
   kpiNeedsReview: 'Needs review',
+  heldReasonLabel: 'Block reason: shipment is held pending review',
   chartMonthlyExport: 'Monthly Export Volume (USD)',
   chartVolume: 'Volume',
   chartMarketDist: 'Market Distribution',
@@ -305,6 +308,7 @@ const zh: IntlRoomStrings = {
   kpiNeedsAction: '需要处理',
   kpiHeld: '扣留货物',
   kpiNeedsReview: '需要审核',
+  heldReasonLabel: '扣留原因：货物被扣留，等待审核',
   chartMonthlyExport: '月度出口量 (USD)',
   chartVolume: '出口量',
   chartMarketDist: '市场分布',
@@ -400,6 +404,7 @@ const tr: IntlRoomStrings = {
   kpiNeedsAction: 'İşlem gerekli',
   kpiHeld: 'Bekletilen Sevkiyatlar',
   kpiNeedsReview: 'İnceleme gerekli',
+  heldReasonLabel: 'Bekletme nedeni: sevkiyat inceleme için bekletiliyor',
   chartMonthlyExport: 'Aylık İhracat Hacmi (USD)',
   chartVolume: 'Hacim',
   chartMarketDist: 'Pazar Dağılımı',

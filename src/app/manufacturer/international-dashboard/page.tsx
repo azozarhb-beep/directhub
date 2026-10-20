@@ -226,6 +226,29 @@ export default function InternationalDashboardPage() {
   const [activeTab, setActiveTab] = useState<Tab>('exports');
   const [selectedOrder, setSelectedOrder] = useState<ExportOrder | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const exportsSectionRef = React.useRef<HTMLDivElement | null>(null);
+  const accountsSectionRef = React.useRef<HTMLDivElement | null>(null);
+  const [highlightHeld, setHighlightHeld] = useState(false);
+
+  const scrollToRef = (ref: React.RefObject<HTMLDivElement | null>) => {
+    setTimeout(() => {
+      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  };
+
+  const handleKpiClick = (key: 'exports' | 'in_transit' | 'pending_docs' | 'held') => {
+    if (key === 'exports') {
+      setActiveTab('accounts');
+      setHighlightHeld(false);
+      scrollToRef(accountsSectionRef);
+      return;
+    }
+    setActiveTab('exports');
+    setFilterStatus(key);
+    setSelectedOrder(null);
+    setHighlightHeld(key === 'held');
+    scrollToRef(exportsSectionRef);
+  };
 
   // ── Products state ──────────────────────────────────────────────────────
   const [products, setProducts] = useState<any[]>([]);
@@ -795,12 +818,20 @@ export default function InternationalDashboardPage() {
         {/* KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { label: s.kpiTotalExport, value: `$${(totalExportValue / 1000).toFixed(0)}K`, icon: TrendingUp, color: 'from-cyan-600 to-cyan-800', sub: s.kpiThisMonth },
-            { label: s.kpiInTransit, value: inTransitCount.toString(), icon: Ship, color: 'from-indigo-600 to-indigo-800', sub: s.kpiActiveShipment },
-            { label: s.kpiPendingDocs, value: pendingDocsCount.toString(), icon: FileText, color: 'from-amber-600 to-amber-800', sub: s.kpiNeedsAction },
-            { label: s.kpiHeld, value: heldCount.toString(), icon: AlertTriangle, color: 'from-red-600 to-red-800', sub: s.kpiNeedsReview },
+            { key: 'exports' as const, label: s.kpiTotalExport, value: `$${(totalExportValue / 1000).toFixed(0)}K`, icon: TrendingUp, color: 'from-cyan-600 to-cyan-800', sub: s.kpiThisMonth },
+            { key: 'in_transit' as const, label: s.kpiInTransit, value: inTransitCount.toString(), icon: Ship, color: 'from-indigo-600 to-indigo-800', sub: s.kpiActiveShipment },
+            { key: 'pending_docs' as const, label: s.kpiPendingDocs, value: pendingDocsCount.toString(), icon: FileText, color: 'from-amber-600 to-amber-800', sub: s.kpiNeedsAction },
+            { key: 'held' as const, label: s.kpiHeld, value: heldCount.toString(), icon: AlertTriangle, color: 'from-red-600 to-red-800', sub: s.kpiNeedsReview },
           ].map((kpi) => (
-            <div key={kpi.label} className={`bg-gradient-to-br ${kpi.color} rounded-xl p-4 border border-white/10`}>
+            <button
+              type="button"
+              key={kpi.key}
+              onClick={() => handleKpiClick(kpi.key)}
+              className={`bg-gradient-to-br ${kpi.color} rounded-xl p-4 border border-white/10 text-start w-full cursor-pointer transition-all duration-150 hover:scale-[1.02] hover:shadow-lg hover:border-white/30 active:scale-95 active:brightness-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${
+                (kpi.key === filterStatus && activeTab === 'exports') || (kpi.key === 'exports' && activeTab === 'accounts')
+                  ? 'ring-2 ring-white/60' :''
+              }`}
+            >
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-white/70 text-xs mb-1">{kpi.label}</p>
@@ -811,7 +842,7 @@ export default function InternationalDashboardPage() {
                   <kpi.icon size={18} className="text-white" />
                 </div>
               </div>
-            </div>
+            </button>
           ))}
         </div>
 
@@ -850,7 +881,7 @@ export default function InternationalDashboardPage() {
         </div>
 
         {/* Tabs — Original 8 */}
-        <div className="flex gap-1 bg-slate-900 rounded-xl p-1 border border-slate-800 w-full overflow-x-auto">
+        <div ref={accountsSectionRef} className="flex gap-1 bg-slate-900 rounded-xl p-1 border border-slate-800 w-full overflow-x-auto scroll-mt-20">
           {([
             { id: 'exports', label: s.tabExports, icon: 'Package' },
             { id: 'production', label: s.tabProduction, icon: 'Settings' },
@@ -928,12 +959,12 @@ export default function InternationalDashboardPage() {
 
         {/* Tab: Export Orders */}
         {activeTab === 'exports' && (
-          <div className="space-y-4">
+          <div ref={exportsSectionRef} className="space-y-4 scroll-mt-20">
             <div className="flex flex-wrap gap-2">
               {['all', 'pending_docs', 'customs_review', 'in_transit', 'delivered', 'held'].map(st => (
                 <button
                   key={st}
-                  onClick={() => setFilterStatus(st)}
+                  onClick={() => { setFilterStatus(st); setHighlightHeld(st === 'held'); }}
                   className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === st ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
                 >
                   {st === 'all' ? s.filterAll : st === 'pending_docs' ? s.statusPendingDocs : st === 'customs_review' ? s.statusCustomsReview : st === 'in_transit' ? s.statusInTransit : st === 'delivered' ? s.statusDelivered : s.statusHeld}
@@ -945,7 +976,9 @@ export default function InternationalDashboardPage() {
                 <div
                   key={order.id}
                   onClick={() => setSelectedOrder(selectedOrder?.id === order.id ? null : order)}
-                  className="bg-slate-900 border border-slate-800 rounded-xl p-4 cursor-pointer hover:border-cyan-700 transition-all"
+                  className={`bg-slate-900 border rounded-xl p-4 cursor-pointer hover:border-cyan-700 transition-all ${
+                    highlightHeld && order.status === 'held' ? 'border-red-500 ring-2 ring-red-500/40' : 'border-slate-800'
+                  }`}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
@@ -966,19 +999,10 @@ export default function InternationalDashboardPage() {
                       <p className="text-slate-500 text-xs">{order.incoterm} · {order.container_count} {s.containers}</p>
                     </div>
                   </div>
-                  {selectedOrder?.id === order.id && (
-                    <div className="mt-4 pt-4 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {[
-                        { label: s.quantity, value: `${order.quantity.toLocaleString('en-US')} ${order.unit}` },
-                        { label: s.hsCode, value: order.hs_code },
-                        { label: s.shipmentDate, value: order.shipment_date },
-                        { label: s.eta, value: order.eta },
-                      ].map(d => (
-                        <div key={d.label} className="bg-slate-800 rounded-lg p-3">
-                          <p className="text-slate-500 text-xs">{d.label}</p>
-                          <p className="text-white text-sm font-medium mt-0.5">{d.value}</p>
-                        </div>
-                      ))}
+                  {highlightHeld && order.status === 'held' && (
+                    <div className="mt-3 flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/40 px-3 py-2 text-xs text-red-300">
+                      <AlertTriangle size={14} className="flex-shrink-0" />
+                      <span>{s.heldReasonLabel}</span>
                     </div>
                   )}
                 </div>
