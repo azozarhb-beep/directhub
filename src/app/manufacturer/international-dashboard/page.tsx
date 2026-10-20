@@ -12,8 +12,6 @@ import Icon from '@/components/ui/AppIcon';
 import AppLogo from '@/components/ui/AppLogo';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Line } from 'recharts';
-import AllSalesMethodsPanel from '@/components/AllSalesMethodsPanel';
-import ManufacturerAdvancedModules from '@/components/manufacturer/ManufacturerAdvancedModules';
 import UnifiedMessagingEngine from '@/components/UnifiedMessagingEngine';
 import IncomingRFQsPanel from '@/components/manufacturer/IncomingRFQsPanel';
 import DealLinkGeneratorModal from '@/components/manufacturer/DealLinkGeneratorModal';
@@ -354,9 +352,8 @@ export default function InternationalDashboardPage() {
 
   const handleKpiClick = (key: 'exports' | 'in_transit' | 'pending_docs' | 'held') => {
     if (key === 'exports') {
-      setActiveTab('accounts');
       setHighlightHeld(false);
-      scrollToRef(accountsSectionRef);
+      router.push('/manufacturer/finance');
       return;
     }
     setActiveTab('exports');
@@ -953,7 +950,7 @@ export default function InternationalDashboardPage() {
               key={kpi.key}
               onClick={() => handleKpiClick(kpi.key)}
               className={`bg-gradient-to-br ${kpi.color} rounded-xl p-4 border border-white/10 text-start w-full cursor-pointer transition-all duration-150 hover:scale-[1.02] hover:shadow-lg hover:border-white/30 active:scale-95 active:brightness-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${
-                (kpi.key === filterStatus && activeTab === 'exports') || (kpi.key === 'exports' && activeTab === 'accounts')
+                (kpi.key === filterStatus && activeTab === 'exports')
                   ? 'ring-2 ring-white/60' :''
               }`}
             >
@@ -1019,7 +1016,11 @@ export default function InternationalDashboardPage() {
           ] as { id: Tab; label: string; icon: string }[]).map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                if (tab.id === 'buying_selling') { router.push('/manufacturer/sales'); return; }
+                if (tab.id === 'accounts') { router.push('/manufacturer/finance'); return; }
+                setActiveTab(tab.id);
+              }}
               className={`flex-1 min-w-max px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === tab.id
                   ? tab.id === 'buying_selling' ? 'bg-emerald-600 text-white shadow'
@@ -1302,19 +1303,8 @@ export default function InternationalDashboardPage() {
           <SupplyChainPanel />
         )}
 
-        {/* Tab: Buying & Selling */}
-        {activeTab === 'buying_selling' && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <AllSalesMethodsPanel />
-          </div>
-        )}
-
-        {/* Tab: Accounts */}
-        {activeTab === 'accounts' && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <ManufacturerAdvancedModules userId={user?.id || ''} />
-          </div>
-        )}
+        {/* Tab: Buying & Selling and Accounts now live on dedicated routes
+            (/manufacturer/sales and /manufacturer/finance) */}
 
         {/* Tab: Messaging */}
         {activeTab === 'messaging' && (

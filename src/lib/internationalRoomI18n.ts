@@ -31,6 +31,9 @@ export interface IntlRoomStrings {
   tabSupplyChain: string;
   tabBuyingSelling: string;
   tabAccounts: string;
+  backToControlRoom: string;
+  salesPageTitle: string;
+  financePageTitle: string;
   tabMessaging: string;
   tabRfq: string;
   toolsDivider: string;
@@ -173,6 +176,9 @@ const ar: IntlRoomStrings = {
   tabSupplyChain: '🔗 سلاسل الإمداد',
   tabBuyingSelling: '🛒 البيع والشراء',
   tabAccounts: '💰 الحسابات والمالية',
+  backToControlRoom: '← العودة إلى غرفة التحكم',
+  salesPageTitle: '🛒 البيع والشراء',
+  financePageTitle: '💰 الحسابات والمالية',
   tabMessaging: '💬 المراسلات',
   tabRfq: '📋 إدارة RFQ',
   toolsDivider: '🏭 أدوات إدارة المصنع',
@@ -315,6 +321,9 @@ const en: IntlRoomStrings = {
   tabSupplyChain: '🔗 Supply Chains',
   tabBuyingSelling: '🛒 Buying & Selling',
   tabAccounts: '💰 Accounts & Finance',
+  backToControlRoom: '← Back to Control Room',
+  salesPageTitle: '🛒 Buying & Selling',
+  financePageTitle: '💰 Accounts & Finance',
   tabMessaging: '💬 Messaging',
   tabRfq: '📋 RFQ Management',
   toolsDivider: '🏭 Factory Management Tools',
@@ -457,6 +466,9 @@ const zh: IntlRoomStrings = {
   tabSupplyChain: '🔗 供应链',
   tabBuyingSelling: '🛒 买卖',
   tabAccounts: '💰 账户与财务',
+  backToControlRoom: '← 返回控制室',
+  salesPageTitle: '🛒 买卖',
+  financePageTitle: '💰 账户与财务',
   tabMessaging: '💬 消息',
   tabRfq: '📋 询价管理',
   toolsDivider: '🏭 工厂管理工具',
@@ -599,6 +611,9 @@ const tr: IntlRoomStrings = {
   tabSupplyChain: '🔗 Tedarik Zincirleri',
   tabBuyingSelling: '🛒 Alım ve Satım',
   tabAccounts: '💰 Hesaplar ve Finans',
+  backToControlRoom: '← Kontrol Odasına Dön',
+  salesPageTitle: '🛒 Alım ve Satım',
+  financePageTitle: '💰 Hesaplar ve Finans',
   tabMessaging: '💬 Mesajlaşma',
   tabRfq: '📋 RFQ Yönetimi',
   toolsDivider: '🏭 Fabrika Yönetim Araçları',

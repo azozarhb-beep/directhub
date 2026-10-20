@@ -117,6 +117,8 @@ const PROTECTED_PAGE_ROUTES = [
   '/buyer-dashboard',
   '/logistics/dashboard',
   '/manufacturer/international-dashboard',
+  '/manufacturer/sales',
+  '/manufacturer/finance',
   '/manufacturer/b2b',
   '/manufacturer/b2c',
   '/api/escrow',
