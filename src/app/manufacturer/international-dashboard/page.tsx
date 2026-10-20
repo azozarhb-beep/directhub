@@ -107,6 +107,7 @@ interface ShippingDoc {
   status: 'draft' | 'submitted' | 'approved' | 'rejected';
   issued_at: string;
   expires_at: string;
+  file_path?: string;
 }
 
 interface SupplyChain {
@@ -242,6 +243,9 @@ export default function InternationalDashboardPage() {
   const [exportNotice, setExportNotice] = useState('');
   const holdUploadRef = React.useRef<HTMLInputElement | null>(null);
   const holdUploadOrderRef = React.useRef<string | null>(null);
+  const customsUploadRef = React.useRef<HTMLInputElement | null>(null);
+  const customsUploadDocRef = React.useRef<string | null>(null);
+  const [customsBusyDocId, setCustomsBusyDocId] = useState<string | null>(null);
 
   const showExportNotice = (msg: string) => {
     setExportNotice(msg);
@@ -274,6 +278,67 @@ export default function InternationalDashboardPage() {
 
   const handleContactCustomsAgent = () => {
     showExportNotice(s.customsAgentContacted);
+  };
+
+  const handleCustomsUploadClick = (docId: string) => {
+    customsUploadDocRef.current = docId;
+    customsUploadRef.current?.click();
+  };
+
+  const handleCustomsFileChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const docId = customsUploadDocRef.current;
+    e.target.value = '';
+    if (!file || !docId) return;
+    const doc = docs.find(d => d.id === docId);
+    if (!doc) return;
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png'];
+    const extFromName = (file.name.split('.').pop() || '').toLowerCase();
+    const okExt = ['pdf', 'jpg', 'jpeg', 'png'].includes(extFromName);
+    if (!allowed.includes(file.type) && !okExt) {
+      showExportNotice('PDF / JPG / PNG only');
+      return;
+    }
+    if (!user?.id) {
+      showExportNotice('Please sign in again');
+      return;
+    }
+    setCustomsBusyDocId(docId);
+    try {
+      const ext = okExt ? extFromName : 'pdf';
+      const path = `${user.id}/${doc.order_id}/${doc.type}-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage
+        .from('customs_documents')
+        .upload(path, file, { upsert: true, contentType: file.type || undefined });
+      if (error) throw error;
+      setDocs(prev => prev.map(d => d.id === docId ? { ...d, status: 'submitted' as const, file_path: path } : d));
+      showExportNotice(s.docUploaded);
+    } catch (err: any) {
+      console.error(err);
+      showExportNotice(err?.message || 'Upload failed');
+    } finally {
+      setCustomsBusyDocId(null);
+    }
+  };
+
+  const handleCustomsView = async (doc: ShippingDoc) => {
+    if (!doc.file_path) {
+      handleCustomsUploadClick(doc.id);
+      return;
+    }
+    const win = window.open('', '_blank');
+    try {
+      const { data, error } = await supabase.storage
+        .from('customs_documents')
+        .createSignedUrl(doc.file_path, 300);
+      if (error || !data?.signedUrl) throw error || new Error('No URL');
+      if (win) win.location.href = data.signedUrl;
+      else window.location.href = data.signedUrl;
+    } catch (err: any) {
+      win?.close();
+      console.error(err);
+      showExportNotice(err?.message || 'Unable to open document');
+    }
   };
 
   const handleCreateShipment = (p: NewShipmentPayload) => {
@@ -1207,10 +1272,16 @@ export default function InternationalDashboardPage() {
         {/* Tab: Shipping Documents */}
         {activeTab === 'documents' && (
           <div className="space-y-3">
-            <div className="bg-amber-900/30 border border-amber-700/40 rounded-xl p-3 flex items-start gap-3">
-              <Icon name="AlertTriangle" size={16} className="text-amber-400 flex-shrink-0 mt-0.5" />
-              <p className="text-amber-300 text-sm">{s.docsNeedAction(docs.filter(d => d.status === 'draft' || d.status === 'rejected').length)}</p>
-            </div>
+            <input
+              ref={customsUploadRef}
+              type="file"
+              className="hidden"
+              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+              onChange={handleCustomsFileChosen}
+            />
+            {exportNotice && (
+              <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">{exportNotice}</div>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -1229,8 +1300,16 @@ export default function InternationalDashboardPage() {
                       <td className="py-3 px-3 text-slate-400 text-xs">{doc.issued_at}</td>
                       <td className="py-3 px-3 text-slate-400 text-xs">{doc.expires_at}</td>
                       <td className="py-3 px-3">
-                        <button className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors">
-                          {doc.status === 'draft' ? s.uploadDoc : doc.status === 'rejected' ? s.reuploadDoc : s.view}
+                        <button
+                          type="button"
+                          disabled={customsBusyDocId === doc.id}
+                          onClick={() => {
+                            if (doc.status === 'draft' || doc.status === 'rejected') handleCustomsUploadClick(doc.id);
+                            else handleCustomsView(doc);
+                          }}
+                          className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors disabled:opacity-50 cursor-pointer"
+                        >
+                          {customsBusyDocId === doc.id ? '...' : doc.status === 'draft' ? s.uploadDoc : doc.status === 'rejected' ? s.reuploadDoc : s.view}
                         </button>
                       </td>
                     </tr>
