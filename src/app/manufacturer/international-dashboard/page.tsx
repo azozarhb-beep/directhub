@@ -33,6 +33,7 @@ import PaymentSettingsPanel from '@/app/manufacturer/dashboard/PaymentSettingsPa
 import FinancePanel from '@/app/manufacturer/dashboard/FinancePanel';
 import ArchivePanel from '@/app/manufacturer/dashboard/ArchivePanel';
 import { resolveManufacturerRoomForUser, INTERNATIONAL_FACTORY_ROOM_PATH } from '@/lib/roomIsolation';
+import SupplyChainPanel from './SupplyChainPanel';
 
 // ─── Local Room Guard Helpers ────────────────────────────────────────────────
 
@@ -110,16 +111,6 @@ interface ShippingDoc {
   file_path?: string;
 }
 
-interface SupplyChain {
-  id: string;
-  supplier_country: string;
-  material: string;
-  lead_time_days: number;
-  reliability_score: number;
-  last_shipment: string;
-  status: 'active' | 'delayed' | 'disrupted';
-}
-
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 
 const MOCK_EXPORT_ORDERS: ExportOrder[] = [
@@ -145,14 +136,6 @@ const MOCK_DOCS: ShippingDoc[] = [
   { id: 'DOC-004', type: 'customs_declaration', order_id: 'EXP-002', status: 'draft', issued_at: '2026-09-28', expires_at: '2026-12-28' },
   { id: 'DOC-005', type: 'packing_list', order_id: 'EXP-003', status: 'draft', issued_at: '2026-10-01', expires_at: '2027-01-01' },
   { id: 'DOC-006', type: 'phytosanitary', order_id: 'EXP-005', status: 'rejected', issued_at: '2026-09-20', expires_at: '2026-12-20' },
-];
-
-const MOCK_SUPPLY_CHAINS: SupplyChain[] = [
-  { id: 'SC-1', supplier_country: '🇧🇷 Brazil', material: 'Iron Ore', lead_time_days: 45, reliability_score: 94, last_shipment: '2026-09-10', status: 'active' },
-  { id: 'SC-2', supplier_country: '🇦🇺 Australia', material: 'Bauxite', lead_time_days: 38, reliability_score: 88, last_shipment: '2026-09-05', status: 'active' },
-  { id: 'SC-3', supplier_country: '🇨🇱 Chile', material: 'Copper Concentrate', lead_time_days: 52, reliability_score: 76, last_shipment: '2026-08-20', status: 'delayed' },
-  { id: 'SC-4', supplier_country: '🇷🇺 Russia', material: 'Nickel', lead_time_days: 60, reliability_score: 42, last_shipment: '2026-07-15', status: 'disrupted' },
-  { id: 'SC-5', supplier_country: '🇮🇩 Indonesia', material: 'Coal', lead_time_days: 28, reliability_score: 91, last_shipment: '2026-09-18', status: 'active' },
 ];
 
 const EXPORT_VOLUME_DATA = [
@@ -206,12 +189,6 @@ function lineStatusColor(status: ProductionLine['status']) {
   if (status === 'running') return 'bg-emerald-500';
   if (status === 'idle') return 'bg-amber-400';
   return 'bg-blue-400';
-}
-
-function supplyStatusColor(status: SupplyChain['status']) {
-  if (status === 'active') return 'text-emerald-600';
-  if (status === 'delayed') return 'text-amber-600';
-  return 'text-red-600';
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -1322,39 +1299,7 @@ export default function InternationalDashboardPage() {
 
         {/* Tab: Supply Chain */}
         {activeTab === 'supply_chain' && (
-          <div className="space-y-3">
-            {MOCK_SUPPLY_CHAINS.map(sc => (
-              <div key={sc.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold text-white text-sm">{sc.material}</p>
-                      <span className={`text-xs font-medium ${supplyStatusColor(sc.status)}`}>
-                        {sc.status === 'active' ? s.scActive : sc.status === 'delayed' ? s.scDelayed : s.scDisrupted}
-                      </span>
-                    </div>
-                    <p className="text-slate-500 text-xs mt-0.5">{s.supplier}: {sc.supplier_country}</p>
-                  </div>
-                  <div className="text-end">
-                    <p className="text-white font-bold text-sm">{sc.reliability_score}%</p>
-                    <p className="text-slate-500 text-xs">{s.reliability}</p>
-                  </div>
-                </div>
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  {[
-                    { label: s.leadTime, value: s.daysUnit(sc.lead_time_days) },
-                    { label: s.lastShipment, value: sc.last_shipment },
-                    { label: s.reliabilityIndex, value: `${sc.reliability_score}%` },
-                  ].map(d => (
-                    <div key={d.label} className="bg-slate-800 rounded-lg p-2 text-center">
-                      <p className="text-slate-500 text-xs">{d.label}</p>
-                      <p className="text-white text-sm font-medium mt-0.5">{d.value}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          <SupplyChainPanel />
         )}
 
         {/* Tab: Buying & Selling */}
