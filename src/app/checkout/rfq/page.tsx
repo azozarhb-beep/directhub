@@ -219,6 +219,7 @@ function RFQCheckoutContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [confirmedRef, setConfirmedRef] = useState('');
+  const [confirmedOrderId, setConfirmedOrderId] = useState('');
 
   // Billing address
   const [billing, setBilling] = useState<AddressForm>(emptyAddress());
@@ -368,6 +369,7 @@ function RFQCheckoutContent() {
       });
 
       setConfirmedRef(order.order_number);
+      setConfirmedOrderId(order.id);
 
       // ── Dual notification: in-app bell + email confirmation ──────────────
       sendDualNotification({
@@ -962,12 +964,13 @@ function RFQCheckoutContent() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                  <Link
-                    href="/orders"
-                    className="px-6 py-3 bg-primary text-primary-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2"
+                  <button
+                    type="button"
+                    onClick={() => router.push(confirmedOrderId ? `/orders/${confirmedOrderId}` : '/orders')}
+                    className="px-6 py-3 bg-primary text-primary-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Icon name="TruckIcon" size={16} /> {L.trackOrder}
-                  </Link>
+                  </button>
                   <Link
                     href="/"
                     className="px-6 py-3 border border-border text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-muted transition-colors"
