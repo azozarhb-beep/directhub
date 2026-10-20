@@ -3065,6 +3065,13 @@ export default function AdminControlRoomPage() {
     }
   };
 
+  // Auto-fill "Assign Factory User ID" with the factory linked to the selected order (only when empty)
+  useEffect(() => {
+    if (selectedEscrowOrder?.factory_user_id) {
+      setEscrowFactoryId((prev) => prev || selectedEscrowOrder.factory_user_id);
+    }
+  }, [selectedEscrowOrder]);
+
   const handleVerifyPayment = async (order: any) => {
     setEscrowActionLoading(true);
     try {

@@ -324,19 +324,20 @@ function RFQCheckoutContent() {
       // Resolve the accepted quote total so the escrow order never defaults to $0
       let orderTotal = 0;
       let orderCurrency = currency;
+      let quoteFactoryId: string | null = null;
       try {
-        let quoteRow: { total_price: number | null; unit_price: number | null; currency: string | null; rfq_id: string | null } | null = null;
+        let quoteRow: { total_price: number | null; unit_price: number | null; currency: string | null; rfq_id: string | null; manufacturer_id: string | null } | null = null;
         if (responseIdParam) {
           const { data } = await supabase
             .from('rfq_responses')
-            .select('total_price, unit_price, currency, rfq_id')
+            .select('total_price, unit_price, currency, rfq_id, manufacturer_id')
             .eq('id', responseIdParam)
             .maybeSingle();
           quoteRow = data as any;
         } else if (rfqIdParam) {
           const { data } = await supabase
             .from('rfq_responses')
-            .select('total_price, unit_price, currency, rfq_id')
+            .select('total_price, unit_price, currency, rfq_id, manufacturer_id')
             .eq('rfq_id', rfqIdParam)
             .eq('is_accepted', true)
             .order('created_at', { ascending: false })
@@ -345,6 +346,7 @@ function RFQCheckoutContent() {
           quoteRow = data as any;
         }
         if (quoteRow) {
+          quoteFactoryId = quoteRow.manufacturer_id || null;
           if (quoteRow.currency) orderCurrency = quoteRow.currency;
           const qtyNum = parseFloat(quantity);
           if (quoteRow.total_price && Number(quoteRow.total_price) > 0) {
@@ -393,6 +395,7 @@ function RFQCheckoutContent() {
           platform_commission: 0,
           commission_rate_label: 'TBD',
           payment_reference: transactionRef.trim(),
+          ...(quoteFactoryId ? { factory_user_id: quoteFactoryId } : {}),
         })
         .select('id, order_number')
         .single();
