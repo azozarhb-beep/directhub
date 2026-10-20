@@ -8,16 +8,17 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import { useCart } from '@/contexts/CartContext';
-import { useWishlist } from '@/contexts/WishlistContext';
 
 // Ordered main views reachable by swiping (matches the bottom bar order).
-const SWIPE_VIEWS = ['/', '/categories', '/my-account'] as const;
+const SWIPE_VIEWS = ['/', '/categories', '/cart', '/messaging', '/my-account'] as const;
 
 const getSwipeIndex = (path: string | null): number => {
   if (!path) return -1;
   if (path === '/') return 0;
   if (path === '/categories' || path.startsWith('/categories/')) return 1;
-  if (path === '/my-account') return 2;
+  if (path === '/cart') return 2;
+  if (path === '/messaging') return 3;
+  if (path === '/my-account') return 4;
   return -1;
 };
 
@@ -47,7 +48,6 @@ const BottomNav: React.FC = () => {
   const { t, isRTL } = useLanguage();
   const { user } = useAuth();
   const { totalItems } = useCart();
-  const { wishlistCount } = useWishlist();
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -289,22 +289,16 @@ const BottomNav: React.FC = () => {
       badge: 0,
     },
     {
-      labelKey: 'messages' as const,
-      href: '/messaging',
-      icon: 'ChatBubbleLeftRightIcon' as const,
-      badge: mounted ? unreadMessages : 0,
-    },
-    {
       labelKey: 'cart' as const,
       href: '/cart',
       icon: 'ShoppingCartIcon' as const,
       badge: mounted ? totalItems : 0,
     },
     {
-      labelKey: 'wishlist' as const,
-      href: '/wishlist',
-      icon: 'HeartIcon' as const,
-      badge: mounted ? wishlistCount : 0,
+      labelKey: 'messages' as const,
+      href: '/messaging',
+      icon: 'ChatBubbleLeftRightIcon' as const,
+      badge: mounted ? unreadMessages : 0,
     },
     {
       labelKey: 'account' as const,
