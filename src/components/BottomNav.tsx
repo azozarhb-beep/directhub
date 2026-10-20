@@ -42,6 +42,13 @@ const isHorizontallyScrollable = (el: HTMLElement | null): boolean => {
   return false;
 };
 
+// Gesture tuning: low thresholds so even a light, quick finger flick navigates.
+const SWIPE_TRIGGER_DISTANCE = 28; // px of horizontal travel needed to commit (live, on move)
+const SWIPE_FLICK_DISTANCE = 16; // px needed when the flick is fast (on release)
+const SWIPE_FLICK_VELOCITY = 0.35; // px/ms
+const SWIPE_AXIS_RATIO = 1.15; // horizontal must beat vertical by this factor
+const SWIPE_LOCK_MS = 260; // short debounce between consecutive swipes
+
 const BottomNav: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
@@ -51,14 +58,21 @@ const BottomNav: React.FC = () => {
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const touchRef = useRef<{ x: number; y: number; t: number; valid: boolean } | null>(null);
+  const touchRef = useRef<{
+    x: number;
+    y: number;
+    t: number;
+    valid: boolean;
+    fired: boolean;
+    scrolling: boolean;
+  } | null>(null);
   const navigatingRef = useRef(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Reset the navigation lock + play an enter animation after a swipe-driven route change
+  // Reset the navigation lock + play a quick enter animation after a swipe-driven route change
   useEffect(() => {
     navigatingRef.current = false;
     if (typeof window === 'undefined') return;
@@ -67,15 +81,23 @@ const BottomNav: React.FC = () => {
     sessionStorage.removeItem('dh_swipe_dir');
     const target = document.querySelector('main') as HTMLElement | null;
     if (!target || typeof target.animate !== 'function') return;
-    const from = dir === 'next' ? (isRTL ? -40 : 40) : isRTL ? 40 : -40;
+    const from = dir === 'next' ? (isRTL ? -24 : 24) : isRTL ? 24 : -24;
     target.animate(
       [
-        { transform: `translateX(${from}px)`, opacity: 0.4 },
-        { transform: 'translateX(0)', opacity: 1 },
+        { transform: `translate3d(${from}px,0,0)`, opacity: 0.6 },
+        { transform: 'translate3d(0,0,0)', opacity: 1 },
       ],
-      { duration: 220, easing: 'ease-out' }
+      { duration: 140, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }
     );
   }, [pathname, isRTL]);
+
+  // Prefetch neighbouring tabs so a swipe navigates instantly
+  useEffect(() => {
+    const idx = getSwipeIndex(pathname);
+    if (idx < 0) return;
+    if (idx > 0) router.prefetch(SWIPE_VIEWS[idx - 1]);
+    if (idx < SWIPE_VIEWS.length - 1) router.prefetch(SWIPE_VIEWS[idx + 1]);
+  }, [pathname, router]);
 
   const goToSwipeView = useCallback(
     (direction: 'next' | 'prev') => {
@@ -89,10 +111,17 @@ const BottomNav: React.FC = () => {
       } catch {
         /* ignore storage errors */
       }
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        try {
+          navigator.vibrate(8);
+        } catch {
+          /* ignore */
+        }
+      }
       router.push(SWIPE_VIEWS[nextIndex]);
       window.setTimeout(() => {
         navigatingRef.current = false;
-      }, 600);
+      }, SWIPE_LOCK_MS);
     },
     [pathname, router]
   );
@@ -101,6 +130,12 @@ const BottomNav: React.FC = () => {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (getSwipeIndex(pathname) < 0) return;
+
+    const commit = (dx: number) => {
+      // LTR: swipe left -> next view. RTL: swipe right -> next view.
+      const goesNext = isRTL ? dx > 0 : dx < 0;
+      goToSwipeView(goesNext ? 'next' : 'prev');
+    };
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length !== 1 || window.innerWidth >= 768) {
@@ -115,32 +150,60 @@ const BottomNav: React.FC = () => {
         isHorizontallyScrollable(target);
       const vh = window.innerHeight;
       // Only react to gestures that begin in the middle band of the screen
-      const inMiddle = touch.clientY > vh * 0.15 && touch.clientY < vh * 0.85;
+      const inMiddle = touch.clientY > vh * 0.12 && touch.clientY < vh * 0.88;
       touchRef.current = {
         x: touch.clientX,
         y: touch.clientY,
-        t: Date.now(),
+        t: performance.now(),
         valid: !blocked && inMiddle,
+        fired: false,
+        scrolling: false,
       };
     };
 
+    // Fire as soon as the gesture is clearly horizontal — no need to lift the finger
+    const onTouchMove = (e: TouchEvent) => {
+      const start = touchRef.current;
+      if (!start || !start.valid || start.fired || start.scrolling) return;
+      const touch = e.touches[0];
+      if (!touch) return;
+      const dx = touch.clientX - start.x;
+      const dy = touch.clientY - start.y;
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+
+      // Clearly a vertical scroll -> stop tracking so scrolling stays native
+      if (absY > 14 && absY > absX * 1.3) {
+        start.scrolling = true;
+        return;
+      }
+
+      if (absX >= SWIPE_TRIGGER_DISTANCE && absX > absY * SWIPE_AXIS_RATIO) {
+        start.fired = true;
+        commit(dx);
+      }
+    };
+
+    // Light, fast flicks that didn't reach the live threshold still count on release
     const onTouchEnd = (e: TouchEvent) => {
       const start = touchRef.current;
       touchRef.current = null;
-      if (!start || !start.valid) return;
+      if (!start || !start.valid || start.fired || start.scrolling) return;
       const touch = e.changedTouches[0];
       if (!touch) return;
       const dx = touch.clientX - start.x;
       const dy = touch.clientY - start.y;
       const absX = Math.abs(dx);
       const absY = Math.abs(dy);
-      const elapsed = Date.now() - start.t;
+      const elapsed = Math.max(performance.now() - start.t, 1);
 
-      // Horizontal swipe: clearly more horizontal than vertical
-      if (absX >= 70 && absX > absY * 1.6 && elapsed < 800) {
-        // LTR: swipe left -> next view. RTL: swipe right -> next view.
-        const goesNext = isRTL ? dx > 0 : dx < 0;
-        goToSwipeView(goesNext ? 'next' : 'prev');
+      if (
+        absX >= SWIPE_FLICK_DISTANCE &&
+        absX > absY * SWIPE_AXIS_RATIO &&
+        absX / elapsed >= SWIPE_FLICK_VELOCITY &&
+        elapsed < 600
+      ) {
+        commit(dx);
         return;
       }
 
@@ -163,10 +226,12 @@ const BottomNav: React.FC = () => {
     };
 
     document.addEventListener('touchstart', onTouchStart, { passive: true });
+    document.addEventListener('touchmove', onTouchMove, { passive: true });
     document.addEventListener('touchend', onTouchEnd, { passive: true });
     document.addEventListener('touchcancel', onTouchCancel, { passive: true });
     return () => {
       document.removeEventListener('touchstart', onTouchStart);
+      document.removeEventListener('touchmove', onTouchMove);
       document.removeEventListener('touchend', onTouchEnd);
       document.removeEventListener('touchcancel', onTouchCancel);
     };
