@@ -6423,7 +6423,7 @@ export default function AdminControlRoomPage() {
                     ) : (
                       <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
                         <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-bold text-foreground">Order {selectedEscrowOrder.order_number}</h3>
+                          <h3 className="text-sm font-bold text-foreground">{language === 'ar' ? 'الطلب' : 'Order'} {selectedEscrowOrder.order_number}</h3>
                           <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${(ESCROW_STATUS_CONFIG[selectedEscrowOrder.escrow_status] || ESCROW_STATUS_CONFIG.pending_payment).color}`}>
                             {(ESCROW_STATUS_CONFIG[selectedEscrowOrder.escrow_status] || ESCROW_STATUS_CONFIG.pending_payment).labelAr || (ESCROW_STATUS_CONFIG[selectedEscrowOrder.escrow_status] || ESCROW_STATUS_CONFIG.pending_payment).label}
                           </span>
@@ -6431,8 +6431,8 @@ export default function AdminControlRoomPage() {
 
                         {/* Buyer info */}
                         <div className="bg-muted/40 rounded-xl p-3 space-y-1">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase">Buyer</p>
-                          <p className="text-sm font-semibold text-foreground">{selectedEscrowOrder.user_profiles?.full_name || 'Unknown'}</p>
+                          <p className="text-xs font-semibold text-muted-foreground uppercase">{language === 'ar' ? 'المشتري' : 'Buyer'}</p>
+                          <p className="text-sm font-semibold text-foreground">{selectedEscrowOrder.user_profiles?.full_name || (language === 'ar' ? 'غير معروف' : 'Unknown')}</p>
                           <p className="text-xs text-muted-foreground">{selectedEscrowOrder.user_profiles?.email}</p>
                           {selectedEscrowOrder.user_profiles?.company_name && (
                             <p className="text-xs text-muted-foreground">{selectedEscrowOrder.user_profiles.company_name}</p>
@@ -6464,11 +6464,11 @@ export default function AdminControlRoomPage() {
                         {/* Order summary */}
                         <div className="grid grid-cols-2 gap-3">
                           <div className="bg-muted/40 rounded-xl p-3">
-                            <p className="text-xs text-muted-foreground">Total Amount</p>
+                            <p className="text-xs text-muted-foreground">{language === 'ar' ? 'المبلغ الإجمالي' : 'Total Amount'}</p>
                             <p className="text-lg font-bold text-primary">${selectedEscrowOrder.total?.toLocaleString('en-US')} USD</p>
                           </div>
                           <div className="bg-muted/40 rounded-xl p-3">
-                            <p className="text-xs text-muted-foreground">Items</p>
+                            <p className="text-xs text-muted-foreground">{language === 'ar' ? 'العناصر' : 'Items'}</p>
                             <p className="text-lg font-bold text-foreground">{selectedEscrowOrder.items?.length || 0}</p>
                           </div>
                         </div>
@@ -6478,11 +6478,11 @@ export default function AdminControlRoomPage() {
                           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-3">
                             <Icon name="DocumentIcon" size={18} className="text-blue-600 shrink-0" />
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-semibold text-blue-800">Bank Transfer Receipt</p>
-                              <p className="text-xs text-blue-600 truncate">{selectedEscrowOrder.receipt_filename || 'Receipt uploaded'}</p>
+                              <p className="text-xs font-semibold text-blue-800">{language === 'ar' ? 'إيصال الحوالة البنكية' : 'Bank Transfer Receipt'}</p>
+                              <p className="text-xs text-blue-600 truncate">{selectedEscrowOrder.receipt_filename || (language === 'ar' ? 'تم رفع الإيصال' : 'Receipt uploaded')}</p>
                             </div>
                             {selectedEscrowOrder.receipt_url.startsWith('http') && (
-                              <a href={selectedEscrowOrder.receipt_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-blue-700 hover:underline shrink-0">View</a>
+                              <a href={selectedEscrowOrder.receipt_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-blue-700 hover:underline shrink-0">{language === 'ar' ? 'عرض' : 'View'}</a>
                             )}
                           </div>
                         )}
@@ -6543,17 +6543,16 @@ export default function AdminControlRoomPage() {
                           <div className="border border-blue-200 rounded-xl p-4 bg-blue-50 space-y-3">
                             <h4 className="text-sm font-bold text-blue-900 flex items-center gap-2">
                               <Icon name="BanknotesIcon" size={16} />
-                              Verify Bank Transfer
+                              {language === 'ar' ? 'التحقق من الحوالة البنكية' : 'Verify Bank Transfer'}
                             </h4>
-                            <p className="text-xs text-blue-700">Confirm you have received the bank transfer. This will secure funds in escrow and notify the factory to ship.</p>
+                            <p className="text-xs text-blue-700">{language === 'ar' ? 'أكّد أنك استلمت الحوالة البنكية. سيؤدي ذلك إلى تأمين الأموال في الضمان وإشعار المصنع بالشحن.' : 'Confirm you have received the bank transfer. This will secure funds in escrow and notify the factory to ship.'}</p>
                             <div>
-                              <label className="text-xs font-medium text-blue-800 mb-1 block">Assign Factory User ID (optional)</label>
+                              <label className="text-xs font-medium text-blue-800 mb-1 block">{language === 'ar' ? 'تعيين معرّف مستخدم المصنع (اختياري)' : 'Assign Factory User ID (optional)'}</label>
                               <input
                                 type="text"
                                 value={escrowFactoryId}
                                 onChange={(e) => setEscrowFactoryId(e.target.value)}
-                                placeholder="Factory user UUID (optional)"
-                                className="w-full h-9 px-3 rounded-lg border border-blue-200 bg-white text-foreground text-xs focus:outline-none focus:border-blue-500"
+                                placeholder={language === 'ar' ? 'معرّف UUID لمستخدم المصنع (اختياري)' : 'Factory user UUID (optional)'}
                               />
                             </div>
                             <button
@@ -6562,7 +6561,7 @@ export default function AdminControlRoomPage() {
                               className="w-full h-10 bg-blue-600 text-white font-semibold rounded-lg text-sm disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors"
                             >
                               {escrowActionLoading ? <Icon name="ArrowPathIcon" size={15} className="animate-spin" /> : <Icon name="LockClosedIcon" size={15} />}
-                              Verify & Secure Funds in Escrow
+                              {language === 'ar' ? 'التحقق وتأمين الأموال في الضمان' : 'Verify & Secure Funds in Escrow'}
                             </button>
                             <button
                               onClick={() => handleFastTrackOrderApproval(selectedEscrowOrder)}
@@ -6570,7 +6569,7 @@ export default function AdminControlRoomPage() {
                               className="w-full h-10 bg-amber-500 text-white font-semibold rounded-lg text-sm disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-amber-600 transition-colors"
                             >
                               {escrowActionLoading ? <Icon name="ArrowPathIcon" size={15} className="animate-spin" /> : <Icon name="BoltIcon" size={15} />}
-                              ⚡ قبول سريع — Fast-Track (fast_track_initial)
+                              {language === 'ar' ? '⚡ قبول سريع (fast_track_initial)' : '⚡ قبول سريع — Fast-Track (fast_track_initial)'}
                             </button>
                           </div>
                         )}
