@@ -20,6 +20,7 @@ import DealLinkGeneratorModal from '@/components/manufacturer/DealLinkGeneratorM
 import { SUPPORTED_LANGUAGES } from '@/lib/i18n';
 import { getIntlRoomStrings, type IntlRoomStrings } from '@/lib/internationalRoomI18n';
 import { Globe, TrendingUp, Ship, FileText, AlertTriangle, Link2, Check } from 'lucide-react';
+import { ShipmentDetailsModal, NewShipmentModal, type NewShipmentPayload } from '@/components/international-factory/ExportShipmentModals';
 import FactoryTeamManagement from '@/components/manufacturer/FactoryTeamManagement';
 import ProductsPanel from '@/app/manufacturer/dashboard/ProductsPanel';
 import InventoryPanel from '@/app/manufacturer/dashboard/InventoryPanel';
@@ -82,6 +83,11 @@ interface ExportOrder {
   eta: string;
   hs_code: string;
   container_count: number;
+  hold_reason?: 'missing_coo' | 'customs_delay';
+  origin_port?: string;
+  destination_port?: string;
+  bl_number?: string;
+  shipping_line?: string;
 }
 
 interface ProductionLine {
@@ -116,11 +122,11 @@ interface SupplyChain {
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 
 const MOCK_EXPORT_ORDERS: ExportOrder[] = [
-  { id: 'EXP-001', destination_country: '🇩🇪 Germany', buyer_name: 'Müller Industries GmbH', product_name: 'Steel Pipes 6m', quantity: 500, unit: 'pcs', total_value: 85000, currency: 'USD', incoterm: 'CIF', status: 'in_transit', shipment_date: '2026-09-15', eta: '2026-10-10', hs_code: '7304.31', container_count: 2 },
-  { id: 'EXP-002', destination_country: '🇨🇳 China', buyer_name: 'Shenzhen Trade Co.', product_name: 'Aluminium Sheets', quantity: 1200, unit: 'kg', total_value: 42000, currency: 'USD', incoterm: 'FOB', status: 'customs_review', shipment_date: '2026-09-28', eta: '2026-10-25', hs_code: '7606.11', container_count: 1 },
-  { id: 'EXP-003', destination_country: '🇸🇦 Saudi Arabia', buyer_name: 'Riyadh Contracting', product_name: 'Cement Bags 50kg', quantity: 10000, unit: 'bags', total_value: 120000, currency: 'USD', incoterm: 'DDP', status: 'pending_docs', shipment_date: '2026-10-05', eta: '2026-10-18', hs_code: '2523.29', container_count: 4 },
-  { id: 'EXP-004', destination_country: '🇹🇷 Turkey', buyer_name: 'Istanbul Metals A.Ş.', product_name: 'Copper Wire Rolls', quantity: 800, unit: 'kg', total_value: 67500, currency: 'EUR', incoterm: 'CFR', status: 'delivered', shipment_date: '2026-09-01', eta: '2026-09-20', hs_code: '7408.11', container_count: 1 },
-  { id: 'EXP-005', destination_country: '🇮🇳 India', buyer_name: 'Mumbai Exports Ltd', product_name: 'Plastic Granules', quantity: 5000, unit: 'kg', total_value: 18000, currency: 'USD', incoterm: 'EXW', status: 'held', shipment_date: '2026-09-22', eta: '2026-10-30', hs_code: '3901.10', container_count: 1 },
+  { id: 'EXP-001', destination_country: '🇩🇪 Germany', buyer_name: 'Müller Industries GmbH', product_name: 'Steel Pipes 6m', quantity: 500, unit: 'pcs', total_value: 85000, currency: 'USD', incoterm: 'CIF', status: 'in_transit', shipment_date: '2026-09-15', eta: '2026-10-10', hs_code: '7304.31', container_count: 2, origin_port: 'Aden Container Terminal', destination_port: 'Hamburg', bl_number: 'MAEU-HAM-240915', shipping_line: 'Maersk' },
+  { id: 'EXP-002', destination_country: '🇨🇳 China', buyer_name: 'Shenzhen Trade Co.', product_name: 'Aluminium Sheets', quantity: 1200, unit: 'kg', total_value: 42000, currency: 'USD', incoterm: 'FOB', status: 'customs_review', shipment_date: '2026-09-28', eta: '2026-10-25', hs_code: '7606.11', container_count: 1, origin_port: 'Aden Container Terminal', destination_port: 'Shenzhen (Yantian)', bl_number: 'COSU-SZX-280928', shipping_line: 'COSCO' },
+  { id: 'EXP-003', destination_country: '🇸🇦 Saudi Arabia', buyer_name: 'Riyadh Contracting', product_name: 'Cement Bags 50kg', quantity: 10000, unit: 'bags', total_value: 120000, currency: 'USD', incoterm: 'DDP', status: 'pending_docs', shipment_date: '2026-10-05', eta: '2026-10-18', hs_code: '2523.29', container_count: 4, origin_port: 'Aden Container Terminal', destination_port: 'Jeddah Islamic Port', shipping_line: 'MSC' },
+  { id: 'EXP-004', destination_country: '🇹🇷 Turkey', buyer_name: 'Istanbul Metals A.Ş.', product_name: 'Copper Wire Rolls', quantity: 800, unit: 'kg', total_value: 67500, currency: 'EUR', incoterm: 'CFR', status: 'delivered', shipment_date: '2026-09-01', eta: '2026-09-20', hs_code: '7408.11', container_count: 1, origin_port: 'Aden Container Terminal', destination_port: 'Mersin', bl_number: 'HLCU-MER-240901', shipping_line: 'Hapag-Lloyd' },
+  { id: 'EXP-005', destination_country: '🇮🇳 India', buyer_name: 'Mumbai Exports Ltd', product_name: 'Plastic Granules', quantity: 5000, unit: 'kg', total_value: 18000, currency: 'USD', incoterm: 'EXW', status: 'held', shipment_date: '2026-09-22', eta: '2026-10-30', hs_code: '3901.10', container_count: 1, hold_reason: 'missing_coo', origin_port: 'Aden Container Terminal', destination_port: 'Nhava Sheva (JNPT)', bl_number: 'ONEY-BOM-220922', shipping_line: 'ONE' },
 ];
 
 const MOCK_PRODUCTION_LINES: ProductionLine[] = [
@@ -154,8 +160,8 @@ const EXPORT_VOLUME_DATA = [
 ];
 
 const DESTINATION_DATA = [
-  { country: 'EU', value: 38 }, { country: 'GCC', value: 24 }, { country: 'Asia', value: 20 },
-  { country: 'MENA', value: 12 }, { country: 'Other', value: 6 },
+  { key: 'europe', value: 38 }, { key: 'gcc', value: 24 }, { key: 'asia', value: 20 },
+  { key: 'mena', value: 12 }, { key: 'other', value: 6 },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -229,6 +235,74 @@ export default function InternationalDashboardPage() {
   const exportsSectionRef = React.useRef<HTMLDivElement | null>(null);
   const accountsSectionRef = React.useRef<HTMLDivElement | null>(null);
   const [highlightHeld, setHighlightHeld] = useState(false);
+  const [exportOrders, setExportOrders] = useState<ExportOrder[]>(MOCK_EXPORT_ORDERS);
+  const [docs, setDocs] = useState<ShippingDoc[]>(MOCK_DOCS);
+  const [detailsOrder, setDetailsOrder] = useState<ExportOrder | null>(null);
+  const [showNewShipment, setShowNewShipment] = useState(false);
+  const [exportNotice, setExportNotice] = useState('');
+  const holdUploadRef = React.useRef<HTMLInputElement | null>(null);
+  const holdUploadOrderRef = React.useRef<string | null>(null);
+
+  const showExportNotice = (msg: string) => {
+    setExportNotice(msg);
+    setTimeout(() => setExportNotice(''), 3500);
+  };
+
+  const holdReasonText = (reason?: ExportOrder['hold_reason']) =>
+    reason === 'customs_delay' ? s.holdReasonCustomsDelay : s.holdReasonMissingCoo;
+
+  const handleHoldUploadClick = (orderId: string) => {
+    holdUploadOrderRef.current = orderId;
+    holdUploadRef.current?.click();
+  };
+
+  const handleHoldFileChosen = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const orderId = holdUploadOrderRef.current;
+    e.target.value = '';
+    if (!file || !orderId) return;
+    setDocs(prev => {
+      const exists = prev.some(d => d.order_id === orderId && d.type === 'certificate_of_origin');
+      if (exists) {
+        return prev.map(d => d.order_id === orderId && d.type === 'certificate_of_origin' ? { ...d, status: 'submitted' as const } : d);
+      }
+      return [...prev, { id: `DOC-${Date.now()}`, type: 'certificate_of_origin' as const, order_id: orderId, status: 'submitted' as const, issued_at: new Date().toISOString().slice(0, 10), expires_at: '' }];
+    });
+    setExportOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'customs_review' as const, hold_reason: undefined } : o));
+    showExportNotice(s.docUploaded);
+  };
+
+  const handleContactCustomsAgent = () => {
+    showExportNotice(s.customsAgentContacted);
+  };
+
+  const handleCreateShipment = (p: NewShipmentPayload) => {
+    const nextNum = exportOrders.length + 1;
+    const newOrder: ExportOrder = {
+      id: `EXP-${String(nextNum).padStart(3, '0')}`,
+      destination_country: p.destination_country,
+      buyer_name: p.buyer_name,
+      product_name: p.product_name,
+      quantity: p.quantity,
+      unit: p.unit,
+      total_value: p.total_value,
+      currency: 'USD',
+      incoterm: p.incoterm,
+      status: 'pending_docs',
+      shipment_date: p.shipment_date,
+      eta: p.eta,
+      hs_code: p.hs_code,
+      container_count: p.container_count,
+      origin_port: p.origin_port,
+      destination_port: p.destination_port,
+      bl_number: p.bl_number,
+      shipping_line: p.shipping_line,
+    };
+    setExportOrders(prev => [newOrder, ...prev]);
+    setFilterStatus('all');
+    setShowNewShipment(false);
+    showExportNotice(s.shipmentCreated);
+  };
 
   const scrollToRef = (ref: React.RefObject<HTMLDivElement | null>) => {
     setTimeout(() => {
@@ -694,13 +768,22 @@ export default function InternationalDashboardPage() {
   }
 
   const filteredOrders = filterStatus === 'all'
-    ? MOCK_EXPORT_ORDERS
-    : MOCK_EXPORT_ORDERS.filter(o => o.status === filterStatus);
+    ? exportOrders
+    : exportOrders.filter(o => o.status === filterStatus);
 
-  const totalExportValue = MOCK_EXPORT_ORDERS.reduce((s, o) => s + o.total_value, 0);
-  const inTransitCount = MOCK_EXPORT_ORDERS.filter(o => o.status === 'in_transit').length;
-  const pendingDocsCount = MOCK_EXPORT_ORDERS.filter(o => o.status === 'pending_docs').length;
-  const heldCount = MOCK_EXPORT_ORDERS.filter(o => o.status === 'held').length;
+  const totalExportValue = exportOrders.reduce((s, o) => s + o.total_value, 0);
+  const inTransitCount = exportOrders.filter(o => o.status === 'in_transit').length;
+  const pendingDocsCount = exportOrders.filter(o => o.status === 'pending_docs').length;
+  const heldCount = exportOrders.filter(o => o.status === 'held').length;
+
+  const marketLabels: Record<string, string> = {
+    europe: s.marketEurope,
+    gcc: s.marketGcc,
+    asia: s.marketAsia,
+    mena: s.marketMena,
+    other: s.marketOther,
+  };
+  const marketChartData = DESTINATION_DATA.map(d => ({ ...d, country: marketLabels[d.key] ?? d.key }));
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" dir={dir}>
@@ -868,11 +951,11 @@ export default function InternationalDashboardPage() {
           </div>
           <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
             <h3 className="text-sm font-semibold text-slate-300 mb-4">{s.chartMarketDist}</h3>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={DESTINATION_DATA} layout="vertical">
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={marketChartData} layout="vertical" margin={{ top: 4, right: 12, bottom: 4, left: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
                 <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
-                <YAxis type="category" dataKey="country" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
+                <YAxis type="category" dataKey="country" interval={0} tick={{ fill: '#cbd5e1', fontSize: 11 }} axisLine={false} tickLine={false} width={96} />
                 <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8 }} formatter={(v: any) => [`${v}%`, s.chartShare]} />
                 <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} />
               </BarChart>
@@ -960,25 +1043,48 @@ export default function InternationalDashboardPage() {
         {/* Tab: Export Orders */}
         {activeTab === 'exports' && (
           <div ref={exportsSectionRef} className="space-y-4 scroll-mt-20">
-            <div className="flex flex-wrap gap-2">
-              {['all', 'pending_docs', 'customs_review', 'in_transit', 'delivered', 'held'].map(st => (
-                <button
-                  key={st}
-                  onClick={() => { setFilterStatus(st); setHighlightHeld(st === 'held'); }}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === st ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-                >
-                  {st === 'all' ? s.filterAll : st === 'pending_docs' ? s.statusPendingDocs : st === 'customs_review' ? s.statusCustomsReview : st === 'in_transit' ? s.statusInTransit : st === 'delivered' ? s.statusDelivered : s.statusHeld}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap gap-2">
+                {['all', 'pending_docs', 'customs_review', 'in_transit', 'delivered', 'held'].map(st => (
+                  <button
+                    key={st}
+                    onClick={() => { setFilterStatus(st); setHighlightHeld(st === 'held'); }}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === st ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+                  >
+                    {st === 'all' ? s.filterAll : st === 'pending_docs' ? s.statusPendingDocs : st === 'customs_review' ? s.statusCustomsReview : st === 'in_transit' ? s.statusInTransit : st === 'delivered' ? s.statusDelivered : s.statusHeld}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowNewShipment(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-500 active:scale-95 transition-all"
+              >
+                <span aria-hidden="true">＋</span>
+                {s.newShipment}
+              </button>
             </div>
+            {exportNotice && (
+              <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">{exportNotice}</div>
+            )}
+            <input
+              ref={holdUploadRef}
+              type="file"
+              className="hidden"
+              accept=".pdf,.jpg,.jpeg,.png"
+              onChange={handleHoldFileChosen}
+            />
             <div className="space-y-3">
               {filteredOrders.map(order => (
                 <div
                   key={order.id}
-                  onClick={() => setSelectedOrder(selectedOrder?.id === order.id ? null : order)}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDetailsOrder(order)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailsOrder(order); } }}
                   className={`bg-slate-900 border rounded-xl p-4 cursor-pointer hover:border-cyan-700 transition-all ${
-                    highlightHeld && order.status === 'held' ? 'border-red-500 ring-2 ring-red-500/40' : 'border-slate-800'
-                  }`}
+                    order.status === 'held' ? 'border-red-500/60' : 'border-slate-800'
+                  } ${highlightHeld && order.status === 'held' ? 'border-red-500 ring-2 ring-red-500/40' : ''}`}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
@@ -999,15 +1105,71 @@ export default function InternationalDashboardPage() {
                       <p className="text-slate-500 text-xs">{order.incoterm} · {order.container_count} {s.containers}</p>
                     </div>
                   </div>
-                  {highlightHeld && order.status === 'held' && (
-                    <div className="mt-3 flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/40 px-3 py-2 text-xs text-red-300">
-                      <AlertTriangle size={14} className="flex-shrink-0" />
-                      <span>{s.heldReasonLabel}</span>
+                  {order.status === 'held' && (
+                    <div
+                      className="mt-3 rounded-lg bg-red-500/10 border border-red-500/40 px-3 py-2 text-xs text-red-300"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle size={14} className="flex-shrink-0" />
+                        <span>{s.holdReasonPrefix}: {holdReasonText(order.hold_reason)}</span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(order.hold_reason ?? 'missing_coo') === 'missing_coo' ? (
+                          <button
+                            type="button"
+                            onClick={() => handleHoldUploadClick(order.id)}
+                            className="rounded-md bg-red-500/20 border border-red-500/40 px-3 py-1 font-medium text-red-100 hover:bg-red-500/30 active:scale-95 transition-all"
+                          >
+                            {s.uploadDoc}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={handleContactCustomsAgent}
+                          className="rounded-md bg-slate-800 border border-slate-600 px-3 py-1 font-medium text-slate-100 hover:bg-slate-700 active:scale-95 transition-all"
+                        >
+                          {s.contactCustomsAgent}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
               ))}
             </div>
+            {detailsOrder && (
+              <ShipmentDetailsModal
+                order={detailsOrder}
+                s={s}
+                dir={dir === 'rtl' ? 'rtl' : 'ltr'}
+                docs={docs
+                  .filter(d => d.order_id === detailsOrder.id)
+                  .map(d => {
+                    const badge = {
+                      draft: s.docDraft,
+                      submitted: s.docSubmitted,
+                      approved: s.docApproved,
+                      rejected: s.docRejected,
+                    }[d.status];
+                    const cls = {
+                      draft: 'bg-slate-100 text-slate-600',
+                      submitted: 'bg-blue-100 text-blue-700',
+                      approved: 'bg-emerald-100 text-emerald-700',
+                      rejected: 'bg-red-100 text-red-700',
+                    }[d.status];
+                    return { id: d.id, label: docTypeName(d.type, s), statusLabel: badge, statusCls: cls };
+                  })}
+                onClose={() => setDetailsOrder(null)}
+              />
+            )}
+            {showNewShipment && (
+              <NewShipmentModal
+                s={s}
+                dir={dir === 'rtl' ? 'rtl' : 'ltr'}
+                onClose={() => setShowNewShipment(false)}
+                onSubmit={handleCreateShipment}
+              />
+            )}
           </div>
         )}
 
@@ -1047,7 +1209,7 @@ export default function InternationalDashboardPage() {
           <div className="space-y-3">
             <div className="bg-amber-900/30 border border-amber-700/40 rounded-xl p-3 flex items-start gap-3">
               <Icon name="AlertTriangle" size={16} className="text-amber-400 flex-shrink-0 mt-0.5" />
-              <p className="text-amber-300 text-sm">{s.docsNeedAction(MOCK_DOCS.filter(d => d.status === 'draft' || d.status === 'rejected').length)}</p>
+              <p className="text-amber-300 text-sm">{s.docsNeedAction(docs.filter(d => d.status === 'draft' || d.status === 'rejected').length)}</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -1059,7 +1221,7 @@ export default function InternationalDashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
-                  {MOCK_DOCS.map(doc => (
+                  {docs.map(doc => (
                     <tr key={doc.id} className="hover:bg-slate-900/50 transition-colors">
                       <td className="py-3 px-3 text-slate-200 whitespace-nowrap">{docTypeName(doc.type, s)}</td>
                       <td className="py-3 px-3 text-cyan-400 font-mono text-xs">{doc.order_id}</td>

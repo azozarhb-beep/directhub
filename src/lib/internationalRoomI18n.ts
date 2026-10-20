@@ -94,6 +94,52 @@ export interface IntlRoomStrings {
   verifiedOk: string;
   invalidPin: string;
   replySent: string;
+  holdReasonPrefix: string;
+  holdReasonMissingCoo: string;
+  holdReasonCustomsDelay: string;
+  contactCustomsAgent: string;
+  customsAgentContacted: string;
+  docUploaded: string;
+  newShipment: string;
+  newShipmentTitle: string;
+  fieldBuyer: string;
+  fieldProduct: string;
+  fieldDestinationCountry: string;
+  fieldQuantity: string;
+  fieldUnit: string;
+  fieldTotalValue: string;
+  fieldIncoterm: string;
+  fieldContainers: string;
+  fieldHsCode: string;
+  fieldOriginPort: string;
+  fieldDestinationPort: string;
+  fieldBlNumber: string;
+  fieldShippingLine: string;
+  fieldEtd: string;
+  fieldEta: string;
+  submitShipment: string;
+  cancel: string;
+  close: string;
+  requiredFields: string;
+  shipmentCreated: string;
+  shipmentDetailsTitle: string;
+  portOfOrigin: string;
+  destinationPort: string;
+  blNumber: string;
+  shippingLine: string;
+  documentStatus: string;
+  buyer: string;
+  product: string;
+  destination: string;
+  totalValue: string;
+  incoterm: string;
+  noDocuments: string;
+  notProvided: string;
+  marketEurope: string;
+  marketGcc: string;
+  marketAsia: string;
+  marketMena: string;
+  marketOther: string;
 }
 
 const ar: IntlRoomStrings = {
@@ -190,6 +236,52 @@ const ar: IntlRoomStrings = {
   verifiedOk: 'تم التحقق بنجاح',
   invalidPin: 'رمز غير صحيح',
   replySent: 'تم إرسال الرد',
+  holdReasonPrefix: 'سبب الاحتجاز',
+  holdReasonMissingCoo: 'شهادة المنشأ غير مرفقة',
+  holdReasonCustomsDelay: 'تأخر في الفحص الجمركي',
+  contactCustomsAgent: 'التواصل مع المخلّص الجمركي',
+  customsAgentContacted: 'تم إرسال طلب إلى المخلّص الجمركي',
+  docUploaded: 'تم رفع المستند بنجاح',
+  newShipment: 'إنشاء شحنة جديدة',
+  newShipmentTitle: 'إنشاء شحنة تصدير جديدة',
+  fieldBuyer: 'اسم المشتري',
+  fieldProduct: 'المنتج',
+  fieldDestinationCountry: 'دولة الوجهة',
+  fieldQuantity: 'الكمية',
+  fieldUnit: 'الوحدة',
+  fieldTotalValue: 'القيمة الإجمالية (USD)',
+  fieldIncoterm: 'شروط الشحن (Incoterm)',
+  fieldContainers: 'عدد الحاويات',
+  fieldHsCode: 'كود HS',
+  fieldOriginPort: 'ميناء الشحن',
+  fieldDestinationPort: 'ميناء الوصول',
+  fieldBlNumber: 'رقم بوليصة الشحن (B/L)',
+  fieldShippingLine: 'خط الملاحة',
+  fieldEtd: 'تاريخ الشحن',
+  fieldEta: 'الوصول المتوقع',
+  submitShipment: 'إنشاء الشحنة',
+  cancel: 'إلغاء',
+  close: 'إغلاق',
+  requiredFields: 'يرجى تعبئة المشتري والمنتج ودولة الوجهة',
+  shipmentCreated: 'تم إنشاء الشحنة بنجاح',
+  shipmentDetailsTitle: 'تفاصيل الشحنة',
+  portOfOrigin: 'ميناء الشحن',
+  destinationPort: 'ميناء الوصول',
+  blNumber: 'رقم بوليصة الشحن (B/L)',
+  shippingLine: 'خط الملاحة',
+  documentStatus: 'حالة المستندات',
+  buyer: 'المشتري',
+  product: 'المنتج',
+  destination: 'الوجهة',
+  totalValue: 'القيمة الإجمالية',
+  incoterm: 'شروط الشحن',
+  noDocuments: 'لا توجد مستندات لهذه الشحنة',
+  notProvided: 'غير محدد',
+  marketEurope: 'أوروبا',
+  marketGcc: 'الخليج',
+  marketAsia: 'آسيا',
+  marketMena: 'الشرق الأوسط وشمال أفريقيا',
+  marketOther: 'أخرى',
 };
 
 const en: IntlRoomStrings = {
@@ -286,6 +378,52 @@ const en: IntlRoomStrings = {
   verifiedOk: 'Verified successfully',
   invalidPin: 'Invalid code',
   replySent: 'Reply sent',
+  holdReasonPrefix: 'Hold reason',
+  holdReasonMissingCoo: 'Missing Certificate of Origin',
+  holdReasonCustomsDelay: 'Customs Inspection Delay',
+  contactCustomsAgent: 'Contact Customs Agent',
+  customsAgentContacted: 'Request sent to the customs agent',
+  docUploaded: 'Document uploaded successfully',
+  newShipment: 'New Shipment',
+  newShipmentTitle: 'Create New Export Shipment',
+  fieldBuyer: 'Buyer name',
+  fieldProduct: 'Product',
+  fieldDestinationCountry: 'Destination country',
+  fieldQuantity: 'Quantity',
+  fieldUnit: 'Unit',
+  fieldTotalValue: 'Total value (USD)',
+  fieldIncoterm: 'Incoterm',
+  fieldContainers: 'Containers',
+  fieldHsCode: 'HS Code',
+  fieldOriginPort: 'Port of Origin',
+  fieldDestinationPort: 'Destination Port',
+  fieldBlNumber: 'B/L Number',
+  fieldShippingLine: 'Shipping Line',
+  fieldEtd: 'Shipment date',
+  fieldEta: 'Estimated arrival',
+  submitShipment: 'Create Shipment',
+  cancel: 'Cancel',
+  close: 'Close',
+  requiredFields: 'Please fill in buyer, product and destination country',
+  shipmentCreated: 'Shipment created successfully',
+  shipmentDetailsTitle: 'Shipment Details',
+  portOfOrigin: 'Port of Origin',
+  destinationPort: 'Destination Port',
+  blNumber: 'B/L Number',
+  shippingLine: 'Shipping Line',
+  documentStatus: 'Document Status',
+  buyer: 'Buyer',
+  product: 'Product',
+  destination: 'Destination',
+  totalValue: 'Total Value',
+  incoterm: 'Incoterm',
+  noDocuments: 'No documents for this shipment',
+  notProvided: 'Not specified',
+  marketEurope: 'Europe',
+  marketGcc: 'GCC',
+  marketAsia: 'Asia',
+  marketMena: 'MENA',
+  marketOther: 'Other',
 };
 
 const zh: IntlRoomStrings = {
@@ -382,6 +520,52 @@ const zh: IntlRoomStrings = {
   verifiedOk: '验证成功',
   invalidPin: '验证码无效',
   replySent: '回复已发送',
+  holdReasonPrefix: '扣留原因',
+  holdReasonMissingCoo: '缺少原产地证书',
+  holdReasonCustomsDelay: '海关查验延误',
+  contactCustomsAgent: '联系报关代理',
+  customsAgentContacted: '已向报关代理发送请求',
+  docUploaded: '单据上传成功',
+  newShipment: '新建货运',
+  newShipmentTitle: '创建新的出口货运',
+  fieldBuyer: '买家名称',
+  fieldProduct: '产品',
+  fieldDestinationCountry: '目的国',
+  fieldQuantity: '数量',
+  fieldUnit: '单位',
+  fieldTotalValue: '总价值 (USD)',
+  fieldIncoterm: '贸易术语',
+  fieldContainers: '集装箱数量',
+  fieldHsCode: 'HS 编码',
+  fieldOriginPort: '起运港',
+  fieldDestinationPort: '目的港',
+  fieldBlNumber: '提单号 (B/L)',
+  fieldShippingLine: '船公司',
+  fieldEtd: '发货日期',
+  fieldEta: '预计到达',
+  submitShipment: '创建货运',
+  cancel: '取消',
+  close: '关闭',
+  requiredFields: '请填写买家、产品和目的国',
+  shipmentCreated: '货运创建成功',
+  shipmentDetailsTitle: '货运详情',
+  portOfOrigin: '起运港',
+  destinationPort: '目的港',
+  blNumber: '提单号 (B/L)',
+  shippingLine: '船公司',
+  documentStatus: '单据状态',
+  buyer: '买家',
+  product: '产品',
+  destination: '目的地',
+  totalValue: '总价值',
+  incoterm: '贸易术语',
+  noDocuments: '该货运暂无单据',
+  notProvided: '未填写',
+  marketEurope: '欧洲',
+  marketGcc: '海湾地区',
+  marketAsia: '亚洲',
+  marketMena: '中东北非',
+  marketOther: '其他',
 };
 
 const tr: IntlRoomStrings = {
@@ -478,6 +662,52 @@ const tr: IntlRoomStrings = {
   verifiedOk: 'Başarıyla doğrulandı',
   invalidPin: 'Geçersiz kod',
   replySent: 'Yanıt gönderildi',
+  holdReasonPrefix: 'Bekletme nedeni',
+  holdReasonMissingCoo: 'Menşe Şahadetnamesi eksik',
+  holdReasonCustomsDelay: 'Gümrük kontrolü gecikmesi',
+  contactCustomsAgent: 'Gümrük Müşaviri ile İletişim',
+  customsAgentContacted: 'Gümrük müşavirine talep gönderildi',
+  docUploaded: 'Belge başarıyla yüklendi',
+  newShipment: 'Yeni Sevkiyat',
+  newShipmentTitle: 'Yeni İhracat Sevkiyatı Oluştur',
+  fieldBuyer: 'Alıcı adı',
+  fieldProduct: 'Ürün',
+  fieldDestinationCountry: 'Varış ülkesi',
+  fieldQuantity: 'Miktar',
+  fieldUnit: 'Birim',
+  fieldTotalValue: 'Toplam değer (USD)',
+  fieldIncoterm: 'Incoterm',
+  fieldContainers: 'Konteyner sayısı',
+  fieldHsCode: 'HS Kodu',
+  fieldOriginPort: 'Çıkış Limanı',
+  fieldDestinationPort: 'Varış Limanı',
+  fieldBlNumber: 'Konşimento No (B/L)',
+  fieldShippingLine: 'Denizyolu Hattı',
+  fieldEtd: 'Sevkiyat tarihi',
+  fieldEta: 'Tahmini varış',
+  submitShipment: 'Sevkiyatı Oluştur',
+  cancel: 'İptal',
+  close: 'Kapat',
+  requiredFields: 'Lütfen alıcı, ürün ve varış ülkesini doldurun',
+  shipmentCreated: 'Sevkiyat başarıyla oluşturuldu',
+  shipmentDetailsTitle: 'Sevkiyat Detayları',
+  portOfOrigin: 'Çıkış Limanı',
+  destinationPort: 'Varış Limanı',
+  blNumber: 'Konşimento No (B/L)',
+  shippingLine: 'Denizyolu Hattı',
+  documentStatus: 'Belge Durumu',
+  buyer: 'Alıcı',
+  product: 'Ürün',
+  destination: 'Varış',
+  totalValue: 'Toplam Değer',
+  incoterm: 'Incoterm',
+  noDocuments: 'Bu sevkiyat için belge yok',
+  notProvided: 'Belirtilmedi',
+  marketEurope: 'Avrupa',
+  marketGcc: 'Körfez',
+  marketAsia: 'Asya',
+  marketMena: 'MENA',
+  marketOther: 'Diğer',
 };
 
 const DICTIONARY: Record<Language, IntlRoomStrings> = { ar, en, zh, tr };
