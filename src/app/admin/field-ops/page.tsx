@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import Icon from '@/components/ui/AppIcon';
 
 type TabKey = 'agents' | 'factories' | 'catalog' | 'inspections' | 'documents';
@@ -172,6 +173,7 @@ export default function AdminFieldOpsPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const { user, loading: authLoading } = useAuth();
+  const { dir } = useLanguage();
 
   const role = (user?.user_metadata?.role || user?.app_metadata?.role || '') as string;
   const staffRole = (user?.user_metadata?.staff_role || user?.app_metadata?.staff_role || '') as string;
@@ -652,7 +654,7 @@ export default function AdminFieldOpsPage() {
   ];
 
   return (
-    <div className="fixed inset-0 w-full h-[100dvh] bg-slate-950 text-white flex flex-col z-50 overflow-hidden" dir="rtl">
+    <div className="fixed inset-0 w-full h-[100dvh] bg-slate-950 text-white flex flex-col z-50 overflow-hidden" dir={dir}>
       <header className="sticky top-0 z-20 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-3 sm:px-5 py-3 flex flex-wrap items-center gap-2 sm:gap-3">
         <button
           onClick={goBack}

@@ -8,6 +8,7 @@ import Footer from '@/components/Footer';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { createClient } from '@/lib/supabase/client';
 import { sendDualNotification } from '@/lib/notificationService';
 
@@ -88,6 +89,7 @@ function Toast({ message, type }: { message: string; type: 'success' | 'error' }
 export default function CreateRFQPage() {
   const router = useRouter();
   const { user, loading: authLoading, requireAuth } = useAuth();
+  const { dir } = useLanguage();
   const handleExit = useCallback(() => {
     if (typeof window !== 'undefined' && window.history.length > 1) {
       router.back();
@@ -369,7 +371,7 @@ export default function CreateRFQPage() {
 
   // ── Main form ───────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background flex flex-col" dir="rtl">
+    <div className="min-h-screen bg-background flex flex-col" dir={dir}>
       {toast && <Toast message={toast.message} type={toast.type} />}
       <Header />
 

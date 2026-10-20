@@ -33,6 +33,22 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import type en from '@/locales/en.json';
 
+// Local storage key used for the persisted language
+const LANG_STORAGE_KEY = 'dh_lang';
+
+// Persist the preferred language to the Supabase user_profiles table
+async function persistProfileLanguage(userId: string, lang: Language) {
+  try {
+    const supabase = createClient();
+    await supabase
+      .from('user_profiles')
+      .update({ preferred_language: lang })
+      .eq('id', userId);
+  } catch (_) {
+    // Non-critical — localStorage already saved the preference
+  }
+}
+
 interface LanguageContextValue {
   language: Language;
   setLanguage: (lang: Language) => void;
@@ -155,6 +171,58 @@ export function LanguageProvider({
     }
   }, [language, mounted]);
 
+  // ─── Cross-tab sync: another tab changed the language ──────────────────────
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (e.key !== LANG_STORAGE_KEY || !e.newValue) return;
+      if (!isSupportedLanguage(e.newValue)) return;
+      const next = e.newValue as Language;
+      setLanguageState((prev) => {
+        if (prev === next) return prev;
+        writeLanguageCookie(next);
+        applyLangDir(next);
+        return next;
+      });
+    }
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  // ─── After login/logout: pull the saved profile language (unless user chose manually) ─
+  useEffect(() => {
+    const supabase = createClient();
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event !== 'SIGNED_IN' || !session?.user) return;
+      if (manualOverrideRef.current) {
+        // Keep the local manual choice and push it to the account.
+        let current: string | null = null;
+        try {
+          current = localStorage.getItem(LANG_STORAGE_KEY);
+        } catch (_) {}
+        if (current && isSupportedLanguage(current)) {
+          void persistProfileLanguage(session.user.id, current as Language);
+        }
+        return;
+      }
+      void (async () => {
+        try {
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('preferred_language')
+            .eq('id', session.user.id)
+            .maybeSingle();
+          const dbLang = profile?.preferred_language;
+          if (dbLang && isSupportedLanguage(dbLang)) {
+            setLanguageState(dbLang as Language);
+            storeLanguage(dbLang as Language);
+            applyLangDir(dbLang as Language);
+          }
+        } catch (_) {}
+      })();
+    });
+    return () => sub?.subscription?.unsubscribe();
+  }, []);
+
   // ─── Manual language toggle ─────────────────────────────────────────────────
   // Marks the preference as manual so browser locale / DB are not forced again.
   // Also persists the choice back to Supabase user_profiles when logged in.
@@ -172,10 +240,7 @@ export function LanguageProvider({
       } = await supabase.auth.getUser();
 
       if (user) {
-        await supabase
-          .from('user_profiles')
-          .update({ preferred_language: lang })
-          .eq('id', user.id);
+        await persistProfileLanguage(user.id, lang);
       }
     } catch (_) {
       // Non-critical — localStorage already saved the preference

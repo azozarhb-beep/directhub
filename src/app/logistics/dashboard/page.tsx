@@ -27,8 +27,8 @@ import {
   resolvePlatformRole,
   getHomeRoomForRole,
 } from '@/lib/roomIsolation';
-
-
+import { useLanguage } from '@/contexts/LanguageContext';
+import { getHubShellStrings } from '@/lib/hubShellI18n';
 import LogisticsDocumentsPanel from './LogisticsDocumentsPanel';
 import LogisticsDispatchRoomsTab from './LogisticsDispatchRoomsTab';
 import LogisticsDelayReportModal from './LogisticsDelayReportModal';
@@ -5857,6 +5857,8 @@ function DisputesAndDelaysTab({ partnerId, userId }: { partnerId: string; userId
 export default function LogisticsDashboardPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { language, dir } = useLanguage();
+  const hs = getHubShellStrings(language);
   const supabase = createClient();
 
   const [partner, setPartner] = useState<LogisticsPartner | null>(null);
@@ -5905,67 +5907,67 @@ export default function LogisticsDashboardPage() {
   const SECTIONS = [
     {
       key: 'local',
-      label: 'الشحن المحلي والتوزيع',
+      label: hs.secLocal,
       tabs: [
-        { key: 'load_board', label: '🛒 سوق الطلبات المتاحة (Load Board)', icon: 'ShoppingBagIcon' },
-        { key: 'orders', label: '📦 الطلبات والشحنات', icon: 'TruckIcon' },
-        { key: 'stats', label: '📊 الأداء والإحصائيات', icon: 'ChartBarIcon' },
-        { key: 'calculator', label: '🧮 حاسبة التكاليف', icon: 'CalculatorIcon' },
+        { key: 'load_board', label: hs.tabLoadBoard, icon: 'ShoppingBagIcon' },
+        { key: 'orders', label: hs.tabOrders, icon: 'TruckIcon' },
+        { key: 'stats', label: hs.tabStats, icon: 'ChartBarIcon' },
+        { key: 'calculator', label: hs.tabCalculator, icon: 'CalculatorIcon' },
       ]
     },
     {
       key: 'international',
-      label: 'الشحن الدولي',
+      label: hs.secInternational,
       tabs: [
-        { key: 'international_orders', label: '🌍 إدارة الشحنات الدولية (بحري وجوي)', icon: 'GlobeAltIcon' },
+        { key: 'international_orders', label: hs.tabIntlShipments, icon: 'GlobeAltIcon' },
       ]
     },
     {
       key: 'customs',
-      label: 'الموانئ والتخليص الجمركي',
+      label: hs.secCustoms,
       tabs: [
-        { key: 'customs_docs', label: '📋 وثائق التخليص', icon: 'DocumentTextIcon' },
-        { key: 'documents', label: '📁 رفع المستندات', icon: 'FolderOpenIcon' },
+        { key: 'customs_docs', label: hs.tabCustomsDocs, icon: 'DocumentTextIcon' },
+        { key: 'documents', label: hs.tabUploadDocs, icon: 'FolderOpenIcon' },
       ]
     },
     {
       key: 'dispatch',
-      label: 'غرف التنسيق الميداني',
+      label: hs.secDispatch,
       tabs: [
-        { key: 'dispatch_rooms', label: '🚚 غرف التنسيق الميداني', icon: 'ChatBubbleLeftRightIcon' },
+        { key: 'dispatch_rooms', label: hs.tabDispatchRooms, icon: 'ChatBubbleLeftRightIcon' },
       ]
     },
     {
       key: 'disputes_ops',
-      label: 'إدارة التأخير والنزاعات التشغيلية',
+      label: hs.secDisputes,
       tabs: [
-        { key: 'disputes_delays', label: '⚖️ التأخير والنزاعات', icon: 'ExclamationTriangleIcon' },
+        { key: 'disputes_delays', label: hs.tabDisputesDelays, icon: 'ExclamationTriangleIcon' },
       ]
     },
     {
       key: 'fulfillment',
-      label: 'خدمات من الباب للباب',
+      label: hs.secFulfillment,
       tabs: [
-        { key: 'conversations', label: '💬 المراسلات', icon: 'ChatBubbleLeftRightIcon' },
-        { key: 'payments', label: '💰 المدفوعات', icon: 'BanknotesIcon' },
-        { key: 'profile', label: '👤 الملف الشخصي', icon: 'UserCircleIcon' },
+        { key: 'conversations', label: hs.tabConversations, icon: 'ChatBubbleLeftRightIcon' },
+        { key: 'payments', label: hs.tabPayments, icon: 'BanknotesIcon' },
+        { key: 'profile', label: hs.tabProfile, icon: 'UserCircleIcon' },
       ]
     },
     {
       key: 'admin_support',
-      label: 'التواصل مع الإدارة',
+      label: hs.secAdminSupport,
       tabs: [
-        { key: 'admin_messaging', label: '💬 مراسلة الإدارة العامة / الدعم التشغيلي', icon: 'ChatBubbleLeftRightIcon' },
+        { key: 'admin_messaging', label: hs.tabAdminMessaging, icon: 'ChatBubbleLeftRightIcon' },
       ]
     }
   ];
 
   if ((authLoading || checkLoading) && !partner) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center" dir={dir}>
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading your dashboard…</p>
+          <p className="text-sm text-muted-foreground">{hs.loadingDashboard}</p>
         </div>
       </div>
     );
@@ -5974,7 +5976,7 @@ export default function LogisticsDashboardPage() {
   if (!partner) return null;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" dir={dir}>
       <Header />
       {/* ── Room Identity Banner ── */}
       <div className="bg-gradient-to-r from-cyan-700 to-cyan-900 text-white px-4 py-3">
@@ -5984,13 +5986,13 @@ export default function LogisticsDashboardPage() {
               <Icon name="TruckIcon" size={18} className="text-white" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white leading-tight">لوحة تحكم المكتب اللوجستي</h2>
-              <p className="text-cyan-200 text-xs">Logistics Partner Dashboard · إدارة الشحنات والتوصيل</p>
+              <h2 className="text-sm font-bold text-white leading-tight">{hs.logisticsRoomTitle}</h2>
+              <p className="text-cyan-200 text-xs">{hs.logisticsRoomSubtitle}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="bg-white/20 text-white text-xs px-3 py-1 rounded-full border border-white/30">
-              🚚 شريك لوجستي
+              {hs.logisticsPartnerBadge}
             </span>
             <span className="bg-white/10 text-cyan-200 text-xs px-3 py-1 rounded-full border border-white/20">
               ID: logistics-office-dashboard
@@ -6007,7 +6009,7 @@ export default function LogisticsDashboardPage() {
               <Link href="/my-account" className="text-muted-foreground hover:text-foreground transition-colors">
                 <Icon name="ArrowRightIcon" size={16} />
               </Link>
-              <h1 className="text-2xl font-bold text-foreground">بوابة الشريك اللوجستي</h1>
+              <h1 className="text-2xl font-bold text-foreground">{hs.logisticsPortalTitle}</h1>
             </div>
             <p className="text-sm text-muted-foreground">
               {partner.company_name}
@@ -6025,7 +6027,7 @@ export default function LogisticsDashboardPage() {
                 name={partner.status === 'approved' ? 'CheckBadgeIcon' : partner.status === 'under_review' ? 'MagnifyingGlassIcon' : 'ClockIcon'}
                 size={13}
               />
-              {partner.status === 'pending' ? 'قيد المراجعة والاعتماد' : partner.status === 'approved' ? 'معتمد' : partner.status === 'under_review' ? 'قيد المراجعة' : partner.status === 'rejected' ? 'مرفوض' : partner.status === 'suspended' ? 'موقوف' : partner.status}
+              {partner.status === 'pending' ? hs.statusPending : partner.status === 'approved' ? hs.statusApproved : partner.status === 'under_review' ? hs.statusUnderReview : partner.status === 'rejected' ? hs.statusRejected : partner.status === 'suspended' ? hs.statusSuspended : partner.status}
             </span>
           </div>
         </div>

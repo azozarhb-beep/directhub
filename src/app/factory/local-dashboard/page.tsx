@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { createClient } from '@/lib/supabase/client';
 import Header from '@/components/Header';
 import Icon from '@/components/ui/AppIcon';
@@ -113,6 +114,7 @@ function KPICard({ label, value, sub, icon, color }: { label: string; value: str
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function LocalFactoryControlRoom() {
   const { user, profile } = useAuth();
+  const { dir } = useLanguage();
   const router = useRouter();
   const supabase = createClient();
 
@@ -257,7 +259,7 @@ export default function LocalFactoryControlRoom() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50" dir="rtl">
+    <div className="min-h-screen bg-gray-50" dir={dir}>
       <Header />
 
       {/* ── Room Identity Banner ── */}
