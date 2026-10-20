@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,8 +10,40 @@ import { createClient } from '@/lib/supabase/client';
 import { useCart } from '@/contexts/CartContext';
 import { useWishlist } from '@/contexts/WishlistContext';
 
+// Ordered main views reachable by swiping (matches the bottom bar order).
+const SWIPE_VIEWS = ['/', '/categories', '/my-account'] as const;
+
+const getSwipeIndex = (path: string | null): number => {
+  if (!path) return -1;
+  if (path === '/') return 0;
+  if (path === '/categories' || path.startsWith('/categories/')) return 1;
+  if (path === '/my-account') return 2;
+  return -1;
+};
+
+// Elements whose own touch behaviour must not be hijacked by page swipes.
+const SWIPE_BLOCK_SELECTOR =
+  'input, textarea, select, [contenteditable="true"], [role="dialog"], [aria-modal="true"], [role="slider"], [data-no-swipe], .leaflet-container, iframe, video, canvas';
+
+const isHorizontallyScrollable = (el: HTMLElement | null): boolean => {
+  let node: HTMLElement | null = el;
+  while (node && node !== document.body) {
+    const style = window.getComputedStyle(node);
+    const overflowX = style.overflowX;
+    if (
+      (overflowX === 'auto' || overflowX === 'scroll') &&
+      node.scrollWidth > node.clientWidth + 2
+    ) {
+      return true;
+    }
+    node = node.parentElement;
+  }
+  return false;
+};
+
 const BottomNav: React.FC = () => {
   const pathname = usePathname();
+  const router = useRouter();
   const { t, isRTL } = useLanguage();
   const { user } = useAuth();
   const { totalItems } = useCart();
@@ -19,10 +51,126 @@ const BottomNav: React.FC = () => {
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const touchRef = useRef<{ x: number; y: number; t: number; valid: boolean } | null>(null);
+  const navigatingRef = useRef(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Reset the navigation lock + play an enter animation after a swipe-driven route change
+  useEffect(() => {
+    navigatingRef.current = false;
+    if (typeof window === 'undefined') return;
+    const dir = sessionStorage.getItem('dh_swipe_dir');
+    if (!dir) return;
+    sessionStorage.removeItem('dh_swipe_dir');
+    const target = document.querySelector('main') as HTMLElement | null;
+    if (!target || typeof target.animate !== 'function') return;
+    const from = dir === 'next' ? (isRTL ? -40 : 40) : isRTL ? 40 : -40;
+    target.animate(
+      [
+        { transform: `translateX(${from}px)`, opacity: 0.4 },
+        { transform: 'translateX(0)', opacity: 1 },
+      ],
+      { duration: 220, easing: 'ease-out' }
+    );
+  }, [pathname, isRTL]);
+
+  const goToSwipeView = useCallback(
+    (direction: 'next' | 'prev') => {
+      const current = getSwipeIndex(pathname);
+      if (current < 0 || navigatingRef.current) return;
+      const nextIndex = direction === 'next' ? current + 1 : current - 1;
+      if (nextIndex < 0 || nextIndex >= SWIPE_VIEWS.length) return;
+      navigatingRef.current = true;
+      try {
+        sessionStorage.setItem('dh_swipe_dir', direction);
+      } catch {
+        /* ignore storage errors */
+      }
+      router.push(SWIPE_VIEWS[nextIndex]);
+      window.setTimeout(() => {
+        navigatingRef.current = false;
+      }, 600);
+    },
+    [pathname, router]
+  );
+
+  // Global swipe detection (mobile only; the bottom bar itself is md:hidden)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (getSwipeIndex(pathname) < 0) return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1 || window.innerWidth >= 768) {
+        touchRef.current = null;
+        return;
+      }
+      const touch = e.touches[0];
+      const target = e.target as HTMLElement | null;
+      const blocked =
+        !!target?.closest?.(SWIPE_BLOCK_SELECTOR) ||
+        !!target?.closest?.('nav') ||
+        isHorizontallyScrollable(target);
+      const vh = window.innerHeight;
+      // Only react to gestures that begin in the middle band of the screen
+      const inMiddle = touch.clientY > vh * 0.15 && touch.clientY < vh * 0.85;
+      touchRef.current = {
+        x: touch.clientX,
+        y: touch.clientY,
+        t: Date.now(),
+        valid: !blocked && inMiddle,
+      };
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      const start = touchRef.current;
+      touchRef.current = null;
+      if (!start || !start.valid) return;
+      const touch = e.changedTouches[0];
+      if (!touch) return;
+      const dx = touch.clientX - start.x;
+      const dy = touch.clientY - start.y;
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+      const elapsed = Date.now() - start.t;
+
+      // Horizontal swipe: clearly more horizontal than vertical
+      if (absX >= 70 && absX > absY * 1.6 && elapsed < 800) {
+        // LTR: swipe left -> next view. RTL: swipe right -> next view.
+        const goesNext = isRTL ? dx > 0 : dx < 0;
+        goToSwipeView(goesNext ? 'next' : 'prev');
+        return;
+      }
+
+      // Vertical swipe: only deliberate, fast, mostly-vertical flicks
+      if (absY >= 140 && absY > absX * 2.5 && elapsed < 280) {
+        // Swipe up -> next view (only when already at page bottom),
+        // swipe down -> previous view (only when already at page top).
+        // This never competes with normal scrolling.
+        const doc = document.documentElement;
+        const atTop = window.scrollY <= 0;
+        const atBottom =
+          window.scrollY + window.innerHeight >= doc.scrollHeight - 2;
+        if (dy < 0 && atBottom) goToSwipeView('next');
+        else if (dy > 0 && atTop) goToSwipeView('prev');
+      }
+    };
+
+    const onTouchCancel = () => {
+      touchRef.current = null;
+    };
+
+    document.addEventListener('touchstart', onTouchStart, { passive: true });
+    document.addEventListener('touchend', onTouchEnd, { passive: true });
+    document.addEventListener('touchcancel', onTouchCancel, { passive: true });
+    return () => {
+      document.removeEventListener('touchstart', onTouchStart);
+      document.removeEventListener('touchend', onTouchEnd);
+      document.removeEventListener('touchcancel', onTouchCancel);
+    };
+  }, [pathname, isRTL, goToSwipeView]);
 
   // Hide bottom nav when mobile keyboard is open
   useEffect(() => {
