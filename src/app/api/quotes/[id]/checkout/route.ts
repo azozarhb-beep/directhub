@@ -31,12 +31,38 @@ export async function POST(
 
     // ── Load quote (service role: buyer may not be bound yet) ─────────────
     const lookup = supabaseAdmin.from('custom_quotes').select('*');
-    const { data: quote, error: quoteErr } = await (UUID_RE.test(id)
+    const { data: primaryQuote, error: quoteErr } = await (UUID_RE.test(id)
       ? lookup.eq('id', id)
       : lookup.eq('public_token', id)
     ).maybeSingle();
 
-    if (quoteErr || !quote) {
+    let quote: any = primaryQuote;
+
+    // Standalone custom deal fallback: when the direct table read returns nothing
+    // (e.g. service-role access unavailable / RLS), convert the deal via the
+    // token-gated SECURITY DEFINER RPC using the buyer's own session.
+    if (!quote && !UUID_RE.test(id)) {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('checkout_deal_by_token', { p_token: id });
+      if (!rpcErr) {
+        const rpcRow: any = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+        if (rpcRow?.order_id) {
+          return NextResponse.json({
+            success: true,
+            order_id: rpcRow.order_id,
+            order_number: rpcRow.order_number || null,
+            redirect_url: `/pay/deal/${rpcRow.public_token || id}`,
+          });
+        }
+      } else {
+        const msg = rpcErr.message || '';
+        const status = /Unauthorized/i.test(msg) ? 401 : /another buyer|issuing factory/i.test(msg) ? 403 : /expired/i.test(msg) ? 410 : /not found/i.test(msg) ? 404 : 400;
+        console.error('[quotes/checkout] rpc failed', rpcErr);
+        return NextResponse.json({ error: msg || 'Quote not found' }, { status });
+      }
+    }
+
+    if (!quote) {
+      console.error('[quotes/checkout] quote lookup failed', { id, quoteErr });
       return NextResponse.json({ error: 'Quote not found' }, { status: 404 });
     }
 
