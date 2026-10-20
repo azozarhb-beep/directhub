@@ -12,7 +12,7 @@ import Icon from '@/components/ui/AppIcon';
 import AppLogo from '@/components/ui/AppLogo';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Line } from 'recharts';
-import UnifiedMessagingEngine from '@/components/UnifiedMessagingEngine';
+import FactoryThreadsMessaging from '@/components/manufacturer/FactoryThreadsMessaging';
 import IncomingRFQsPanel from '@/components/manufacturer/IncomingRFQsPanel';
 import DealLinkGeneratorModal from '@/components/manufacturer/DealLinkGeneratorModal';
 import { SUPPORTED_LANGUAGES } from '@/lib/i18n';
@@ -1309,10 +1309,14 @@ export default function InternationalDashboardPage() {
         {/* Tab: Messaging */}
         {activeTab === 'messaging' && (
           <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <UnifiedMessagingEngine
+            <FactoryThreadsMessaging
               userId={user?.id || ''}
-              mode="admin_factory"
-              userRole="manufacturer"
+              viewerRole="factory"
+              shipments={exportOrders.map(o => ({
+                id: o.id,
+                portOfLoading: o.origin_port,
+                containerDetails: `${o.container_count} × container${o.bl_number ? ` · B/L ${o.bl_number}` : ''}`,
+              }))}
             />
           </div>
         )}
