@@ -32,6 +32,9 @@ interface Product {
   weight_kg?: number;
   dimensions?: string;
   warranty_months?: number;
+  hs_code?: string | null;
+  supported_incoterms?: string[] | null;
+  port_of_loading?: string | null;
   sample_available?: boolean;
   sample_price?: number;
   tags?: string[];
@@ -62,6 +65,9 @@ interface ProductFormData {
   weight_kg: string;
   dimensions: string;
   warranty_months: string;
+  hs_code: string;
+  supported_incoterms: string[];
+  port_of_loading: string;
   sample_available: boolean;
   sample_price: string;
   tags: string;
@@ -85,6 +91,8 @@ const CATEGORIES = [
 
 const UNITS = ['kg', 'ton', 'piece', 'set', 'meter', 'roll', 'box', 'carton', 'liter', 'sqm', 'unit'];
 
+const INCOTERM_OPTIONS = ['FOB', 'CIF', 'EXW', 'CFR', 'DAP'];
+
 const STATUS_CONFIG = {
   in_stock: { label: 'in_stock', color: 'bg-green-100 text-green-700 border-green-200' },
   low_stock: { label: 'low_stock', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
@@ -101,6 +109,7 @@ const EMPTY_FORM: ProductFormData = {
   image_url: '', imageFile: null, imagePreview: '', sales_model: 'both',
   certifications: '', delivery_time_days: '',
   weight_kg: '', dimensions: '', warranty_months: '',
+  hs_code: '', supported_incoterms: [], port_of_loading: '',
   sample_available: false, sample_price: '', tags: '',
 };
 
@@ -214,6 +223,9 @@ export default function SellerProductManagerPage() {
       weight_kg: String(product.weight_kg || ''),
       dimensions: product.dimensions || '',
       warranty_months: String(product.warranty_months || ''),
+      hs_code: product.hs_code || '',
+      supported_incoterms: product.supported_incoterms || [],
+      port_of_loading: product.port_of_loading || '',
       sample_available: product.sample_available || false,
       sample_price: String(product.sample_price || ''),
       tags: (product.tags || []).join(', '),
@@ -263,6 +275,9 @@ export default function SellerProductManagerPage() {
         weight_kg: formData.weight_kg ? parseFloat(formData.weight_kg) : null,
         dimensions: formData.dimensions.trim() || null,
         warranty_months: formData.warranty_months ? parseInt(formData.warranty_months) : null,
+        hs_code: formData.hs_code.trim() || null,
+        supported_incoterms: formData.supported_incoterms,
+        port_of_loading: formData.port_of_loading.trim() || null,
         sample_available: formData.sample_available,
         sample_price: formData.sample_price ? parseFloat(formData.sample_price) : null,
         tags: formData.tags ? formData.tags.split(',').map((s) => s.trim()).filter(Boolean) : [],
@@ -902,6 +917,72 @@ export default function SellerProductManagerPage() {
                           dir="ltr"
                           className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
                         />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="flex items-center gap-1.5 text-xs font-bold text-foreground mb-1.5">
+                          {f.hsCode}
+                          <span
+                            title={f.hsCodeTooltip}
+                            aria-label={f.hsCodeTooltip}
+                            tabIndex={0}
+                            className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted text-muted-foreground text-[10px] font-bold cursor-help"
+                          >
+                            ?
+                          </span>
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.hs_code}
+                          onChange={(e) => setFormData((p) => ({ ...p, hs_code: e.target.value }))}
+                          placeholder={f.hsCodePlaceholder}
+                          title={f.hsCodeTooltip}
+                          dir="ltr"
+                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
+                        />
+                        <p className="text-[11px] text-muted-foreground mt-1">{f.hsCodeTooltip}</p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">{f.portOfLoading}</label>
+                        <input
+                          type="text"
+                          value={formData.port_of_loading}
+                          onChange={(e) => setFormData((p) => ({ ...p, port_of_loading: e.target.value }))}
+                          placeholder={f.portOfLoadingPlaceholder}
+                          dir="auto"
+                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-foreground mb-1.5">{f.supportedIncoterms}</label>
+                      <div className="flex flex-wrap gap-2">
+                        {INCOTERM_OPTIONS.map((term) => {
+                          const selected = formData.supported_incoterms.includes(term);
+                          return (
+                            <button
+                              key={term}
+                              type="button"
+                              aria-pressed={selected}
+                              onClick={() =>
+                                setFormData((p) => ({
+                                  ...p,
+                                  supported_incoterms: selected
+                                    ? p.supported_incoterms.filter((x) => x !== term)
+                                    : [...p.supported_incoterms, term],
+                                }))
+                              }
+                              className={`px-3 h-9 rounded-xl border text-xs font-bold transition-colors ${
+                                selected
+                                  ? 'bg-primary text-primary-foreground border-primary'
+                                  : 'bg-background text-foreground border-border hover:border-primary'
+                              }`}
+                            >
+                              {term}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                     <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-xl border border-border flex-wrap">
