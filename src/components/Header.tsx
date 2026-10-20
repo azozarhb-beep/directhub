@@ -50,6 +50,7 @@ const Header: React.FC = () => {
     '/admin',
     '/my-account/add-product',
     '/my-account/edit-profile',
+    '/disputes',
     // Dashboard routes — hide marketplace search & category bar
     '/logistics',
     '/supplier',
