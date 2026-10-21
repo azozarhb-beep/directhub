@@ -182,20 +182,43 @@ export function sanitizeExtraction(input: any): ExtractedInvoice {
   };
 }
 
+const INVOICE_AI_MODELS = ['gemini/gemini-3.5-flash-lite', 'gemini/gemini-3.5-flash'];
+
+function toFriendlyAIError(err: unknown): Error {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/\b(401|403)\b|unauthorized|api key|not configured/i.test(msg)) {
+    return new Error(
+      'مفتاح Gemini API غير صالح أو غير مُهيأ (401). يرجى تحديث GEMINI_API_KEY في متغيرات البيئة ثم إعادة المحاولة.'
+    );
+  }
+  return err instanceof Error ? err : new Error(msg);
+}
+
 export async function extractInvoiceFromConversation(transcript: string): Promise<ExtractedInvoice> {
-  const result = await getChatCompletion(
-    'GEMINI',
-    'gemini/gemini-3.7-flash',
-    [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `Negotiation conversation:\n\n${transcript}` },
-    ],
-    { temperature: 0.1, max_tokens: 2000, response_format: JSON_SCHEMA },
-    60000
-  );
-  const content: string = result?.choices?.[0]?.message?.content || '';
-  if (!content) throw new Error('لم يتم استلام رد من الذكاء الاصطناعي');
-  return sanitizeExtraction(parseJsonLoose(content));
+  let lastError: unknown = null;
+  for (const model of INVOICE_AI_MODELS) {
+    try {
+      const result = await getChatCompletion(
+        'GEMINI',
+        model,
+        [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: `Negotiation conversation:\n\n${transcript}` },
+        ],
+        { temperature: 0.1, max_tokens: 2000, response_format: JSON_SCHEMA },
+        60000
+      );
+      const content: string = result?.choices?.[0]?.message?.content || '';
+      if (!content) throw new Error('لم يتم استلام رد من الذكاء الاصطناعي');
+      return sanitizeExtraction(parseJsonLoose(content));
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      // Auth/config errors will not be fixed by trying another model
+      if (/\b(401|403)\b|unauthorized|api key|not configured/i.test(msg)) break;
+    }
+  }
+  throw toFriendlyAIError(lastError);
 }
 
 export async function extractInvoiceFromAgreementText(text: string): Promise<ExtractedInvoice> {
