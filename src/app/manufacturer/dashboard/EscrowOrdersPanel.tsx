@@ -1,9 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { OrderWhatsAppActions } from '@/components/OrderWhatsAppButton';
+import EscrowMilestoneTimeline from './EscrowMilestoneTimeline';
 
 interface EscrowOrdersPanelProps {
   escrowOrders: any[];
@@ -57,6 +58,14 @@ export default function EscrowOrdersPanel({
   md,
 }: EscrowOrdersPanelProps) {
   const { language } = useLanguage();
+
+  // Keep the selected order in sync with refreshed list data (e.g. after a B/L upload)
+  React.useEffect(() => {
+    if (!selectedEscrowOrder?.id) return;
+    const fresh = escrowOrders.find((o: any) => o.id === selectedEscrowOrder.id);
+    if (fresh && fresh !== selectedEscrowOrder) setSelectedEscrowOrder(fresh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [escrowOrders]);
 
   return (
     <div className="space-y-5">
@@ -177,6 +186,7 @@ export default function EscrowOrdersPanel({
                       />
                     </div>
                   </div>
+                  <EscrowMilestoneTimeline order={order} compact />
                 </button>
               );
             })}
@@ -227,6 +237,15 @@ export default function EscrowOrdersPanel({
                     </div>
                   )}
                 </div>
+
+                {/* 3-Stage Milestone Timeline (30% / 40% / 30%) */}
+                <EscrowMilestoneTimeline
+                  order={selectedEscrowOrder}
+                  userId={user?.id}
+                  onChanged={async () => {
+                    await fetchEscrowOrders();
+                  }}
+                />
 
                 {/* WhatsApp notification actions */}
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
