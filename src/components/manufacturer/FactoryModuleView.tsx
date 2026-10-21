@@ -17,6 +17,7 @@ import DisputesPanel from '@/app/manufacturer/dashboard/DisputesPanel';
 import BankAccountsPanel from '@/app/manufacturer/dashboard/BankAccountsPanel';
 import FinancePanel from '@/app/manufacturer/dashboard/FinancePanel';
 import ManufacturerAdvancedModules from '@/components/manufacturer/ManufacturerAdvancedModules';
+import ExportVolumeKPIs from '@/components/manufacturer/ExportVolumeKPIs';
 import IncomingRFQsPanel from '@/components/manufacturer/IncomingRFQsPanel';
 import FactoryThreadsMessaging from '@/components/manufacturer/FactoryThreadsMessaging';
 import FactoryDocumentUploadPanel from '@/components/manufacturer/FactoryDocumentUploadPanel';
@@ -561,7 +562,7 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
       />
     );
   } else if (moduleKey === 'production') {
-    body = <ManufacturerAdvancedModules userId={user.id} />;
+    body = <ManufacturerAdvancedModules userId={user.id} mode="production" />;
   } else if (moduleKey === 'logistics') {
     body = (
       <div className="space-y-4">
@@ -684,7 +685,7 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
           setFinanceFilter={setFinanceFilter}
           md={md}
         />
-        <ManufacturerAdvancedModules userId={user.id} />
+        <ManufacturerAdvancedModules userId={user.id} mode="finance" />
       </div>
     );
   } else if (moduleKey === 'bank-accounts') {
@@ -707,18 +708,21 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
     );
   } else if (moduleKey === 'analytics') {
     body = (
-      <AnalyticsPanel
-        analyticsLoading={analyticsLoading}
-        analyticsData={[]}
-        analyticsStats={analyticsStats}
-        analyticsPeriod={analyticsPeriod}
-        setAnalyticsPeriod={setAnalyticsPeriod}
-        products={products}
-        companyName=""
-        user={user}
-        t={t as any}
-        md={md}
-      />
+      <div className="space-y-6">
+        <ExportVolumeKPIs />
+        <AnalyticsPanel
+          analyticsLoading={analyticsLoading}
+          analyticsData={[]}
+          analyticsStats={analyticsStats}
+          analyticsPeriod={analyticsPeriod}
+          setAnalyticsPeriod={setAnalyticsPeriod}
+          products={products}
+          companyName=""
+          user={user}
+          t={t as any}
+          md={md}
+        />
+      </div>
     );
   } else if (moduleKey === 'documents') {
     body = (

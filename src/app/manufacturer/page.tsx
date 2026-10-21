@@ -10,7 +10,7 @@ import FactoryControlHub from '@/components/manufacturer/FactoryControlHub';
 import { Globe, TrendingUp, Ship, AlertTriangle } from 'lucide-react';
 
 const STAT_CARDS = [
-  { key: 'exports', href: '/manufacturer/finance', label: 'حجم الصادرات', value: '$333K', sub: 'هذا الشهر', icon: TrendingUp, color: 'from-cyan-600 to-cyan-800' },
+  { key: 'exports', href: '/manufacturer/analytics', label: 'حجم الصادرات', value: '$333K', sub: 'هذا الشهر', icon: TrendingUp, color: 'from-cyan-600 to-cyan-800' },
   { key: 'in_transit', href: '/manufacturer/logistics', label: 'الشحنات في الطريق', value: '1', sub: 'شحنة نشطة', icon: Ship, color: 'from-indigo-600 to-indigo-800' },
   { key: 'held', href: '/manufacturer/logistics', label: 'شحنات محتجزة', value: '1', sub: 'تحتاج مراجعة', icon: AlertTriangle, color: 'from-red-600 to-red-800' },
 ];

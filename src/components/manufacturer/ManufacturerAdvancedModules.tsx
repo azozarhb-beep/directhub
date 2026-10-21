@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import React, { useState, useEffect } from 'react';
 import Icon from '@/components/ui/AppIcon';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -15,19 +14,16 @@ interface ProductionLine {
   status: 'running' | 'idle' | 'maintenance' | 'stopped';
 }
 
-interface QCChecklistItem {
-  id: string;
-  label: string;
-  label_ar: string;
-  checked: boolean;
-}
-
-interface TaxInvoiceLine {
+interface ExportInvoiceLine {
   id: string;
   description: string;
+  hsCode: string;
   qty: number;
   unit_price: number;
 }
+
+type InvoiceType = 'PI' | 'CI';
+type Incoterm = 'FOB' | 'CIF';
 
 // ─── Default mock production lines (shown when no DB data) ───────────────────
 
@@ -35,16 +31,6 @@ const DEFAULT_LINES: ProductionLine[] = [
   { id: '1', name: 'Line A — Assembly', name_ar: 'خط أ — التجميع', capacity_units_per_day: 500, current_load_percent: 78, status: 'running' },
   { id: '2', name: 'Line B — Packaging', name_ar: 'خط ب — التعبئة', capacity_units_per_day: 300, current_load_percent: 45, status: 'running' },
   { id: '3', name: 'Line C — Quality Finishing', name_ar: 'خط ج — التشطيب', capacity_units_per_day: 200, current_load_percent: 10, status: 'idle' },
-];
-
-const DEFAULT_QC_ITEMS: QCChecklistItem[] = [
-  { id: 'q1', label: 'Raw material inspection passed', label_ar: 'اجتاز فحص المواد الخام', checked: false },
-  { id: 'q2', label: 'Dimensions within tolerance (±0.5mm)', label_ar: 'الأبعاد ضمن التفاوت المسموح', checked: false },
-  { id: 'q3', label: 'Weight verified per spec sheet', label_ar: 'تم التحقق من الوزن وفق المواصفات', checked: false },
-  { id: 'q4', label: 'Visual defects check — none found', label_ar: 'فحص العيوب البصرية — لا يوجد', checked: false },
-  { id: 'q5', label: 'Packaging integrity confirmed', label_ar: 'تأكيد سلامة التغليف', checked: false },
-  { id: 'q6', label: 'Batch labeling complete', label_ar: 'اكتمال وسم الدفعة', checked: false },
-  { id: 'q7', label: 'Final sign-off by QC supervisor', label_ar: 'الموافقة النهائية من مشرف الجودة', checked: false },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -73,8 +59,8 @@ function loadColor(pct: number) {
   return 'bg-emerald-500';
 }
 
-function formatYER(amount: number) {
-  return new Intl.NumberFormat('ar-YE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount) + ' ر.ي';
+function formatUSD(amount: number) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
 }
 
 // ─── Module 1: Production Capacity ───────────────────────────────────────────
@@ -154,7 +140,7 @@ function ProductionCapacityModule({ userId }: { userId: string }) {
           />
         </div>
         <div className="flex justify-between mt-1">
-          <span className="text-[10px] text-muted-foreground">إجمالي الطاقة: {totalCapacity.toLocaleString()} وحدة/يوم</span>
+          <span className="text-[10px] text-muted-foreground">إجمالي الطاقة: {totalCapacity.toLocaleString('en-US')} وحدة/يوم</span>
           <span className="text-[10px] text-muted-foreground">{lines.length} خطوط إنتاج</span>
         </div>
       </div>
@@ -251,7 +237,7 @@ function ProductionCapacityModule({ userId }: { userId: string }) {
               />
               <span className="text-xs text-muted-foreground">%</span>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1">{line.capacity_units_per_day.toLocaleString()} وحدة/يوم</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{line.capacity_units_per_day.toLocaleString('en-US')} وحدة/يوم</p>
           </div>
         ))}
       </div>
@@ -259,210 +245,34 @@ function ProductionCapacityModule({ userId }: { userId: string }) {
   );
 }
 
-// ─── Module 2: QC Checklist + Delivery PIN ────────────────────────────────────
+// ─── Module 2: International Export Invoicing Engine (USD) ──────────────────
 
-function QCChecklistModule({ userId }: { userId: string }) {
-  const supabase = createClient();
-  const [items, setItems] = useState<QCChecklistItem[]>(DEFAULT_QC_ITEMS);
-  const [deliveryPin, setDeliveryPin] = useState('');
-  const [pinInput, setPinInput] = useState('');
-  const [pinVerified, setPinVerified] = useState(false);
-  const [pinError, setPinError] = useState('');
-  const [pinVerifying, setPinVerifying] = useState(false);
-  const [orderId, setOrderId] = useState('');
-  const [qcReleased, setQcReleased] = useState(false);
-  const [releaseMsg, setReleaseMsg] = useState('');
+const inputCls =
+  'w-full px-2.5 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary';
 
-  const allChecked = items.every(i => i.checked);
-  const checkedCount = items.filter(i => i.checked).length;
-
-  const toggleItem = (id: string) => {
-    if (qcReleased) return;
-    setItems(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
-  };
-
-  const verifyPin = async () => {
-    if (!pinInput.trim() || !orderId.trim()) {
-      setPinError('يرجى إدخال رقم الطلب ورمز التسليم');
-      return;
-    }
-    setPinVerifying(true);
-    setPinError('');
-    try {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('id, delivery_pin, status')
-        .eq('id', orderId.trim())
-        .maybeSingle();
-
-      if (error || !data) {
-        setPinError('رقم الطلب غير موجود');
-        return;
-      }
-      if (String(data.delivery_pin) === pinInput.trim()) {
-        setPinVerified(true);
-        setPinError('');
-      } else {
-        setPinError('رمز التسليم غير صحيح');
-      }
-    } catch {
-      setPinError('حدث خطأ أثناء التحقق');
-    } finally {
-      setPinVerifying(false);
-    }
-  };
-
-  const releaseQC = async () => {
-    if (!allChecked || !pinVerified) return;
-    setQcReleased(true);
-    setReleaseMsg('✅ تم إتمام فحص الجودة وتأكيد التسليم بنجاح');
-  };
-
-  const resetChecklist = () => {
-    setItems(DEFAULT_QC_ITEMS.map(i => ({ ...i, checked: false })));
-    setPinInput('');
-    setPinVerified(false);
-    setPinError('');
-    setOrderId('');
-    setQcReleased(false);
-    setReleaseMsg('');
-  };
-
-  return (
-    <div className="bg-card border border-border rounded-2xl overflow-hidden">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-teal-600 to-emerald-600 px-5 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center">
-            <Icon name="ClipboardDocumentCheckIcon" size={20} className="text-white" />
-          </div>
-          <div>
-            <h3 className="text-white font-semibold text-sm">قائمة فحص الجودة الرقمية</h3>
-            <p className="text-white/60 text-xs">QC Checklist — Linked to Delivery PIN</p>
-          </div>
-        </div>
-        <div className="text-right">
-          <span className="text-white font-bold text-lg">{checkedCount}/{items.length}</span>
-          <p className="text-white/60 text-[10px]">بنود مكتملة</p>
-        </div>
-      </div>
-
-      {/* Progress */}
-      <div className="px-5 pt-4 pb-2">
-        <div className="h-2 bg-muted rounded-full overflow-hidden">
-          <div
-            className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-            style={{ width: `${(checkedCount / items.length) * 100}%` }}
-          />
-        </div>
-      </div>
-
-      {/* Checklist items */}
-      <div className="px-5 pb-4 space-y-2">
-        {items.map(item => (
-          <button
-            key={item.id}
-            onClick={() => toggleItem(item.id)}
-            disabled={qcReleased}
-            className={`w-full flex items-center gap-3 p-2.5 rounded-xl border transition-all text-right ${
-              item.checked
-                ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800' :'bg-background border-border hover:border-primary/40'
-            } ${qcReleased ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
-          >
-            <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
-              item.checked ? 'bg-emerald-500 border-emerald-500' : 'border-border'
-            }`}>
-              {item.checked && <Icon name="CheckIcon" size={12} className="text-white" />}
-            </div>
-            <span className={`text-xs flex-1 text-right ${item.checked ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-              {item.label_ar}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {/* Delivery PIN section */}
-      <div className="mx-5 mb-5 p-4 bg-muted/40 rounded-xl border border-border space-y-3">
-        <div className="flex items-center gap-2 mb-1">
-          <Icon name="KeyIcon" size={15} className="text-primary" />
-          <span className="text-xs font-semibold text-foreground">ربط رمز التسليم (Delivery PIN)</span>
-        </div>
-
-        {!pinVerified ? (
-          <>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                value={orderId}
-                onChange={e => setOrderId(e.target.value)}
-                placeholder="رقم الطلب (Order ID)"
-                className="px-2.5 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
-              />
-              <input
-                value={pinInput}
-                onChange={e => setPinInput(e.target.value)}
-                placeholder="رمز التسليم PIN"
-                type="password"
-                className="px-2.5 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
-              />
-            </div>
-            {pinError && <p className="text-xs text-red-500">{pinError}</p>}
-            <button
-              onClick={verifyPin}
-              disabled={pinVerifying}
-              className="w-full py-2 text-xs bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-            >
-              {pinVerifying ? 'جارٍ التحقق...' : 'التحقق من الرمز'}
-            </button>
-          </>
-        ) : (
-          <div className="flex items-center gap-2 text-emerald-600">
-            <Icon name="CheckCircleIcon" size={16} />
-            <span className="text-xs font-medium">تم التحقق من رمز التسليم ✓</span>
-          </div>
-        )}
-
-        {pinVerified && !qcReleased && (
-          <button
-            onClick={releaseQC}
-            disabled={!allChecked}
-            className={`w-full py-2.5 text-xs font-semibold rounded-lg transition-all ${
-              allChecked
-                ? 'bg-emerald-600 text-white hover:bg-emerald-700' :'bg-muted text-muted-foreground cursor-not-allowed'
-            }`}
-          >
-            {allChecked ? '✅ إتمام فحص الجودة وتأكيد التسليم' : `أكمل جميع البنود أولاً (${checkedCount}/${items.length})`}
-          </button>
-        )}
-
-        {qcReleased && (
-          <div className="space-y-2">
-            <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-lg">
-              <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">{releaseMsg}</p>
-            </div>
-            <button onClick={resetChecklist} className="text-xs text-muted-foreground hover:text-foreground underline">
-              بدء فحص جديد
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Module 3: Local Tax Invoicing Engine (YER) ───────────────────────────────
-
-function TaxInvoicingModule({ userId }: { userId: string }) {
-  const [lines, setLines] = useState<TaxInvoiceLine[]>([
-    { id: '1', description: '', qty: 1, unit_price: 0 },
-  ]);
+function ExportInvoicingModule({ userId }: { userId: string }) {
+  const [invoiceType, setInvoiceType] = useState<InvoiceType>('PI');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState('');
   const [buyerName, setBuyerName] = useState('');
   const [buyerAddress, setBuyerAddress] = useState('');
-  const [invoiceDate, setInvoiceDate] = useState('');
-  const [invoiceNumber, setInvoiceNumber] = useState('');
-  const [taxRate, setTaxRate] = useState(5);
+  const [buyerCountry, setBuyerCountry] = useState('');
+  const [incoterm, setIncoterm] = useState<Incoterm>('FOB');
+  const [portOfLoading, setPortOfLoading] = useState('');
+  const [portOfDischarge, setPortOfDischarge] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [beneficiary, setBeneficiary] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [swiftCode, setSwiftCode] = useState('');
+  const [freight, setFreight] = useState(0);
   const [notes, setNotes] = useState('');
+  const [lines, setLines] = useState<ExportInvoiceLine[]>([
+    { id: '1', description: '', hsCode: '', qty: 1, unit_price: 0 },
+  ]);
   const [showPreview, setShowPreview] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  const prefix = invoiceType === 'PI' ? 'PI' : 'CI';
 
   useEffect(() => {
     const now = new Date();
@@ -470,11 +280,16 @@ function TaxInvoicingModule({ userId }: { userId: string }) {
     const m = String(now.getMonth() + 1).padStart(2, '0');
     const d = String(now.getDate()).padStart(2, '0');
     setInvoiceDate(`${y}-${m}-${d}`);
-    setInvoiceNumber(`INV-${y}${m}${d}-${Math.floor(Math.random() * 9000 + 1000)}`);
+    setInvoiceNumber(`${prefix}-${y}${m}${d}-${Math.floor(Math.random() * 9000 + 1000)}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    setInvoiceNumber(prev => (prev ? prev.replace(/^(PI|CI)-/, `${prefix}-`) : prev));
+  }, [prefix]);
+
   const addLine = () => {
-    setLines(prev => [...prev, { id: Date.now().toString(), description: '', qty: 1, unit_price: 0 }]);
+    setLines(prev => [...prev, { id: Date.now().toString(), description: '', hsCode: '', qty: 1, unit_price: 0 }]);
   };
 
   const removeLine = (id: string) => {
@@ -482,98 +297,153 @@ function TaxInvoicingModule({ userId }: { userId: string }) {
     setLines(prev => prev.filter(l => l.id !== id));
   };
 
-  const updateLine = (id: string, field: keyof TaxInvoiceLine, value: string | number) => {
+  const updateLine = (id: string, field: keyof ExportInvoiceLine, value: string | number) => {
     setLines(prev => prev.map(l => l.id === id ? { ...l, [field]: value } : l));
   };
 
   const subtotal = lines.reduce((s, l) => s + l.qty * l.unit_price, 0);
-  const taxAmount = subtotal * (taxRate / 100);
-  const total = subtotal + taxAmount;
+  const freightApplied = incoterm === 'CIF' ? freight : 0;
+  const total = subtotal + freightApplied;
 
   const handleSave = () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
 
+  const typeTitleAr = invoiceType === 'PI' ? 'فاتورة مبدئية' : 'فاتورة تجارية';
+  const typeTitleEn = invoiceType === 'PI' ? 'Proforma Invoice' : 'Commercial Invoice';
+
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden">
       {/* Header */}
-      <div className="bg-gradient-to-r from-amber-600 to-orange-600 px-5 py-4 flex items-center justify-between">
+      <div className="bg-gradient-to-r from-cyan-700 to-indigo-700 px-5 py-4 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center">
             <Icon name="DocumentTextIcon" size={20} className="text-white" />
           </div>
           <div>
-            <h3 className="text-white font-semibold text-sm">محرك الفوترة الضريبية المحلية</h3>
-            <p className="text-white/60 text-xs">Local Tax Invoicing Engine — YER (ر.ي)</p>
+            <h3 className="text-white font-semibold text-sm">محرك فوترة التصدير الدولية</h3>
+            <p className="text-white/60 text-xs">International Export Invoicing Engine — USD ($)</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowPreview(v => !v)}
-            className="flex items-center gap-1.5 text-xs bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-colors"
-          >
-            <Icon name="EyeIcon" size={13} />
-            {showPreview ? 'تعديل' : 'معاينة'}
-          </button>
-        </div>
+        <button
+          onClick={() => setShowPreview(v => !v)}
+          className="flex items-center gap-1.5 text-xs bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-colors"
+        >
+          <Icon name="EyeIcon" size={13} />
+          {showPreview ? 'تعديل' : 'معاينة'}
+        </button>
       </div>
 
       {!showPreview ? (
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-5">
+          {/* Invoice type toggle */}
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { key: 'PI', ar: 'فاتورة مبدئية', en: 'Proforma Invoice (PI)' },
+              { key: 'CI', ar: 'فاتورة تجارية', en: 'Commercial Invoice (CI)' },
+            ] as const).map(opt => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setInvoiceType(opt.key)}
+                className={`p-3 rounded-xl border text-center transition-colors ${
+                  invoiceType === opt.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border text-foreground hover:border-primary/50'
+                }`}
+              >
+                <p className="text-xs font-semibold">{opt.ar}</p>
+                <p className="text-[10px] opacity-80">{opt.en}</p>
+              </button>
+            ))}
+          </div>
+
           {/* Invoice meta */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-[10px] text-muted-foreground block mb-1">رقم الفاتورة</label>
-              <input
-                value={invoiceNumber}
-                onChange={e => setInvoiceNumber(e.target.value)}
-                className="w-full px-2.5 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
-              />
+              <input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} dir="ltr" className={inputCls} />
             </div>
             <div>
               <label className="text-[10px] text-muted-foreground block mb-1">تاريخ الفاتورة</label>
-              <input
-                type="date"
-                value={invoiceDate}
-                onChange={e => setInvoiceDate(e.target.value)}
-                className="w-full px-2.5 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
-              />
+              <input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} className={inputCls} />
             </div>
             <div>
-              <label className="text-[10px] text-muted-foreground block mb-1">اسم المشتري / الجهة</label>
-              <input
-                value={buyerName}
-                onChange={e => setBuyerName(e.target.value)}
-                placeholder="اسم العميل أو الشركة"
-                className="w-full px-2.5 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
-              />
+              <label className="text-[10px] text-muted-foreground block mb-1">اسم المستورد / Consignee</label>
+              <input value={buyerName} onChange={e => setBuyerName(e.target.value)} placeholder="Importer company name" dir="ltr" className={inputCls} />
             </div>
             <div>
-              <label className="text-[10px] text-muted-foreground block mb-1">عنوان المشتري</label>
-              <input
-                value={buyerAddress}
-                onChange={e => setBuyerAddress(e.target.value)}
-                placeholder="المدينة / المنطقة"
-                className="w-full px-2.5 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
-              />
+              <label className="text-[10px] text-muted-foreground block mb-1">بلد المستورد / Country</label>
+              <input value={buyerCountry} onChange={e => setBuyerCountry(e.target.value)} placeholder="e.g. Saudi Arabia" dir="ltr" className={inputCls} />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="text-[10px] text-muted-foreground block mb-1">عنوان المستورد / Address</label>
+              <input value={buyerAddress} onChange={e => setBuyerAddress(e.target.value)} placeholder="Street, city, postal code" dir="ltr" className={inputCls} />
+            </div>
+          </div>
+
+          {/* Shipping terms */}
+          <div className="rounded-xl border border-border p-3 space-y-3 bg-muted/20">
+            <p className="text-xs font-semibold text-foreground">شروط الشحن والعملة / Trade Terms</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-1">Incoterms</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['FOB', 'CIF'] as const).map(term => (
+                    <button
+                      key={term}
+                      type="button"
+                      onClick={() => setIncoterm(term)}
+                      className={`py-2 text-xs font-semibold rounded-lg border transition-colors ${
+                        incoterm === term ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border text-foreground hover:border-primary/50'
+                      }`}
+                    >
+                      {term}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-1">العملة / Currency</label>
+                <input value="USD" readOnly dir="ltr" className={`${inputCls} bg-muted/50 cursor-not-allowed`} />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-1">ميناء الشحن / Port of Loading</label>
+                <input value={portOfLoading} onChange={e => setPortOfLoading(e.target.value)} placeholder="e.g. Shanghai, CN" dir="ltr" className={inputCls} />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-1">ميناء التفريغ / Port of Discharge</label>
+                <input value={portOfDischarge} onChange={e => setPortOfDischarge(e.target.value)} placeholder="e.g. Aden, YE" dir="ltr" className={inputCls} />
+              </div>
+              {incoterm === 'CIF' && (
+                <div className="sm:col-span-2">
+                  <label className="text-[10px] text-muted-foreground block mb-1">الشحن والتأمين (CIF) USD / Freight & Insurance</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={freight}
+                    onChange={e => setFreight(Math.max(0, Number(e.target.value)))}
+                    dir="ltr"
+                    className={inputCls}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
           {/* Line items */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-foreground">بنود الفاتورة</span>
+              <span className="text-xs font-semibold text-foreground">بنود الفاتورة / Line Items</span>
               <button onClick={addLine} className="flex items-center gap-1 text-[10px] text-primary hover:underline">
                 <Icon name="PlusIcon" size={12} /> إضافة بند
               </button>
             </div>
             <div className="space-y-2">
-              {/* Column headers */}
-              <div className="grid grid-cols-12 gap-1.5 text-[10px] text-muted-foreground px-1">
-                <span className="col-span-5">الوصف</span>
+              <div className="hidden sm:grid grid-cols-12 gap-1.5 text-[10px] text-muted-foreground px-1">
+                <span className="col-span-4">الوصف</span>
+                <span className="col-span-2 text-center">HS Code</span>
                 <span className="col-span-2 text-center">الكمية</span>
-                <span className="col-span-3 text-center">سعر الوحدة (ر.ي)</span>
+                <span className="col-span-2 text-center">سعر الوحدة ($)</span>
                 <span className="col-span-1 text-center">المجموع</span>
                 <span className="col-span-1" />
               </div>
@@ -582,27 +452,35 @@ function TaxInvoicingModule({ userId }: { userId: string }) {
                   <input
                     value={line.description}
                     onChange={e => updateLine(line.id, 'description', e.target.value)}
-                    placeholder="وصف البضاعة"
-                    className="col-span-5 px-2 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
+                    placeholder="Goods description"
+                    dir="ltr"
+                    className="col-span-12 sm:col-span-4 px-2 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
+                  />
+                  <input
+                    value={line.hsCode}
+                    onChange={e => updateLine(line.id, 'hsCode', e.target.value)}
+                    placeholder="HS Code"
+                    dir="ltr"
+                    className="col-span-4 sm:col-span-2 px-2 py-1.5 text-xs text-center rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
                   />
                   <input
                     type="number"
                     value={line.qty}
                     onChange={e => updateLine(line.id, 'qty', Number(e.target.value))}
                     min={1}
-                    className="col-span-2 px-2 py-1.5 text-xs text-center rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
+                    className="col-span-3 sm:col-span-2 px-2 py-1.5 text-xs text-center rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
                   />
                   <input
                     type="number"
                     value={line.unit_price}
                     onChange={e => updateLine(line.id, 'unit_price', Number(e.target.value))}
                     min={0}
-                    className="col-span-3 px-2 py-1.5 text-xs text-center rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
+                    className="col-span-3 sm:col-span-2 px-2 py-1.5 text-xs text-center rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
                   />
-                  <span className="col-span-1 text-[10px] text-muted-foreground text-center">
-                    {(line.qty * line.unit_price).toLocaleString()}
+                  <span className="hidden sm:block col-span-1 text-[10px] text-muted-foreground text-center" dir="ltr">
+                    {(line.qty * line.unit_price).toLocaleString('en-US')}
                   </span>
-                  <button onClick={() => removeLine(line.id)} className="col-span-1 flex justify-center text-muted-foreground hover:text-red-500 transition-colors">
+                  <button onClick={() => removeLine(line.id)} className="col-span-2 sm:col-span-1 flex justify-center text-muted-foreground hover:text-red-500 transition-colors">
                     <Icon name="XMarkIcon" size={13} />
                   </button>
                 </div>
@@ -610,29 +488,37 @@ function TaxInvoicingModule({ userId }: { userId: string }) {
             </div>
           </div>
 
-          {/* Tax rate */}
-          <div className="flex items-center gap-3">
-            <label className="text-xs text-muted-foreground shrink-0">نسبة الضريبة %</label>
-            <input
-              type="number"
-              value={taxRate}
-              onChange={e => setTaxRate(Math.min(100, Math.max(0, Number(e.target.value))))}
-              min={0}
-              max={100}
-              className="w-20 px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
-            />
-            <span className="text-xs text-muted-foreground">(ضريبة القيمة المضافة المحلية)</span>
+          {/* Bank wire / SWIFT */}
+          <div className="rounded-xl border border-border p-3 space-y-3 bg-muted/20">
+            <p className="text-xs font-semibold text-foreground">بيانات التحويل البنكي / Bank Wire (SWIFT)</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-1">اسم البنك / Bank Name</label>
+                <input value={bankName} onChange={e => setBankName(e.target.value)} dir="ltr" className={inputCls} />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-1">اسم المستفيد / Beneficiary</label>
+                <input value={beneficiary} onChange={e => setBeneficiary(e.target.value)} dir="ltr" className={inputCls} />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-1">رقم الحساب / IBAN</label>
+                <input value={accountNumber} onChange={e => setAccountNumber(e.target.value)} dir="ltr" className={inputCls} />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-1">SWIFT / BIC</label>
+                <input value={swiftCode} onChange={e => setSwiftCode(e.target.value.toUpperCase())} maxLength={11} dir="ltr" className={inputCls} />
+              </div>
+            </div>
           </div>
 
           {/* Notes */}
           <div>
-            <label className="text-[10px] text-muted-foreground block mb-1">ملاحظات</label>
+            <label className="text-[10px] text-muted-foreground block mb-1">ملاحظات / Remarks</label>
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              placeholder="شروط الدفع، تعليمات خاصة..."
+              placeholder="Payment terms, validity, special instructions..."
               rows={2}
-              dir="rtl"
               className="w-full px-2.5 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary resize-none"
             />
           </div>
@@ -640,35 +526,36 @@ function TaxInvoicingModule({ userId }: { userId: string }) {
           {/* Totals */}
           <div className="bg-muted/40 rounded-xl p-3 space-y-1.5 border border-border">
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>المجموع الفرعي</span>
-              <span dir="ltr">{formatYER(subtotal)}</span>
+              <span>المجموع الفرعي ({incoterm})</span>
+              <span dir="ltr">{formatUSD(subtotal)}</span>
             </div>
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>الضريبة ({taxRate}%)</span>
-              <span dir="ltr">{formatYER(taxAmount)}</span>
-            </div>
+            {incoterm === 'CIF' && (
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>الشحن والتأمين</span>
+                <span dir="ltr">{formatUSD(freightApplied)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm font-bold text-foreground border-t border-border pt-1.5 mt-1">
-              <span>الإجمالي الكلي</span>
-              <span dir="ltr" className="text-amber-600">{formatYER(total)}</span>
+              <span>الإجمالي (USD)</span>
+              <span dir="ltr" className="text-cyan-600">{formatUSD(total)}</span>
             </div>
           </div>
 
           <button
             onClick={handleSave}
-            className="w-full py-2.5 text-sm font-semibold bg-amber-600 text-white rounded-xl hover:bg-amber-700 transition-colors"
+            className="w-full py-2.5 text-sm font-semibold bg-cyan-700 text-white rounded-xl hover:bg-cyan-800 transition-colors"
           >
-            {saved ? '✅ تم الحفظ' : 'حفظ الفاتورة'}
+            {saved ? '✅ تم الحفظ' : `حفظ ${typeTitleAr}`}
           </button>
         </div>
       ) : (
         /* Invoice Preview */
-        <div className="p-5" dir="rtl">
+        <div className="p-5" dir="ltr">
           <div className="border border-border rounded-xl p-5 space-y-4 bg-background">
-            {/* Invoice header */}
             <div className="flex justify-between items-start">
               <div>
-                <h2 className="text-lg font-bold text-foreground">فاتورة ضريبية</h2>
-                <p className="text-xs text-muted-foreground">Tax Invoice</p>
+                <h2 className="text-lg font-bold text-foreground">{typeTitleEn}</h2>
+                <p className="text-xs text-muted-foreground">{typeTitleAr}</p>
               </div>
               <div className="text-right">
                 <p className="text-xs font-semibold text-foreground">{invoiceNumber}</p>
@@ -676,58 +563,88 @@ function TaxInvoicingModule({ userId }: { userId: string }) {
               </div>
             </div>
 
-            {/* Buyer info */}
-            {(buyerName || buyerAddress) && (
+            {(buyerName || buyerAddress || buyerCountry) && (
               <div className="bg-muted/30 rounded-lg p-3">
-                <p className="text-[10px] text-muted-foreground mb-0.5">فاتورة إلى:</p>
+                <p className="text-[10px] text-muted-foreground mb-0.5">Consignee:</p>
                 <p className="text-sm font-semibold text-foreground">{buyerName || '—'}</p>
-                <p className="text-xs text-muted-foreground">{buyerAddress}</p>
+                <p className="text-xs text-muted-foreground">{[buyerAddress, buyerCountry].filter(Boolean).join(', ')}</p>
               </div>
             )}
 
-            {/* Line items table */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="bg-muted/30 rounded-lg p-2">
+                <p className="text-[10px] text-muted-foreground">Incoterms</p>
+                <p className="font-semibold text-foreground">{incoterm}</p>
+              </div>
+              <div className="bg-muted/30 rounded-lg p-2">
+                <p className="text-[10px] text-muted-foreground">Currency</p>
+                <p className="font-semibold text-foreground">USD</p>
+              </div>
+              <div className="bg-muted/30 rounded-lg p-2">
+                <p className="text-[10px] text-muted-foreground">Port of Loading</p>
+                <p className="font-semibold text-foreground">{portOfLoading || '—'}</p>
+              </div>
+              <div className="bg-muted/30 rounded-lg p-2">
+                <p className="text-[10px] text-muted-foreground">Port of Discharge</p>
+                <p className="font-semibold text-foreground">{portOfDischarge || '—'}</p>
+              </div>
+            </div>
+
             <div>
               <div className="grid grid-cols-12 gap-1 text-[10px] font-semibold text-muted-foreground border-b border-border pb-1.5 mb-2">
-                <span className="col-span-5">الوصف</span>
-                <span className="col-span-2 text-center">الكمية</span>
-                <span className="col-span-3 text-center">سعر الوحدة</span>
-                <span className="col-span-2 text-center">المجموع</span>
+                <span className="col-span-4">Description</span>
+                <span className="col-span-2 text-center">HS Code</span>
+                <span className="col-span-2 text-center">Qty</span>
+                <span className="col-span-2 text-center">Unit Price</span>
+                <span className="col-span-2 text-center">Amount</span>
               </div>
               {lines.map(line => (
                 <div key={line.id} className="grid grid-cols-12 gap-1 text-xs py-1 border-b border-border/50">
-                  <span className="col-span-5 text-foreground">{line.description || '—'}</span>
+                  <span className="col-span-4 text-foreground">{line.description || '—'}</span>
+                  <span className="col-span-2 text-center text-muted-foreground">{line.hsCode || '—'}</span>
                   <span className="col-span-2 text-center text-muted-foreground">{line.qty}</span>
-                  <span className="col-span-3 text-center text-muted-foreground">{line.unit_price.toLocaleString()}</span>
-                  <span className="col-span-2 text-center text-foreground font-medium">{(line.qty * line.unit_price).toLocaleString()}</span>
+                  <span className="col-span-2 text-center text-muted-foreground">{formatUSD(line.unit_price)}</span>
+                  <span className="col-span-2 text-center text-foreground font-medium">{formatUSD(line.qty * line.unit_price)}</span>
                 </div>
               ))}
             </div>
 
-            {/* Totals */}
             <div className="space-y-1 pt-1">
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>المجموع الفرعي</span>
-                <span>{formatYER(subtotal)}</span>
+                <span>Subtotal ({incoterm})</span>
+                <span>{formatUSD(subtotal)}</span>
               </div>
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>ضريبة القيمة المضافة ({taxRate}%)</span>
-                <span>{formatYER(taxAmount)}</span>
-              </div>
+              {incoterm === 'CIF' && (
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Freight & Insurance</span>
+                  <span>{formatUSD(freightApplied)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm font-bold text-foreground border-t border-border pt-2 mt-1">
-                <span>الإجمالي الكلي</span>
-                <span className="text-amber-600">{formatYER(total)}</span>
+                <span>Total (USD)</span>
+                <span className="text-cyan-600">{formatUSD(total)}</span>
               </div>
             </div>
 
+            {(bankName || beneficiary || accountNumber || swiftCode) && (
+              <div className="bg-muted/30 rounded-lg p-3 text-xs space-y-0.5">
+                <p className="text-[10px] text-muted-foreground mb-1">Bank Wire Details:</p>
+                <p className="text-foreground">Bank: {bankName || '—'}</p>
+                <p className="text-foreground">Beneficiary: {beneficiary || '—'}</p>
+                <p className="text-foreground">Account / IBAN: {accountNumber || '—'}</p>
+                <p className="text-foreground">SWIFT / BIC: {swiftCode || '—'}</p>
+              </div>
+            )}
+
             {notes && (
               <div className="bg-muted/30 rounded-lg p-2.5">
-                <p className="text-[10px] text-muted-foreground mb-0.5">ملاحظات:</p>
+                <p className="text-[10px] text-muted-foreground mb-0.5">Remarks:</p>
                 <p className="text-xs text-foreground">{notes}</p>
               </div>
             )}
 
             <p className="text-[10px] text-muted-foreground text-center border-t border-border pt-2">
-              العملة: ريال يمني (YER) — DirectHub Platform
+              Currency: US Dollar (USD) — DirectHub Platform
             </p>
           </div>
         </div>
@@ -740,25 +657,28 @@ function TaxInvoicingModule({ userId }: { userId: string }) {
 
 interface ManufacturerAdvancedModulesProps {
   userId: string;
+  mode?: 'production' | 'finance' | 'all';
 }
 
-export default function ManufacturerAdvancedModules({ userId }: ManufacturerAdvancedModulesProps) {
+export default function ManufacturerAdvancedModules({ userId, mode = 'all' }: ManufacturerAdvancedModulesProps) {
+  const showProduction = mode === 'production' || mode === 'all';
+  const showInvoicing = mode === 'finance' || mode === 'all';
+
   return (
     <div className="space-y-6">
-      {/* Section header */}
-      <div className="flex items-center gap-3 px-1">
-        <div className="w-1 h-8 bg-gradient-to-b from-slate-600 to-amber-500 rounded-full" />
-        <div>
-          <h2 className="text-base font-bold text-foreground">الوحدات المتقدمة للمصنع</h2>
-          <p className="text-xs text-muted-foreground">Advanced Manufacturer Modules</p>
+      {mode === 'all' && (
+        <div className="flex items-center gap-3 px-1">
+          <div className="w-1 h-8 bg-gradient-to-b from-slate-600 to-cyan-500 rounded-full" />
+          <div>
+            <h2 className="text-base font-bold text-foreground">الوحدات المتقدمة للمصنع</h2>
+            <p className="text-xs text-muted-foreground">Advanced Manufacturer Modules</p>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Three modules in responsive grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        <ProductionCapacityModule userId={userId} />
-        <QCChecklistModule userId={userId} />
-        <TaxInvoicingModule userId={userId} />
+      <div className={mode === 'all' ? 'grid grid-cols-1 xl:grid-cols-2 gap-5' : 'space-y-5'}>
+        {showProduction && <ProductionCapacityModule userId={userId} />}
+        {showInvoicing && <ExportInvoicingModule userId={userId} />}
       </div>
     </div>
   );
