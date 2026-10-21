@@ -7,6 +7,8 @@ import { createClient } from '@/lib/supabase/client';
 export interface EscrowMilestoneOrder {
   id: string;
   order_number?: string;
+  order_type?: string | null;
+  order_category?: string | null;
   total?: number;
   escrow_status?: string;
   factory_accepted_at?: string | null;
@@ -23,6 +25,21 @@ export interface EscrowMilestoneOrder {
 }
 
 type StepState = 'paid' | 'pending' | 'locked';
+
+/**
+ * B2B (wholesale / factory / export) vs B2C (local retail via courier).
+ * Honors an explicit `order_type` when present; otherwise derives from `order_category`
+ * ('retail' => B2C, wholesale / bulk_wholesale / large_deal => B2B). Unknown => B2B
+ * (escrow orders on the manufacturer portal are wholesale by default).
+ */
+export function isB2BOrder(order: { order_type?: string | null; order_category?: string | null } | null | undefined): boolean {
+  if (!order) return true;
+  const explicit = String(order.order_type || '').trim().toLowerCase();
+  if (explicit) return explicit === 'b2b';
+  const cat = String(order.order_category || '').trim().toLowerCase();
+  if (cat === 'retail' || cat === 'b2c') return false;
+  return true;
+}
 
 interface Step {
   key: 1 | 2 | 3;
@@ -102,12 +119,49 @@ const BUCKET = 'order-receipts';
 export default function EscrowMilestoneTimeline({ order, userId, compact = false, onChanged }: Props) {
   const supabase = createClient();
   const blInputRef = useRef<HTMLInputElement>(null);
+  const qcInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [qcUploading, setQcUploading] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const steps = computeMilestones(order);
   const blUrl = order.bl_document_url || order.bill_of_lading_url || null;
   const ready = order.escrow_status === 'ready_for_inspection' || !!order.ready_for_inspection_at;
+
+  const handleQcUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !order.id) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setMsg({ ok: false, text: 'حجم الملف يتجاوز 10 ميجابايت' });
+      return;
+    }
+    setQcUploading(true);
+    setMsg(null);
+    try {
+      const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
+      const path = `${userId || 'factory'}/qc/${order.id}-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, {
+        upsert: true,
+        contentType: file.type || undefined,
+      });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
+      const url = pub?.publicUrl;
+      if (!url) throw new Error('تعذر الحصول على رابط الملف');
+      const { error: updErr } = await supabase
+        .from('orders')
+        .update({ qc_report_url: url })
+        .eq('id', order.id);
+      if (updErr) throw updErr;
+      setMsg({ ok: true, text: 'تم رفع تقرير الفحص — بانتظار اعتماده من مندوب الفحص المعتمد.' });
+      onChanged?.();
+    } catch (err: any) {
+      setMsg({ ok: false, text: err?.message || 'فشل رفع تقرير الفحص' });
+    } finally {
+      setQcUploading(false);
+    }
+  };
 
   const handleBlUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -217,6 +271,29 @@ export default function EscrowMilestoneTimeline({ order, userId, compact = false
                         </a>
                       )}
                     </div>
+                    {s.state !== 'paid' && !order.qc_approved_at && (
+                      <>
+                        <input
+                          ref={qcInputRef}
+                          type="file"
+                          accept="application/pdf,image/jpeg,image/png,image/webp"
+                          className="hidden"
+                          onChange={handleQcUpload}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => qcInputRef.current?.click()}
+                          disabled={qcUploading}
+                          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-primary text-primary text-xs font-bold disabled:opacity-50 hover:bg-primary/5 transition-colors"
+                        >
+                          {qcUploading ? (
+                            <><Icon name="ArrowPathIcon" size={14} className="animate-spin" /> جاري الرفع...</>
+                          ) : (
+                            <><Icon name="DocumentCheckIcon" size={14} /> {order.qc_report_url ? 'استبدال تقرير الفحص (QC)' : 'رفع تقرير الفحص (QC) للاعتماد'}</>
+                          )}
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
 

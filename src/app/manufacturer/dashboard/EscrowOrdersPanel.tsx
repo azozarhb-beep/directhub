@@ -4,7 +4,7 @@ import React, { useEffect } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { OrderWhatsAppActions } from '@/components/OrderWhatsAppButton';
-import EscrowMilestoneTimeline from './EscrowMilestoneTimeline';
+import EscrowMilestoneTimeline, { isB2BOrder } from './EscrowMilestoneTimeline';
 
 interface EscrowOrdersPanelProps {
   escrowOrders: any[];
@@ -67,6 +67,8 @@ export default function EscrowOrdersPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [escrowOrders]);
 
+  const selectedIsB2B = isB2BOrder(selectedEscrowOrder);
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -86,12 +88,21 @@ export default function EscrowOrdersPanel({
         </div>
       </div>
 
-      {/* Delivery PIN Info Banner */}
-      <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
-        <Icon name="KeyIcon" size={18} className="text-emerald-600 shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-semibold text-emerald-800">{md.howDeliveryPinWorks}</p>
-          <p className="text-xs text-emerald-700 mt-0.5">{md.deliveryPinHowBody}</p>
+      {/* Flow Info Banner — B2B milestone escrow vs B2C delivery PIN */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="flex items-start gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
+          <Icon name="DocumentCheckIcon" size={18} className="text-indigo-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-indigo-800">ضمان المراحل للطلبات التجارية B2B (30% / 40% / 30%)</p>
+            <p className="text-xs text-indigo-700 mt-0.5">30% دفعة مقدمة عند قبول المصنع • 40% عند اعتماد تقرير الفحص (QC) • 30% عند رفع بوليصة الشحن (B/L) والمستندات والتحقق منها.</p>
+          </div>
+        </div>
+        <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+          <Icon name="KeyIcon" size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-emerald-800">رمز التسليم PIN — لطلبات التجزئة B2C فقط</p>
+            <p className="text-xs text-emerald-700 mt-0.5">يُستخدم رمز التسليم المكوّن من 6 أرقام حصرياً في التسليم المحلي عبر شركة الشحن/المندوب، ولا ينطبق على طلبات الجملة والتصدير.</p>
+          </div>
         </div>
       </div>
 
@@ -135,6 +146,7 @@ export default function EscrowOrdersPanel({
               const isReadyForInspection = order.escrow_status === 'ready_for_inspection';
               const isComplete = order.escrow_status === 'funds_released';
               const isSelected = selectedEscrowOrder?.id === order.id;
+              const orderIsB2B = isB2BOrder(order);
               return (
                 <button
                   key={order.id}
@@ -156,6 +168,9 @@ export default function EscrowOrdersPanel({
                   <div className="flex items-start justify-between gap-2 mb-1.5">
                     <div>
                       <p className="text-sm font-bold text-foreground font-mono">{order.order_number}</p>
+                      <span className={`inline-block mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded border ${orderIsB2B ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                        {orderIsB2B ? 'B2B • ضمان مراحل' : 'B2C • تسليم بـ PIN'}
+                      </span>
                       <p className="text-xs text-muted-foreground">{new Date(order.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : language === 'zh' ? 'zh-CN' : language === 'tr' ? 'tr-TR' : 'en-US')}</p>
                     </div>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
@@ -186,7 +201,14 @@ export default function EscrowOrdersPanel({
                       />
                     </div>
                   </div>
-                  <EscrowMilestoneTimeline order={order} compact />
+                  {orderIsB2B ? (
+                    <EscrowMilestoneTimeline order={order} compact />
+                  ) : (
+                    <div className="flex items-center gap-1.5 mt-2 text-[10px] font-semibold text-emerald-700">
+                      <Icon name="TruckIcon" size={12} />
+                      <span>{order.delivery_pin_verified_at ? 'تم التسليم وتأكيد PIN' : 'قيد التوصيل عبر شركة الشحن'}</span>
+                    </div>
+                  )}
                 </button>
               );
             })}
@@ -238,14 +260,56 @@ export default function EscrowOrdersPanel({
                   )}
                 </div>
 
-                {/* 3-Stage Milestone Timeline (30% / 40% / 30%) */}
-                <EscrowMilestoneTimeline
-                  order={selectedEscrowOrder}
-                  userId={user?.id}
-                  onChanged={async () => {
-                    await fetchEscrowOrders();
-                  }}
-                />
+                {/* Order type badge */}
+                <div className="flex items-center gap-2">
+                  <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${selectedIsB2B ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                    {selectedIsB2B ? 'طلب جملة / تصدير B2B — ضمان المراحل' : 'طلب تجزئة B2C — تسليم محلي بـ PIN'}
+                  </span>
+                </div>
+
+                {selectedIsB2B ? (
+                  /* B2B: 3-Stage Milestone Timeline (30% / 40% / 30%) with document verification */
+                  <EscrowMilestoneTimeline
+                    order={selectedEscrowOrder}
+                    userId={user?.id}
+                    onChanged={async () => {
+                      await fetchEscrowOrders();
+                    }}
+                  />
+                ) : (
+                  /* B2C: courier delivery status */
+                  <div className="bg-card border border-border rounded-2xl p-4 space-y-3" dir="rtl">
+                    <h4 className="text-sm font-bold text-foreground">حالة التوصيل عبر شركة الشحن</h4>
+                    <ol className="space-y-2 text-xs">
+                      {[
+                        { label: 'تم تأمين المبلغ في الضمان', done: ['funds_secured', 'shipped', 'ready_for_inspection', 'pending_otp_confirmation', 'pending_admin_payout', 'funds_released'].includes(selectedEscrowOrder.escrow_status) },
+                        { label: 'تم تسليم الشحنة لشركة الشحن / المندوب', done: ['shipped', 'pending_otp_confirmation', 'pending_admin_payout', 'funds_released'].includes(selectedEscrowOrder.escrow_status) || !!selectedEscrowOrder.shipped_at },
+                        { label: 'تأكيد التسليم للعميل برمز PIN', done: !!selectedEscrowOrder.delivery_pin_verified_at || selectedEscrowOrder.escrow_status === 'funds_released' },
+                      ].map((st) => (
+                        <li key={st.label} className="flex items-center gap-2">
+                          <Icon name={st.done ? 'CheckCircleIcon' : 'ClockIcon'} size={15} className={st.done ? 'text-green-600' : 'text-muted-foreground'} />
+                          <span className={st.done ? 'text-green-800 font-semibold' : 'text-muted-foreground'}>{st.label}</span>
+                        </li>
+                      ))}
+                    </ol>
+                    {(selectedEscrowOrder.tracking_code || selectedEscrowOrder.driver_name) && (
+                      <div className="bg-muted/40 rounded-xl p-3 grid grid-cols-2 gap-2 text-xs">
+                        {selectedEscrowOrder.tracking_code && (
+                          <div>
+                            <p className="text-muted-foreground mb-0.5">رقم التتبع</p>
+                            <p className="font-mono font-bold text-foreground">{selectedEscrowOrder.tracking_code}</p>
+                          </div>
+                        )}
+                        {selectedEscrowOrder.driver_name && (
+                          <div>
+                            <p className="text-muted-foreground mb-0.5">المندوب / السائق</p>
+                            <p className="font-semibold text-foreground">{selectedEscrowOrder.driver_name}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* WhatsApp notification actions */}
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
@@ -327,8 +391,39 @@ export default function EscrowOrdersPanel({
                   </div>
                 )}
 
-                {/* Delivery PIN Entry */}
-                {['funds_secured', 'shipped', 'pending_otp_confirmation', 'pending_admin_payout'].includes(selectedEscrowOrder.escrow_status) && !selectedEscrowOrder.delivery_pin_verified_at && (
+                {/* B2B: Document verification actions (replaces PIN) */}
+                {selectedIsB2B && ['funds_secured', 'shipped', 'ready_for_inspection', 'pending_admin_payout'].includes(selectedEscrowOrder.escrow_status) && (
+                  <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border-2 border-indigo-300 rounded-2xl p-5">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center shrink-0">
+                        <Icon name="DocumentCheckIcon" size={20} className="text-indigo-700" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-bold text-indigo-900">التحقق من المستندات</h4>
+                        <p className="text-xs text-indigo-700 mt-1 leading-relaxed">
+                          لا يُستخدم رمز PIN في طلبات الجملة والتصدير. تُحرَّر الدفعات بالتحقق من المستندات: رفع تقرير الفحص (QC) واعتماده لفتح دفعة 40%، ثم رفع بوليصة الشحن (B/L) والتحقق منها لفتح دفعة 30% الأخيرة.
+                        </p>
+                        <ul className="mt-3 space-y-1.5 text-xs">
+                          <li className="flex items-center gap-1.5">
+                            <Icon name={selectedEscrowOrder.qc_report_url ? 'CheckCircleIcon' : 'ClockIcon'} size={14} className={selectedEscrowOrder.qc_report_url ? 'text-green-600' : 'text-muted-foreground'} />
+                            <span className={selectedEscrowOrder.qc_report_url ? 'text-green-800' : 'text-muted-foreground'}>
+                              تقرير الفحص (QC) {selectedEscrowOrder.qc_approved_at ? '— معتمد' : selectedEscrowOrder.qc_report_url ? '— بانتظار الاعتماد' : '— لم يُرفع بعد'}
+                            </span>
+                          </li>
+                          <li className="flex items-center gap-1.5">
+                            <Icon name={(selectedEscrowOrder.bl_document_url || selectedEscrowOrder.bill_of_lading_url) ? 'CheckCircleIcon' : 'ClockIcon'} size={14} className={(selectedEscrowOrder.bl_document_url || selectedEscrowOrder.bill_of_lading_url) ? 'text-green-600' : 'text-muted-foreground'} />
+                            <span className={(selectedEscrowOrder.bl_document_url || selectedEscrowOrder.bill_of_lading_url) ? 'text-green-800' : 'text-muted-foreground'}>
+                              بوليصة الشحن (B/L) {selectedEscrowOrder.bl_verified_at ? '— تم التحقق' : (selectedEscrowOrder.bl_document_url || selectedEscrowOrder.bill_of_lading_url) ? '— بانتظار التحقق' : '— لم تُرفع بعد'}
+                            </span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* B2C only: Delivery PIN Entry */}
+                {!selectedIsB2B && ['funds_secured', 'shipped', 'pending_otp_confirmation', 'pending_admin_payout'].includes(selectedEscrowOrder.escrow_status) && !selectedEscrowOrder.delivery_pin_verified_at && (
                   <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-emerald-300 rounded-2xl p-5">
                     <div className="flex items-start gap-3 mb-4">
                       <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center shrink-0">
