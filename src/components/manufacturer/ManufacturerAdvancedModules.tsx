@@ -7,6 +7,8 @@ import {
   INVOICE_DRAFT_EVENT,
   clearInvoiceDraft,
   readInvoiceDraft,
+  extractInvoiceFromConversation,
+  extractInvoiceFromAgreementText,
   type InvoiceDraft,
 } from '@/lib/exportInvoiceAI';
 
@@ -468,6 +470,13 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [bankAutoFilled, setBankAutoFilled] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiMode, setAiMode] = useState<'deal' | 'text'>('deal');
+  const [aiThreads, setAiThreads] = useState<{ id: string; counterpart_name: string | null; thread_kind: string; last_message_at: string | null }[]>([]);
+  const [aiThreadId, setAiThreadId] = useState('');
+  const [aiText, setAiText] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
   const supabase = useMemo(() => createClient(), []);
 
   const isLocal = scope === 'local';
@@ -509,6 +518,20 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
   useEffect(() => {
     loadBankAccount(true);
   }, [loadBankAccount]);
+
+  // ── AI Auto-Fill modal: load recent deals / chats ──────────────────────────
+  const openAiModal = async () => {
+    setAiOpen(true);
+    setAiError('');
+    if (!userId) return;
+    const { data } = await supabase
+      .from('factory_threads')
+      .select('id, counterpart_name, thread_kind, last_message_at')
+      .or(`factory_id.eq.${userId},counterpart_id.eq.${userId}`)
+      .order('last_message_at', { ascending: false })
+      .limit(15);
+    setAiThreads((data || []) as any[]);
+  };
 
   // ── Consume AI-extracted draft coming from the Partner Room / Deal Chat ────
   const applyDraft = useCallback(
@@ -564,6 +587,40 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
     window.addEventListener(INVOICE_DRAFT_EVENT, onDraft);
     return () => window.removeEventListener(INVOICE_DRAFT_EVENT, onDraft);
   }, [applyDraft]);
+
+  const handleAiAutoFill = async () => {
+    if (aiLoading) return;
+    setAiError('');
+    setAiLoading(true);
+    try {
+      let extracted;
+      let threadId: string | null = null;
+      if (aiMode === 'deal') {
+        if (!aiThreadId) throw new Error('اختر صفقة / محادثة أولاً');
+        const { data: msgs, error } = await supabase
+          .from('factory_thread_messages')
+          .select('message, sender_role, created_at')
+          .eq('thread_id', aiThreadId)
+          .order('created_at', { ascending: true });
+        if (error) throw new Error(error.message);
+        const textMsgs = ((msgs || []) as any[]).filter(m => m.message && String(m.message).trim());
+        if (textMsgs.length === 0) throw new Error('لا توجد رسائل نصية كافية في هذه المحادثة');
+        const transcript = textMsgs.map(m => `[${m.sender_role}] ${String(m.message).trim()}`).join('\n');
+        extracted = await extractInvoiceFromConversation(transcript);
+        threadId = aiThreadId;
+      } else {
+        if (aiText.trim().length < 5) throw new Error('الصق نص الاتفاق أولاً');
+        extracted = await extractInvoiceFromAgreementText(aiText);
+      }
+      applyDraft({ data: extracted, threadId, createdAt: Date.now() });
+      setAiOpen(false);
+      setAiText('');
+    } catch (e: any) {
+      setAiError(e?.message || 'فشل استخراج بيانات الفاتورة');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   useEffect(() => {
     const now = new Date();
@@ -722,14 +779,119 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setShowPreview(v => !v)}
-          className="flex items-center gap-1.5 text-xs bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-colors"
-        >
-          <Icon name="EyeIcon" size={13} />
-          {showPreview ? 'تعديل' : 'معاينة'}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={openAiModal}
+            className="flex items-center gap-1.5 text-xs font-semibold bg-amber-400 hover:bg-amber-300 text-slate-900 px-3 py-1.5 rounded-lg transition-colors shadow"
+          >
+            <span aria-hidden>✨</span>
+            توليد بالذكاء الاصطناعي / Auto-Fill with AI
+          </button>
+          <button
+            onClick={() => setShowPreview(v => !v)}
+            className="flex items-center gap-1.5 text-xs bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <Icon name="EyeIcon" size={13} />
+            {showPreview ? 'تعديل' : 'معاينة'}
+          </button>
+        </div>
       </div>
+
+      {aiOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+          dir="rtl"
+          onClick={() => !aiLoading && setAiOpen(false)}
+        >
+          <div
+            className="bg-card border border-border rounded-2xl w-full max-w-lg p-5 space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-bold text-foreground">✨ تعبئة الفاتورة بالذكاء الاصطناعي / Auto-Fill with AI</h4>
+              <button
+                type="button"
+                onClick={() => !aiLoading && setAiOpen(false)}
+                className="text-muted-foreground hover:text-foreground text-sm"
+                aria-label="إغلاق"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { key: 'deal', label: 'A: Select Deal / Chat — اختر صفقة' },
+                { key: 'text', label: 'B: Paste Agreement Text — الصق الاتفاق' },
+              ] as const).map(opt => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setAiMode(opt.key)}
+                  className={`py-2 px-2 rounded-xl border text-[11px] font-semibold transition-colors ${
+                    aiMode === opt.key ? 'bg-cyan-700 text-white border-cyan-700' : 'bg-background border-border text-foreground hover:border-primary/50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            {aiMode === 'deal' ? (
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">أحدث الاستفسارات / المفاوضات مع الشركاء</label>
+                <select value={aiThreadId} onChange={e => setAiThreadId(e.target.value)} className={inputCls}>
+                  <option value="">— اختر محادثة / Select a chat —</option>
+                  {aiThreads.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {(t.counterpart_name || t.thread_kind) +
+                        (t.last_message_at ? ` · ${t.last_message_at.slice(0, 10)}` : '')}
+                    </option>
+                  ))}
+                </select>
+                {aiThreads.length === 0 && (
+                  <p className="text-[11px] text-muted-foreground">لا توجد محادثات حديثة — استخدم خيار لصق نص الاتفاق.</p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">نص الاتفاق / Agreement text</label>
+                <textarea
+                  value={aiText}
+                  onChange={e => setAiText(e.target.value)}
+                  rows={5}
+                  placeholder="مثال: اتفقنا على 20 طن BOPP بسعر 1850 والتسليم في عدن"
+                  className={inputCls}
+                />
+              </div>
+            )}
+
+            {aiError && (
+              <div className="px-3 py-2 rounded-lg text-xs border bg-red-500/10 border-red-500/30 text-red-600">{aiError}</div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setAiOpen(false)}
+                disabled={aiLoading}
+                className="text-xs px-3 py-2 rounded-lg border border-border text-foreground hover:bg-muted disabled:opacity-50"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleAiAutoFill}
+                disabled={aiLoading}
+                className="text-xs font-semibold px-4 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white disabled:opacity-60"
+              >
+                {aiLoading ? 'جارٍ التحليل...' : '✨ تعبئة تلقائية'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!showPreview ? (
         <div className="p-5 space-y-5">

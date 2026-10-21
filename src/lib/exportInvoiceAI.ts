@@ -198,6 +198,10 @@ export async function extractInvoiceFromConversation(transcript: string): Promis
   return sanitizeExtraction(parseJsonLoose(content));
 }
 
+export async function extractInvoiceFromAgreementText(text: string): Promise<ExtractedInvoice> {
+  return extractInvoiceFromConversation(`[Agreement terms pasted by the manufacturer]\n${text.trim()}`);
+}
+
 export function saveInvoiceDraft(data: ExtractedInvoice, threadId: string | null): void {
   const draft: InvoiceDraft = { data, threadId, createdAt: Date.now() };
   try {
