@@ -182,7 +182,7 @@ export function sanitizeExtraction(input: any): ExtractedInvoice {
   };
 }
 
-const INVOICE_AI_MODELS = ['gemini/gemini-3.5-flash-lite', 'gemini/gemini-3.5-flash'];
+const INVOICE_AI_MODELS = ['gemini/gemini-3.6-flash'];
 
 function toFriendlyAIError(err: unknown): Error {
   const msg = err instanceof Error ? err.message : String(err);
@@ -205,7 +205,7 @@ export async function extractInvoiceFromConversation(transcript: string): Promis
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: `Negotiation conversation:\n\n${transcript}` },
         ],
-        { temperature: 0.1, max_tokens: 2000, response_format: JSON_SCHEMA },
+        { temperature: 0.1, max_tokens: 2000 },
         60000
       );
       const content: string = result?.choices?.[0]?.message?.content || '';
