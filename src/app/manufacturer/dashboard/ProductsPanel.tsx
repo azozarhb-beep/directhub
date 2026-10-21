@@ -32,7 +32,21 @@ interface Product {
   created_by_id?: string | null;
   created_by_name?: string | null;
   approval_status?: 'approved' | 'pending_factory_approval' | null;
+  image_url?: string | null;
+  primary_image_url?: string | null;
+  images?: any[] | null;
 }
+
+const getProductThumb = (p: Product): string | null => {
+  if (p.primary_image_url) return p.primary_image_url;
+  if (p.image_url) return p.image_url;
+  if (Array.isArray(p.images) && p.images.length > 0) {
+    const first: any = p.images[0];
+    const src = typeof first === 'string' ? first : first?.src;
+    if (typeof src === 'string' && src) return src;
+  }
+  return null;
+};
 
 interface ProductFormData {
   name: string; name_ar: string; name_zh: string; name_tr: string;
@@ -489,6 +503,15 @@ export default function ProductsPanel({
                 {filteredProducts.map((product) => (
                   <tr key={product.id} className={`hover:bg-muted/30 transition-colors ${!product.is_active ? 'opacity-50' : ''}`}>
                     <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-muted overflow-hidden shrink-0 border border-border flex items-center justify-center">
+                          {getProductThumb(product) ? (
+                            <img src={getProductThumb(product) as string} alt={product.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <Icon name="PhotoIcon" size={20} className="text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
                       <p className="font-medium text-foreground">{product.name}</p>
                       {renderOriginBadge(product)}
                       {product.origin_country && (
@@ -497,6 +520,8 @@ export default function ProductsPanel({
                           <SupplierLanguageBadge originCountry={product.origin_country} size="sm" />
                         </div>
                       )}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-4 py-3"><span className="text-xs text-muted-foreground capitalize">{product.category.replace('_', ' ')}</span></td>
                     <td className="px-4 py-3"><span className="font-mono text-xs text-muted-foreground">{product.sku || '—'}</span></td>
@@ -533,6 +558,13 @@ export default function ProductsPanel({
             {filteredProducts.map((product) => (
               <div key={product.id} className={`p-4 ${!product.is_active ? 'opacity-50' : ''}`}>
                 <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="w-14 h-14 rounded-xl bg-muted overflow-hidden shrink-0 border border-border flex items-center justify-center">
+                    {getProductThumb(product) ? (
+                      <img src={getProductThumb(product) as string} alt={product.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <Icon name="PhotoIcon" size={22} className="text-muted-foreground" />
+                    )}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-foreground truncate">{product.name}</p>
                     <p className="text-xs text-muted-foreground capitalize">{product.category.replace('_', ' ')}</p>

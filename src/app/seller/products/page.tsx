@@ -11,6 +11,11 @@ import BottomNav from '@/components/BottomNav';
 import Footer from '@/components/Footer';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { buildProductShareLinkNoPhone } from '@/lib/whatsappOrderLinks';
+import ProductMediaUploader, {
+  EMPTY_PRODUCT_MEDIA,
+  isValidVideoUrl,
+  type ProductMediaValue,
+} from '@/components/manufacturer/ProductMediaUploader';
 
 interface Product {
   id: string;
@@ -27,6 +32,9 @@ interface Product {
   origin_country: string;
   is_active: boolean;
   image_url?: string;
+  primary_image_url?: string | null;
+  images?: any[] | null;
+  video_url?: string | null;
   certifications?: string[];
   delivery_time_days?: number;
   weight_kg?: number;
@@ -139,7 +147,8 @@ export default function SellerProductManagerPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
-  const [activeFormTab, setActiveFormTab] = useState<'basic' | 'specs' | 'logistics'>('basic');
+  const [activeFormTab, setActiveFormTab] = useState<'basic' | 'specs' | 'logistics' | 'media'>('basic');
+  const [media, setMedia] = useState<ProductMediaValue>(EMPTY_PRODUCT_MEDIA);
 
   useEffect(() => {
     if (authLoading) return;
@@ -174,6 +183,7 @@ export default function SellerProductManagerPage() {
     setFormError('');
     setFormSuccess('');
     setActiveFormTab('basic');
+    setMedia(EMPTY_PRODUCT_MEDIA);
     setShowModal(true);
     router.replace('/seller/products', { scroll: false });
   }, [authLoading, user, router]);
@@ -194,6 +204,7 @@ export default function SellerProductManagerPage() {
     setFormError('');
     setFormSuccess('');
     setActiveFormTab('basic');
+    setMedia(EMPTY_PRODUCT_MEDIA);
     setShowModal(true);
   };
 
@@ -230,6 +241,19 @@ export default function SellerProductManagerPage() {
       sample_price: String(product.sample_price || ''),
       tags: (product.tags || []).join(', '),
     });
+    const existingGallery: string[] = Array.isArray(product.images)
+      ? product.images
+          .map((img: any) => (typeof img === 'string' ? img : img?.src))
+          .filter((u: any): u is string => typeof u === 'string' && !!u)
+      : [];
+    setMedia({
+      primaryImageUrl: product.primary_image_url || product.image_url || '',
+      primaryFile: null,
+      galleryUrls: existingGallery.slice(0, 5),
+      galleryFiles: [],
+      videoUrl: product.video_url || '',
+      videoFile: null,
+    });
     setFormError('');
     setFormSuccess('');
     setActiveFormTab('basic');
@@ -245,15 +269,41 @@ export default function SellerProductManagerPage() {
     setFormLoading(true);
     setFormError('');
     try {
-      let finalImageUrl = formData.image_url.trim() || null;
-      if (formData.imageFile) {
-        const { data: uploadData } = await supabase.storage
+      if (media.videoUrl.trim() && !media.videoFile && !media.videoUrl.includes('/product-videos/') && !isValidVideoUrl(media.videoUrl)) {
+        setActiveFormTab('media');
+        throw new Error('رابط الفيديو غير مدعوم. استخدم YouTube أو Vimeo أو Cloudinary.');
+      }
+
+      const uploadImage = async (file: File): Promise<string> => {
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const { data: up, error: upErr } = await supabase.storage
           .from('product-images')
-          .upload(`products/${Date.now()}-${formData.imageFile.name}`, formData.imageFile, { upsert: true });
-        if (uploadData) {
-          const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(uploadData.path);
-          finalImageUrl = urlData.publicUrl;
-        }
+          .upload(`products/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`, file, { upsert: true });
+        if (upErr || !up) throw new Error(upErr?.message || 'فشل رفع الصورة');
+        return supabase.storage.from('product-images').getPublicUrl(up.path).data.publicUrl;
+      };
+
+      let finalImageUrl = media.primaryImageUrl.trim() || formData.image_url.trim() || null;
+      if (media.primaryFile) {
+        finalImageUrl = await uploadImage(media.primaryFile);
+      } else if (formData.imageFile) {
+        finalImageUrl = await uploadImage(formData.imageFile);
+      }
+
+      const uploadedGallery: string[] = [];
+      for (const gf of media.galleryFiles) {
+        uploadedGallery.push(await uploadImage(gf));
+      }
+      const finalGallery = [...media.galleryUrls, ...uploadedGallery].slice(0, 5);
+
+      let finalVideoUrl: string | null = media.videoUrl.trim() || null;
+      if (media.videoFile) {
+        const safeVideo = media.videoFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const { data: vUp, error: vErr } = await supabase.storage
+          .from('product-videos')
+          .upload(`${user.id}/${Date.now()}-${safeVideo}`, media.videoFile, { upsert: true, contentType: 'video/mp4' });
+        if (vErr || !vUp) throw new Error(vErr?.message || 'فشل رفع الفيديو');
+        finalVideoUrl = supabase.storage.from('product-videos').getPublicUrl(vUp.path).data.publicUrl;
       }
 
       const payload: any = {
@@ -270,6 +320,9 @@ export default function SellerProductManagerPage() {
         inventory_status: formData.inventory_status,
         origin_country: formData.origin_country.trim(),
         image_url: finalImageUrl,
+        primary_image_url: finalImageUrl,
+        images: finalGallery,
+        video_url: finalVideoUrl,
         certifications: formData.certifications ? formData.certifications.split(',').map((s) => s.trim()).filter(Boolean) : [],
         delivery_time_days: formData.delivery_time_days ? parseInt(formData.delivery_time_days) : null,
         weight_kg: formData.weight_kg ? parseFloat(formData.weight_kg) : null,
@@ -503,8 +556,8 @@ export default function SellerProductManagerPage() {
                   {/* Product Info */}
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-12 h-12 rounded-xl bg-muted overflow-hidden shrink-0 border border-border">
-                      {product.image_url ? (
-                        <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                      {(product.primary_image_url || product.image_url) ? (
+                        <img src={(product.primary_image_url || product.image_url) as string} alt={product.name} className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <Icon name="PhotoIcon" size={20} className="text-muted-foreground" />
@@ -607,7 +660,7 @@ export default function SellerProductManagerPage() {
 
             {/* Form Tabs */}
             <div className="flex border-b border-border shrink-0 bg-card">
-              {(['basic', 'specs', 'logistics'] as const).map((tab) => (
+              {(['basic', 'media', 'specs', 'logistics'] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
@@ -617,7 +670,7 @@ export default function SellerProductManagerPage() {
                       ? 'text-primary border-b-2 border-primary' :'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  {tab === 'basic' ? f.tabBasic : tab === 'specs' ? f.tabSpecs : f.tabLogistics}
+                  {tab === 'basic' ? f.tabBasic : tab === 'media' ? 'الوسائط والصور' : tab === 'specs' ? f.tabSpecs : f.tabLogistics}
                 </button>
               ))}
             </div>
@@ -814,6 +867,10 @@ export default function SellerProductManagerPage() {
                 )}
 
                 {/* Specifications Tab */}
+                {activeFormTab === 'media' && (
+                  <ProductMediaUploader value={media} onChange={setMedia} disabled={formLoading} />
+                )}
+
                 {activeFormTab === 'specs' && (
                   <>
                     <div>

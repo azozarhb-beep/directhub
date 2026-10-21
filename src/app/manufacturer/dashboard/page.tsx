@@ -727,7 +727,7 @@ export default function ManufacturerDashboard() {
     try {
       const { data, error } = await supabase
         .from('manufacturer_products')
-        .select('id, name, name_ar, description, description_ar, category, sku, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, is_active, created_at, created_by_role, created_by_id, created_by_name, approval_status')
+        .select('id, name, name_ar, description, description_ar, category, sku, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, is_active, created_at, created_by_role, created_by_id, created_by_name, approval_status, image_url, primary_image_url, images')
         .eq('manufacturer_id', user.id)
         .order('created_at', { ascending: false })
         .limit(500);
