@@ -135,6 +135,11 @@ export default async function RootLayout({
           }}
         />
         <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){window.addEventListener('error',function(e){try{var t=e&&e.target;if(!t||t===window)return;var s=t.src||t.href||'';if(!/\\/_next\\/static\\/(chunks|css)\\//.test(s))return;var k='dh_early_chunk_reload';var c=Number(sessionStorage.getItem(k)||'0');var now=Date.now();var last=Number(sessionStorage.getItem(k+'_at')||'0');if(now-last>60000)c=0;if(c>=3)return;sessionStorage.setItem(k,String(c+1));sessionStorage.setItem(k+'_at',String(now));setTimeout(function(){window.location.reload();},1000+c*1500);}catch(err){}},true);})();`,
+          }}
+        />
+        <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
         />
