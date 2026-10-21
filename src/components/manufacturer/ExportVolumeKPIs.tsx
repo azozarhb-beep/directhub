@@ -66,8 +66,8 @@ export default function ExportVolumeKPIs() {
               <BarChart data={EXPORT_BY_COUNTRY} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E8E4DE" />
                 <XAxis dataKey="country" tick={{ fontSize: 10, fill: '#8A8680' }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: '#8A8680' }} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={{ background: '#fff', border: '1px solid #D4CFC8', borderRadius: 12, fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 10, fill: '#8A8680' }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${v / 1000}K`} />
+                <Tooltip formatter={(value: any) => formatUSD(Number(value) || 0)} contentStyle={{ background: '#fff', border: '1px solid #D4CFC8', borderRadius: 12, fontSize: 12 }} />
                 <Bar dataKey="volume" fill="#0891b2" radius={[4, 4, 0, 0]} name="Export Volume (USD)" />
               </BarChart>
             </ResponsiveContainer>

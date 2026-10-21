@@ -5,6 +5,14 @@ import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
+const formatUSD = (amount: number, fractionDigits = 0): string =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  }).format(Number.isFinite(amount) ? amount : 0);
+
 interface AnalyticsPanelProps {
   analyticsLoading: boolean;
   analyticsData: any[];
@@ -107,21 +115,21 @@ export default function AnalyticsPanel({
                 lines.push(t.manufacturerDashboard.sellerAnalytics.reportSummary);
                 lines.push(`${t.manufacturerDashboard.sellerAnalytics.reportTotalViews}: ${analyticsStats.totalViews}`);
                 lines.push(`${t.manufacturerDashboard.sellerAnalytics.reportTotalOrders}: ${analyticsStats.totalOrders}`);
-                lines.push(`${t.manufacturerDashboard.sellerAnalytics.reportTotalRevenue} ${analyticsStats.totalRevenue.toLocaleString()}`);
+                lines.push(`${t.manufacturerDashboard.sellerAnalytics.reportTotalRevenue}${analyticsStats.totalRevenue.toFixed(2)}`);
                 lines.push(`${t.manufacturerDashboard.sellerAnalytics.reportTotalRfqs}: ${analyticsStats.totalRfqs}`);
                 lines.push(`${t.manufacturerDashboard.sellerAnalytics.reportAvgRating}: ${analyticsStats.avgRating > 0 ? analyticsStats.avgRating.toFixed(2) : t.manufacturerDashboard.sellerAnalytics.reportNA}`);
                 lines.push(`${t.manufacturerDashboard.sellerAnalytics.reportActiveProducts}: ${analyticsStats.activeProducts}`);
-                lines.push(`${t.manufacturerDashboard.sellerAnalytics.reportAvgOrderValue} ${analyticsStats.totalOrders > 0 ? (analyticsStats.totalRevenue / analyticsStats.totalOrders).toFixed(2) : t.manufacturerDashboard.sellerAnalytics.reportNA}`);
+                lines.push(`${t.manufacturerDashboard.sellerAnalytics.reportAvgOrderValue}${analyticsStats.totalOrders > 0 ? (analyticsStats.totalRevenue / analyticsStats.totalOrders).toFixed(2) : t.manufacturerDashboard.sellerAnalytics.reportNA}`);
                 lines.push('');
                 lines.push(t.manufacturerDashboard.sellerAnalytics.reportDailyBreakdown);
                 lines.push(t.manufacturerDashboard.sellerAnalytics.reportDateHeader);
                 analyticsData.forEach((d: any) => {
-                  lines.push(`${d.date} | ${d.views} | ${d.orders} | SAR ${d.revenue}`);
+                  lines.push(`${d.date} | ${d.views} | ${d.orders} | ${formatUSD(Number(d.revenue) || 0, 2)}`);
                 });
                 lines.push('');
                 lines.push(t.manufacturerDashboard.sellerAnalytics.reportProducts);
                 products.forEach(p => {
-                  lines.push(`${p.name} | ${p.category} | SAR ${p.unit_price} | ${p.inventory_status}`);
+                  lines.push(`${p.name} | ${p.category} | ${formatUSD(Number(p.unit_price) || 0, 2)} | ${p.inventory_status}`);
                 });
                 const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
@@ -151,7 +159,7 @@ export default function AnalyticsPanel({
             {[
               { label: t.manufacturerDashboard.sellerAnalytics.productViews, value: analyticsStats.totalViews.toLocaleString(), icon: 'EyeIcon', color: 'text-blue-600', bg: 'bg-blue-50', change: '+12%' },
               { label: t.manufacturerDashboard.sellerAnalytics.totalOrders, value: analyticsStats.totalOrders.toLocaleString(), icon: 'ShoppingBagIcon', color: 'text-amber-600', bg: 'bg-amber-50', change: '+8%' },
-              { label: t.manufacturerDashboard.sellerAnalytics.revenue, value: analyticsStats.totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 }), icon: 'BanknotesIcon', color: 'text-green-600', bg: 'bg-green-50', change: '+15%' },
+              { label: t.manufacturerDashboard.sellerAnalytics.revenue, value: formatUSD(analyticsStats.totalRevenue, 0), icon: 'BanknotesIcon', color: 'text-green-600', bg: 'bg-green-50', change: '+15%' },
               { label: t.manufacturerDashboard.sellerAnalytics.rfqsReceived, value: analyticsStats.totalRfqs.toLocaleString(), icon: 'DocumentTextIcon', color: 'text-purple-600', bg: 'bg-purple-50', change: '+5%' },
             ].map((kpi) => (
               <div key={kpi.label} className="bg-card border border-border rounded-2xl p-4">
@@ -184,7 +192,7 @@ export default function AnalyticsPanel({
             <div className="bg-card border border-border rounded-2xl p-4 text-center">
               <p className="text-2xl font-extrabold text-foreground">
                 {analyticsStats.totalOrders > 0
-                  ? (analyticsStats.totalRevenue / analyticsStats.totalOrders).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                  ? formatUSD(analyticsStats.totalRevenue / analyticsStats.totalOrders, 0)
                   : '—'}
               </p>
               <p className="text-xs text-muted-foreground mt-1">{t.manufacturerDashboard.sellerAnalytics.avgOrderValue}</p>
@@ -227,8 +235,8 @@ export default function AnalyticsPanel({
                 <BarChart data={analyticsData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E8E4DE" />
                   <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#8A8680' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                  <YAxis tick={{ fontSize: 10, fill: '#8A8680' }} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ background: '#fff', border: '1px solid #D4CFC8', borderRadius: 12, fontSize: 12 }} labelStyle={{ fontWeight: 700, color: '#1A1F1C' }} />
+                  <YAxis tick={{ fontSize: 10, fill: '#8A8680' }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${v}`} />
+                  <Tooltip formatter={(value: any, name: any) => (name === t.manufacturerDashboard.sellerAnalytics.revenue ? formatUSD(Number(value) || 0, 2) : value)} contentStyle={{ background: '#fff', border: '1px solid #D4CFC8', borderRadius: 12, fontSize: 12 }} labelStyle={{ fontWeight: 700, color: '#1A1F1C' }} />
                   <Bar dataKey="revenue" fill="#2E5E3E" radius={[4, 4, 0, 0]} name={t.manufacturerDashboard.sellerAnalytics.revenue} />
                   <Bar dataKey="orders" fill="#C8611A" radius={[4, 4, 0, 0]} name={t.manufacturerDashboard.sellerAnalytics.totalOrders} />
                 </BarChart>
@@ -256,7 +264,7 @@ export default function AnalyticsPanel({
                       <p className="text-[10px] text-muted-foreground">{product.category}</p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-xs font-bold text-foreground">{(product.unit_price || 0).toLocaleString()} SAR</p>
+                      <p className="text-xs font-bold text-foreground" dir="ltr">{formatUSD(Number(product.unit_price) || 0, 2)}</p>
                       <div className="flex items-center gap-1 justify-end mt-0.5">
                         <Icon name="StarIcon" size={10} variant="solid" className="text-amber-400" />
                         <span className="text-[10px] text-muted-foreground">
