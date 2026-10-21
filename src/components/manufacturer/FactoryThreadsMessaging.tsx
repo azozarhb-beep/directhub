@@ -8,6 +8,7 @@ import ChatImageAttachment, {
   isImageAttachment,
   type AttachmentState,
 } from '@/components/ChatImageAttachment';
+import { extractInvoiceFromConversation, saveInvoiceDraft } from '@/lib/exportInvoiceAI';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -125,6 +126,8 @@ export default function FactoryThreadsMessaging({
   const [newContainer, setNewContainer] = useState('');
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState<'all' | ThreadKind>('all');
+  const [extracting, setExtracting] = useState(false);
+  const [extractNotice, setExtractNotice] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   const activeThread = threads.find(t => t.id === activeId) || null;
@@ -353,6 +356,33 @@ export default function FactoryThreadsMessaging({
     setThreads(prev => prev.map(t => t.id === activeThread.id ? { ...t, ...patch } as FactoryThread : t));
   };
 
+  // ── AI: extract invoice data from the negotiation thread ───────────────────
+  const handleGenerateInvoice = async () => {
+    if (!activeThread || extracting) return;
+    const textMessages = messages.filter(m => m.message && m.message.trim());
+    if (textMessages.length === 0) {
+      setExtractNotice({ type: 'err', text: 'لا توجد رسائل نصية كافية في هذه المحادثة لاستخراج بيانات الفاتورة' });
+      return;
+    }
+    setExtracting(true);
+    setExtractNotice(null);
+    try {
+      const transcript = textMessages
+        .map(m => `[${ROLE_LABEL[m.sender_role] || m.sender_role} · ${formatTime(m.created_at)}] ${m.message.trim()}`)
+        .join('\n');
+      const extracted = await extractInvoiceFromConversation(transcript);
+      saveInvoiceDraft(extracted, activeThread.id);
+      setExtractNotice({
+        type: 'ok',
+        text: `تم استخراج بيانات الفاتورة (${extracted.items.length} بند) وتعبئتها في محرك فوترة التصدير الدولية`,
+      });
+    } catch (e: any) {
+      setExtractNotice({ type: 'err', text: e?.message || 'فشل استخراج بيانات الفاتورة من المحادثة' });
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   const visibleThreads = threads.filter(t => filter === 'all' || t.thread_kind === filter);
   const hasAgentThread = threads.some(t => t.thread_kind === 'agent');
 
@@ -553,7 +583,30 @@ export default function FactoryThreadsMessaging({
                       {activeThread.status === 'active' ? 'إغلاق المحادثة' : 'إعادة فتح'}
                     </button>
                   )}
+                  {isFactoryViewer && (
+                    <button
+                      type="button"
+                      onClick={handleGenerateInvoice}
+                      disabled={extracting || msgsLoading}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-cyan-600 to-indigo-600 text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+                    >
+                      {extracting ? (
+                        <Icon name="ArrowPathIcon" size={12} className="animate-spin" />
+                      ) : null}
+                      {extracting ? 'جارٍ التحليل...' : 'توليد الفاتورة من المحادثة ✨'}
+                    </button>
+                  )}
                 </div>
+
+                {extractNotice && (
+                  <div
+                    className={`mt-3 px-3 py-2 rounded-lg text-[11px] border ${
+                      extractNotice.type === 'ok' ?'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' :'bg-red-500/10 border-red-500/30 text-red-300'
+                    }`}
+                  >
+                    {extractNotice.text}
+                  </div>
+                )}
 
                 {/* Pinned shipment context */}
                 {activeThread.thread_kind === 'logistics' && (

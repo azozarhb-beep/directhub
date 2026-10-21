@@ -1,7 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Icon from '@/components/ui/AppIcon';
+import { createClient } from '@/lib/supabase/client';
+import {
+  INVOICE_DRAFT_EVENT,
+  clearInvoiceDraft,
+  readInvoiceDraft,
+  type InvoiceDraft,
+} from '@/lib/exportInvoiceAI';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -61,6 +68,134 @@ function loadColor(pct: number) {
 
 function formatUSD(amount: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
+}
+
+function escapeHtml(value: string) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+interface InvoicePrintData {
+  titleEn: string;
+  titleAr: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  buyerName: string;
+  buyerAddress: string;
+  buyerCountry: string;
+  incoterm: Incoterm;
+  portOfLoading: string;
+  portOfDischarge: string;
+  paymentTerms: string;
+  lines: ExportInvoiceLine[];
+  subtotal: number;
+  freight: number;
+  total: number;
+  bankName: string;
+  beneficiary: string;
+  accountNumber: string;
+  swiftCode: string;
+  notes: string;
+}
+
+function buildInvoiceHtml(d: InvoicePrintData): string {
+  const rows = d.lines
+    .map(
+      l => `<tr>
+        <td>${escapeHtml(l.description) || '—'}</td>
+        <td class="c">${escapeHtml(l.hsCode) || '—'}</td>
+        <td class="c">${l.qty}</td>
+        <td class="r">${formatUSD(l.unit_price)}</td>
+        <td class="r">${formatUSD(l.qty * l.unit_price)}</td>
+      </tr>`
+    )
+    .join('');
+  const hasBank = d.bankName || d.beneficiary || d.accountNumber || d.swiftCode;
+  return `<!DOCTYPE html>
+<html lang="en" dir="ltr"><head><meta charset="utf-8" />
+<title>${escapeHtml(d.titleEn)} ${escapeHtml(d.invoiceNumber)}</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;margin:0;padding:32px;font-size:12px}
+  h1{margin:0;font-size:22px} .sub{color:#64748b;margin-top:2px}
+  .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0e7490;padding-bottom:12px;margin-bottom:16px}
+  .box{background:#f1f5f9;border-radius:6px;padding:10px;margin-bottom:12px}
+  .lbl{font-size:10px;color:#64748b;margin-bottom:2px}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+  .grid .box{margin:0}
+  table{width:100%;border-collapse:collapse;margin-bottom:12px}
+  th{background:#0e7490;color:#fff;text-align:left;padding:7px;font-size:11px}
+  td{padding:7px;border-bottom:1px solid #e2e8f0}
+  .c{text-align:center}.r{text-align:right}
+  th.c{text-align:center}th.r{text-align:right}
+  .tot{margin-left:auto;width:280px}
+  .tot div{display:flex;justify-content:space-between;padding:3px 0}
+  .tot .g{border-top:2px solid #0f172a;margin-top:4px;padding-top:6px;font-weight:bold;font-size:14px}
+  .foot{text-align:center;color:#64748b;font-size:10px;border-top:1px solid #e2e8f0;padding-top:8px;margin-top:20px}
+  @media print{body{padding:16px}}
+</style></head><body>
+  <div class="head">
+    <div><h1>${escapeHtml(d.titleEn)}</h1><div class="sub">${escapeHtml(d.titleAr)}</div></div>
+    <div style="text-align:right"><strong>${escapeHtml(d.invoiceNumber)}</strong><div class="sub">${escapeHtml(d.invoiceDate)}</div></div>
+  </div>
+  ${
+    d.buyerName || d.buyerAddress || d.buyerCountry
+      ? `<div class="box"><div class="lbl">Consignee</div><strong>${escapeHtml(d.buyerName) || '—'}</strong><div>${escapeHtml(
+          [d.buyerAddress, d.buyerCountry].filter(Boolean).join(', ')
+        )}</div></div>`
+      : ''
+  }
+  <div class="grid">
+    <div class="box"><div class="lbl">Incoterms</div><strong>${d.incoterm}</strong></div>
+    <div class="box"><div class="lbl">Currency</div><strong>USD</strong></div>
+    <div class="box"><div class="lbl">Port of Loading</div><strong>${escapeHtml(d.portOfLoading) || '—'}</strong></div>
+    <div class="box"><div class="lbl">Port of Discharge</div><strong>${escapeHtml(d.portOfDischarge) || '—'}</strong></div>
+  </div>
+  ${d.paymentTerms ? `<div class="box"><div class="lbl">Payment Terms</div>${escapeHtml(d.paymentTerms)}</div>` : ''}
+  <table>
+    <thead><tr><th>Description</th><th class="c">HS Code</th><th class="c">Qty</th><th class="r">Unit Price</th><th class="r">Amount</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="tot">
+    <div><span>Subtotal (${d.incoterm})</span><span>${formatUSD(d.subtotal)}</span></div>
+    ${d.incoterm === 'CIF' ? `<div><span>Freight &amp; Insurance</span><span>${formatUSD(d.freight)}</span></div>` : ''}
+    <div class="g"><span>Total (USD)</span><span>${formatUSD(d.total)}</span></div>
+  </div>
+  ${
+    hasBank
+      ? `<div class="box" style="margin-top:16px"><div class="lbl">Bank Wire Details</div>
+      <div>Bank: ${escapeHtml(d.bankName) || '—'}</div>
+      <div>Beneficiary: ${escapeHtml(d.beneficiary) || '—'}</div>
+      <div>Account / IBAN: ${escapeHtml(d.accountNumber) || '—'}</div>
+      <div>SWIFT / BIC: ${escapeHtml(d.swiftCode) || '—'}</div></div>`
+      : ''
+  }
+  ${d.notes ? `<div class="box"><div class="lbl">Remarks</div>${escapeHtml(d.notes)}</div>` : ''}
+  <div class="foot">Currency: US Dollar (USD) — DirectHub Platform</div>
+</body></html>`;
+}
+
+function openPrintWindow(html: string): boolean {
+  const w = window.open('', '_blank', 'width=900,height=1000');
+  if (!w) return false;
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  const trigger = () => {
+    try {
+      w.print();
+    } catch {
+      // ignore
+    }
+  };
+  if (w.document.readyState === 'complete') setTimeout(trigger, 250);
+  else w.onload = () => setTimeout(trigger, 250);
+  return true;
 }
 
 // ─── Module 1: Production Capacity ───────────────────────────────────────────
@@ -271,8 +406,93 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
   ]);
   const [showPreview, setShowPreview] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [paymentTerms, setPaymentTerms] = useState('');
+  const [savedInvoiceId, setSavedInvoiceId] = useState<string | null>(null);
+  const [sourceThreadId, setSourceThreadId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [bankAutoFilled, setBankAutoFilled] = useState(false);
+  const supabase = useMemo(() => createClient(), []);
 
   const prefix = invoiceType === 'PI' ? 'PI' : 'CI';
+
+  // ── Auto-fill bank wire section from the active manufacturer bank account ──
+  const loadBankAccount = useCallback(
+    async (silent = false) => {
+      if (!userId) return;
+      const { data, error } = await supabase
+        .from('manufacturer_bank_accounts')
+        .select('bank_name, account_holder_name, account_number, iban, swift_bic, currency, status, created_at')
+        .or(`user_id.eq.${userId},manufacturer_id.eq.${userId}`)
+        .order('created_at', { ascending: false });
+      if (error) {
+        if (!silent) setFeedback({ type: 'err', text: `تعذر تحميل الحساب البنكي: ${error.message}` });
+        return;
+      }
+      const rows = (data || []) as any[];
+      const active =
+        rows.find(r => r.status === 'approved' && String(r.currency || 'USD').toUpperCase() === 'USD') ||
+        rows.find(r => r.status === 'approved') ||
+        rows.find(r => String(r.currency || 'USD').toUpperCase() === 'USD') ||
+        rows[0];
+      if (!active) {
+        if (!silent) setFeedback({ type: 'err', text: 'لا يوجد حساب بنكي مسجل للمصنع — أضفه من صفحة الحسابات البنكية' });
+        return;
+      }
+      setBankName(active.bank_name || '');
+      setBeneficiary(active.account_holder_name || '');
+      setAccountNumber(active.iban || active.account_number || '');
+      setSwiftCode(String(active.swift_bic || '').toUpperCase());
+      setBankAutoFilled(true);
+    },
+    [supabase, userId]
+  );
+
+  useEffect(() => {
+    loadBankAccount(true);
+  }, [loadBankAccount]);
+
+  // ── Consume AI-extracted draft coming from the Partner Room / Deal Chat ────
+  const applyDraft = useCallback(
+    (draft: InvoiceDraft) => {
+      const d = draft.data;
+      setBuyerName(d.consignee_name);
+      setBuyerAddress(d.consignee_address);
+      setIncoterm(d.incoterm);
+      setPortOfLoading(d.port_of_loading);
+      setPortOfDischarge(d.port_of_discharge);
+      setPaymentTerms(d.payment_terms);
+      if (d.items.length > 0) {
+        setLines(
+          d.items.map((it, i) => ({
+            id: `${Date.now()}-${i}`,
+            description: it.description,
+            hsCode: it.hs_code,
+            qty: it.quantity || 1,
+            unit_price: it.unit_price,
+          }))
+        );
+      }
+      setSourceThreadId(draft.threadId);
+      setSavedInvoiceId(null);
+      setShowPreview(false);
+      setFeedback({ type: 'ok', text: 'تمت تعبئة الفاتورة تلقائياً من المحادثة — راجع البيانات ثم احفظ' });
+      loadBankAccount(true);
+      clearInvoiceDraft();
+    },
+    [loadBankAccount]
+  );
+
+  useEffect(() => {
+    const existing = readInvoiceDraft();
+    if (existing && Date.now() - existing.createdAt < 60 * 60 * 1000) applyDraft(existing);
+    const onDraft = (e: Event) => {
+      const detail = (e as CustomEvent<InvoiceDraft>).detail;
+      if (detail?.data) applyDraft(detail);
+    };
+    window.addEventListener(INVOICE_DRAFT_EVENT, onDraft);
+    return () => window.removeEventListener(INVOICE_DRAFT_EVENT, onDraft);
+  }, [applyDraft]);
 
   useEffect(() => {
     const now = new Date();
@@ -305,13 +525,99 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
   const freightApplied = incoterm === 'CIF' ? freight : 0;
   const total = subtotal + freightApplied;
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
-  };
-
   const typeTitleAr = invoiceType === 'PI' ? 'فاتورة مبدئية' : 'فاتورة تجارية';
   const typeTitleEn = invoiceType === 'PI' ? 'Proforma Invoice' : 'Commercial Invoice';
+
+  const handleSave = async () => {
+    if (saving) return;
+    setFeedback(null);
+    if (!buyerName.trim()) {
+      setFeedback({ type: 'err', text: 'أدخل اسم المستورد (Consignee) قبل الحفظ' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr || !authData?.user) throw new Error('يجب تسجيل الدخول لحفظ الفاتورة');
+      const payload = {
+        manufacturer_id: authData.user.id,
+        invoice_type: invoiceType,
+        invoice_number: invoiceNumber.trim(),
+        invoice_date: invoiceDate || null,
+        consignee_name: buyerName.trim(),
+        consignee_address: buyerAddress.trim() || null,
+        consignee_country: buyerCountry.trim() || null,
+        incoterm,
+        port_of_loading: portOfLoading.trim() || null,
+        port_of_discharge: portOfDischarge.trim() || null,
+        payment_terms: paymentTerms.trim() || null,
+        currency: 'USD',
+        items: lines.map(l => ({
+          description: l.description,
+          hs_code: l.hsCode,
+          quantity: l.qty,
+          unit_price: l.unit_price,
+          line_total: Number((l.qty * l.unit_price).toFixed(2)),
+        })),
+        freight: incoterm === 'CIF' ? freight : 0,
+        subtotal: Number(subtotal.toFixed(2)),
+        total: Number(total.toFixed(2)),
+        bank_name: bankName.trim() || null,
+        beneficiary: beneficiary.trim() || null,
+        iban: accountNumber.trim() || null,
+        swift_bic: swiftCode.trim() || null,
+        notes: notes.trim() || null,
+        source_thread_id: sourceThreadId,
+        status: 'saved',
+      };
+      if (savedInvoiceId) {
+        const { error } = await supabase
+          .from('export_invoices')
+          .update(payload)
+          .eq('id', savedInvoiceId)
+          .eq('manufacturer_id', authData.user.id);
+        if (error) throw new Error(error.message);
+      } else {
+        const { data, error } = await supabase.from('export_invoices').insert(payload).select('id').single();
+        if (error) throw new Error(error.message);
+        setSavedInvoiceId((data as any)?.id ?? null);
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e: any) {
+      setFeedback({ type: 'err', text: e?.message || 'فشل حفظ الفاتورة' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const printData: InvoicePrintData = {
+    titleEn: typeTitleEn,
+    titleAr: typeTitleAr,
+    invoiceNumber,
+    invoiceDate,
+    buyerName,
+    buyerAddress,
+    buyerCountry,
+    incoterm,
+    portOfLoading,
+    portOfDischarge,
+    paymentTerms,
+    lines,
+    subtotal,
+    freight: freightApplied,
+    total,
+    bankName,
+    beneficiary,
+    accountNumber,
+    swiftCode,
+    notes,
+  };
+
+  const handleExport = () => {
+    const ok = openPrintWindow(buildInvoiceHtml(printData));
+    if (!ok) setFeedback({ type: 'err', text: 'المتصفح منع النافذة المنبثقة — اسمح بالنوافذ المنبثقة ثم أعد المحاولة' });
+  };
 
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden">
@@ -337,6 +643,15 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
 
       {!showPreview ? (
         <div className="p-5 space-y-5">
+          {feedback && (
+            <div
+              className={`px-3 py-2 rounded-lg text-xs border ${
+                feedback.type === 'ok' ?'bg-emerald-500/10 border-emerald-500/30 text-emerald-600' :'bg-red-500/10 border-red-500/30 text-red-600'
+              }`}
+            >
+              {feedback.text}
+            </div>
+          )}
           {/* Invoice type toggle */}
           <div className="grid grid-cols-2 gap-2">
             {([
@@ -427,6 +742,16 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
                   />
                 </div>
               )}
+              <div className="sm:col-span-2">
+                <label className="text-[10px] text-muted-foreground block mb-1">شروط الدفع / Payment Terms</label>
+                <input
+                  value={paymentTerms}
+                  onChange={e => setPaymentTerms(e.target.value)}
+                  placeholder="e.g. 30% T/T advance, 70% against B/L copy"
+                  dir="ltr"
+                  className={inputCls}
+                />
+              </div>
             </div>
           </div>
 
@@ -490,7 +815,17 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
 
           {/* Bank wire / SWIFT */}
           <div className="rounded-xl border border-border p-3 space-y-3 bg-muted/20">
-            <p className="text-xs font-semibold text-foreground">بيانات التحويل البنكي / Bank Wire (SWIFT)</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-foreground">بيانات التحويل البنكي / Bank Wire (SWIFT)</p>
+              <button
+                type="button"
+                onClick={() => loadBankAccount(false)}
+                className="flex items-center gap-1 text-[10px] text-primary hover:underline"
+              >
+                <Icon name="ArrowPathIcon" size={11} />
+                {bankAutoFilled ? 'تحديث من الحساب البنكي' : 'تعبئة من الحساب البنكي'}
+              </button>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] text-muted-foreground block mb-1">اسم البنك / Bank Name</label>
@@ -543,14 +878,52 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
 
           <button
             onClick={handleSave}
-            className="w-full py-2.5 text-sm font-semibold bg-cyan-700 text-white rounded-xl hover:bg-cyan-800 transition-colors"
+            disabled={saving}
+            className="w-full py-2.5 text-sm font-semibold bg-cyan-700 text-white rounded-xl hover:bg-cyan-800 transition-colors disabled:opacity-60"
           >
-            {saved ? '✅ تم الحفظ' : `حفظ ${typeTitleAr}`}
+            {saving ? 'جارٍ الحفظ...' : saved ? '✅ تم الحفظ' : `${savedInvoiceId ? 'تحديث' : 'حفظ'} ${typeTitleAr}`}
           </button>
         </div>
       ) : (
         /* Invoice Preview */
         <div className="p-5" dir="ltr">
+          {feedback && (
+            <div
+              className={`mb-3 px-3 py-2 rounded-lg text-xs border ${
+                feedback.type === 'ok' ?'bg-emerald-500/10 border-emerald-500/30 text-emerald-600' :'bg-red-500/10 border-red-500/30 text-red-600'
+              }`}
+              dir="rtl"
+            >
+              {feedback.text}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2 mb-3" dir="rtl">
+            <button
+              type="button"
+              onClick={handleExport}
+              className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-cyan-700 text-white hover:bg-cyan-800 transition-colors"
+            >
+              <Icon name="ArrowDownTrayIcon" size={13} />
+              تحميل PDF
+            </button>
+            <button
+              type="button"
+              onClick={handleExport}
+              className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors"
+            >
+              <Icon name="PrinterIcon" size={13} />
+              طباعة
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-60"
+            >
+              <Icon name="CheckCircleIcon" size={13} />
+              {saving ? 'جارٍ الحفظ...' : saved ? 'تم الحفظ' : 'حفظ'}
+            </button>
+          </div>
           <div className="border border-border rounded-xl p-5 space-y-4 bg-background">
             <div className="flex justify-between items-start">
               <div>
@@ -589,6 +962,13 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
                 <p className="font-semibold text-foreground">{portOfDischarge || '—'}</p>
               </div>
             </div>
+
+            {paymentTerms && (
+              <div className="bg-muted/30 rounded-lg p-2.5">
+                <p className="text-[10px] text-muted-foreground mb-0.5">Payment Terms:</p>
+                <p className="text-xs text-foreground">{paymentTerms}</p>
+              </div>
+            )}
 
             <div>
               <div className="grid grid-cols-12 gap-1 text-[10px] font-semibold text-muted-foreground border-b border-border pb-1.5 mb-2">
