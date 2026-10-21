@@ -466,7 +466,7 @@ export default function InternationalDashboardPage() {
     setFetchLoading(true);
     try {
       const { data } = await supabase
-        .from('products')
+        .from('manufacturer_products')
         .select('*')
         .eq('manufacturer_id', user.id)
         .order('created_at', { ascending: false });
@@ -1385,7 +1385,7 @@ export default function InternationalDashboardPage() {
               inquirySending={false}
               inquirySent={false}
               inquiryError=""
-              handleOpenAddModal={() => {}}
+              handleOpenAddModal={() => router.push('/seller/products?add=1')}
               handleFormSubmit={async () => {}}
               handleDelete={async () => {}}
               handleToggleActive={async () => {}}
