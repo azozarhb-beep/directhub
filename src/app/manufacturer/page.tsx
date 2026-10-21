@@ -7,7 +7,13 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import AppLogo from '@/components/ui/AppLogo';
 import FactoryControlHub from '@/components/manufacturer/FactoryControlHub';
-import { Globe } from 'lucide-react';
+import { Globe, TrendingUp, Ship, AlertTriangle } from 'lucide-react';
+
+const STAT_CARDS = [
+  { key: 'exports', href: '/manufacturer/finance', label: 'حجم الصادرات', value: '$333K', sub: 'هذا الشهر', icon: TrendingUp, color: 'from-cyan-600 to-cyan-800' },
+  { key: 'in_transit', href: '/manufacturer/logistics', label: 'الشحنات في الطريق', value: '1', sub: 'شحنة نشطة', icon: Ship, color: 'from-indigo-600 to-indigo-800' },
+  { key: 'held', href: '/manufacturer/logistics', label: 'شحنات محتجزة', value: '1', sub: 'تحتاج مراجعة', icon: AlertTriangle, color: 'from-red-600 to-red-800' },
+];
 
 export default function ManufacturerHubPage() {
   const { user, loading } = useAuth();
@@ -38,6 +44,27 @@ export default function ManufacturerHubPage() {
         </div>
       </header>
       <main className="max-w-screen-2xl mx-auto px-4 py-6 space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {STAT_CARDS?.map((card) => (
+            <button
+              type="button"
+              key={card?.key}
+              onClick={() => router?.push(card?.href)}
+              className={`bg-gradient-to-br ${card?.color} rounded-xl p-4 border border-white/10 text-start w-full cursor-pointer transition-all duration-150 hover:scale-[1.02] hover:border-white/30 active:scale-95`}
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-white/70 text-xs mb-1">{card?.label}</p>
+                  <p className="text-2xl font-bold text-white">{card?.value}</p>
+                  <p className="text-white/50 text-xs mt-1">{card?.sub}</p>
+                </div>
+                <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center">
+                  <card.icon size={18} className="text-white" />
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-3">
           <div className="flex-1 h-px bg-slate-700/60" />
           <span className="text-xs text-slate-400 font-medium px-3 py-1 bg-slate-800 rounded-full border border-slate-700 whitespace-nowrap">
