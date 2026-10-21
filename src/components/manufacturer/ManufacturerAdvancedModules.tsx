@@ -29,8 +29,30 @@ interface ExportInvoiceLine {
   unit_price: number;
 }
 
-type InvoiceType = 'PI' | 'CI';
+type InvoiceType = 'PI' | 'CI' | 'DI' | 'QT';
 type Incoterm = 'FOB' | 'CIF';
+type InvoiceScopeUI = 'export' | 'local';
+type InvoiceCurrency = 'USD' | 'YER' | 'SAR';
+type LocalPaymentMethodUI = 'kuraimi' | 'local_bank' | 'cod' | 'tt';
+type LocalDeliveryUI = 'ex_factory' | 'delivered';
+
+const LOCAL_PAYMENT_LABELS: Record<LocalPaymentMethodUI, { ar: string; en: string }> = {
+  kuraimi: { ar: 'حساب الكريمي', en: 'Kuraimi Account' },
+  local_bank: { ar: 'حساب بنكي محلي', en: 'Local Bank Account' },
+  cod: { ar: 'الدفع عند الاستلام', en: 'Cash on Delivery' },
+  tt: { ar: 'تحويل بنكي (T/T)', en: 'Telegraphic Transfer (T/T)' },
+};
+
+const LOCAL_DELIVERY_LABELS: Record<LocalDeliveryUI, { ar: string; en: string }> = {
+  ex_factory: { ar: 'استلام من مستودع المصنع', en: 'Ex-Factory Warehouse Pickup' },
+  delivered: { ar: 'توصيل إلى مقر المشتري', en: 'Delivery to Buyer Premises' },
+};
+
+const CURRENCY_LABELS: Record<InvoiceCurrency, { ar: string; en: string }> = {
+  USD: { ar: 'دولار أمريكي', en: 'US Dollar (USD)' },
+  YER: { ar: 'ريال يمني', en: 'Yemeni Rial (YER)' },
+  SAR: { ar: 'ريال سعودي', en: 'Saudi Riyal (SAR)' },
+};
 
 // ─── Default mock production lines (shown when no DB data) ───────────────────
 
@@ -67,7 +89,17 @@ function loadColor(pct: number) {
 }
 
 function formatUSD(amount: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
+  return formatMoney(amount, 'USD');
+}
+
+function formatMoney(amount: number, currency: InvoiceCurrency) {
+  const isRial = currency !== 'USD';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: isRial ? 0 : 2,
+    maximumFractionDigits: isRial ? 0 : 2,
+  }).format(amount);
 }
 
 function escapeHtml(value: string) {
@@ -80,6 +112,8 @@ function escapeHtml(value: string) {
 }
 
 interface InvoicePrintData {
+  scope: InvoiceScopeUI;
+  currency: InvoiceCurrency;
   titleEn: string;
   titleAr: string;
   invoiceNumber: string;
@@ -90,6 +124,10 @@ interface InvoicePrintData {
   incoterm: Incoterm;
   portOfLoading: string;
   portOfDischarge: string;
+  governorate: string;
+  deliveryTermsLabel: string;
+  localPaymentLabel: string;
+  localBankDetails: string;
   paymentTerms: string;
   lines: ExportInvoiceLine[];
   subtotal: number;
@@ -103,18 +141,41 @@ interface InvoicePrintData {
 }
 
 function buildInvoiceHtml(d: InvoicePrintData): string {
+  const isLocal = d.scope === 'local';
+  const money = (n: number) => formatMoney(n, d.currency);
   const rows = d.lines
     .map(
       l => `<tr>
         <td>${escapeHtml(l.description) || '—'}</td>
-        <td class="c">${escapeHtml(l.hsCode) || '—'}</td>
+        ${isLocal ? '' : `<td class="c">${escapeHtml(l.hsCode) || '—'}</td>`}
         <td class="c">${l.qty}</td>
-        <td class="r">${formatUSD(l.unit_price)}</td>
-        <td class="r">${formatUSD(l.qty * l.unit_price)}</td>
+        <td class="r">${money(l.unit_price)}</td>
+        <td class="r">${money(l.qty * l.unit_price)}</td>
       </tr>`
     )
     .join('');
   const hasBank = d.bankName || d.beneficiary || d.accountNumber || d.swiftCode;
+  const tradeGrid = isLocal
+    ? `<div class="box"><div class="lbl">Currency / العملة</div><strong>${d.currency}</strong></div>
+    <div class="box"><div class="lbl">Governorate / City — المحافظة / المدينة</div><strong>${escapeHtml(d.governorate) || '—'}</strong></div>
+    <div class="box" style="grid-column:span 2"><div class="lbl">Delivery Terms — شروط التسليم</div><strong>${escapeHtml(d.deliveryTermsLabel) || '—'}</strong></div>`
+    : `<div class="box"><div class="lbl">Incoterms</div><strong>${d.incoterm}</strong></div>
+    <div class="box"><div class="lbl">Currency</div><strong>USD</strong></div>
+    <div class="box"><div class="lbl">Port of Loading</div><strong>${escapeHtml(d.portOfLoading) || '—'}</strong></div>
+    <div class="box"><div class="lbl">Port of Discharge</div><strong>${escapeHtml(d.portOfDischarge) || '—'}</strong></div>`;
+  const bankBlock = isLocal
+    ? d.localPaymentLabel || d.localBankDetails
+      ? `<div class="box" style="margin-top:16px"><div class="lbl">Payment Details — بيانات الدفع</div>
+      <div>Method: ${escapeHtml(d.localPaymentLabel) || '—'}</div>
+      ${d.localBankDetails ? `<div>Account: ${escapeHtml(d.localBankDetails)}</div>` : ''}</div>`
+      : ''
+    : hasBank
+      ? `<div class="box" style="margin-top:16px"><div class="lbl">Bank Wire Details</div>
+      <div>Bank: ${escapeHtml(d.bankName) || '—'}</div>
+      <div>Beneficiary: ${escapeHtml(d.beneficiary) || '—'}</div>
+      <div>Account / IBAN: ${escapeHtml(d.accountNumber) || '—'}</div>
+      <div>SWIFT / BIC: ${escapeHtml(d.swiftCode) || '—'}</div></div>`
+      : '';
   return `<!DOCTYPE html>
 <html lang="en" dir="ltr"><head><meta charset="utf-8" />
 <title>${escapeHtml(d.titleEn)} ${escapeHtml(d.invoiceNumber)}</title>
@@ -144,38 +205,27 @@ function buildInvoiceHtml(d: InvoicePrintData): string {
   </div>
   ${
     d.buyerName || d.buyerAddress || d.buyerCountry
-      ? `<div class="box"><div class="lbl">Consignee</div><strong>${escapeHtml(d.buyerName) || '—'}</strong><div>${escapeHtml(
+      ? `<div class="box"><div class="lbl">${isLocal ? 'Buyer / المشتري' : 'Consignee'}</div><strong>${escapeHtml(d.buyerName) || '—'}</strong><div>${escapeHtml(
           [d.buyerAddress, d.buyerCountry].filter(Boolean).join(', ')
         )}</div></div>`
       : ''
   }
   <div class="grid">
-    <div class="box"><div class="lbl">Incoterms</div><strong>${d.incoterm}</strong></div>
-    <div class="box"><div class="lbl">Currency</div><strong>USD</strong></div>
-    <div class="box"><div class="lbl">Port of Loading</div><strong>${escapeHtml(d.portOfLoading) || '—'}</strong></div>
-    <div class="box"><div class="lbl">Port of Discharge</div><strong>${escapeHtml(d.portOfDischarge) || '—'}</strong></div>
+    ${tradeGrid}
   </div>
   ${d.paymentTerms ? `<div class="box"><div class="lbl">Payment Terms</div>${escapeHtml(d.paymentTerms)}</div>` : ''}
   <table>
-    <thead><tr><th>Description</th><th class="c">HS Code</th><th class="c">Qty</th><th class="r">Unit Price</th><th class="r">Amount</th></tr></thead>
+    <thead><tr><th>Description</th>${isLocal ? '' : '<th class="c">HS Code</th>'}<th class="c">Qty</th><th class="r">Unit Price</th><th class="r">Amount</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
   <div class="tot">
-    <div><span>Subtotal (${d.incoterm})</span><span>${formatUSD(d.subtotal)}</span></div>
-    ${d.incoterm === 'CIF' ? `<div><span>Freight &amp; Insurance</span><span>${formatUSD(d.freight)}</span></div>` : ''}
-    <div class="g"><span>Total (USD)</span><span>${formatUSD(d.total)}</span></div>
+    <div><span>Subtotal${isLocal ? '' : ` (${d.incoterm})`}</span><span>${money(d.subtotal)}</span></div>
+    ${!isLocal && d.incoterm === 'CIF' ? `<div><span>Freight &amp; Insurance</span><span>${money(d.freight)}</span></div>` : ''}
+    <div class="g"><span>Total (${d.currency})</span><span>${money(d.total)}</span></div>
   </div>
-  ${
-    hasBank
-      ? `<div class="box" style="margin-top:16px"><div class="lbl">Bank Wire Details</div>
-      <div>Bank: ${escapeHtml(d.bankName) || '—'}</div>
-      <div>Beneficiary: ${escapeHtml(d.beneficiary) || '—'}</div>
-      <div>Account / IBAN: ${escapeHtml(d.accountNumber) || '—'}</div>
-      <div>SWIFT / BIC: ${escapeHtml(d.swiftCode) || '—'}</div></div>`
-      : ''
-  }
+  ${bankBlock}
   ${d.notes ? `<div class="box"><div class="lbl">Remarks</div>${escapeHtml(d.notes)}</div>` : ''}
-  <div class="foot">Currency: US Dollar (USD) — DirectHub Platform</div>
+  <div class="foot">Currency: ${CURRENCY_LABELS[d.currency].en} — DirectHub Platform</div>
 </body></html>`;
 }
 
@@ -386,6 +436,12 @@ const inputCls =
   'w-full px-2.5 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary';
 
 function ExportInvoicingModule({ userId }: { userId: string }) {
+  const [scope, setScope] = useState<InvoiceScopeUI>('export');
+  const [currency, setCurrency] = useState<InvoiceCurrency>('USD');
+  const [governorate, setGovernorate] = useState('');
+  const [deliveryTerms, setDeliveryTerms] = useState<LocalDeliveryUI>('delivered');
+  const [localPaymentMethod, setLocalPaymentMethod] = useState<LocalPaymentMethodUI>('kuraimi');
+  const [localBankDetails, setLocalBankDetails] = useState('');
   const [invoiceType, setInvoiceType] = useState<InvoiceType>('PI');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState('');
@@ -414,7 +470,9 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
   const [bankAutoFilled, setBankAutoFilled] = useState(false);
   const supabase = useMemo(() => createClient(), []);
 
-  const prefix = invoiceType === 'PI' ? 'PI' : 'CI';
+  const isLocal = scope === 'local';
+  const effectiveCurrency: InvoiceCurrency = isLocal ? currency : 'USD';
+  const prefix = invoiceType;
 
   // ── Auto-fill bank wire section from the active manufacturer bank account ──
   const loadBankAccount = useCallback(
@@ -456,11 +514,24 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
   const applyDraft = useCallback(
     (draft: InvoiceDraft) => {
       const d = draft.data;
+      if (d.scope === 'local') {
+        setScope('local');
+        setInvoiceType(t => (t === 'QT' ? 'QT' : 'DI'));
+        setCurrency(d.currency || 'YER');
+        setGovernorate(d.governorate);
+        if (d.delivery_terms) setDeliveryTerms(d.delivery_terms);
+        if (d.payment_method) setLocalPaymentMethod(d.payment_method);
+        setLocalBankDetails(d.local_bank_details);
+      } else {
+        setScope('export');
+        setInvoiceType(t => (t === 'DI' || t === 'QT' ? 'PI' : t));
+        setCurrency('USD');
+        setPortOfLoading(d.port_of_loading);
+        setPortOfDischarge(d.port_of_discharge);
+      }
       setBuyerName(d.consignee_name);
       setBuyerAddress(d.consignee_address);
       setIncoterm(d.incoterm);
-      setPortOfLoading(d.port_of_loading);
-      setPortOfDischarge(d.port_of_discharge);
       setPaymentTerms(d.payment_terms);
       if (d.items.length > 0) {
         setLines(
@@ -505,7 +576,7 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
   }, []);
 
   useEffect(() => {
-    setInvoiceNumber(prev => (prev ? prev.replace(/^(PI|CI)-/, `${prefix}-`) : prev));
+    setInvoiceNumber(prev => (prev ? prev.replace(/^(PI|CI|DI|QT)-/, `${prefix}-`) : prev));
   }, [prefix]);
 
   const addLine = () => {
@@ -522,11 +593,17 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
   };
 
   const subtotal = lines.reduce((s, l) => s + l.qty * l.unit_price, 0);
-  const freightApplied = incoterm === 'CIF' ? freight : 0;
+  const freightApplied = !isLocal && incoterm === 'CIF' ? freight : 0;
   const total = subtotal + freightApplied;
 
-  const typeTitleAr = invoiceType === 'PI' ? 'فاتورة مبدئية' : 'فاتورة تجارية';
-  const typeTitleEn = invoiceType === 'PI' ? 'Proforma Invoice' : 'Commercial Invoice';
+  const typeTitleAr =
+    invoiceType === 'PI' ? 'فاتورة مبدئية'
+    : invoiceType === 'CI' ? 'فاتورة تجارية'
+    : invoiceType === 'QT'? 'عرض سعر' :'فاتورة مبيعات محلية';
+  const typeTitleEn =
+    invoiceType === 'PI' ? 'Proforma Invoice'
+    : invoiceType === 'CI' ? 'Commercial Invoice'
+    : invoiceType === 'QT'? 'Quotation' :'Domestic Invoice';
 
   const handleSave = async () => {
     if (saving) return;
@@ -541,17 +618,22 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
       if (authErr || !authData?.user) throw new Error('يجب تسجيل الدخول لحفظ الفاتورة');
       const payload = {
         manufacturer_id: authData.user.id,
+        scope,
         invoice_type: invoiceType,
         invoice_number: invoiceNumber.trim(),
         invoice_date: invoiceDate || null,
         consignee_name: buyerName.trim(),
         consignee_address: buyerAddress.trim() || null,
         consignee_country: buyerCountry.trim() || null,
-        incoterm,
-        port_of_loading: portOfLoading.trim() || null,
-        port_of_discharge: portOfDischarge.trim() || null,
+        incoterm: isLocal ? null : incoterm,
+        port_of_loading: isLocal ? null : portOfLoading.trim() || null,
+        port_of_discharge: isLocal ? null : portOfDischarge.trim() || null,
+        governorate: isLocal ? governorate.trim() || null : null,
+        delivery_terms: isLocal ? deliveryTerms : null,
+        local_payment_method: isLocal ? localPaymentMethod : null,
+        local_bank_details: isLocal ? localBankDetails.trim() || null : null,
         payment_terms: paymentTerms.trim() || null,
-        currency: 'USD',
+        currency: effectiveCurrency,
         items: lines.map(l => ({
           description: l.description,
           hs_code: l.hsCode,
@@ -559,13 +641,13 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
           unit_price: l.unit_price,
           line_total: Number((l.qty * l.unit_price).toFixed(2)),
         })),
-        freight: incoterm === 'CIF' ? freight : 0,
+        freight: !isLocal && incoterm === 'CIF' ? freight : 0,
         subtotal: Number(subtotal.toFixed(2)),
         total: Number(total.toFixed(2)),
-        bank_name: bankName.trim() || null,
-        beneficiary: beneficiary.trim() || null,
-        iban: accountNumber.trim() || null,
-        swift_bic: swiftCode.trim() || null,
+        bank_name: isLocal ? null : bankName.trim() || null,
+        beneficiary: isLocal ? null : beneficiary.trim() || null,
+        iban: isLocal ? null : accountNumber.trim() || null,
+        swift_bic: isLocal ? null : swiftCode.trim() || null,
         notes: notes.trim() || null,
         source_thread_id: sourceThreadId,
         status: 'saved',
@@ -592,6 +674,8 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
   };
 
   const printData: InvoicePrintData = {
+    scope,
+    currency: effectiveCurrency,
     titleEn: typeTitleEn,
     titleAr: typeTitleAr,
     invoiceNumber,
@@ -602,6 +686,10 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
     incoterm,
     portOfLoading,
     portOfDischarge,
+    governorate,
+    deliveryTermsLabel: `${LOCAL_DELIVERY_LABELS[deliveryTerms].ar} / ${LOCAL_DELIVERY_LABELS[deliveryTerms].en}`,
+    localPaymentLabel: `${LOCAL_PAYMENT_LABELS[localPaymentMethod].ar} / ${LOCAL_PAYMENT_LABELS[localPaymentMethod].en}`,
+    localBankDetails,
     paymentTerms,
     lines,
     subtotal,
@@ -628,8 +716,10 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
             <Icon name="DocumentTextIcon" size={20} className="text-white" />
           </div>
           <div>
-            <h3 className="text-white font-semibold text-sm">محرك فوترة التصدير الدولية</h3>
-            <p className="text-white/60 text-xs">International Export Invoicing Engine — USD ($)</p>
+            <h3 className="text-white font-semibold text-sm">{isLocal ? 'محرك الفوترة المحلية' : 'محرك فوترة التصدير الدولية'}</h3>
+            <p className="text-white/60 text-xs">
+              {isLocal ? `Domestic Invoicing Engine — ${effectiveCurrency}` : 'International Export Invoicing Engine — USD ($)'}
+            </p>
           </div>
         </div>
         <button
@@ -652,12 +742,37 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
               {feedback.text}
             </div>
           )}
-          {/* Invoice type toggle */}
+          {/* Scope switcher */}
           <div className="grid grid-cols-2 gap-2">
             {([
-              { key: 'PI', ar: 'فاتورة مبدئية', en: 'Proforma Invoice (PI)' },
-              { key: 'CI', ar: 'فاتورة تجارية', en: 'Commercial Invoice (CI)' },
+              { key: 'export', label: 'Export / دولي' },
+              { key: 'local', label: 'Domestic / محلي' },
             ] as const).map(opt => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setScope(opt.key)}
+                className={`py-2.5 rounded-xl border text-xs font-semibold transition-colors ${
+                  scope === opt.key ? 'bg-cyan-700 text-white border-cyan-700' : 'bg-background border-border text-foreground hover:border-primary/50'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Invoice type toggle */}
+          <div className="grid grid-cols-2 gap-2">
+            {(isLocal
+              ? ([
+                  { key: 'DI', ar: 'فاتورة مبيعات محلية', en: 'Domestic Invoice' },
+                  { key: 'QT', ar: 'عرض سعر', en: 'Quotation' },
+                ] as const)
+              : ([
+                  { key: 'PI', ar: 'فاتورة مبدئية', en: 'Proforma Invoice (PI)' },
+                  { key: 'CI', ar: 'فاتورة تجارية', en: 'Commercial Invoice (CI)' },
+                ] as const)
+            ).map(opt => (
               <button
                 key={opt.key}
                 type="button"
@@ -683,23 +798,66 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
               <input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} className={inputCls} />
             </div>
             <div>
-              <label className="text-[10px] text-muted-foreground block mb-1">اسم المستورد / Consignee</label>
-              <input value={buyerName} onChange={e => setBuyerName(e.target.value)} placeholder="Importer company name" dir="ltr" className={inputCls} />
+              <label className="text-[10px] text-muted-foreground block mb-1">{isLocal ? 'اسم المشتري / Buyer' : 'اسم المستورد / Consignee'}</label>
+              <input value={buyerName} onChange={e => setBuyerName(e.target.value)} placeholder={isLocal ? 'اسم المشتري' : 'Importer company name'} dir={isLocal ? 'rtl' : 'ltr'} className={inputCls} />
             </div>
             <div>
-              <label className="text-[10px] text-muted-foreground block mb-1">بلد المستورد / Country</label>
-              <input value={buyerCountry} onChange={e => setBuyerCountry(e.target.value)} placeholder="e.g. Saudi Arabia" dir="ltr" className={inputCls} />
+              <label className="text-[10px] text-muted-foreground block mb-1">{isLocal ? 'الدولة / Country' : 'بلد المستورد / Country'}</label>
+              <input value={buyerCountry} onChange={e => setBuyerCountry(e.target.value)} placeholder={isLocal ? 'اليمن' : 'e.g. Saudi Arabia'} dir={isLocal ? 'rtl' : 'ltr'} className={inputCls} />
             </div>
             <div className="sm:col-span-2">
-              <label className="text-[10px] text-muted-foreground block mb-1">عنوان المستورد / Address</label>
-              <input value={buyerAddress} onChange={e => setBuyerAddress(e.target.value)} placeholder="Street, city, postal code" dir="ltr" className={inputCls} />
+              <label className="text-[10px] text-muted-foreground block mb-1">{isLocal ? 'عنوان المشتري / Address' : 'عنوان المستورد / Address'}</label>
+              <input value={buyerAddress} onChange={e => setBuyerAddress(e.target.value)} placeholder={isLocal ? 'الشارع، الحي' : 'Street, city, postal code'} dir={isLocal ? 'rtl' : 'ltr'} className={inputCls} />
             </div>
           </div>
 
           {/* Shipping terms */}
           <div className="rounded-xl border border-border p-3 space-y-3 bg-muted/20">
-            <p className="text-xs font-semibold text-foreground">شروط الشحن والعملة / Trade Terms</p>
+            <p className="text-xs font-semibold text-foreground">{isLocal ? 'شروط التسليم والعملة / Delivery & Currency' : 'شروط الشحن والعملة / Trade Terms'}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {isLocal ? (
+                <>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground block mb-1">العملة / Currency</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['YER', 'SAR', 'USD'] as const).map(c => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setCurrency(c)}
+                          className={`py-2 text-xs font-semibold rounded-lg border transition-colors ${
+                            currency === c ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border text-foreground hover:border-primary/50'
+                          }`}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground block mb-1">المحافظة / المدينة</label>
+                    <input value={governorate} onChange={e => setGovernorate(e.target.value)} placeholder="مثال: صنعاء" dir="rtl" className={inputCls} />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="text-[10px] text-muted-foreground block mb-1">شروط التسليم / Delivery Terms</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {(['ex_factory', 'delivered'] as const).map(k => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => setDeliveryTerms(k)}
+                          className={`py-2 px-2 text-xs font-semibold rounded-lg border transition-colors ${
+                            deliveryTerms === k ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border text-foreground hover:border-primary/50'
+                          }`}
+                        >
+                          {LOCAL_DELIVERY_LABELS[k].ar}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
               <div>
                 <label className="text-[10px] text-muted-foreground block mb-1">Incoterms</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -742,6 +900,8 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
                   />
                 </div>
               )}
+                </>
+              )}
               <div className="sm:col-span-2">
                 <label className="text-[10px] text-muted-foreground block mb-1">شروط الدفع / Payment Terms</label>
                 <input
@@ -765,10 +925,10 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
             </div>
             <div className="space-y-2">
               <div className="hidden sm:grid grid-cols-12 gap-1.5 text-[10px] text-muted-foreground px-1">
-                <span className="col-span-4">الوصف</span>
-                <span className="col-span-2 text-center">HS Code</span>
+                <span className={isLocal ? 'col-span-6' : 'col-span-4'}>الوصف</span>
+                {!isLocal && <span className="col-span-2 text-center">HS Code</span>}
                 <span className="col-span-2 text-center">الكمية</span>
-                <span className="col-span-2 text-center">سعر الوحدة ($)</span>
+                <span className="col-span-2 text-center">سعر الوحدة ({effectiveCurrency})</span>
                 <span className="col-span-1 text-center">المجموع</span>
                 <span className="col-span-1" />
               </div>
@@ -778,9 +938,10 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
                     value={line.description}
                     onChange={e => updateLine(line.id, 'description', e.target.value)}
                     placeholder="Goods description"
-                    dir="ltr"
-                    className="col-span-12 sm:col-span-4 px-2 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
+                    dir={isLocal ? 'rtl' : 'ltr'}
+                    className={`col-span-12 ${isLocal ? 'sm:col-span-6' : 'sm:col-span-4'} px-2 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary`}
                   />
+                  {!isLocal && (
                   <input
                     value={line.hsCode}
                     onChange={e => updateLine(line.id, 'hsCode', e.target.value)}
@@ -788,6 +949,7 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
                     dir="ltr"
                     className="col-span-4 sm:col-span-2 px-2 py-1.5 text-xs text-center rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
                   />
+                  )}
                   <input
                     type="number"
                     value={line.qty}
@@ -814,6 +976,40 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
           </div>
 
           {/* Bank wire / SWIFT */}
+          {isLocal ? (
+            <div className="rounded-xl border border-border p-3 space-y-3 bg-muted/20">
+              <p className="text-xs font-semibold text-foreground">بيانات الدفع المحلية / Local Payment Details</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(Object.keys(LOCAL_PAYMENT_LABELS) as LocalPaymentMethodUI[]).map(k => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setLocalPaymentMethod(k)}
+                    className={`py-2 px-2 text-xs font-semibold rounded-lg border transition-colors ${
+                      localPaymentMethod === k ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border text-foreground hover:border-primary/50'
+                    }`}
+                  >
+                    {LOCAL_PAYMENT_LABELS[k].ar}
+                  </button>
+                ))}
+              </div>
+              {localPaymentMethod !== 'cod' && (
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">
+                    {localPaymentMethod === 'kuraimi' ? 'رقم حساب الكريمي / اسم صاحب الحساب' : 'تفاصيل الحساب البنكي المحلي'}
+                  </label>
+                  <textarea
+                    value={localBankDetails}
+                    onChange={e => setLocalBankDetails(e.target.value)}
+                    rows={2}
+                    dir="rtl"
+                    placeholder="رقم الحساب، اسم المستفيد، اسم البنك"
+                    className="w-full px-2.5 py-2 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary resize-none"
+                  />
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="rounded-xl border border-border p-3 space-y-3 bg-muted/20">
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-semibold text-foreground">بيانات التحويل البنكي / Bank Wire (SWIFT)</p>
@@ -845,6 +1041,7 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
               </div>
             </div>
           </div>
+          )}
 
           {/* Notes */}
           <div>
@@ -861,18 +1058,18 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
           {/* Totals */}
           <div className="bg-muted/40 rounded-xl p-3 space-y-1.5 border border-border">
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>المجموع الفرعي ({incoterm})</span>
-              <span dir="ltr">{formatUSD(subtotal)}</span>
+              <span>المجموع الفرعي{isLocal ? '' : ` (${incoterm})`}</span>
+              <span dir="ltr">{formatMoney(subtotal, effectiveCurrency)}</span>
             </div>
-            {incoterm === 'CIF' && (
+            {!isLocal && incoterm === 'CIF' && (
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>الشحن والتأمين</span>
-                <span dir="ltr">{formatUSD(freightApplied)}</span>
+                <span dir="ltr">{formatMoney(freightApplied, effectiveCurrency)}</span>
               </div>
             )}
             <div className="flex justify-between text-sm font-bold text-foreground border-t border-border pt-1.5 mt-1">
-              <span>الإجمالي (USD)</span>
-              <span dir="ltr" className="text-cyan-600">{formatUSD(total)}</span>
+              <span>الإجمالي ({effectiveCurrency})</span>
+              <span dir="ltr" className="text-cyan-600">{formatMoney(total, effectiveCurrency)}</span>
             </div>
           </div>
 
@@ -945,6 +1142,23 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
             )}
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              {isLocal ? (
+                <>
+                  <div className="bg-muted/30 rounded-lg p-2">
+                    <p className="text-[10px] text-muted-foreground">Currency</p>
+                    <p className="font-semibold text-foreground">{effectiveCurrency}</p>
+                  </div>
+                  <div className="bg-muted/30 rounded-lg p-2">
+                    <p className="text-[10px] text-muted-foreground">المحافظة / المدينة</p>
+                    <p className="font-semibold text-foreground">{governorate || '—'}</p>
+                  </div>
+                  <div className="bg-muted/30 rounded-lg p-2 col-span-2">
+                    <p className="text-[10px] text-muted-foreground">شروط التسليم / Delivery Terms</p>
+                    <p className="font-semibold text-foreground">{LOCAL_DELIVERY_LABELS[deliveryTerms].ar}</p>
+                  </div>
+                </>
+              ) : (
+                <>
               <div className="bg-muted/30 rounded-lg p-2">
                 <p className="text-[10px] text-muted-foreground">Incoterms</p>
                 <p className="font-semibold text-foreground">{incoterm}</p>
@@ -961,6 +1175,8 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
                 <p className="text-[10px] text-muted-foreground">Port of Discharge</p>
                 <p className="font-semibold text-foreground">{portOfDischarge || '—'}</p>
               </div>
+                </>
+              )}
             </div>
 
             {paymentTerms && (
@@ -972,41 +1188,47 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
 
             <div>
               <div className="grid grid-cols-12 gap-1 text-[10px] font-semibold text-muted-foreground border-b border-border pb-1.5 mb-2">
-                <span className="col-span-4">Description</span>
-                <span className="col-span-2 text-center">HS Code</span>
+                <span className={isLocal ? 'col-span-6' : 'col-span-4'}>Description</span>
+                {!isLocal && <span className="col-span-2 text-center">HS Code</span>}
                 <span className="col-span-2 text-center">Qty</span>
                 <span className="col-span-2 text-center">Unit Price</span>
                 <span className="col-span-2 text-center">Amount</span>
               </div>
               {lines.map(line => (
                 <div key={line.id} className="grid grid-cols-12 gap-1 text-xs py-1 border-b border-border/50">
-                  <span className="col-span-4 text-foreground">{line.description || '—'}</span>
-                  <span className="col-span-2 text-center text-muted-foreground">{line.hsCode || '—'}</span>
+                  <span className={`${isLocal ? 'col-span-6' : 'col-span-4'} text-foreground`}>{line.description || '—'}</span>
+                  {!isLocal && <span className="col-span-2 text-center text-muted-foreground">{line.hsCode || '—'}</span>}
                   <span className="col-span-2 text-center text-muted-foreground">{line.qty}</span>
-                  <span className="col-span-2 text-center text-muted-foreground">{formatUSD(line.unit_price)}</span>
-                  <span className="col-span-2 text-center text-foreground font-medium">{formatUSD(line.qty * line.unit_price)}</span>
+                  <span className="col-span-2 text-center text-muted-foreground">{formatMoney(line.unit_price, effectiveCurrency)}</span>
+                  <span className="col-span-2 text-center text-foreground font-medium">{formatMoney(line.qty * line.unit_price, effectiveCurrency)}</span>
                 </div>
               ))}
             </div>
 
             <div className="space-y-1 pt-1">
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Subtotal ({incoterm})</span>
-                <span>{formatUSD(subtotal)}</span>
+                <span>Subtotal{isLocal ? '' : ` (${incoterm})`}</span>
+                <span>{formatMoney(subtotal, effectiveCurrency)}</span>
               </div>
-              {incoterm === 'CIF' && (
+              {!isLocal && incoterm === 'CIF' && (
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Freight & Insurance</span>
-                  <span>{formatUSD(freightApplied)}</span>
+                  <span>{formatMoney(freightApplied, effectiveCurrency)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm font-bold text-foreground border-t border-border pt-2 mt-1">
-                <span>Total (USD)</span>
-                <span className="text-cyan-600">{formatUSD(total)}</span>
+                <span>Total ({effectiveCurrency})</span>
+                <span className="text-cyan-600">{formatMoney(total, effectiveCurrency)}</span>
               </div>
             </div>
 
-            {(bankName || beneficiary || accountNumber || swiftCode) && (
+            {isLocal ? (
+              <div className="bg-muted/30 rounded-lg p-3 text-xs space-y-0.5">
+                <p className="text-[10px] text-muted-foreground mb-1">Payment Details / بيانات الدفع:</p>
+                <p className="text-foreground">{LOCAL_PAYMENT_LABELS[localPaymentMethod].ar} / {LOCAL_PAYMENT_LABELS[localPaymentMethod].en}</p>
+                {localBankDetails && localPaymentMethod !== 'cod' && <p className="text-foreground">{localBankDetails}</p>}
+              </div>
+            ) : (bankName || beneficiary || accountNumber || swiftCode) && (
               <div className="bg-muted/30 rounded-lg p-3 text-xs space-y-0.5">
                 <p className="text-[10px] text-muted-foreground mb-1">Bank Wire Details:</p>
                 <p className="text-foreground">Bank: {bankName || '—'}</p>
@@ -1024,7 +1246,7 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
             )}
 
             <p className="text-[10px] text-muted-foreground text-center border-t border-border pt-2">
-              Currency: US Dollar (USD) — DirectHub Platform
+              Currency: {CURRENCY_LABELS[effectiveCurrency].en} — DirectHub Platform
             </p>
           </div>
         </div>
