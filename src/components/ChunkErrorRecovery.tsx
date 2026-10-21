@@ -11,7 +11,7 @@ function isChunkError(value: unknown): boolean {
   if (!value) return false;
   const err = value as { name?: string; message?: string };
   const text = `${err?.name || ''} ${err?.message || String(value)}`;
-  return /ChunkLoadError|Loading chunk [^\s]+ failed|Loading CSS chunk|Failed to fetch dynamically imported module/i.test(
+  return /ChunkLoadError|Loading chunk [^\s]+ failed|Loading CSS chunk|Failed to fetch dynamically imported module|__webpack_modules__\[[^\]]*\] is not a function|originalFactory\.call|Cannot read properties of undefined \(reading 'call'\)/i.test(
     text
   );
 }

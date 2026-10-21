@@ -11,7 +11,7 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error('[Global Error Boundary]', error);
-    if (/ChunkLoadError|Loading chunk .* failed/i.test(`${error?.name} ${error?.message}`)) {
+    if (/ChunkLoadError|Loading chunk .* failed|__webpack_modules__\[[^\]]*\] is not a function|reading 'call'/i.test(`${error?.name} ${error?.message}`)) {
       try {
         const last = Number(sessionStorage.getItem('dh_chunk_reload_at') || '0');
         if (Date.now() - last > 10000) {
