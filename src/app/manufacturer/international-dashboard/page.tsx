@@ -2,34 +2,21 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
 
 import Icon from '@/components/ui/AppIcon';
 import AppLogo from '@/components/ui/AppLogo';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Line } from 'recharts';
-import FactoryThreadsMessaging from '@/components/manufacturer/FactoryThreadsMessaging';
-import IncomingRFQsPanel from '@/components/manufacturer/IncomingRFQsPanel';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import DealLinkGeneratorModal from '@/components/manufacturer/DealLinkGeneratorModal';
+import FactoryControlHub from '@/components/manufacturer/FactoryControlHub';
 import { SUPPORTED_LANGUAGES } from '@/lib/i18n';
 import { getIntlRoomStrings, type IntlRoomStrings } from '@/lib/internationalRoomI18n';
 import { Globe, TrendingUp, Ship, FileText, AlertTriangle, Link2, Check } from 'lucide-react';
 import { ShipmentDetailsModal, NewShipmentModal, type NewShipmentPayload } from '@/components/international-factory/ExportShipmentModals';
-import FactoryTeamManagement from '@/components/manufacturer/FactoryTeamManagement';
-import ProductsPanel from '@/app/manufacturer/dashboard/ProductsPanel';
-import InventoryPanel from '@/app/manufacturer/dashboard/InventoryPanel';
-import FactoryOrdersPanel from '@/app/manufacturer/dashboard/FactoryOrdersPanel';
-import EscrowOrdersPanel from '@/app/manufacturer/dashboard/EscrowOrdersPanel';
-import AnalyticsPanel from '@/app/manufacturer/dashboard/AnalyticsPanel';
-import DisputesPanel from '@/app/manufacturer/dashboard/DisputesPanel';
-import BankAccountsPanel from '@/app/manufacturer/dashboard/BankAccountsPanel';
-import PaymentSettingsPanel from '@/app/manufacturer/dashboard/PaymentSettingsPanel';
-import FinancePanel from '@/app/manufacturer/dashboard/FinancePanel';
-import ArchivePanel from '@/app/manufacturer/dashboard/ArchivePanel';
 import { resolveManufacturerRoomForUser, INTERNATIONAL_FACTORY_ROOM_PATH } from '@/lib/roomIsolation';
 import SupplyChainPanel from './SupplyChainPanel';
 
@@ -54,15 +41,6 @@ function getHomeRoomForRole(role: string): string {
   if (role === 'admin') return '/admin';
   if (role === 'manufacturer') return LOCAL_FACTORY_ROOM_PATH;
   return '/';
-}
-
-function isInternationalFactory(input: {
-  seller_category?: string | null;
-  factory_type?: string | null;
-}): boolean {
-  const sc = (input.seller_category || '').toLowerCase();
-  const ft = (input.factory_type || '').toLowerCase();
-  return sc.includes('international') || ft.includes('international');
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -191,25 +169,21 @@ function lineStatusColor(status: ProductionLine['status']) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-type Tab = 'exports' | 'production' | 'documents' | 'supply_chain' | 'buying_selling' | 'accounts' | 'messaging' | 'rfq' | 'products' | 'inventory' | 'factory_orders' | 'escrow_orders' | 'analytics' | 'disputes' | 'bank_accounts' | 'payment_settings' | 'finance' | 'sales_team' | 'archive';
-
 export default function InternationalDashboardPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const { dir, isRTL, language, setLanguage, t } = useLanguage();
+  const { dir, language, setLanguage } = useLanguage();
   const [showDealLinkModal, setShowDealLinkModal] = React.useState(false);
   const [showLangMenu, setShowLangMenu] = React.useState(false);
   const supabase = React.useMemo(() => {
     const { createClient } = require('@/lib/supabase/client');
     return createClient();
   }, []);
-  const md = (t as any)?.manufacturerDashboard ?? {};
   const s = getIntlRoomStrings(language);
-  const [activeTab, setActiveTab] = useState<Tab>('exports');
   const [selectedOrder, setSelectedOrder] = useState<ExportOrder | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const exportsSectionRef = React.useRef<HTMLDivElement | null>(null);
-  const accountsSectionRef = React.useRef<HTMLDivElement | null>(null);
+  const hubSectionRef = React.useRef<HTMLDivElement | null>(null);
   const [highlightHeld, setHighlightHeld] = useState(false);
   const [exportOrders, setExportOrders] = useState<ExportOrder[]>(MOCK_EXPORT_ORDERS);
   const [docs, setDocs] = useState<ShippingDoc[]>(MOCK_DOCS);
@@ -356,374 +330,10 @@ export default function InternationalDashboardPage() {
       router.push('/manufacturer/finance');
       return;
     }
-    setActiveTab('exports');
     setFilterStatus(key);
     setSelectedOrder(null);
     setHighlightHeld(key === 'held');
     scrollToRef(exportsSectionRef);
-  };
-
-  // ── Products state ──────────────────────────────────────────────────────
-  const [products, setProducts] = useState<any[]>([]);
-  const [fetchLoading, setFetchLoading] = useState(false);
-
-  // ── Inventory state ─────────────────────────────────────────────────────
-  const [inventoryItems, setInventoryItems] = useState<any[]>([]);
-  const [inventoryLoading, setInventoryLoading] = useState(false);
-  const [showAddInventoryModal, setShowAddInventoryModal] = useState(false);
-  const [inventoryForm, setInventoryForm] = useState({
-    material_name: '', material_name_ar: '', category: 'raw_material', unit: 'kg',
-    quantity: '', unit_cost: '', supplier_name: '', notes: '',
-  });
-  const [inventoryFormLoading, setInventoryFormLoading] = useState(false);
-  const [inventoryFormError, setInventoryFormError] = useState('');
-
-  // ── Factory Orders state ─────────────────────────────────────────────────
-  const [factoryOrders, setFactoryOrders] = useState<any[]>([]);
-  const [factoryOrdersLoading, setFactoryOrdersLoading] = useState(false);
-  const [selectedFactoryOrder, setSelectedFactoryOrder] = useState<any | null>(null);
-  const [factoryOrderStatusFilter, setFactoryOrderStatusFilter] = useState<string>('all');
-  const [factoryOrderStatusUpdating, setFactoryOrderStatusUpdating] = useState(false);
-  const [factoryOrderStatusMsg, setFactoryOrderStatusMsg] = useState('');
-  const [factoryOrderStatusSuccess, setFactoryOrderStatusSuccess] = useState(false);
-  const [factoryOrderNoteInput, setFactoryOrderNoteInput] = useState('');
-
-  // ── Escrow Orders state ──────────────────────────────────────────────────
-  const [escrowOrders, setEscrowOrders] = useState<any[]>([]);
-  const [escrowOrdersLoading, setEscrowOrdersLoading] = useState(false);
-  const [selectedEscrowOrder, setSelectedEscrowOrder] = useState<any | null>(null);
-  const [deliveryPinInput, setDeliveryPinInput] = useState('');
-  const [deliveryPinVerifying, setDeliveryPinVerifying] = useState(false);
-  const [deliveryPinMsg, setDeliveryPinMsg] = useState('');
-  const [deliveryPinSuccess, setDeliveryPinSuccess] = useState(false);
-  const [markReadyLoading, setMarkReadyLoading] = useState(false);
-  const [markReadyNote, setMarkReadyNote] = useState('');
-  const [markReadyMsg, setMarkReadyMsg] = useState('');
-  const [markReadySuccess, setMarkReadySuccess] = useState(false);
-
-  // ── Analytics state ──────────────────────────────────────────────────────
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [analyticsData, setAnalyticsData] = useState<any[]>([]);
-  const [analyticsStats, setAnalyticsStats] = useState({
-    totalViews: 0, totalOrders: 0, totalRfqs: 0, avgRating: 0,
-    reviewCount: 0, activeProducts: 0, totalRevenue: 0,
-  });
-  const [analyticsPeriod, setAnalyticsPeriod] = useState<'7d' | '30d' | '90d'>('30d');
-
-  // ── Disputes state ───────────────────────────────────────────────────────
-  const [factoryDisputes, setFactoryDisputes] = useState<any[]>([]);
-  const [factoryDisputesLoading, setFactoryDisputesLoading] = useState(false);
-  const [selectedFactoryDispute, setSelectedFactoryDispute] = useState<any | null>(null);
-  const [factoryResolutionType, setFactoryResolutionType] = useState('');
-  const [factoryResolutionNote, setFactoryResolutionNote] = useState('');
-  const [factoryResolveLoading, setFactoryResolveLoading] = useState(false);
-  const [factoryResolveMsg, setFactoryResolveMsg] = useState('');
-
-  // ── Bank Accounts state ──────────────────────────────────────────────────
-  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
-  const [bankAccountsLoading, setBankAccountsLoading] = useState(false);
-  const [showAddBankModal, setShowAddBankModal] = useState(false);
-  const [bankFormData, setBankFormData] = useState({
-    account_holder_name: '', bank_name: '', account_number: '', iban: '',
-    swift_bic: '', currency: 'USD', account_type: 'international_supply', account_type_label: '',
-  });
-  const [bankFormLoading, setBankFormLoading] = useState(false);
-  const [bankFormError, setBankFormError] = useState('');
-  const [bankFormSuccess, setBankFormSuccess] = useState('');
-  const [deletingBankId, setDeletingBankId] = useState<string | null>(null);
-
-  // ── Payment Settings state ───────────────────────────────────────────────
-  const [paymentSettings, setPaymentSettings] = useState<any>({
-    bank_name: '', bank_account_holder: '', iban: '', swift_code: '', account_number: '',
-    bank_country: '', bank_city: '', bank_branch: '', bank_currency: 'USD',
-    usdt_trc20_address: '', usdt_erc20_address: '', bitcoin_address: '', ethereum_address: '',
-    other_wallet_label: '', other_wallet_address: '',
-    jawali_phone: '', jawali_account_name: '', jawali_pos_number: '', jawali_pos_name: '',
-    jeeb_phone: '', jeeb_account_name: '', jeeb_pos_number: '', jeeb_pos_name: '',
-    cash_phone: '', cash_account_name: '', cash_pos_number: '', cash_pos_name: '',
-    floosk_phone: '', floosk_account_name: '', floosk_pos_number: '', floosk_pos_name: '',
-    mobile_money_phone: '', mobile_money_account_name: '', mobile_money_pos_number: '', mobile_money_pos_name: '',
-    kuraimi_phone: '', kuraimi_account_name: '', kuraimi_pos_number: '', kuraimi_pos_name: '',
-  });
-  const [paymentLoading, setPaymentLoading] = useState(false);
-  const [paymentSaving, setPaymentSaving] = useState(false);
-  const [paymentError, setPaymentError] = useState('');
-  const [paymentSuccess, setPaymentSuccess] = useState('');
-
-  // ── Finance state ────────────────────────────────────────────────────────
-  const [financeRecords, setFinanceRecords] = useState<any[]>([]);
-  const [financeLoading, setFinanceLoading] = useState(false);
-  const [financeFilter, setFinanceFilter] = useState<'all' | 'received' | 'sent'>('all');
-
-  // ── Archive state ────────────────────────────────────────────────────────
-  const [archiveRecords, setArchiveRecords] = useState<any[]>([]);
-  const [archiveLoading, setArchiveLoading] = useState(false);
-  const [archiveType, setArchiveType] = useState<'all' | 'sales' | 'purchases' | 'shipments'>('all');
-
-  // ── Fetch helpers ────────────────────────────────────────────────────────
-  const fetchProducts = React.useCallback(async () => {
-    if (!user) return;
-    setFetchLoading(true);
-    try {
-      const { data } = await supabase
-        .from('manufacturer_products')
-        .select('*')
-        .eq('manufacturer_id', user.id)
-        .order('created_at', { ascending: false });
-      setProducts(data || []);
-    } catch (e) { console.error(e); } finally { setFetchLoading(false); }
-  }, [user, supabase]);
-
-  const fetchInventoryItems = React.useCallback(async () => {
-    if (!user) return;
-    setInventoryLoading(true);
-    try {
-      const { data } = await supabase
-        .from('inventory_items')
-        .select('*')
-        .eq('manufacturer_id', user.id)
-        .order('created_at', { ascending: false });
-      setInventoryItems(data || []);
-    } catch (e) { console.error(e); } finally { setInventoryLoading(false); }
-  }, [user, supabase]);
-
-  const fetchFactoryOrders = React.useCallback(async () => {
-    if (!user) return;
-    setFactoryOrdersLoading(true);
-    try {
-      const { data } = await supabase
-        .from('factory_orders')
-        .select('*')
-        .eq('factory_id', user.id)
-        .order('created_at', { ascending: false });
-      setFactoryOrders(data || []);
-    } catch (e) { console.error(e); } finally { setFactoryOrdersLoading(false); }
-  }, [user, supabase]);
-
-  const fetchEscrowOrders = React.useCallback(async () => {
-    if (!user) return;
-    setEscrowOrdersLoading(true);
-    try {
-      const { data } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('manufacturer_id', user.id)
-        .eq('payment_method', 'escrow')
-        .order('created_at', { ascending: false });
-      setEscrowOrders(data || []);
-    } catch (e) { console.error(e); } finally { setEscrowOrdersLoading(false); }
-  }, [user, supabase]);
-
-  const fetchAnalytics = React.useCallback(async () => {
-    if (!user) return;
-    setAnalyticsLoading(true);
-    try {
-      const { data: orders } = await supabase
-        .from('orders')
-        .select('total_amount, created_at')
-        .eq('manufacturer_id', user.id);
-      const totalRevenue = (orders || []).reduce((s: number, o: any) => s + (o.total_amount || 0), 0);
-      const { data: prods } = await supabase
-        .from('products')
-        .select('id, is_active')
-        .eq('manufacturer_id', user.id);
-      setAnalyticsStats(prev => ({
-        ...prev,
-        totalOrders: (orders || []).length,
-        totalRevenue,
-        activeProducts: (prods || []).filter((p: any) => p.is_active).length,
-      }));
-    } catch (e) { console.error(e); } finally { setAnalyticsLoading(false); }
-  }, [user, supabase]);
-
-  const fetchFactoryDisputes = React.useCallback(async () => {
-    if (!user) return;
-    setFactoryDisputesLoading(true);
-    try {
-      const { data } = await supabase
-        .from('disputes')
-        .select('*')
-        .eq('manufacturer_id', user.id)
-        .order('created_at', { ascending: false });
-      setFactoryDisputes(data || []);
-    } catch (e) { console.error(e); } finally { setFactoryDisputesLoading(false); }
-  }, [user, supabase]);
-
-  const fetchBankAccounts = React.useCallback(async () => {
-    if (!user) return;
-    setBankAccountsLoading(true);
-    try {
-      const { data } = await supabase
-        .from('manufacturer_bank_accounts')
-        .select('*')
-        .eq('manufacturer_id', user.id)
-        .order('created_at', { ascending: false });
-      setBankAccounts(data || []);
-    } catch (e) { console.error(e); } finally { setBankAccountsLoading(false); }
-  }, [user, supabase]);
-
-  const fetchPaymentSettings = React.useCallback(async () => {
-    if (!user) return;
-    setPaymentLoading(true);
-    try {
-      const { data } = await supabase
-        .from('manufacturer_payment_settings')
-        .select('*')
-        .eq('manufacturer_id', user.id)
-        .single();
-      if (data) setPaymentSettings((prev: any) => ({ ...prev, ...data }));
-    } catch (e) { console.error(e); } finally { setPaymentLoading(false); }
-  }, [user, supabase]);
-
-  const fetchFinanceRecords = React.useCallback(async () => {
-    if (!user) return;
-    setFinanceLoading(true);
-    try {
-      const { data } = await supabase
-        .from('finance_records')
-        .select('*')
-        .eq('manufacturer_id', user.id)
-        .order('created_at', { ascending: false });
-      setFinanceRecords(data || []);
-    } catch (e) { console.error(e); } finally { setFinanceLoading(false); }
-  }, [user, supabase]);
-
-  const fetchArchiveRecords = React.useCallback(async () => {
-    if (!user) return;
-    setArchiveLoading(true);
-    try {
-      const { data } = await supabase
-        .from('archive_records')
-        .select('*')
-        .eq('manufacturer_id', user.id)
-        .order('created_at', { ascending: false });
-      setArchiveRecords(data || []);
-    } catch (e) { console.error(e); } finally { setArchiveLoading(false); }
-  }, [user, supabase]);
-
-  const handleSavePaymentSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    setPaymentSaving(true);
-    setPaymentError('');
-    try {
-      const { error } = await supabase
-        .from('manufacturer_payment_settings')
-        .upsert({ ...paymentSettings, manufacturer_id: user.id }, { onConflict: 'manufacturer_id' });
-      if (error) throw error;
-      setPaymentSuccess(s.saved);
-      setTimeout(() => setPaymentSuccess(''), 3000);
-    } catch (e: any) {
-      setPaymentError(e.message || s.errorGeneric);
-    } finally { setPaymentSaving(false); }
-  };
-
-  const handleAddBankAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    setBankFormLoading(true);
-    setBankFormError('');
-    try {
-      const { error } = await supabase
-        .from('manufacturer_bank_accounts')
-        .insert({ ...bankFormData, manufacturer_id: user.id, status: 'pending_review' });
-      if (error) throw error;
-      setBankFormSuccess(s.accountAdded);
-      setShowAddBankModal(false);
-      fetchBankAccounts();
-    } catch (e: any) {
-      setBankFormError(e.message || s.errorGeneric);
-    } finally { setBankFormLoading(false); }
-  };
-
-  const handleDeleteBankAccount = async (id: string) => {
-    setDeletingBankId(id);
-    try {
-      await supabase.from('manufacturer_bank_accounts').delete().eq('id', id);
-      fetchBankAccounts();
-    } catch (e) { console.error(e); } finally { setDeletingBankId(null); }
-  };
-
-  const handleFactoryOrderStatusUpdate = async (orderId: string, newStatus: string) => {
-    setFactoryOrderStatusUpdating(true);
-    try {
-      const { error } = await supabase
-        .from('factory_orders')
-        .update({ status: newStatus, factory_note: factoryOrderNoteInput })
-        .eq('id', orderId);
-      if (error) throw error;
-      setFactoryOrderStatusMsg(s.statusUpdated);
-      setFactoryOrderStatusSuccess(true);
-      fetchFactoryOrders();
-    } catch (e: any) {
-      setFactoryOrderStatusMsg(e.message || s.errorGeneric);
-      setFactoryOrderStatusSuccess(false);
-    } finally { setFactoryOrderStatusUpdating(false); }
-  };
-
-  const handleDeliveryPinVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedEscrowOrder) return;
-    setDeliveryPinVerifying(true);
-    try {
-      const res = await fetch('/api/escrow/delivery-pin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: selectedEscrowOrder.id, pin: deliveryPinInput }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setDeliveryPinMsg(s.verifiedOk);
-        setDeliveryPinSuccess(true);
-        fetchEscrowOrders();
-      } else {
-        setDeliveryPinMsg(data.error || s.invalidPin);
-        setDeliveryPinSuccess(false);
-      }
-    } catch (e: any) {
-      setDeliveryPinMsg(s.errorGeneric);
-      setDeliveryPinSuccess(false);
-    } finally { setDeliveryPinVerifying(false); }
-  };
-
-  const handleMarkReady = async (orderId: string) => {
-    setMarkReadyLoading(true);
-    try {
-      const res = await fetch('/api/escrow/mark-ready', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: orderId, note: markReadyNote }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setMarkReadyMsg(s.statusUpdated);
-        setMarkReadySuccess(true);
-        fetchEscrowOrders();
-      } else {
-        setMarkReadyMsg(data.error || s.errorGeneric);
-        setMarkReadySuccess(false);
-      }
-    } catch (e: any) {
-      setMarkReadyMsg(s.errorGeneric);
-      setMarkReadySuccess(false);
-    } finally { setMarkReadyLoading(false); }
-  };
-
-  const handleFactoryResolve = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedFactoryDispute) return;
-    setFactoryResolveLoading(true);
-    try {
-      const { error } = await supabase
-        .from('disputes')
-        .update({ factory_resolution_type: factoryResolutionType, factory_resolution_note: factoryResolutionNote, status: 'factory_resolved' })
-        .eq('id', selectedFactoryDispute.id);
-      if (error) throw error;
-      setFactoryResolveMsg(s.replySent);
-      fetchFactoryDisputes();
-    } catch (e: any) {
-      setFactoryResolveMsg(e.message || s.errorGeneric);
-    } finally { setFactoryResolveLoading(false); }
   };
 
   useEffect(() => {
@@ -741,7 +351,7 @@ export default function InternationalDashboardPage() {
         (user.user_metadata?.role as string | undefined) ||
         (user.app_metadata?.role as string | undefined) ||
         null;
-      const [profileRes, regRes] = await Promise.all([
+      const [profileRes] = await Promise.all([
         supabase
           .from('user_profiles')
           .select('role, account_type, seller_category')
@@ -786,18 +396,6 @@ export default function InternationalDashboardPage() {
     };
   }, [user, authLoading, router, supabase]);
 
-  // ── Real-time order sync ─────────────────────────────────────────────────
-  useRealtimeOrders({
-    channelName: 'intl-dashboard-orders-rt',
-    filterColumn: 'manufacturer_id',
-    userId: user?.id,
-    onOrderChange: () => {
-      fetchEscrowOrders();
-      fetchFactoryOrders();
-    },
-    enabled: !!user && !authLoading,
-  });
-
   if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -810,7 +408,7 @@ export default function InternationalDashboardPage() {
     ? exportOrders
     : exportOrders.filter(o => o.status === filterStatus);
 
-  const totalExportValue = exportOrders.reduce((s, o) => s + o.total_value, 0);
+  const totalExportValue = exportOrders.reduce((sum, o) => sum + o.total_value, 0);
   const inTransitCount = exportOrders.filter(o => o.status === 'in_transit').length;
   const pendingDocsCount = exportOrders.filter(o => o.status === 'pending_docs').length;
   const heldCount = exportOrders.filter(o => o.status === 'held').length;
@@ -950,8 +548,7 @@ export default function InternationalDashboardPage() {
               key={kpi.key}
               onClick={() => handleKpiClick(kpi.key)}
               className={`bg-gradient-to-br ${kpi.color} rounded-xl p-4 border border-white/10 text-start w-full cursor-pointer transition-all duration-150 hover:scale-[1.02] hover:shadow-lg hover:border-white/30 active:scale-95 active:brightness-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${
-                (kpi.key === filterStatus && activeTab === 'exports')
-                  ? 'ring-2 ring-white/60' :''
+                kpi.key === filterStatus ? 'ring-2 ring-white/60' : ''
               }`}
             >
               <div className="flex items-start justify-between">
@@ -966,6 +563,18 @@ export default function InternationalDashboardPage() {
               </div>
             </button>
           ))}
+        </div>
+
+        {/* Factory Control Room Hub — replaces the stacked horizontally-scrollable tabs */}
+        <div ref={hubSectionRef} className="scroll-mt-20">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="flex-1 h-px bg-slate-700/60" />
+            <span className="text-xs text-slate-500 font-medium px-3 py-1 bg-slate-800 rounded-full border border-slate-700 whitespace-nowrap">
+              {s.toolsDivider}
+            </span>
+            <div className="flex-1 h-px bg-slate-700/60" />
+          </div>
+          <FactoryControlHub userId={user?.id} />
         </div>
 
         {/* Charts Row */}
@@ -1002,593 +611,220 @@ export default function InternationalDashboardPage() {
           </div>
         </div>
 
-        {/* Tabs — Original 8 */}
-        <div ref={accountsSectionRef} className="flex gap-1 bg-slate-900 rounded-xl p-1 border border-slate-800 w-full overflow-x-auto scroll-mt-20">
-          {([
-            { id: 'exports', label: s.tabExports, icon: 'Package' },
-            { id: 'production', label: s.tabProduction, icon: 'Settings' },
-            { id: 'documents', label: s.tabDocuments, icon: 'FileText' },
-            { id: 'supply_chain', label: s.tabSupplyChain, icon: 'GitBranch' },
-            { id: 'buying_selling', label: s.tabBuyingSelling, icon: 'ShoppingCart' },
-            { id: 'accounts', label: s.tabAccounts, icon: 'DollarSign' },
-            { id: 'messaging', label: s.tabMessaging, icon: 'MessageCircle' },
-            { id: 'rfq', label: s.tabRfq, icon: 'ClipboardList' },
-          ] as { id: Tab; label: string; icon: string }[]).map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                if (tab.id === 'buying_selling') { router.push('/manufacturer/sales'); return; }
-                if (tab.id === 'accounts') { router.push('/manufacturer/finance'); return; }
-                setActiveTab(tab.id);
-              }}
-              className={`flex-1 min-w-max px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                activeTab === tab.id
-                  ? tab.id === 'buying_selling' ? 'bg-emerald-600 text-white shadow'
-                  : tab.id === 'accounts' ? 'bg-yellow-600 text-white shadow'
-                  : tab.id === 'messaging' ? 'bg-blue-600 text-white shadow'
-                  : tab.id === 'rfq' ? 'bg-purple-600 text-white shadow'
-                  : 'bg-cyan-600 text-white shadow' :'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Visual Divider */}
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-slate-700/60" />
-          <span className="text-xs text-slate-500 font-medium px-3 py-1 bg-slate-800 rounded-full border border-slate-700 whitespace-nowrap">
-            {s.toolsDivider}
-          </span>
-          <div className="flex-1 h-px bg-slate-700/60" />
-        </div>
-
-        {/* Tabs — New 11 */}
-        <div className="flex gap-1 bg-slate-900 rounded-xl p-1 border border-slate-800 w-full overflow-x-auto">
-          {([
-            { id: 'products', label: s.tabProducts, color: 'bg-teal-600' },
-            { id: 'inventory', label: s.tabInventory, color: 'bg-amber-600' },
-            { id: 'factory_orders', label: s.tabFactoryOrders, color: 'bg-orange-600' },
-            { id: 'escrow_orders', label: s.tabEscrowOrders, color: 'bg-indigo-600' },
-            { id: 'analytics', label: s.tabAnalytics, color: 'bg-violet-600' },
-            { id: 'disputes', label: s.tabDisputes, color: 'bg-red-600' },
-            { id: 'bank_accounts', label: s.tabBankAccounts, color: 'bg-emerald-600' },
-            { id: 'payment_settings', label: s.tabPaymentSettings, color: 'bg-green-600' },
-            { id: 'finance', label: s.tabFinance, color: 'bg-lime-600' },
-            { id: 'sales_team', label: s.tabSalesTeam, color: 'bg-cyan-600' },
-            { id: 'archive', label: s.tabArchive, color: 'bg-slate-600' },
-          ] as { id: Tab; label: string; color: string }[]).map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id);
-                if (tab.id === 'products') fetchProducts();
-                else if (tab.id === 'inventory') fetchInventoryItems();
-                else if (tab.id === 'factory_orders') fetchFactoryOrders();
-                else if (tab.id === 'escrow_orders') fetchEscrowOrders();
-                else if (tab.id === 'analytics') fetchAnalytics();
-                else if (tab.id === 'disputes') fetchFactoryDisputes();
-                else if (tab.id === 'bank_accounts') fetchBankAccounts();
-                else if (tab.id === 'payment_settings') fetchPaymentSettings();
-                else if (tab.id === 'finance') fetchFinanceRecords();
-                else if (tab.id === 'archive') fetchArchiveRecords();
-              }}
-              className={`flex-1 min-w-max px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                activeTab === tab.id ? `${tab.color} text-white shadow` : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab: Export Orders */}
-        {activeTab === 'exports' && (
-          <div ref={exportsSectionRef} className="space-y-4 scroll-mt-20">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap gap-2">
-                {['all', 'pending_docs', 'customs_review', 'in_transit', 'delivered', 'held'].map(st => (
-                  <button
-                    key={st}
-                    onClick={() => { setFilterStatus(st); setHighlightHeld(st === 'held'); }}
-                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === st ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-                  >
-                    {st === 'all' ? s.filterAll : st === 'pending_docs' ? s.statusPendingDocs : st === 'customs_review' ? s.statusCustomsReview : st === 'in_transit' ? s.statusInTransit : st === 'delivered' ? s.statusDelivered : s.statusHeld}
-                  </button>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowNewShipment(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-500 active:scale-95 transition-all"
-              >
-                <span aria-hidden="true">＋</span>
-                {s.newShipment}
-              </button>
-            </div>
-            {exportNotice && (
-              <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">{exportNotice}</div>
-            )}
-            <input
-              ref={holdUploadRef}
-              type="file"
-              className="hidden"
-              accept=".pdf,.jpg,.jpeg,.png"
-              onChange={handleHoldFileChosen}
-            />
-            <div className="space-y-3">
-              {filteredOrders.map(order => (
-                <div
-                  key={order.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setDetailsOrder(order)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailsOrder(order); } }}
-                  className={`bg-slate-900 border rounded-xl p-4 cursor-pointer hover:border-cyan-700 transition-all ${
-                    order.status === 'held' ? 'border-red-500/60' : 'border-slate-800'
-                  } ${highlightHeld && order.status === 'held' ? 'border-red-500 ring-2 ring-red-500/40' : ''}`}
+        {/* Export Orders */}
+        <div ref={exportsSectionRef} className="space-y-4 scroll-mt-20">
+          <h3 className="text-sm font-semibold text-slate-300">{s.tabExports}</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap gap-2">
+              {['all', 'pending_docs', 'customs_review', 'in_transit', 'delivered', 'held'].map(st => (
+                <button
+                  key={st}
+                  onClick={() => { setFilterStatus(st); setHighlightHeld(st === 'held'); }}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === st ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center flex-shrink-0">
-                        <Icon name="Package" size={18} className="text-cyan-400" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-white text-sm">{order.id}</span>
-                          {statusBadge(order.status, s)}
-                        </div>
-                        <p className="text-slate-300 text-sm mt-0.5">{order.product_name}</p>
-                        <p className="text-slate-500 text-xs mt-0.5">{order.buyer_name} · {order.destination_country}</p>
-                      </div>
-                    </div>
-                    <div className="text-end">
-                      <p className="text-white font-bold">${order.total_value.toLocaleString('en-US')}</p>
-                      <p className="text-slate-500 text-xs">{order.incoterm} · {order.container_count} {s.containers}</p>
-                    </div>
-                  </div>
-                  {order.status === 'held' && (
-                    <div
-                      className="mt-3 rounded-lg bg-red-500/10 border border-red-500/40 px-3 py-2 text-xs text-red-300"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="flex items-center gap-2">
-                        <AlertTriangle size={14} className="flex-shrink-0" />
-                        <span>{s.holdReasonPrefix}: {holdReasonText(order.hold_reason)}</span>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {(order.hold_reason ?? 'missing_coo') === 'missing_coo' ? (
-                          <button
-                            type="button"
-                            onClick={() => handleHoldUploadClick(order.id)}
-                            className="rounded-md bg-red-500/20 border border-red-500/40 px-3 py-1 font-medium text-red-100 hover:bg-red-500/30 active:scale-95 transition-all"
-                          >
-                            {s.uploadDoc}
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={handleContactCustomsAgent}
-                          className="rounded-md bg-slate-800 border border-slate-600 px-3 py-1 font-medium text-slate-100 hover:bg-slate-700 active:scale-95 transition-all"
-                        >
-                          {s.contactCustomsAgent}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                  {st === 'all' ? s.filterAll : st === 'pending_docs' ? s.statusPendingDocs : st === 'customs_review' ? s.statusCustomsReview : st === 'in_transit' ? s.statusInTransit : st === 'delivered' ? s.statusDelivered : s.statusHeld}
+                </button>
               ))}
             </div>
-            {detailsOrder && (
-              <ShipmentDetailsModal
-                order={detailsOrder}
-                s={s}
-                dir={dir === 'rtl' ? 'rtl' : 'ltr'}
-                docs={docs
-                  .filter(d => d.order_id === detailsOrder.id)
-                  .map(d => {
-                    const badge = {
-                      draft: s.docDraft,
-                      submitted: s.docSubmitted,
-                      approved: s.docApproved,
-                      rejected: s.docRejected,
-                    }[d.status];
-                    const cls = {
-                      draft: 'bg-slate-100 text-slate-600',
-                      submitted: 'bg-blue-100 text-blue-700',
-                      approved: 'bg-emerald-100 text-emerald-700',
-                      rejected: 'bg-red-100 text-red-700',
-                    }[d.status];
-                    return { id: d.id, label: docTypeName(d.type, s), statusLabel: badge, statusCls: cls };
-                  })}
-                onClose={() => setDetailsOrder(null)}
-              />
-            )}
-            {showNewShipment && (
-              <NewShipmentModal
-                s={s}
-                dir={dir === 'rtl' ? 'rtl' : 'ltr'}
-                onClose={() => setShowNewShipment(false)}
-                onSubmit={handleCreateShipment}
-              />
-            )}
+            <button
+              type="button"
+              onClick={() => setShowNewShipment(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-500 active:scale-95 transition-all"
+            >
+              <span aria-hidden="true">＋</span>
+              {s.newShipment}
+            </button>
           </div>
-        )}
-
-        {/* Tab: Production Lines */}
-        {activeTab === 'production' && (
+          {exportNotice && (
+            <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">{exportNotice}</div>
+          )}
+          <input
+            ref={holdUploadRef}
+            type="file"
+            className="hidden"
+            accept=".pdf,.jpg,.jpeg,.png"
+            onChange={handleHoldFileChosen}
+          />
           <div className="space-y-3">
-            {MOCK_PRODUCTION_LINES.map(line => (
-              <div key={line.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-3 h-3 rounded-full ${lineStatusColor(line.status)} flex-shrink-0 mt-0.5`} />
+            {filteredOrders.map(order => (
+              <div
+                key={order.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setDetailsOrder(order)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailsOrder(order); } }}
+                className={`bg-slate-900 border rounded-xl p-4 cursor-pointer hover:border-cyan-700 transition-all ${
+                  order.status === 'held' ? 'border-red-500/60' : 'border-slate-800'
+                } ${highlightHeld && order.status === 'held' ? 'border-red-500 ring-2 ring-red-500/40' : ''}`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center flex-shrink-0">
+                      <Icon name="Package" size={18} className="text-cyan-400" />
+                    </div>
                     <div>
-                      <p className="font-semibold text-white text-sm">{line.name}</p>
-                      <p className="text-slate-500 text-xs">{line.region} · {s.exportTarget}: {line.export_target_country}</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-white text-sm">{order.id}</span>
+                        {statusBadge(order.status, s)}
+                      </div>
+                      <p className="text-slate-300 text-sm mt-0.5">{order.product_name}</p>
+                      <p className="text-slate-500 text-xs mt-0.5">{order.buyer_name} · {order.destination_country}</p>
                     </div>
                   </div>
-                  <div className="text-end flex-shrink-0">
-                    <p className="text-white font-bold text-sm">{line.current_load}%</p>
-                    <p className="text-slate-500 text-xs">{line.capacity_per_day.toLocaleString('en-US')} {s.unitsPerDay}</p>
+                  <div className="text-end">
+                    <p className="text-white font-bold">${order.total_value.toLocaleString('en-US')}</p>
+                    <p className="text-slate-500 text-xs">{order.incoterm} · {order.container_count} {s.containers}</p>
                   </div>
                 </div>
-                <div className="mt-3">
-                  <div className="w-full bg-slate-800 rounded-full h-2">
-                    <div
-                      className={`h-2 rounded-full transition-all ${line.current_load >= 85 ? 'bg-red-500' : line.current_load >= 60 ? 'bg-amber-400' : 'bg-emerald-500'}`}
-                      style={{ width: `${line.current_load}%` }}
-                    />
+                {order.status === 'held' && (
+                  <div
+                    className="mt-3 rounded-lg bg-red-500/10 border border-red-500/40 px-3 py-2 text-xs text-red-300"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle size={14} className="flex-shrink-0" />
+                      <span>{s.holdReasonPrefix}: {holdReasonText(order.hold_reason)}</span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(order.hold_reason ?? 'missing_coo') === 'missing_coo' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleHoldUploadClick(order.id)}
+                          className="rounded-md bg-red-500/20 border border-red-500/40 px-3 py-1 font-medium text-red-100 hover:bg-red-500/30 active:scale-95 transition-all"
+                        >
+                          {s.uploadDoc}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={handleContactCustomsAgent}
+                        className="rounded-md bg-slate-800 border border-slate-600 px-3 py-1 font-medium text-slate-100 hover:bg-slate-700 active:scale-95 transition-all"
+                      >
+                        {s.contactCustomsAgent}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             ))}
           </div>
-        )}
-
-        {/* Tab: Shipping Documents */}
-        {activeTab === 'documents' && (
-          <div className="space-y-3">
-            <input
-              ref={customsUploadRef}
-              type="file"
-              className="hidden"
-              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-              onChange={handleCustomsFileChosen}
+          {detailsOrder && (
+            <ShipmentDetailsModal
+              order={detailsOrder}
+              s={s}
+              dir={dir === 'rtl' ? 'rtl' : 'ltr'}
+              docs={docs
+                .filter(d => d.order_id === detailsOrder.id)
+                .map(d => {
+                  const badge = {
+                    draft: s.docDraft,
+                    submitted: s.docSubmitted,
+                    approved: s.docApproved,
+                    rejected: s.docRejected,
+                  }[d.status];
+                  const cls = {
+                    draft: 'bg-slate-100 text-slate-600',
+                    submitted: 'bg-blue-100 text-blue-700',
+                    approved: 'bg-emerald-100 text-emerald-700',
+                    rejected: 'bg-red-100 text-red-700',
+                  }[d.status];
+                  return { id: d.id, label: docTypeName(d.type, s), statusLabel: badge, statusCls: cls };
+                })}
+              onClose={() => setDetailsOrder(null)}
             />
-            {exportNotice && (
-              <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">{exportNotice}</div>
-            )}
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-800">
-                    {[s.docType, s.orderNo, s.docStatus, s.issuedAt, s.expiresAt, s.action].map(h => (
-                      <th key={h} className="text-start text-slate-500 font-medium py-2 px-3 whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800">
-                  {docs.map(doc => (
-                    <tr key={doc.id} className="hover:bg-slate-900/50 transition-colors">
-                      <td className="py-3 px-3 text-slate-200 whitespace-nowrap">{docTypeName(doc.type, s)}</td>
-                      <td className="py-3 px-3 text-cyan-400 font-mono text-xs">{doc.order_id}</td>
-                      <td className="py-3 px-3">{docStatusBadge(doc.status, s)}</td>
-                      <td className="py-3 px-3 text-slate-400 text-xs">{doc.issued_at}</td>
-                      <td className="py-3 px-3 text-slate-400 text-xs">{doc.expires_at}</td>
-                      <td className="py-3 px-3">
-                        <button
-                          type="button"
-                          disabled={customsBusyDocId === doc.id}
-                          onClick={() => {
-                            if (doc.status === 'draft' || doc.status === 'rejected') handleCustomsUploadClick(doc.id);
-                            else handleCustomsView(doc);
-                          }}
-                          className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors disabled:opacity-50 cursor-pointer"
-                        >
-                          {customsBusyDocId === doc.id ? '...' : doc.status === 'draft' ? s.uploadDoc : doc.status === 'rejected' ? s.reuploadDoc : s.view}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          )}
+          {showNewShipment && (
+            <NewShipmentModal
+              s={s}
+              dir={dir === 'rtl' ? 'rtl' : 'ltr'}
+              onClose={() => setShowNewShipment(false)}
+              onSubmit={handleCreateShipment}
+            />
+          )}
+        </div>
+
+        {/* Production Lines overview */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-slate-300">{s.tabProduction}</h3>
+          {MOCK_PRODUCTION_LINES.map(line => (
+            <div key={line.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-3 h-3 rounded-full ${lineStatusColor(line.status)} flex-shrink-0 mt-0.5`} />
+                  <div>
+                    <p className="font-semibold text-white text-sm">{line.name}</p>
+                    <p className="text-slate-500 text-xs">{line.region} · {s.exportTarget}: {line.export_target_country}</p>
+                  </div>
+                </div>
+                <div className="text-end flex-shrink-0">
+                  <p className="text-white font-bold text-sm">{line.current_load}%</p>
+                  <p className="text-slate-500 text-xs">{line.capacity_per_day.toLocaleString('en-US')} {s.unitsPerDay}</p>
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="w-full bg-slate-800 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full transition-all ${line.current_load >= 85 ? 'bg-red-500' : line.current_load >= 60 ? 'bg-amber-400' : 'bg-emerald-500'}`}
+                    style={{ width: `${line.current_load}%` }}
+                  />
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          ))}
+        </div>
 
-        {/* Tab: Supply Chain */}
-        {activeTab === 'supply_chain' && (
+        {/* Shipping / customs documents */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-slate-300">{s.tabDocuments}</h3>
+          <input
+            ref={customsUploadRef}
+            type="file"
+            className="hidden"
+            accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+            onChange={handleCustomsFileChosen}
+          />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-800">
+                  {[s.docType, s.orderNo, s.docStatus, s.issuedAt, s.expiresAt, s.action].map(h => (
+                    <th key={h} className="text-start text-slate-500 font-medium py-2 px-3 whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {docs.map(doc => (
+                  <tr key={doc.id} className="hover:bg-slate-900/50 transition-colors">
+                    <td className="py-3 px-3 text-slate-200 whitespace-nowrap">{docTypeName(doc.type, s)}</td>
+                    <td className="py-3 px-3 text-cyan-400 font-mono text-xs">{doc.order_id}</td>
+                    <td className="py-3 px-3">{docStatusBadge(doc.status, s)}</td>
+                    <td className="py-3 px-3 text-slate-400 text-xs">{doc.issued_at}</td>
+                    <td className="py-3 px-3 text-slate-400 text-xs">{doc.expires_at}</td>
+                    <td className="py-3 px-3">
+                      <button
+                        type="button"
+                        disabled={customsBusyDocId === doc.id}
+                        onClick={() => {
+                          if (doc.status === 'draft' || doc.status === 'rejected') handleCustomsUploadClick(doc.id);
+                          else handleCustomsView(doc);
+                        }}
+                        className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        {customsBusyDocId === doc.id ? '...' : doc.status === 'draft' ? s.uploadDoc : doc.status === 'rejected' ? s.reuploadDoc : s.view}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Supply Chain */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-slate-300">{s.tabSupplyChain}</h3>
           <SupplyChainPanel />
-        )}
-
-        {/* Tab: Buying & Selling and Accounts now live on dedicated routes
-            (/manufacturer/sales and /manufacturer/finance) */}
-
-        {/* Tab: Messaging */}
-        {activeTab === 'messaging' && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <FactoryThreadsMessaging
-              userId={user?.id || ''}
-              viewerRole="factory"
-              shipments={exportOrders.map(o => ({
-                id: o.id,
-                portOfLoading: o.origin_port,
-                containerDetails: `${o.container_count} × container${o.bl_number ? ` · B/L ${o.bl_number}` : ''}`,
-              }))}
-            />
-          </div>
-        )}
-
-        {/* Tab: RFQ */}
-        {activeTab === 'rfq' && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <IncomingRFQsPanel userId={user?.id ?? ''} />
-          </div>
-        )}
-
-        {/* ── NEW TAB PANELS ── */}
-
-        {/* Tab: Products */}
-        {activeTab === 'products' && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <ProductsPanel
-              products={products}
-              filteredProducts={products}
-              sortedProducts={products}
-              fetchLoading={fetchLoading}
-              showAddModal={false}
-              setShowAddModal={() => {}}
-              editingProduct={null}
-              formData={{ name: '', name_ar: '', name_zh: '', name_tr: '', description: '', description_ar: '', description_zh: '', description_tr: '', specifications_en: '', specifications_ar: '', category: 'raw_materials', sku: '', unit: 'kg', unit_price: '', minimum_order_qty: '1', stock_quantity: '', inventory_status: 'in_stock', origin_country: '' }}
-              setFormData={() => {}}
-              formLoading={false}
-              formError=""
-              deleteId={null}
-              setDeleteId={() => {}}
-              filterStatus="all"
-              setFilterStatus={() => {}}
-              filterCategory="all"
-              setFilterCategory={() => {}}
-              searchQuery=""
-              setSearchQuery={() => {}}
-              selectedProducts={new Set()}
-              setSelectedProducts={() => {}}
-              bulkActionLoading={false}
-              productSort={{ col: 'created_at', dir: 'desc' }}
-              toggleProductSort={() => {}}
-              factoryRegistration={null}
-              canListProducts={true}
-              hasDocuments={true}
-              docGateLoading={false}
-              showDocGate={false}
-              setShowDocGate={() => {}}
-              docUploadSuccess=""
-              docUploadError=""
-              tradeLicenseFile={null}
-              setTradeLicenseFile={() => {}}
-              mfgLicenseFile={null}
-              setMfgLicenseFile={() => {}}
-              uploadingDocs={false}
-              accountType="factory"
-              setAccountType={() => {}}
-              secondDocFile={null}
-              setSecondDocFile={() => {}}
-              taxId=""
-              setTaxId={() => {}}
-              establishedYear=""
-              setEstablishedYear={() => {}}
-              trustPercentage={0}
-              verifiedTier="unverified"
-              missingDocuments={[]}
-              inquirySending={false}
-              inquirySent={false}
-              inquiryError=""
-              handleOpenAddModal={() => router.push('/seller/products?add=1')}
-              handleFormSubmit={async () => {}}
-              handleDelete={async () => {}}
-              handleToggleActive={async () => {}}
-              handleBulkToggleActive={async () => {}}
-              handleBulkDelete={async () => {}}
-              handleDocumentUpload={async () => {}}
-              handleAccreditationInquiry={async () => {}}
-              openEditModal={() => {}}
-              stats={{ total: products.length, active: products.filter((p: any) => p.is_active).length, inactive: products.filter((p: any) => !p.is_active).length, lowStock: 0 }}
-              SortIcon={() => null}
-              t={t as any}
-              md={md}
-            />
-          </div>
-        )}
-
-        {/* Tab: Inventory */}
-        {activeTab === 'inventory' && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <InventoryPanel
-              inventoryItems={inventoryItems}
-              inventoryLoading={inventoryLoading}
-              showAddInventoryModal={showAddInventoryModal}
-              setShowAddInventoryModal={setShowAddInventoryModal}
-              inventoryForm={inventoryForm}
-              setInventoryForm={setInventoryForm}
-              inventoryFormLoading={inventoryFormLoading}
-              inventoryFormError={inventoryFormError}
-              md={md}
-              onSaved={fetchInventoryItems}
-            />
-          </div>
-        )}
-
-        {/* Tab: Factory Orders */}
-        {activeTab === 'factory_orders' && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <FactoryOrdersPanel
-              factoryOrders={factoryOrders}
-              factoryOrdersLoading={factoryOrdersLoading}
-              selectedFactoryOrder={selectedFactoryOrder}
-              setSelectedFactoryOrder={setSelectedFactoryOrder}
-              factoryOrderStatusFilter={factoryOrderStatusFilter}
-              setFactoryOrderStatusFilter={setFactoryOrderStatusFilter}
-              factoryOrderStatusUpdating={factoryOrderStatusUpdating}
-              factoryOrderStatusMsg={factoryOrderStatusMsg}
-              factoryOrderStatusSuccess={factoryOrderStatusSuccess}
-              factoryOrderNoteInput={factoryOrderNoteInput}
-              setFactoryOrderNoteInput={setFactoryOrderNoteInput}
-              setFactoryOrderStatusMsg={setFactoryOrderStatusMsg}
-              setFactoryOrderStatusSuccess={setFactoryOrderStatusSuccess}
-              handleFactoryOrderStatusUpdate={handleFactoryOrderStatusUpdate}
-              fetchFactoryOrders={fetchFactoryOrders}
-              md={md}
-            />
-          </div>
-        )}
-
-        {/* Tab: Escrow Orders */}
-        {activeTab === 'escrow_orders' && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <EscrowOrdersPanel
-              escrowOrders={escrowOrders}
-              escrowOrdersLoading={escrowOrdersLoading}
-              selectedEscrowOrder={selectedEscrowOrder}
-              setSelectedEscrowOrder={setSelectedEscrowOrder}
-              deliveryPinInput={deliveryPinInput}
-              setDeliveryPinInput={setDeliveryPinInput}
-              deliveryPinVerifying={deliveryPinVerifying}
-              deliveryPinMsg={deliveryPinMsg}
-              deliveryPinSuccess={deliveryPinSuccess}
-              setDeliveryPinMsg={setDeliveryPinMsg}
-              setDeliveryPinSuccess={setDeliveryPinSuccess}
-              markReadyLoading={markReadyLoading}
-              markReadyNote={markReadyNote}
-              setMarkReadyNote={setMarkReadyNote}
-              markReadyMsg={markReadyMsg}
-              markReadySuccess={markReadySuccess}
-              setMarkReadyMsg={setMarkReadyMsg}
-              setMarkReadySuccess={setMarkReadySuccess}
-              handleDeliveryPinVerify={handleDeliveryPinVerify}
-              handleMarkReady={handleMarkReady}
-              fetchEscrowOrders={fetchEscrowOrders}
-              user={user}
-              md={md}
-            />
-          </div>
-        )}
-
-        {/* Tab: Analytics */}
-        {activeTab === 'analytics' && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <AnalyticsPanel
-              analyticsLoading={analyticsLoading}
-              analyticsData={analyticsData}
-              analyticsStats={analyticsStats}
-              analyticsPeriod={analyticsPeriod}
-              setAnalyticsPeriod={setAnalyticsPeriod}
-              products={products}
-              companyName=""
-              user={user}
-              t={t as any}
-              md={md}
-            />
-          </div>
-        )}
-
-        {/* Tab: Disputes */}
-        {activeTab === 'disputes' && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <DisputesPanel
-              factoryDisputes={factoryDisputes}
-              factoryDisputesLoading={factoryDisputesLoading}
-              selectedFactoryDispute={selectedFactoryDispute}
-              setSelectedFactoryDispute={setSelectedFactoryDispute}
-              factoryResolutionType={factoryResolutionType}
-              setFactoryResolutionType={setFactoryResolutionType}
-              factoryResolutionNote={factoryResolutionNote}
-              setFactoryResolutionNote={setFactoryResolutionNote}
-              factoryResolveLoading={factoryResolveLoading}
-              factoryResolveMsg={factoryResolveMsg}
-              setFactoryResolveMsg={setFactoryResolveMsg}
-              handleFactoryResolve={handleFactoryResolve}
-              fetchFactoryDisputes={fetchFactoryDisputes}
-              md={md}
-            />
-          </div>
-        )}
-
-        {/* Tab: Bank Accounts */}
-        {activeTab === 'bank_accounts' && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <BankAccountsPanel
-              bankAccounts={bankAccounts}
-              bankAccountsLoading={bankAccountsLoading}
-              showAddBankModal={showAddBankModal}
-              setShowAddBankModal={setShowAddBankModal}
-              bankFormData={bankFormData}
-              setBankFormData={setBankFormData}
-              bankFormLoading={bankFormLoading}
-              bankFormError={bankFormError}
-              bankFormSuccess={bankFormSuccess}
-              deletingBankId={deletingBankId}
-              handleAddBankAccount={handleAddBankAccount}
-              handleDeleteBankAccount={handleDeleteBankAccount}
-              md={md}
-            />
-          </div>
-        )}
-
-        {/* Tab: Payment Settings */}
-        {activeTab === 'payment_settings' && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <PaymentSettingsPanel
-              paymentSettings={paymentSettings}
-              setPaymentSettings={setPaymentSettings}
-              paymentLoading={paymentLoading}
-              paymentSaving={paymentSaving}
-              paymentError={paymentError}
-              paymentSuccess={paymentSuccess}
-              handleSavePaymentSettings={handleSavePaymentSettings}
-              t={t as any}
-              md={md}
-            />
-          </div>
-        )}
-
-        {/* Tab: Finance */}
-        {activeTab === 'finance' && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <FinancePanel
-              financeRecords={financeRecords}
-              financeLoading={financeLoading}
-              financeFilter={financeFilter}
-              setFinanceFilter={setFinanceFilter}
-              md={md}
-            />
-          </div>
-        )}
-
-        {/* Tab: Sales Team */}
-        {activeTab === 'sales_team' && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <FactoryTeamManagement
-              factoryOwnerId={user?.id ?? ''}
-              isRTL={isRTL ?? false}
-            />
-          </div>
-        )}
-
-        {/* Tab: Archive */}
-        {activeTab === 'archive' && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-            <ArchivePanel
-              archiveRecords={archiveRecords}
-              archiveLoading={archiveLoading}
-              archiveType={archiveType}
-              setArchiveType={setArchiveType}
-              md={md}
-            />
-          </div>
-        )}
-
+        </div>
       </div>
     </div>
   );

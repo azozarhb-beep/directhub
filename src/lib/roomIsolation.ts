@@ -46,6 +46,17 @@ export const EXCLUSIVE_ROOM_PREFIXES: { prefix: string; roles: PlatformRole[] }[
   { prefix: '/manufacturer/international-dashboard', roles: ['manufacturer'] },
   { prefix: '/manufacturer/b2b', roles: ['manufacturer'] },
   { prefix: '/manufacturer/b2c', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/products', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/inventory', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/rfq', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/orders', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/production', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/logistics', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/escrow', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/bank-accounts', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/analytics', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/documents', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/messages', roles: ['manufacturer'] },
   // Strict isolation: supplier dashboard is ONLY for commercial_supplier
   { prefix: '/supplier/local-dashboard', roles: ['commercial_supplier'] },
   // Strict isolation: factory dashboard is ONLY for manufacturer (local/international factory)
