@@ -29,6 +29,50 @@ interface PriceTier {
   price: string;
 }
 
+interface TierRow {
+  min_qty: number;
+  max_qty: number | null;
+  unit_price: number;
+}
+
+function normalizeTiers(raw: any): TierRow[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.
+  map((t: any) => {
+    const minQty = Number(t?.min_qty ?? t?.minQty ?? t?.min ?? 0);
+    const maxRaw = t?.max_qty ?? t?.maxQty ?? t?.max ?? null;
+    const maxQty = maxRaw === null || maxRaw === undefined || maxRaw === '' || maxRaw === '+' ? null : Number(maxRaw);
+    const unitPrice = Number(t?.unit_price ?? t?.unitPrice ?? t?.price ?? 0);
+    return {
+      min_qty: isNaN(minQty) ? 0 : minQty,
+      max_qty: maxQty !== null && isNaN(maxQty) ? null : maxQty,
+      unit_price: isNaN(unitPrice) ? 0 : unitPrice
+    } as TierRow;
+  }).
+  filter((t: TierRow) => t.min_qty > 0 && t.unit_price > 0).
+  sort((a: TierRow, b: TierRow) => a.min_qty - b.min_qty);
+}
+
+function getTierPriceBounds(tiers: TierRow[]): {min: number;max: number;} | null {
+  if (!tiers || tiers.length === 0) return null;
+  const prices = tiers.map((t) => t.unit_price);
+  return { min: Math.min(...prices), max: Math.max(...prices) };
+}
+
+function findTierForQty(tiers: TierRow[], qty: number): TierRow | null {
+  if (!tiers || tiers.length === 0) return null;
+  let match: TierRow | null = null;
+  for (const t of tiers) {
+    if (qty >= t.min_qty && (t.max_qty === null || qty <= t.max_qty)) {
+      match = t;
+    }
+  }
+  if (!match && qty >= tiers[0].min_qty) {
+    match = tiers[tiers.length - 1];
+  }
+  return match;
+}
+
 interface ProductDetail {
   id: string;
   name: string;
@@ -61,6 +105,8 @@ interface ProductDetail {
   agentListed?: boolean;
   certifications?: string[];
   priceTiers?: PriceTier[];
+  rawTiers?: TierRow[];
+  moqNumber?: number;
   packagingDetails?: string;
   supplyAbility?: string;
   factoryArea?: string;
@@ -487,29 +533,34 @@ export default function ProductDetailPage() {
           const inventoryStatus = data.inventory_status || 'in_stock';
 
           const unitPriceNum = parseFloat(String(data.unit_price || data.price || 0)) || 0;
-          const moqNum = parseInt(String(data.moq || data.min_order_quantity || 1)) || 1;
+          const dbTiers = normalizeTiers(data.tiered_pricing);
+          const moqNum = dbTiers.length > 0 ?
+          dbTiers[0].min_qty :
+          parseInt(String(data.minimum_order_qty || data.min_order_quantity || data.moq || 1)) || 1;
+          const tierUnit = data.unit || 'unit';
           let finalPriceTiers: PriceTier[] = [];
-          if (Array.isArray(data.tiered_pricing) && data.tiered_pricing.length > 0) {
-            finalPriceTiers = data.tiered_pricing.map((tier: any) => ({
-              minQty: String(tier.min_qty || tier.minQty || ''),
-              maxQty: tier.max_qty != null ? String(tier.max_qty) : tier.maxQty != null ? String(tier.maxQty) : '+',
-              price: `$${parseFloat(String(tier.price)).toFixed(2)}/${data.unit || 'unit'}`
+          if (dbTiers.length > 0) {
+            finalPriceTiers = dbTiers.map((tier) => ({
+              minQty: String(tier.min_qty),
+              maxQty: tier.max_qty !== null ? String(tier.max_qty) : '+',
+              price: `$${tier.unit_price.toFixed(2)}/${tierUnit}`
             }));
           } else if (unitPriceNum > 0) {
             finalPriceTiers = [
-            { minQty: String(moqNum), maxQty: String(moqNum * 4), price: `$${(unitPriceNum * 1.15).toFixed(2)}/${data.unit || 'unit'}` },
-            { minQty: String(moqNum * 5), maxQty: String(moqNum * 19), price: `$${(unitPriceNum * 1.05).toFixed(2)}/${data.unit || 'unit'}` },
-            { minQty: String(moqNum * 20), maxQty: '+', price: `$${unitPriceNum.toFixed(2)}/${data.unit || 'unit'}` }];
+            { minQty: String(moqNum), maxQty: '+', price: `$${unitPriceNum.toFixed(2)}/${tierUnit}` }];
 
           }
+          const tierBounds = getTierPriceBounds(dbTiers);
+          const rangeMin = tierBounds ? tierBounds.min : unitPriceNum;
+          const rangeMax = tierBounds ? tierBounds.max : unitPriceNum;
 
           setProduct({
             id: data.id,
             name: data.name,
             nameAr: data.name_ar || data.name,
             images,
-            price: String(unitPriceNum),
-            priceRange: unitPriceNum > 0 ? `$${(unitPriceNum * 1.15).toFixed(2)} – $${unitPriceNum.toFixed(2)}` : language === 'ar' ? 'تواصل لمعرفة السعر' : 'Contact for pricing',
+            price: String(tierBounds ? tierBounds.min : unitPriceNum),
+            priceRange: rangeMin > 0 ? rangeMin === rangeMax ? `$${rangeMin.toFixed(2)}` : `$${rangeMin.toFixed(2)} – $${rangeMax.toFixed(2)}` : language === 'ar' ? 'تواصل لمعرفة السعر' : 'Contact for pricing',
             currency: 'USD',
             moq: `${moqNum} ${data.unit || (language === 'ar' ? 'وحدة' : 'units')}`,
             supplier: supplierName,
@@ -531,6 +582,8 @@ export default function ProductDetailPage() {
             agentListed: !!data.agent_product_id,
             certifications: certs.length > 0 ? certs : undefined,
             priceTiers: finalPriceTiers,
+            rawTiers: dbTiers,
+            moqNumber: moqNum,
             supplyAbility: stockQty > 0 ? `${stockQty} ${data.unit || (language === 'ar' ? 'وحدة' : 'units')}` : undefined,
             hsCode: data.hs_code || undefined,
             qualityControl: data.quality_control || undefined,
@@ -545,7 +598,7 @@ export default function ProductDetailPage() {
           // Determine B2B: sales_model field, b2b_enabled flag, or has tiered pricing
           const salesModel = (data.sales_model || '').toLowerCase();
           const b2bEnabled = data.b2b_enabled === true || data.is_wholesale === true;
-          const hasTiers = finalPriceTiers.length > 0;
+          const hasTiers = dbTiers.length > 0;
           setIsB2B(b2bEnabled || salesModel === 'b2b' || salesModel === 'wholesale' || hasTiers);
           setNotFound(false);
         } else if (!productDatabase[id]) {
@@ -607,8 +660,9 @@ export default function ProductDetailPage() {
     setShowCheckoutPanel(true);
   };
 
-  const unitPrice = parseFloat(String(product.price ?? '').replace(/,/g, '')) || 0;
-  const subtotal = unitPrice * orderQty;
+  const activeTier = findTierForQty(product.rawTiers || [], orderQty);
+  const unitPrice = activeTier ? activeTier.unit_price : parseFloat(String(product.price ?? '').replace(/,/g, '')) || 0;
+  const subtotal = parseFloat((unitPrice * orderQty).toFixed(2));
   const isDeliveryIncluded = product.shippingTerms === 'DELIVERY_INCLUDED';
   // Shipping is strictly 0 when the price already includes delivery; otherwise it is arranged after order confirmation
   const shippingCost = 0;
@@ -916,9 +970,6 @@ export default function ProductDetailPage() {
               </div>
               <div className="divide-y divide-border">
                 {product.priceTiers.map((tier, i) => {
-                  const tierLabels = isArabic ?
-                  ['الطلب الأساسي', 'خصم الجملة', 'أفضل سعر'] :
-                  ['Standard Order', 'Bulk Discount', 'Best Price'];
                   const tierColors = [
                   'bg-muted/20',
                   'bg-primary/3',
@@ -927,19 +978,22 @@ export default function ProductDetailPage() {
                   const dotColors = ['bg-muted-foreground', 'bg-primary/60', 'bg-accent'];
                   const basePrice = parseFloat(product.priceTiers![0].price.replace(/[^0-9.]/g, ''));
                   const thisPrice = parseFloat(tier.price.replace(/[^0-9.]/g, ''));
-                  const savingPct = basePrice > 0 && i > 0 ? Math.round((1 - thisPrice / basePrice) * 100) : 0;
+                  const savingPct = basePrice > 0 && i > 0 && thisPrice < basePrice ? Math.round((1 - thisPrice / basePrice) * 100) : 0;
+                  const isActiveTier = !!activeTier && product.rawTiers?.[i]?.min_qty === activeTier.min_qty;
                   // Determine unit label from price tier string
                   const tierUnit = extractUnitFromPrice(tier.price);
                   const unitLabel = isArabic ? getArabicUnit(tierUnit) : tierUnit;
                   return (
-                    <div key={i} className={`flex items-center justify-between px-4 py-3.5 ${tierColors[i] || 'bg-muted/10'} transition-colors`}>
+                    <div key={i} className={`flex items-center justify-between px-4 py-3.5 ${isActiveTier ? 'bg-primary/10 ring-1 ring-inset ring-primary/40' : tierColors[i] || 'bg-muted/10'} transition-colors`}>
                       <div className="flex items-center gap-3">
                         <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dotColors[i] || 'bg-muted-foreground'}`} />
                         <div>
                           <p className="text-xs font-bold text-foreground">
                             {tier.maxQty === '+' ? `≥ ${tier.minQty} ${unitLabel}` : `${tier.minQty} – ${tier.maxQty} ${unitLabel}`}
                           </p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5">{tierLabels[i] || ''}</p>
+                          {isActiveTier &&
+                          <p className="text-[10px] text-primary font-bold mt-0.5">{isArabic ? 'الشريحة المطبّقة على كميتك' : 'Applied to your quantity'}</p>
+                          }
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -956,6 +1010,26 @@ export default function ProductDetailPage() {
 
                 })}
               </div>
+              {/* Live total for buyer's entered quantity */}
+              {activeTier &&
+              <div className="px-4 py-3 bg-muted/30 border-t border-border space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <label htmlFor="tier-calc-qty" className="text-xs font-bold text-foreground">{isArabic ? 'الكمية المطلوبة' : 'Your quantity'}</label>
+                    <input
+                    id="tier-calc-qty"
+                    type="number"
+                    min={1}
+                    value={orderQty}
+                    onChange={(e) => setOrderQty(Math.max(1, parseInt(e.target.value) || 1))}
+                    dir="ltr"
+                    className="w-28 text-center py-1.5 border border-border rounded-lg bg-background text-foreground font-bold text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground" dir="ltr">
+                    <span>{orderQty} × ${activeTier.unit_price.toFixed(2)}</span>
+                    <span className="text-base font-extrabold text-primary">{isArabic ? 'الإجمالي: ' : 'Total: '}${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              }
               {/* Note: no duplicate RFQ shortcut here — primary CTA is in sidebar and sticky bar */}
             </div>
             }

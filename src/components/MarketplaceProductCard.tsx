@@ -7,6 +7,7 @@ import Icon from '@/components/ui/AppIcon';
 import WishlistButton from '@/components/WishlistButton';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { getTierPriceBounds, normalizeTiers } from '@/lib/tieredPricing';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface MarketplaceProduct {
@@ -17,6 +18,7 @@ export interface MarketplaceProduct {
   images?: string[] | null;
   image?: string | null;
   unit_price: number;
+  tiered_pricing?: unknown;
   minimum_order_qty: number;
   unit: string;
   origin_country?: string | null;
@@ -133,10 +135,17 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
   const isVerified = product.is_verified ?? true;
   const isReadyToShip = product.inventory_status === 'in_stock';
 
-  // B2B tier pricing: show range based on unit_price
-  const b2bPriceMin = (product.unit_price * 0.85).toFixed(2);
-  const b2bPriceMax = product.unit_price.toFixed(2);
-  const b2cPrice = (product.unit_price * 1.15).toFixed(2);
+  // Dynamic tier pricing: range from lowest to highest tier unit price (flat price if single tier)
+  const cardTiers = normalizeTiers(product.tiered_pricing);
+  const tierBounds = getTierPriceBounds(cardTiers);
+  const flatPrice = Number(product.unit_price) || 0;
+  const priceMinNum = tierBounds ? tierBounds.min : flatPrice;
+  const priceMaxNum = tierBounds ? tierBounds.max : flatPrice;
+  const b2bPriceMin = priceMinNum.toFixed(2);
+  const b2bPriceMax = priceMaxNum.toFixed(2);
+  const hasPriceRange = b2bPriceMin !== b2bPriceMax;
+  const b2cPrice = priceMinNum.toFixed(2);
+  const displayMoq = cardTiers.length > 0 ? cardTiers[0].min_qty : Math.max(1, Number(product.minimum_order_qty) || 1);
 
   const displayNameAr = product.name_ar || product.name;
   const displayNameEn = product.name;
@@ -175,7 +184,7 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
         verified: product.is_verified ?? true,
         category: product.category || '',
         isRetailAvailable: true,
-        retailPrice: Number((unitPrice * 1.15).toFixed(2)),
+        retailPrice: Number(unitPrice.toFixed(2)),
         shippingTerms: 'CALCULATED_SHIPPING',
       });
       toast.success('تمت الإضافة إلى السلة');
@@ -233,7 +242,7 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
       {/* ── Content ── */}
       <div className="p-2.5 flex flex-col flex-1 gap-2 pb-3">
         {/* Wholesale badge (normal flow, no absolute positioning) */}
-        {buyerMode === 'b2b' && product.minimum_order_qty >= 10 && (
+        {buyerMode === 'b2b' && displayMoq >= 10 && (
           <div className="flex">
             <span className="px-2 py-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-full">
               شراء بالجملة
@@ -257,14 +266,18 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
             <>
               <div className="flex items-baseline gap-1" dir="ltr">
                 <span className="text-sm font-extrabold text-primary">${b2bPriceMin}</span>
-                <span className="text-xs text-muted-foreground">-</span>
-                <span className="text-sm font-extrabold text-primary">${b2bPriceMax}</span>
+                {hasPriceRange && (
+                  <>
+                    <span className="text-xs text-muted-foreground">-</span>
+                    <span className="text-sm font-extrabold text-primary">${b2bPriceMax}</span>
+                  </>
+                )}
                 <span className="text-[10px] text-muted-foreground mr-1">{unitLabel}</span>
               </div>
               <div className="flex items-center gap-1 mt-0.5">
                 <Icon name="CubeIcon" size={10} className="text-amber-600" />
                 <span className="text-[10px] text-amber-700 font-semibold" dir="rtl">
-                  الحد الأدنى: {product.minimum_order_qty.toLocaleString()} {unitLabel}
+                  الحد الأدنى: {displayMoq.toLocaleString('en-US')} {unitLabel}
                 </span>
               </div>
             </>

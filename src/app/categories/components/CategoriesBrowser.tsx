@@ -30,6 +30,7 @@ interface Product {
   category: string | null;
   category_id: string | null;
   unit_price: number | null;
+  tiered_pricing?: unknown;
   origin_country: string | null;
   image_url: string | null;
   images?: unknown;
@@ -162,7 +163,7 @@ const CategoriesBrowser: React.FC = () => {
             .order('sort_order', { ascending: true }),
           supabase
             .from('manufacturer_products')
-            .select('id, name, name_ar, category, category_id, unit_price, origin_country, image_url, images, minimum_order_qty, unit, target_market, user_profiles!manufacturer_products_manufacturer_id_fkey(company_name, full_name)')
+            .select('id, name, name_ar, category, category_id, unit_price, tiered_pricing, origin_country, image_url, images, minimum_order_qty, unit, target_market, user_profiles!manufacturer_products_manufacturer_id_fkey(company_name, full_name)')
             .eq('is_active', true)
             .limit(300),
         ]);
@@ -450,6 +451,7 @@ const CategoriesBrowser: React.FC = () => {
                       ? (product.images as unknown[]).filter((i): i is string => typeof i === 'string' && i.length > 0)
                       : null,
                     unit_price: product.unit_price || 0,
+                    tiered_pricing: product.tiered_pricing,
                     minimum_order_qty: product.minimum_order_qty || 1,
                     unit: product.unit || (language === 'ar' ? 'قطعة' : 'pcs'),
                     origin_country: product.origin_country,

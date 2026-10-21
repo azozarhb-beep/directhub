@@ -17,6 +17,14 @@ import ProductMediaUploader, {
   isValidVideoUrl,
   type ProductMediaValue,
 } from '@/components/manufacturer/ProductMediaUploader';
+import TierPricingEditor from '@/components/manufacturer/TierPricingEditor';
+import {
+  EMPTY_TIER_ROW,
+  formRowsToPayload,
+  tiersToFormRows,
+  validateTierRows,
+  type TierFormRow,
+} from '@/lib/tieredPricing';
 
 interface Product {
   id: string;
@@ -27,6 +35,7 @@ interface Product {
   sku: string;
   unit: string;
   unit_price: number;
+  tiered_pricing?: unknown;
   minimum_order_qty: number;
   stock_quantity: number;
   inventory_status: 'in_stock' | 'low_stock' | 'out_of_stock' | 'discontinued';
@@ -61,6 +70,7 @@ interface ProductFormData {
   sku: string;
   unit: string;
   unit_price: string;
+  tiers: TierFormRow[];
   minimum_order_qty: string;
   stock_quantity: string;
   inventory_status: string;
@@ -113,7 +123,7 @@ const EMPTY_FORM: ProductFormData = {
   name: '', name_ar: '', description: '', description_ar: '',
   specifications_en: '', specifications_ar: '',
   category: 'raw_materials', sku: '', unit: 'kg',
-  unit_price: '', minimum_order_qty: '1', stock_quantity: '',
+  unit_price: '', tiers: [{ ...EMPTY_TIER_ROW }], minimum_order_qty: '1', stock_quantity: '',
   inventory_status: 'in_stock', origin_country: '',
   image_url: '', imageFile: null, imagePreview: '', sales_model: 'both',
   certifications: '', delivery_time_days: '',
@@ -225,6 +235,12 @@ export default function SellerProductManagerPage() {
       sku: product.sku || '',
       unit: product.unit || 'kg',
       unit_price: String(product.unit_price || ''),
+      tiers: (() => {
+        const rows = tiersToFormRows(product.tiered_pricing);
+        return rows.length > 0
+          ? rows
+          : [{ min_qty: String(product.minimum_order_qty || 1), max_qty: '', unit_price_usd: String(product.unit_price || '') }];
+      })(),
       minimum_order_qty: String(product.minimum_order_qty || 1),
       stock_quantity: String(product.stock_quantity || ''),
       inventory_status: product.inventory_status || 'in_stock',
@@ -268,7 +284,10 @@ export default function SellerProductManagerPage() {
     e.preventDefault();
     if (!user) return;
     if (!formData.name.trim()) { setFormError(f.errNameRequired); return; }
-    if (!formData.unit_price || isNaN(Number(formData.unit_price))) { setFormError(f.errPriceRequired); return; }
+    const tierError = validateTierRows(formData.tiers);
+    if (tierError) { setFormError(tierError); return; }
+    const tierPayload = formRowsToPayload(formData.tiers);
+    if (tierPayload.length === 0) { setFormError(f.errPriceRequired); return; }
 
     setFormLoading(true);
     setFormError('');
@@ -318,8 +337,9 @@ export default function SellerProductManagerPage() {
         category: formData.category,
         sku: formData.sku.trim(),
         unit: formData.unit,
-        unit_price: parseFloat(formData.unit_price),
-        minimum_order_qty: parseInt(formData.minimum_order_qty) || 1,
+        unit_price: Math.min(...tierPayload.map((t) => t.unit_price)),
+        tiered_pricing: tierPayload,
+        minimum_order_qty: tierPayload[0].min_qty,
         stock_quantity: formData.stock_quantity ? parseInt(formData.stock_quantity) : null,
         inventory_status: formData.inventory_status,
         origin_country: formData.origin_country.trim(),
@@ -755,17 +775,11 @@ export default function SellerProductManagerPage() {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-foreground mb-1.5">{f.unitPrice} *</label>
-                        <input
-                          type="number"
-                          value={formData.unit_price}
-                          onChange={(e) => setFormData((p) => ({ ...p, unit_price: e.target.value }))}
-                          placeholder="0.00"
-                          min="0"
-                          step="0.01"
-                          dir="ltr"
-                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
+                      <div className="sm:col-span-3">
+                        <TierPricingEditor
+                          tiers={formData.tiers}
+                          onChange={(tiers) => setFormData((p) => ({ ...p, tiers }))}
+                          unitLabel={unitLabel(formData.unit)}
                         />
                       </div>
                       <div>
@@ -782,11 +796,12 @@ export default function SellerProductManagerPage() {
                         <label className="block text-xs font-bold text-foreground mb-1.5">{f.minOrderQty}</label>
                         <input
                           type="number"
-                          value={formData.minimum_order_qty}
-                          onChange={(e) => setFormData((p) => ({ ...p, minimum_order_qty: e.target.value }))}
+                          value={formData.tiers[0]?.min_qty || ''}
+                          readOnly
+                          title="Derived from the first pricing tier"
                           min="1"
                           dir="ltr"
-                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:border-primary text-start"
+                          className="w-full h-10 px-3 rounded-xl border border-border bg-muted/40 text-sm text-muted-foreground focus:outline-none text-start cursor-not-allowed"
                         />
                       </div>
                     </div>
