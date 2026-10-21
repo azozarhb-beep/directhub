@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
@@ -149,6 +150,7 @@ export default function SellerProductManagerPage() {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [activeFormTab, setActiveFormTab] = useState<'basic' | 'specs' | 'logistics' | 'media'>('basic');
   const [media, setMedia] = useState<ProductMediaValue>(EMPTY_PRODUCT_MEDIA);
+  const returnToRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -178,6 +180,8 @@ export default function SellerProductManagerPage() {
     if (authLoading || !user) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get('add') !== '1') return;
+    const rt = params.get('returnTo');
+    returnToRef.current = rt && rt.startsWith('/') && !rt.startsWith('//') ? rt : null;
     setEditingProduct(null);
     setFormData(EMPTY_FORM);
     setFormError('');
@@ -346,7 +350,16 @@ export default function SellerProductManagerPage() {
       } else {
         const { error } = await supabase.from('manufacturer_products').insert(payload);
         if (error) throw error;
-        setFormSuccess(f.successAdded);
+        setFormSuccess('');
+        setShowModal(false);
+        toast.success('تم حفظ المنتج وإدراجه في الكتالوج بنجاح ✅');
+        await fetchProducts();
+        if (returnToRef.current) {
+          const dest = returnToRef.current;
+          returnToRef.current = null;
+          router.push(dest);
+        }
+        return;
       }
       await fetchProducts();
       setTimeout(() => { setShowModal(false); setFormSuccess(''); }, 1200);

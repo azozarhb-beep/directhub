@@ -419,7 +419,7 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
   // contextual quick action in the sticky header
   const handleAction = () => {
     switch (moduleKey) {
-      case 'products': router.push('/seller/products?add=1'); break;
+      case 'products': router.push('/seller/products?add=1&returnTo=/manufacturer/products'); break;
       case 'inventory': setShowAddInventoryModal(true); break;
       case 'bank-accounts': setShowAddBankModal(true); break;
       case 'logistics': setShowNewShipment(true); break;
@@ -498,7 +498,7 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
         inquirySending={false}
         inquirySent={false}
         inquiryError=""
-        handleOpenAddModal={() => router.push('/seller/products?add=1')}
+        handleOpenAddModal={() => router.push('/seller/products?add=1&returnTo=/manufacturer/products')}
         handleFormSubmit={async () => {}}
         handleDelete={async () => {}}
         handleToggleActive={async () => {}}
