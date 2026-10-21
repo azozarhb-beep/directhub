@@ -17,6 +17,7 @@ import { Toaster } from 'react-hot-toast';
 import { Area } from 'recharts';
 import { useLanguage } from '@/contexts/LanguageContext';
 import AllSalesMethodsPanel from '@/components/AllSalesMethodsPanel';
+import AIContractAssistant from '@/components/AIContractAssistant';
 import ManufacturerAdvancedModules from '@/components/manufacturer/ManufacturerAdvancedModules';
 import FactoryTeamManagement from '@/components/manufacturer/FactoryTeamManagement';
 import TieredPricingManager from '@/components/international-factory/TieredPricingManager';
@@ -260,7 +261,7 @@ const EMPTY_PAYMENT_SETTINGS: PaymentSettings = {
   kuraimi_pos_name: '',
 };
 
-type DashboardTab = 'products' | 'financial_hub' | 'escrow_orders' | 'disputes' | 'analytics' | 'admin_messaging' | 'finance' | 'inventory' | 'archive' | 'sales_team' | 'factory_orders' | 'seller_fulfillment' | 'freight_bids';
+type DashboardTab = 'products' | 'financial_hub' | 'escrow_orders' | 'disputes' | 'analytics' | 'admin_messaging' | 'finance' | 'inventory' | 'archive' | 'sales_team' | 'factory_orders' | 'seller_fulfillment' | 'freight_bids' | 'contracts';
 
 export default function ManufacturerDashboard() {
   const router = useRouter();
@@ -2065,6 +2066,7 @@ export default function ManufacturerDashboard() {
             { key: 'archive', label: md.tabArchive, icon: 'FolderOpenIcon', gradient: 'linear-gradient(135deg,#64748B,#475569)', shadow: 'shadow-slate-100', show: true },
             { key: 'sales_team', label: md.tabSalesTeam, icon: 'UserGroupIcon', gradient: 'linear-gradient(135deg,#06B6D4,#0891B2)', shadow: 'shadow-cyan-100', show: !isSalesRep, badge: salesReps.filter(r => r.status === 'active').length || undefined },
             { key: 'all_sales', label: md.tabAllSalesMethods, icon: 'CurrencyDollarIcon', gradient: 'linear-gradient(135deg,#059669,#047857)', shadow: 'shadow-emerald-100', show: !isSalesRep },
+            { key: 'contracts', label: 'العقود والاتفاقيات / Contracts', icon: 'DocumentCheckIcon', gradient: 'linear-gradient(135deg,#D97706,#EA580C)', shadow: 'shadow-amber-100', show: !isSalesRep },
           ] as Array<{ key: string; label: string; icon: string; gradient: string; shadow: string; show: boolean; badge?: number | string }>)
             .filter(tab => tab.show)
             .map(tab => {
@@ -2087,6 +2089,7 @@ export default function ManufacturerDashboard() {
                     else if (tab.key === 'archive') { setActiveTab('archive'); fetchArchiveRecords(); }
                     else if (tab.key === 'sales_team') { setActiveTab('sales_team'); fetchSalesReps(); }
                     else if (tab.key === 'all_sales') { setActiveTab('all_sales'); }
+                    else if (tab.key === 'contracts') { setActiveTab('contracts'); }
                   }}
                   className={`relative flex flex-col items-center gap-2.5 p-4 rounded-2xl border transition-all duration-200 text-center overflow-hidden ${
                     isActive
@@ -2921,9 +2924,20 @@ export default function ManufacturerDashboard() {
         </div>
       )}
 
+      {/* ── CONTRACTS TAB ── */}
+      {activeTab === 'contracts' && !isSalesRep && (
+        <div className="p-4 md:p-6">
+          <AIContractAssistant
+            onPushedToInvoice={() => {
+              document.getElementById('manufacturer-invoicing-anchor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+          />
+        </div>
+      )}
+
       {/* ── ADVANCED MODULES (always visible for local factories) ── */}
       {!isSalesRep && user && (
-        <div className="p-4 md:p-6 border-t border-border mt-2">
+        <div id="manufacturer-invoicing-anchor" className="p-4 md:p-6 border-t border-border mt-2">
           <ManufacturerAdvancedModules userId={user.id} />
         </div>
       )}

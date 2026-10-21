@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getChatCompletion } from '@/lib/ai/chatCompletion';
+import { extractInvoiceFromAgreementText, saveInvoiceDraft } from '@/lib/exportInvoiceAI';
 import toast from 'react-hot-toast';
 
-interface ContractTerms {
+export interface ContractTerms {
   summary: string;
   paymentTerms: string[];
   deliveryTerms: string[];
@@ -32,14 +33,29 @@ interface ContractFormData {
 interface AIContractAssistantProps {
   prefillData?: Partial<ContractFormData>;
   onContractGenerated?: (terms: ContractTerms) => void;
+  /** Raw conversation / thread text used to auto-fill the deal form (no copy-paste needed). */
+  initialContext?: string;
+  /** Optional thread id so the generated proforma invoice is linked to the deal chat. */
+  threadId?: string | null;
+  /** Called after the contract JSON was pushed to the invoicing module draft. */
+  onPushedToInvoice?: () => void;
 }
 
-export default function AIContractAssistant({ prefillData, onContractGenerated }: AIContractAssistantProps) {
+export default function AIContractAssistant({
+  prefillData,
+  onContractGenerated,
+  initialContext,
+  threadId = null,
+  onPushedToInvoice,
+}: AIContractAssistantProps) {
   const { t, dir, isRTL, language } = useLanguage();
   const ui = t.aiContract;
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isPushing, setIsPushing] = useState(false);
+  const [isReadingContext, setIsReadingContext] = useState(false);
   const [contractTerms, setContractTerms] = useState<ContractTerms | null>(null);
   const [copied, setCopied] = useState(false);
+  const contextReadRef = useRef<string>('');
   const [formData, setFormData] = useState<ContractFormData>({
     buyerCountry: prefillData?.buyerCountry || '',
     supplierCountry: prefillData?.supplierCountry || '',
@@ -50,10 +66,45 @@ export default function AIContractAssistant({ prefillData, onContractGenerated }
     specialRequirements: prefillData?.specialRequirements || '',
   });
 
-
   const updateField = (field: keyof ContractFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
+
+  // Auto-fill the form from the thread conversation passed as context
+  useEffect(() => {
+    const ctx = (initialContext || '').trim();
+    if (ctx.length < 5 || contextReadRef.current === ctx) return;
+    contextReadRef.current = ctx;
+    let cancelled = false;
+    setIsReadingContext(true);
+    setFormData(prev => ({
+      ...prev,
+      specialRequirements: prev.specialRequirements || ctx.slice(-600),
+    }));
+    (async () => {
+      try {
+        const extracted = await extractInvoiceFromAgreementText(ctx);
+        if (cancelled) return;
+        const total = extracted.items.reduce((s, it) => s + it.quantity * it.unit_price, 0);
+        const productType = extracted.items.map(it => it.description).filter(Boolean).join(', ');
+        setFormData(prev => ({
+          ...prev,
+          productType: prev.productType || productType,
+          orderValue: prev.orderValue || (total > 0 ? String(Math.round(total * 100) / 100) : ''),
+          paymentMethod: prev.paymentMethod || extracted.payment_terms,
+          buyerCountry: prev.buyerCountry || (extracted.scope === 'local' ? 'Yemen' : ''),
+          supplierCountry: prev.supplierCountry || 'Yemen',
+        }));
+      } catch {
+        // Extraction is best-effort: the raw thread text is already placed in special requirements
+      } finally {
+        if (!cancelled) setIsReadingContext(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialContext]);
 
   const generateContract = async () => {
     if (!formData.productType || !formData.orderValue) {
@@ -142,6 +193,58 @@ Special Requirements: ${formData.specialRequirements || 'None'}
     });
   };
 
+  // Convert the structured contract terms (payment terms, Incoterm...) into a pre-filled proforma invoice draft
+  const handlePushToInvoice = async () => {
+    if (!contractTerms || isPushing) return;
+    setIsPushing(true);
+    try {
+      const incotermText = (contractTerms.recommendedIncoterm || '').toUpperCase();
+      const incoterm: 'FOB' | 'CIF' = incotermText.includes('CIF') ? 'CIF' : 'FOB';
+      const paymentTerms = (contractTerms.paymentTerms || []).join(' | ');
+      const qty = 1;
+      const unitPrice = Number(formData.orderValue) || 0;
+
+      // Use the deal context (if any) to also capture buyer / items / ports; fall back to the form values
+      let base: Awaited<ReturnType<typeof extractInvoiceFromAgreementText>> | null = null;
+      const ctx = (initialContext || '').trim();
+      if (ctx.length >= 5) {
+        try {
+          base = await extractInvoiceFromAgreementText(ctx);
+        } catch {
+          base = null;
+        }
+      }
+
+      const items =
+        base && base.items.length > 0
+          ? base.items
+          : [{ description: formData.productType, hs_code: '', quantity: qty, unit_price: unitPrice }];
+
+      saveInvoiceDraft(
+        {
+          scope: base?.scope ?? 'export',
+          consignee_name: base?.consignee_name ?? '',
+          consignee_address: base?.consignee_address ?? formData.buyerCountry,
+          items,
+          incoterm,
+          port_of_loading: base?.port_of_loading ?? '',
+          port_of_discharge: base?.port_of_discharge ?? '',
+          payment_terms: paymentTerms,
+          currency: base?.currency ?? 'USD',
+          governorate: base?.governorate ?? '',
+          delivery_terms: base?.delivery_terms ?? '',
+          payment_method: base?.payment_method ?? '',
+          local_bank_details: base?.local_bank_details ?? '',
+        },
+        threadId
+      );
+      toast.success(isRTL ? 'تم تمرير شروط العقد إلى الفاتورة المبدئية' : 'Contract terms pushed to the proforma invoice');
+      onPushedToInvoice?.();
+    } finally {
+      setIsPushing(false);
+    }
+  };
+
   const sectionConfig = contractTerms ? [
     { label: ui.paymentTerms, items: contractTerms.paymentTerms, icon: 'CreditCardIcon', color: 'blue' },
     { label: ui.deliveryTerms, items: contractTerms.deliveryTerms, icon: 'TruckIcon', color: 'green' },
@@ -184,6 +287,19 @@ Special Requirements: ${formData.specialRequirements || 'None'}
       </div>
 
       <div className="p-5 space-y-4">
+        {(initialContext || '').trim().length >= 5 && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+            {isReadingContext ? (
+              <Icon name="ArrowPathIcon" size={13} className="animate-spin" />
+            ) : (
+              <Icon name="CheckCircleIcon" size={13} />
+            )}
+            {isReadingContext
+              ? (isRTL ? 'جارٍ قراءة المحادثة وتعبئة بيانات الصفقة...' : 'Reading the conversation and filling deal data...')
+              : (isRTL ? 'تمت تعبئة البيانات من محادثة الصفقة — راجعها ثم ولّد العقد' : 'Deal data pre-filled from the conversation — review, then generate')}
+          </div>
+        )}
+
         {/* Form */}
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -336,6 +452,20 @@ Special Requirements: ${formData.specialRequirements || 'None'}
                 </div>
               )
             ))}
+
+            {/* Push to Proforma Invoice */}
+            <button
+              onClick={handlePushToInvoice}
+              disabled={isPushing}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:opacity-90 text-white rounded-xl text-sm font-semibold transition-opacity disabled:opacity-60"
+            >
+              {isPushing ? (
+                <Icon name="ArrowPathIcon" size={15} className="animate-spin" />
+              ) : (
+                <Icon name="DocumentTextIcon" size={15} />
+              )}
+              تحويل إلى فاتورة مبدئية / Push to Proforma Invoice
+            </button>
 
             {/* Copy Button */}
             <button

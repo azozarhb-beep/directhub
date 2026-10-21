@@ -10,6 +10,7 @@ import ChatImageAttachment, {
 } from '@/components/ChatImageAttachment';
 import { extractInvoiceFromConversation, saveInvoiceDraft } from '@/lib/exportInvoiceAI';
 
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ThreadKind = 'admin' | 'agent' | 'logistics';
