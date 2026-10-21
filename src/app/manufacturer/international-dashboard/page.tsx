@@ -1415,6 +1415,7 @@ export default function InternationalDashboardPage() {
               inventoryFormLoading={inventoryFormLoading}
               inventoryFormError={inventoryFormError}
               md={md}
+              onSaved={fetchInventoryItems}
             />
           </div>
         )}

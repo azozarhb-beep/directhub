@@ -2899,6 +2899,7 @@ export default function ManufacturerDashboard() {
           inventoryFormLoading={inventoryFormLoading}
           inventoryFormError={inventoryFormError}
           md={md}
+          onSaved={fetchInventoryItems}
         />
       )}
 

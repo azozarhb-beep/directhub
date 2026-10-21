@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Icon from '@/components/ui/AppIcon';
+import AddInventoryMaterialModal from './AddInventoryMaterialModal';
 
 
 interface InventoryPanelProps {
@@ -23,6 +24,7 @@ interface InventoryPanelProps {
   inventoryFormLoading: boolean;
   inventoryFormError: string;
   md: any;
+  onSaved?: () => void;
 }
 
 export default function InventoryPanel({
@@ -35,9 +37,15 @@ export default function InventoryPanel({
   inventoryFormLoading,
   inventoryFormError,
   md,
+  onSaved,
 }: InventoryPanelProps) {
   return (
     <div className="space-y-5">
+      <AddInventoryMaterialModal
+        open={showAddInventoryModal}
+        onClose={() => setShowAddInventoryModal(false)}
+        onSaved={() => onSaved?.()}
+      />
       <div className="bg-gradient-to-r from-amber-500 to-orange-600 rounded-2xl p-5 text-white">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -86,6 +94,13 @@ export default function InventoryPanel({
                 <div>
                   <p className="font-bold text-sm text-foreground">{item.material_name_ar || item.material_name}</p>
                   <p className="text-xs text-muted-foreground capitalize">{item.category?.replace('_', ' ') || md.material}</p>
+                  {(item.material_code || item.warehouse_location) && (
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {item.material_code ? `${item.material_code}` : ''}
+                      {item.material_code && item.warehouse_location ? ' · ' : ''}
+                      {item.warehouse_location || ''}
+                    </p>
+                  )}
                 </div>
                 <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
                   item.quantity_available > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
