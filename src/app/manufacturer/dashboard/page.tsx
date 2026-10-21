@@ -74,6 +74,10 @@ interface Product {
   origin_country: string;
   is_active: boolean;
   created_at: string;
+  created_by_role?: 'agent' | 'manufacturer' | null;
+  created_by_id?: string | null;
+  created_by_name?: string | null;
+  approval_status?: 'approved' | 'pending_factory_approval' | null;
 }
 
 interface ProductFormData {
@@ -298,6 +302,7 @@ export default function ManufacturerDashboard() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [filterSource, setFilterSource] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
@@ -722,7 +727,7 @@ export default function ManufacturerDashboard() {
     try {
       const { data, error } = await supabase
         .from('manufacturer_products')
-        .select('id, name, name_ar, description, description_ar, category, sku, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, is_active, created_at')
+        .select('id, name, name_ar, description, description_ar, category, sku, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, is_active, created_at, created_by_role, created_by_id, created_by_name, approval_status')
         .eq('manufacturer_id', user.id)
         .order('created_at', { ascending: false })
         .limit(500);
@@ -1656,14 +1661,18 @@ export default function ManufacturerDashboard() {
       if (editingProduct) {
         const { error } = await supabase
           .from('manufacturer_products')
-          .update(payload)
+          .update(
+            editingProduct.approval_status === 'pending_factory_approval'
+              ? { ...payload, approval_status: 'approved', is_active: true, is_published: true }
+              : payload
+          )
           .eq('id', editingProduct.id)
           .eq('manufacturer_id', user!.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('manufacturer_products')
-          .insert(payload);
+          .insert({ ...payload, created_by_role: 'manufacturer', created_by_id: user!.id, approval_status: 'approved' });
         if (error) throw error;
       }
 
@@ -1688,6 +1697,20 @@ export default function ManufacturerDashboard() {
       await fetchProducts();
     } catch (err) {
       console.error('Delete failed:', err);
+    }
+  };
+
+  const handleApproveProduct = async (product: Product) => {
+    try {
+      const { error } = await supabase
+        .from('manufacturer_products')
+        .update({ approval_status: 'approved', is_active: true, is_published: true })
+        .eq('id', product.id)
+        .eq('manufacturer_id', user!.id);
+      if (error) throw error;
+      await fetchProducts();
+    } catch (err) {
+      console.error('Approve failed:', err);
     }
   };
 
@@ -1776,11 +1799,15 @@ export default function ManufacturerDashboard() {
     .filter(p => {
       const matchStatus = filterStatus === 'all' || p.inventory_status === filterStatus;
       const matchCategory = filterCategory === 'all' || p.category === filterCategory;
+      const matchSource =
+        filterSource === 'all' ||
+        (filterSource === 'mine' && p.created_by_role !== 'agent') ||
+        (filterSource === 'agent' && p.created_by_role === 'agent');
       const matchSearch = !searchQuery ||
         p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.name_ar?.includes(searchQuery) ||
         p.sku?.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchStatus && matchCategory && matchSearch;
+      return matchStatus && matchCategory && matchSource && matchSearch;
     });
 
   const sortedProducts = [...filteredProducts].sort((a: any, b: any) => {
@@ -2471,6 +2498,9 @@ export default function ManufacturerDashboard() {
             setFilterStatus={setFilterStatus}
             filterCategory={filterCategory}
             setFilterCategory={setFilterCategory}
+            filterSource={filterSource}
+            setFilterSource={setFilterSource}
+            handleApproveProduct={handleApproveProduct}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             selectedProducts={selectedProducts}
