@@ -263,12 +263,36 @@ const EMPTY_PAYMENT_SETTINGS: PaymentSettings = {
 
 type DashboardTab = 'products' | 'financial_hub' | 'escrow_orders' | 'disputes' | 'analytics' | 'admin_messaging' | 'finance' | 'inventory' | 'archive' | 'sales_team' | 'factory_orders' | 'seller_fulfillment' | 'freight_bids' | 'contracts';
 
-export default function ManufacturerDashboard() {
+/** Dedicated full-screen routes for each dashboard card (card key → href + page title). */
+const MODULE_ROUTES: Partial<Record<DashboardTab, { href: string; title: string }>> = {
+  analytics: { href: '/manufacturer/analytics', title: 'التحليلات' },
+  inventory: { href: '/manufacturer/raw-materials', title: 'مواد الإنتاج والخامات' },
+  seller_fulfillment: { href: '/manufacturer/logistics', title: 'الشحن الشامل / عروض الشحن' },
+  freight_bids: { href: '/manufacturer/logistics?view=bids', title: 'الشحن الشامل / عروض الشحن' },
+  sales_team: { href: '/manufacturer/sales-team', title: 'فريق المبيعات' },
+  disputes: { href: '/manufacturer/disputes', title: 'الشكاوى والنزاعات' },
+  financial_hub: { href: '/manufacturer/finance', title: 'الحسابات المالية وطرق الدفع' },
+  factory_orders: { href: '/manufacturer/orders', title: 'إدارة الطلبات' },
+};
+
+interface ManufacturerDashboardProps {
+  /** When set, renders only this module full-screen with a sticky back header. */
+  moduleTab?: DashboardTab;
+  /** Optional sub-view for modules that merge several tabs (e.g. logistics). */
+  moduleView?: string;
+}
+
+/**
+ * Route default export. Module pages (/manufacturer/analytics, /orders, …) render
+ * this same component through `ManufacturerModulePage`, passing `moduleTab`.
+ */
+export default function ManufacturerDashboard({ moduleTab, moduleView }: ManufacturerDashboardProps) {
   const router = useRouter();
   const { user, signOut, loading: authLoading } = useAuth();
   const supabase = createClient();
   const { t, dir, isRTL, language } = useLanguage();
   const md = t.manufacturerDashboard;
+  const isModuleMode = !!moduleTab;
 
   // ── Admin Impersonation State ─────────────────────────────────────────────
   const [impersonatedFactoryId, setImpersonatedFactoryId] = useState<string | null>(null);
@@ -291,7 +315,7 @@ export default function ManufacturerDashboard() {
     router.push('/admin/control-room');
   };
 
-  const [activeTab, setActiveTab] = useState<DashboardTab>('products');
+  const [activeTab, setActiveTab] = useState<DashboardTab>(moduleTab ?? 'products');
   const [showDealLinkModal, setShowDealLinkModal] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [fetchLoading, setFetchLoading] = useState(true);
@@ -1827,6 +1851,32 @@ export default function ManufacturerDashboard() {
     outOfStock: products.filter((p) => p.inventory_status === 'out_of_stock').length,
   };
 
+  // ── Module (full-screen) mode: load only the data this module needs ──────────
+  useEffect(() => {
+    if (!moduleTab || !user) return;
+    switch (moduleTab) {
+      case 'financial_hub': fetchBankAccounts(); fetchPaymentSettings(); break;
+      case 'finance': fetchFinanceRecords(); break;
+      case 'escrow_orders': fetchEscrowOrders(); break;
+      case 'factory_orders': fetchFactoryOrders(); break;
+      case 'disputes': fetchFactoryDisputes(); break;
+      case 'analytics': fetchAnalytics(); break;
+      case 'admin_messaging': fetchAdminConversation(); break;
+      case 'inventory': fetchInventoryItems(); break;
+      case 'archive': fetchArchiveRecords(); break;
+      case 'sales_team': fetchSalesReps(); break;
+      default: break;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moduleTab, user?.id]);
+
+  // Logistics merges two cards: ?view=bids selects the shipment-bids sub-view
+  useEffect(() => {
+    if (moduleTab === 'seller_fulfillment' && moduleView === 'bids') setActiveTab('freight_bids');
+  }, [moduleTab, moduleView]);
+
+  const moduleMeta = moduleTab ? MODULE_ROUTES[moduleTab] : undefined;
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -1920,8 +1970,69 @@ export default function ManufacturerDashboard() {
         </div>
       </header>
 
+      {/* ── Module (full-screen) sticky header ── */}
+      {isModuleMode && (
+        <div className="sticky top-14 z-40 bg-card/95 backdrop-blur-md border-b border-border/60 shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 md:px-6 h-14 flex items-center gap-3">
+            <Link
+              href="/manufacturer/dashboard"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs sm:text-sm font-bold hover:bg-primary/20 active:scale-95 transition-all whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <span aria-hidden="true">{isRTL ? '→' : '←'}</span>
+              <span>رجوع إلى لوحة التحكم</span>
+            </Link>
+            <h1 className="flex-1 min-w-0 text-sm sm:text-lg font-black text-foreground truncate">
+              {moduleMeta?.title}
+            </h1>
+            <div className="flex items-center gap-2 shrink-0">
+              {moduleTab === 'factory_orders' && (
+                <button
+                  type="button"
+                  onClick={() => fetchFactoryOrders()}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs sm:text-sm font-semibold text-foreground hover:bg-muted transition-colors"
+                >
+                  <Icon name="ArrowPathIcon" size={14} />
+                  <span className="hidden sm:inline">تحديث</span>
+                </button>
+              )}
+              {moduleTab === 'inventory' && (
+                <button
+                  type="button"
+                  onClick={() => setShowAddInventoryModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs sm:text-sm font-semibold hover:opacity-90 transition-opacity"
+                >
+                  <Icon name="PlusIcon" size={14} />
+                  <span className="hidden sm:inline">إضافة مادة خام</span>
+                </button>
+              )}
+              {moduleTab === 'seller_fulfillment' && (
+                <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs sm:text-sm font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('seller_fulfillment')}
+                    className={`px-3 py-2 transition-colors ${activeTab === 'seller_fulfillment' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+                  >
+                    الشحن الشامل
+                  </button>
+                  {!isSalesRep && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('freight_bids')}
+                      className={`px-3 py-2 transition-colors ${activeTab === 'freight_bids' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+                    >
+                      عروض الشحن
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <main className="max-w-7xl mx-auto px-4 md:px-6 py-6">
         {/* Page title — Ultra-Luxurious */}
+        {!isModuleMode && (
         <div className="flex items-center justify-between mb-7">
           <div>
             <h1 className="text-2xl font-black text-foreground tracking-tight">{t.manufacturerDashboard.title}</h1>
@@ -2033,11 +2144,11 @@ export default function ManufacturerDashboard() {
             )}
           </div>
         </div>
-
+        )}
         <DealLinkGeneratorModal open={showDealLinkModal} onClose={() => setShowDealLinkModal(false)} />
 
         {/* Sales Rep Permission Banner */}
-        {isSalesRep && (
+        {isSalesRep && !isModuleMode && (
           <div className="mb-5 flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
             <Icon name="ShieldCheckIcon" size={18} className="text-blue-600 shrink-0 mt-0.5" />
             <div>
@@ -2050,6 +2161,7 @@ export default function ManufacturerDashboard() {
         )}
 
         {/* Dashboard Tabs */}
+        {!isModuleMode && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
           {([
             { key: 'products', label: t.manufacturerDashboard.productsAndInventory, icon: 'CubeIcon', gradient: 'linear-gradient(135deg,#3B82F6,#2563EB)', shadow: 'shadow-blue-100', show: true },
@@ -2058,7 +2170,7 @@ export default function ManufacturerDashboard() {
             { key: 'escrow_orders', label: t.manufacturerDashboard.escrowOrders, icon: 'ShieldCheckIcon', gradient: 'linear-gradient(135deg,#6366F1,#4F46E5)', shadow: 'shadow-indigo-100', show: true, badge: escrowOrders.filter((o: any) => o.escrow_status === 'funds_secured').length || undefined },
             { key: 'seller_fulfillment', label: 'الشحن الشامل', icon: 'TruckIcon', gradient: 'linear-gradient(135deg,#059669,#047857)', shadow: 'shadow-emerald-100', show: true },
             { key: 'freight_bids', label: 'عروض الشحن', icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#2563EB,#1D4ED8)', shadow: 'shadow-blue-100', show: !isSalesRep },
-            { key: 'factory_orders', label: 'Order Queue', icon: 'ClipboardDocumentListIcon', gradient: 'linear-gradient(135deg,#0EA5E9,#0284C7)', shadow: 'shadow-sky-100', show: true, badge: factoryOrders.filter((o: any) => o.status === 'pending').length || undefined },
+            { key: 'factory_orders', label: 'إدارة الطلبات', icon: 'ClipboardDocumentListIcon', gradient: 'linear-gradient(135deg,#0EA5E9,#0284C7)', shadow: 'shadow-sky-100', show: true, badge: factoryOrders.filter((o: any) => o.status === 'pending').length || undefined },
             { key: 'disputes', label: t.manufacturerDashboard.disputesAndComplaints, icon: 'FlagIcon', gradient: 'linear-gradient(135deg,#EF4444,#DC2626)', shadow: 'shadow-red-100', show: true, badge: factoryDisputes.filter((o: any) => ['open', 'factory_reviewing'].includes(o.dispute_status)).length || undefined },
             { key: 'analytics', label: t.manufacturerDashboard.analytics, icon: 'PresentationChartLineIcon', gradient: 'linear-gradient(135deg,#F97316,#EA580C)', shadow: 'shadow-orange-100', show: true },
             { key: 'admin_messaging', label: t.manufacturerDashboard.adminMessaging, icon: 'ChatBubbleLeftRightIcon', gradient: 'linear-gradient(135deg,#8B5CF6,#7C3AED)', shadow: 'shadow-violet-100', show: true },
@@ -2071,33 +2183,14 @@ export default function ManufacturerDashboard() {
             .filter(tab => tab.show)
             .map(tab => {
               const isActive = activeTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => {
-                    if (tab.key === 'products') setActiveTab('products');
-                    else if (tab.key === 'financial_hub') { setActiveTab('financial_hub'); fetchBankAccounts(); fetchPaymentSettings(); }
-                    else if (tab.key === 'finance') { setActiveTab('finance'); fetchFinanceRecords(); }
-                    else if (tab.key === 'escrow_orders') { setActiveTab('escrow_orders'); fetchEscrowOrders(); }
-                    else if (tab.key === 'seller_fulfillment') { setActiveTab('seller_fulfillment'); }
-                    else if (tab.key === 'freight_bids') { setActiveTab('freight_bids'); }
-                    else if (tab.key === 'factory_orders') { setActiveTab('factory_orders'); fetchFactoryOrders(); }
-                    else if (tab.key === 'disputes') { setActiveTab('disputes'); fetchFactoryDisputes(); }
-                    else if (tab.key === 'analytics') { setActiveTab('analytics'); fetchAnalytics(); }
-                    else if (tab.key === 'admin_messaging') { setActiveTab('admin_messaging'); fetchAdminConversation(); }
-                    else if (tab.key === 'inventory') { setActiveTab('inventory'); fetchInventoryItems(); }
-                    else if (tab.key === 'archive') { setActiveTab('archive'); fetchArchiveRecords(); }
-                    else if (tab.key === 'sales_team') { setActiveTab('sales_team'); fetchSalesReps(); }
-                    else if (tab.key === 'all_sales') { setActiveTab('all_sales'); }
-                    else if (tab.key === 'contracts') { setActiveTab('contracts'); }
-                  }}
-                  className={`relative flex flex-col items-center gap-2.5 p-4 rounded-2xl border transition-all duration-200 text-center overflow-hidden ${
-                    isActive
-                      ? 'border-transparent shadow-lg scale-[1.03]'
-                      : 'bg-card border-border/60 text-muted-foreground hover:shadow-md hover:-translate-y-0.5 hover:border-border'
-                  }`}
-                  style={isActive ? { background: tab.gradient, boxShadow: `0 8px 24px -4px rgba(0,0,0,0.18)` } : {}}
-                >
+              const routed = MODULE_ROUTES[tab.key as DashboardTab];
+              const cardClass = `relative flex flex-col items-center gap-2.5 p-4 rounded-2xl border transition-all duration-200 text-center overflow-hidden ${
+                isActive
+                  ? 'border-transparent shadow-lg scale-[1.03]'
+                  : 'bg-card border-border/60 text-muted-foreground hover:shadow-md hover:-translate-y-0.5 hover:border-border'
+              }`;
+              const cardInner = (
+                <>
                   {/* Subtle shimmer for active */}
                   {isActive && <div className="absolute inset-0 opacity-20" style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.3) 0%, transparent 60%)' }} />}
                   {/* Icon circle */}
@@ -2117,10 +2210,42 @@ export default function ManufacturerDashboard() {
                       {tab.badge}
                     </span>
                   )}
+                </>
+              );
+              if (routed) {
+                return (
+                  <Link
+                    key={tab.key}
+                    href={routed.href}
+                    prefetch
+                    className={cardClass}
+                    style={isActive ? { background: tab.gradient, boxShadow: `0 8px 24px -4px rgba(0,0,0,0.18)` } : {}}
+                  >
+                    {cardInner}
+                  </Link>
+                );
+              }
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => {
+                    if (tab.key === 'products') setActiveTab('products');
+                    else if (tab.key === 'finance') { setActiveTab('finance'); fetchFinanceRecords(); }
+                    else if (tab.key === 'escrow_orders') { setActiveTab('escrow_orders'); fetchEscrowOrders(); }
+                    else if (tab.key === 'admin_messaging') { setActiveTab('admin_messaging'); fetchAdminConversation(); }
+                    else if (tab.key === 'archive') { setActiveTab('archive'); fetchArchiveRecords(); }
+                    else if (tab.key === 'all_sales') { setActiveTab('all_sales'); }
+                    else if (tab.key === 'contracts') { setActiveTab('contracts'); }
+                  }}
+                  className={cardClass}
+                  style={isActive ? { background: tab.gradient, boxShadow: `0 8px 24px -4px rgba(0,0,0,0.18)` } : {}}
+                >
+                  {cardInner}
                 </button>
               );
             })}
         </div>
+        )}
 
         {/* ── FINANCIAL ACCESS GUARD — shown if sales rep tries to access financial tabs ── */}
         {isSalesRep && (activeTab === 'financial_hub' || activeTab === 'finance') && (
@@ -2936,14 +3061,14 @@ export default function ManufacturerDashboard() {
       )}
 
       {/* ── ADVANCED MODULES (always visible for local factories) ── */}
-      {!isSalesRep && user && (
+      {!isSalesRep && user && !isModuleMode && (
         <div id="manufacturer-invoicing-anchor" className="p-4 md:p-6 border-t border-border mt-2">
           <ManufacturerAdvancedModules userId={user.id} />
         </div>
       )}
 
       {/* ── TIERED PRICING MANAGER (International Factories only) ── */}
-      {!isSalesRep && user && factoryRegistration?.factory_type === 'international' && (
+      {!isSalesRep && user && !isModuleMode && factoryRegistration?.factory_type === 'international' && (
         <div className="p-4 md:p-6 border-t border-border mt-2">
           <div className="mb-3 flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">

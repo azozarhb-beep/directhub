@@ -2,8 +2,8 @@
 
 export const dynamic = 'force-dynamic';
 
-import FactoryModuleView from '@/components/manufacturer/FactoryModuleView';
+import ManufacturerModuleRoute from '@/components/manufacturer/ManufacturerModuleRoute';
 
 export default function ManufacturerFinancePage() {
-  return <FactoryModuleView moduleKey="finance" />;
+  return <ManufacturerModuleRoute localTab="financial_hub" internationalKey="finance" />;
 }
