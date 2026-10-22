@@ -21,6 +21,7 @@ import ExportVolumeKPIs, { TOTAL_EXPORT_VOLUME_USD } from '@/components/manufact
 import IncomingRFQsPanel from '@/components/manufacturer/IncomingRFQsPanel';
 import FactoryThreadsMessaging from '@/components/manufacturer/FactoryThreadsMessaging';
 import FactoryDocumentUploadPanel from '@/components/manufacturer/FactoryDocumentUploadPanel';
+import ShipmentDetailsDrawer from '@/components/manufacturer/ShipmentDetailsDrawer';
 
 interface FactoryModuleViewProps {
   moduleKey: FactoryModuleKey;
@@ -152,6 +153,7 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
   // shipments
   const [shipments, setShipments] = useState<ShipmentRow[]>([]);
   const [shipmentsLoading, setShipmentsLoading] = useState(false);
+  const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) router.push('/manufacturer/login');
@@ -265,6 +267,21 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
       );
     } catch (e) { console.error(e); } finally { setShipmentsLoading(false); }
   }, [user, supabase]);
+
+  const handleShipmentStatusChange = async (shipmentId: string, status: string): Promise<boolean> => {
+    try {
+      const { error } = await supabase.from('international_shipments').update({ status }).eq('id', shipmentId);
+      if (error) {
+        console.error(error);
+        return false;
+      }
+      setShipments((prev) => prev.map((s) => (s.id === shipmentId ? { ...s, status } : s)));
+      return true;
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  };
 
   // load data for the active module
   useEffect(() => {
@@ -580,7 +597,19 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {shipments.map((sh) => (
-              <div key={sh.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+              <div
+                key={sh.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedShipmentId(sh.id)}
+                onKeyDown={(ev) => {
+                  if (ev.key === 'Enter' || ev.key === ' ') {
+                    ev.preventDefault();
+                    setSelectedShipmentId(sh.id);
+                  }
+                }}
+                className="bg-slate-900 border border-slate-800 rounded-xl p-4 cursor-pointer transition-all hover:border-indigo-500/60 hover:bg-slate-800/70 hover:shadow-lg hover:shadow-indigo-900/20 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-semibold text-white text-sm truncate">{sh.tracking_number}</p>
@@ -604,6 +633,11 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
             ))}
           </div>
         )}
+        <ShipmentDetailsDrawer
+          shipment={shipments.find((s) => s.id === selectedShipmentId) ?? null}
+          onClose={() => setSelectedShipmentId(null)}
+          onStatusChange={handleShipmentStatusChange}
+        />
         {showNewShipment && (
           <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setShowNewShipment(false)}>
             <form
