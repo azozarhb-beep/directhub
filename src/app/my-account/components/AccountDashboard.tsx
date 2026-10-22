@@ -9,6 +9,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { PinSetupCard } from '@/components/PinSecurity';
+import FactoryPayoutSection from './FactoryPayoutSection';
 import {
   resolvePlatformRole,
   getHomeRoomForRole,
@@ -858,7 +859,7 @@ const KYCStatusCard: React.FC<{ userId: string }> = ({ userId }) => {
         <div className={`w-7 h-7 rounded-full ${cfg.bg} flex items-center justify-center`}>
           <Icon name="IdentificationIcon" size={14} className={cfg.iconColor} />
         </div>
-        KYC Verification
+        توثيق هوية المنشأة (KYC)
       </h3>
 
       {loading ? (
@@ -876,9 +877,9 @@ const KYCStatusCard: React.FC<{ userId: string }> = ({ userId }) => {
               <Icon name={cfg.icon as Parameters<typeof Icon>[0]['name']} size={18} className={cfg.iconColor} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-extrabold text-foreground">Identity Verification</p>
+              <p className="text-xs font-extrabold text-foreground">التحقق من الهوية</p>
               <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full mt-0.5 ${cfg.badgeBg}`}>
-                {cfg.label}
+                {kycStatus === 'none' ? 'لم يتم التقديم' : cfg.labelAr}
               </span>
             </div>
           </div>
@@ -886,14 +887,14 @@ const KYCStatusCard: React.FC<{ userId: string }> = ({ userId }) => {
           {kycStatus === 'approved' && (
             <div className="flex items-center gap-2 p-2.5 bg-emerald-50 border border-emerald-100 rounded-xl">
               <Icon name="CheckBadgeIcon" size={14} className="text-emerald-600 shrink-0" />
-              <p className="text-[11px] font-bold text-emerald-700">Your business is fully verified on DirectHub</p>
+              <p className="text-[11px] font-bold text-emerald-700">تم توثيق منشأتك بالكامل على DirectHub</p>
             </div>
           )}
 
           {kycStatus === 'rejected' && (
             <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-100 rounded-xl">
               <Icon name="ExclamationCircleIcon" size={14} className="text-red-600 shrink-0" />
-              <p className="text-[11px] font-bold text-red-700">Documents need attention — please resubmit</p>
+              <p className="text-[11px] font-bold text-red-700">المستندات تحتاج إلى مراجعة — يرجى إعادة الإرسال</p>
             </div>
           )}
 
@@ -906,7 +907,7 @@ const KYCStatusCard: React.FC<{ userId: string }> = ({ userId }) => {
             }`}
           >
             <Icon name={kycStatus === 'approved' ? 'EyeIcon' : kycStatus === 'none' ? 'PlusCircleIcon' : 'ArrowTopRightOnSquareIcon'} size={13} />
-            {kycStatus === 'approved' ? 'View KYC Documents' : kycStatus === 'none' ? 'Start KYC Verification' : kycStatus === 'rejected' ? 'Resubmit Documents' : 'Track KYC Status'}
+            {kycStatus === 'approved' ? 'عرض مستندات التوثيق' : kycStatus === 'none' ? 'بدء التحقق والتوثيق' : kycStatus === 'rejected' ? 'إعادة إرسال المستندات' : 'تتبع حالة التوثيق'}
           </button>
         </div>
       )}
@@ -1971,6 +1972,8 @@ const AccountDashboard: React.FC = () => {
 
               {!isBuyer && <KYCStatusCard userId={user.id} />}
 
+              {!isBuyer && <FactoryPayoutSection userId={user.id} hasPinSet={!!profile?.transaction_pin_hash} />}
+
               {/* Security */}
               <div className="bg-card border border-border rounded-2xl p-5">
                 <h3 className="text-sm font-extrabold text-foreground mb-4 flex items-center gap-2">
@@ -2027,21 +2030,7 @@ const AccountDashboard: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Log Out button inside security section */}
-                  <button
-                    onClick={async () => {
-                      const supabaseClient = createClient();
-                      await supabaseClient.auth.signOut();
-                      router.push('/login');
-                    }}
-                    className="flex items-center gap-3 p-3 rounded-xl hover:bg-red-50 transition-colors text-left w-full border border-transparent hover:border-red-200"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                      <Icon name="ArrowRightOnRectangleIcon" size={14} className="text-red-600" />
-                    </div>
-                    <span className="text-sm font-semibold text-red-600 flex-1">{t.myAccount.signOut}</span>
-                    <Icon name={isRTL ? 'ChevronLeftIcon' : 'ChevronRightIcon'} size={14} className="text-red-400" />
-                  </button>
+                  {/* Log Out moved to isolated bottom section */}
 
                   {[
                     { label: t.myAccount.twoFactorAuth, icon: 'ShieldCheckIcon', bg: 'bg-gray-100', color: 'text-gray-400' },
@@ -2052,10 +2041,30 @@ const AccountDashboard: React.FC = () => {
                         <Icon name={item.icon as Parameters<typeof Icon>[0]['name']} size={14} className={item.color} />
                       </div>
                       <span className="text-sm font-semibold text-muted-foreground flex-1">{item.label}</span>
-                      <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full whitespace-nowrap">Coming Soon</span>
+                      <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full whitespace-nowrap">قريباً</span>
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+
+            {/* Isolated Logout section — very bottom of Settings */}
+            <div className="lg:col-span-12 mt-2 pt-6 border-t border-border">
+              <div className="bg-card border border-red-200 rounded-2xl p-5">
+                <button
+                  onClick={async () => {
+                    const supabaseClient = createClient();
+                    await supabaseClient.auth.signOut();
+                    router.push('/login');
+                  }}
+                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-red-50 transition-colors text-left w-full"
+                >
+                  <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                    <Icon name="ArrowRightOnRectangleIcon" size={14} className="text-red-600" />
+                  </div>
+                  <span className="text-sm font-semibold text-red-600 flex-1">تسجيل الخروج</span>
+                  <Icon name={isRTL ? 'ChevronLeftIcon' : 'ChevronRightIcon'} size={14} className="text-red-400" />
+                </button>
               </div>
             </div>
           </div>
