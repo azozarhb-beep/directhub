@@ -2806,7 +2806,16 @@
         "typeCompanyProfile": "工厂简介",
         "typeCertificate": "质量与合规证书",
         "typePriceSheet": "官方价目表",
-        "typeOther": "其他"
+        "typeOther": "其他",
+        "expiryDateLabel": "有效期至（可选）",
+        "expiresOn": "到期日",
+        "expiringSoon": "即将到期",
+        "expired": "已过期",
+        "statusPending": "审核中",
+        "statusVerified": "已正式认证",
+        "statusRejected": "未通过",
+        "rejectReasonLabel": "拒绝原因",
+        "rejectReasonNone": "未说明原因"
     },
     "agentDashboard": {
         "title": "实地代理控制台",

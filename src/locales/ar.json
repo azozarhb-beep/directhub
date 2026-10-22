@@ -2806,7 +2806,16 @@
         "typeCompanyProfile": "بروفايل المصنع",
         "typeCertificate": "شهادات الجودة والمطابقة",
         "typePriceSheet": "قائمة أسعار رسمية",
-        "typeOther": "أخرى"
+        "typeOther": "أخرى",
+        "expiryDateLabel": "تاريخ انتهاء الصلاحية / Expiry Date (اختياري)",
+        "expiresOn": "ينتهي في",
+        "expiringSoon": "شارف على الانتهاء",
+        "expired": "منتهي الصلاحية",
+        "statusPending": "قيد المراجعة / Pending Review",
+        "statusVerified": "معتمد رسمياً / Verified",
+        "statusRejected": "غير معتمد / Rejected",
+        "rejectReasonLabel": "سبب الرفض",
+        "rejectReasonNone": "لم يتم تحديد سبب"
     },
     "agentDashboard": {
         "title": "لوحة المندوب الميداني",

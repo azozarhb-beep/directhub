@@ -20,6 +20,7 @@ interface FactoryDocument {
   cert_expiry?: string | null;
   issuing_body?: string | null;
   verification_status?: string | null;
+  reject_reason?: string | null;
 }
 
 const DOC_TYPE_CONFIG: Record<string, { labelKey: string; icon: string; color: string }> = {
@@ -53,16 +54,41 @@ const CERT_SUB_TYPES: { value: string; label: string }[] = [
   { value: 'other', label: 'شهادة جودة / مطابقة أخرى (تحديد يدوي)' },
 ];
 
-const CERT_STATUS_META: Record<string, { label: string; cls: string }> = {
-  pending: { label: 'بانتظار الاعتماد', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-  approved: { label: 'معتمدة', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  rejected: { label: 'مرفوضة / إعادة تصوير', cls: 'bg-red-50 text-red-700 border-red-200' },
+const VERIFICATION_META: Record<string, { icon: string; labelKey: string; cls: string }> = {
+  pending: { icon: '⏳', labelKey: 'statusPending', cls: 'bg-amber-50 text-amber-800 border-amber-300' },
+  approved: { icon: '✅', labelKey: 'statusVerified', cls: 'bg-emerald-50 text-emerald-800 border-emerald-300' },
+  verified: { icon: '✅', labelKey: 'statusVerified', cls: 'bg-emerald-50 text-emerald-800 border-emerald-300' },
+  rejected: { icon: '❌', labelKey: 'statusRejected', cls: 'bg-red-50 text-red-800 border-red-300' },
 };
 
-const certSubTypeLabel = (doc: { cert_sub_type?: string | null }) => {
-  const found = CERT_SUB_TYPES.find((c) => c.value === doc.cert_sub_type);
-  return found ? found.label : doc.cert_sub_type || '';
-};
+const EXPIRY_WARNING_DAYS = 60;
+
+function getExpiryState(expiry?: string | null): 'none' | 'valid' | 'soon' | 'expired' {
+  if (!expiry) return 'none';
+  const end = new Date(`${expiry.slice(0, 10)}T23:59:59`);
+  if (Number.isNaN(end.getTime())) return 'none';
+  const diffDays = (end.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+  if (diffDays < 0) return 'expired';
+  if (diffDays <= EXPIRY_WARNING_DAYS) return 'soon';
+  return 'valid';
+}
+
+function middleEllipsis(name: string, max = 38): string {
+  if (!name || name.length <= max) return name;
+  const dot = name.lastIndexOf('.');
+  const ext = dot > 0 && name.length - dot <= 6 ? name.slice(dot) : '';
+  const base = ext ? name.slice(0, dot) : name;
+  const keep = max - ext.length - 1;
+  const head = Math.ceil(keep * 0.6);
+  const tail = Math.floor(keep * 0.4);
+  return `${base.slice(0, head)}…${tail > 0 ? base.slice(-tail) : ''}${ext}`;
+}
+
+function certSubTypeLabel(doc: FactoryDocument): string {
+  const sub = doc.cert_sub_type || '';
+  const found = CERT_SUB_TYPES.find((c) => c.value === sub);
+  return found ? found.label : sub;
+}
 
 interface FactoryDocumentUploadPanelProps {
   userId: string;
@@ -91,6 +117,7 @@ export default function FactoryDocumentUploadPanel({ userId, onUploaded }: Facto
   const [certNumber, setCertNumber] = useState('');
   const [certExpiry, setCertExpiry] = useState('');
   const [issuingBody, setIssuingBody] = useState('');
+  const [docExpiry, setDocExpiry] = useState('');
 
   const fetchDocuments = useCallback(async () => {
     setLoading(true);
@@ -169,15 +196,15 @@ export default function FactoryDocumentUploadPanel({ userId, onUploaded }: Facto
         file_size: selectedFile.size,
         mime_type: selectedFile.type,
         description: description.trim(),
+        verification_status: 'pending',
         ...(isCert
           ? {
               cert_sub_type: certSubType === 'other' ? certCustomType.trim() : certSubType,
               cert_number: certNumber.trim(),
-              cert_expiry: certExpiry || null,
+              cert_expiry: certExpiry || docExpiry || null,
               issuing_body: issuingBody.trim() || null,
-              verification_status: 'pending',
             }
-          : {}),
+          : { cert_expiry: docExpiry || null }),
       });
       if (dbError) throw dbError;
 
@@ -227,6 +254,7 @@ export default function FactoryDocumentUploadPanel({ userId, onUploaded }: Facto
       setDescription('');
       setCertNumber('');
       setCertExpiry('');
+      setDocExpiry('');
       setIssuingBody('');
       setCertCustomType('');
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -321,6 +349,19 @@ export default function FactoryDocumentUploadPanel({ userId, onUploaded }: Facto
             />
           </div>
 
+          {/* Expiry date (optional, non-certificate types; certificates have their own expiry field below) */}
+          {docType !== 'certificate' && (
+            <div className="md:col-span-2">
+              <label className="block text-xs font-semibold text-foreground mb-1.5">{ui.expiryDateLabel}</label>
+              <input
+                type="date"
+                value={docExpiry}
+                onChange={(e) => setDocExpiry(e.target.value)}
+                className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
+              />
+            </div>
+          )}
+
           {/* Certificate sub-type + metadata */}
           {docType === 'certificate' && (
             <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50/40 p-3 space-y-3">
@@ -363,7 +404,7 @@ export default function FactoryDocumentUploadPanel({ userId, onUploaded }: Facto
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-foreground mb-1.5">تاريخ الانتهاء</label>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">{ui.expiryDateLabel}</label>
                   <input
                     type="date"
                     value={certExpiry}
@@ -435,7 +476,7 @@ export default function FactoryDocumentUploadPanel({ userId, onUploaded }: Facto
           type="button"
           onClick={handleUpload}
           disabled={uploading || !selectedFile}
-          className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
+          className="mt-4 flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-sm hover:bg-indigo-700 active:scale-[0.98] transition-colors disabled:bg-indigo-400 disabled:text-white disabled:cursor-not-allowed"
         >
           {uploading ? (
             <>
@@ -491,22 +532,58 @@ export default function FactoryDocumentUploadPanel({ userId, onUploaded }: Facto
           <div className="space-y-2">
             {filteredDocs.map((doc) => {
               const cfg = DOC_TYPE_CONFIG[doc.doc_type] || DOC_TYPE_CONFIG.other;
+              const vMeta = VERIFICATION_META[doc.verification_status || 'pending'] || VERIFICATION_META.pending;
+              const isRejected = doc.verification_status === 'rejected';
+              const expiryState = getExpiryState(doc.cert_expiry);
               return (
                 <div
                   key={doc.id}
-                  className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl border border-border/50 hover:bg-muted/50 transition-colors"
+                  className="flex items-start gap-3 p-3 bg-muted/30 rounded-xl border border-border/50 hover:bg-muted/50 transition-colors"
                 >
                   <div className="w-9 h-9 bg-card rounded-lg border border-border flex items-center justify-center shrink-0">
                     <Icon name={cfg.icon as any} size={16} className={cfg.color} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-semibold text-foreground text-xs truncate">{doc.file_name}</p>
+                    <p
+                      className="font-semibold text-foreground text-xs break-all"
+                      dir="ltr"
+                      style={{ textAlign: dir === 'rtl' ? 'right' : 'left' }}
+                      title={doc.file_name}
+                    >
+                      {middleEllipsis(doc.file_name)}
+                    </p>
+                    <div className="flex items-center gap-1.5 flex-wrap mt-1">
                       <span
                         className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-muted border border-border ${cfg.color}`}
                       >
                         {ui[cfg.labelKey]}
                       </span>
+                      <span
+                        className={`relative group inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${vMeta.cls} ${isRejected ? 'cursor-help' : ''}`}
+                        title={isRejected ? `${ui.rejectReasonLabel}: ${doc.reject_reason || ui.rejectReasonNone}` : undefined}
+                        tabIndex={isRejected ? 0 : undefined}
+                      >
+                        <span aria-hidden="true">{vMeta.icon}</span>
+                        {ui[vMeta.labelKey]}
+                        {isRejected && (
+                          <span
+                            role="tooltip"
+                            className="pointer-events-none absolute bottom-full start-0 mb-1.5 z-20 hidden group-hover:block group-focus:block w-56 max-w-[70vw] rounded-lg bg-gray-900 text-white text-[11px] font-medium leading-relaxed px-2.5 py-1.5 shadow-lg whitespace-normal"
+                          >
+                            {ui.rejectReasonLabel}: {doc.reject_reason || ui.rejectReasonNone}
+                          </span>
+                        )}
+                      </span>
+                      {expiryState === 'soon' && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-orange-50 text-orange-800 border-orange-300">
+                          ⚠️ {ui.expiringSoon}
+                        </span>
+                      )}
+                      {expiryState === 'expired' && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-red-50 text-red-800 border-red-300">
+                          ⛔ {ui.expired}
+                        </span>
+                      )}
                     </div>
                     {doc.doc_type === 'certificate' && (
                       <div className="flex flex-wrap items-center gap-1.5 mt-1">
@@ -520,27 +597,26 @@ export default function FactoryDocumentUploadPanel({ userId, onUploaded }: Facto
                             #{doc.cert_number}
                           </span>
                         )}
-                        {doc.cert_expiry && (
-                          <span className="text-[10px] text-muted-foreground">ينتهي: {doc.cert_expiry}</span>
-                        )}
                         {doc.issuing_body && (
                           <span className="text-[10px] text-muted-foreground">{doc.issuing_body}</span>
                         )}
-                        {(() => {
-                          const m = CERT_STATUS_META[doc.verification_status || 'pending'] || CERT_STATUS_META.pending;
-                          return (
-                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${m.cls}`}>
-                              {m.label}
-                            </span>
-                          );
-                        })()}
                       </div>
                     )}
-                    {doc.description && (
-                      <p className="text-[11px] text-muted-foreground italic">{doc.description}</p>
+                    {doc.cert_expiry && (
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        {ui.expiresOn}: <span dir="ltr" className="inline-block">{doc.cert_expiry.slice(0, 10)}</span>
+                      </p>
                     )}
-                    <p className="text-[10px] text-muted-foreground/70 mt-0.5">
-                      {formatFileSize(doc.file_size)} · {doc.created_at ? doc.created_at.slice(0, 10) : ''}
+                    {doc.description && (
+                      <p className="text-[11px] text-muted-foreground italic mt-0.5">{doc.description}</p>
+                    )}
+                    <p
+                      className="text-[10px] text-muted-foreground/80 mt-0.5 flex"
+                      style={{ justifyContent: dir === 'rtl' ? 'flex-end' : 'flex-start' }}
+                    >
+                      <bdi dir="ltr" className="inline-block">
+                        {formatFileSize(doc.file_size)} • {doc.created_at ? doc.created_at.slice(0, 10) : ''}
+                      </bdi>
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">

@@ -2806,7 +2806,16 @@
         "typeCompanyProfile": "Fabrika Profili",
         "typeCertificate": "Kalite ve Uygunluk Sertifikaları",
         "typePriceSheet": "Resmi Fiyat Listesi",
-        "typeOther": "Diğer"
+        "typeOther": "Diğer",
+        "expiryDateLabel": "Son Geçerlilik Tarihi (isteğe bağlı)",
+        "expiresOn": "Bitiş tarihi",
+        "expiringSoon": "Süresi dolmak üzere",
+        "expired": "Süresi doldu",
+        "statusPending": "İnceleniyor",
+        "statusVerified": "Resmen Onaylandı",
+        "statusRejected": "Onaylanmadı",
+        "rejectReasonLabel": "Red nedeni",
+        "rejectReasonNone": "Neden belirtilmedi"
     },
     "agentDashboard": {
         "title": "Saha Temsilcisi Paneli",

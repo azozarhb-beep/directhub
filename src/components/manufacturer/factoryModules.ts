@@ -11,7 +11,7 @@ export interface FactoryModuleDef {
   title: string;
   hint: string;
   accent: string;
-  actionLabel: string;
+  actionLabel?: string;
   /** Static badges always shown on the hub card. */
   staticBadges: string[];
 }
@@ -148,7 +148,6 @@ export const FACTORY_MODULES: FactoryModuleDef[] = [
     title: 'المستندات وشهادات التصدير',
     hint: 'ISO والشهادات ومستندات التصدير',
     accent: 'from-sky-600/30 to-sky-900/20 border-sky-500/30',
-    actionLabel: '+ رفع مستند',
     staticBadges: ['ISO'],
   },
   {

@@ -2805,7 +2805,16 @@
         "typeCompanyProfile": "Factory Profile",
         "typeCertificate": "Quality & Compliance Certificates",
         "typePriceSheet": "Official Price List",
-        "typeOther": "Other"
+        "typeOther": "Other",
+        "expiryDateLabel": "Expiry Date (optional)",
+        "expiresOn": "Expires on",
+        "expiringSoon": "Expiring soon",
+        "expired": "Expired",
+        "statusPending": "Pending Review",
+        "statusVerified": "Verified",
+        "statusRejected": "Rejected",
+        "rejectReasonLabel": "Rejection reason",
+        "rejectReasonNone": "No reason provided"
     },
     "agentDashboard": {
         "title": "Field Agent Dashboard",
