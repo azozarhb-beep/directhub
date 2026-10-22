@@ -48,6 +48,49 @@ export default function FactoryOrdersPanel({
 }: FactoryOrdersPanelProps) {
   const [showDispatchChat, setShowDispatchChat] = useState<string | null>(null);
   const [portShipments, setPortShipments] = useState<Record<string, any[]>>({});
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({ productName: '', quantity: '1', unitPrice: '', note: '' });
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  const handleCreateProductionOrder = async () => {
+    if (!currentUserId) {
+      setCreateError('يجب تسجيل الدخول أولاً');
+      return;
+    }
+    const qty = Math.max(1, Number(createForm.quantity) || 1);
+    const unitPrice = Math.max(0, Number(createForm.unitPrice) || 0);
+    if (!createForm.productName.trim()) {
+      setCreateError('يرجى إدخال اسم المنتج');
+      return;
+    }
+    setCreateSaving(true);
+    setCreateError('');
+    try {
+      const supabase = createClient();
+      const total = qty * unitPrice;
+      const orderNumber = `PO-${Date.now().toString(36).toUpperCase()}`;
+      const { error } = await supabase.from('orders').insert({
+        user_id: currentUserId,
+        factory_user_id: currentUserId,
+        order_number: orderNumber,
+        status: 'pending',
+        items: [{ name: createForm.productName.trim(), quantity: qty, unit_price: unitPrice }],
+        subtotal: total,
+        total,
+        notes: createForm.note.trim(),
+      });
+      if (error) throw error;
+      setShowCreateModal(false);
+      setCreateForm({ productName: '', quantity: '1', unitPrice: '', note: '' });
+      setFactoryOrderStatusFilter('all');
+      fetchFactoryOrders();
+    } catch (err: any) {
+      setCreateError(err?.message || 'تعذر إنشاء أمر الإنتاج');
+    } finally {
+      setCreateSaving(false);
+    }
+  };
 
   const orderIdsKey = factoryOrders.map((o: any) => o.id).join(',');
   useEffect(() => {
@@ -107,16 +150,27 @@ export default function FactoryOrdersPanel({
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'معلق', count: factoryOrders.filter((o: any) => o.status === 'pending').length, color: 'bg-amber-50 text-amber-700 border-amber-200' },
-          { label: 'قيد المعالجة', count: factoryOrders.filter((o: any) => o.status === 'processing').length, color: 'bg-blue-50 text-blue-700 border-blue-200' },
-          { label: 'تم الشحن', count: factoryOrders.filter((o: any) => o.status === 'shipped').length, color: 'bg-purple-50 text-purple-700 border-purple-200' },
-          { label: 'إجمالي الطلبات', count: factoryOrders.length, color: 'bg-muted text-foreground border-border' },
-        ].map(s => (
-          <div key={s.label} className={`rounded-xl border p-4 ${s.color}`}>
-            <p className="text-2xl font-bold">{s.count}</p>
-            <p className="text-xs font-medium mt-0.5">{s.label}</p>
-          </div>
-        ))}
+          { label: 'معلق', filter: 'pending', count: factoryOrders.filter((o: any) => o.status === 'pending').length, color: 'bg-amber-50 text-amber-700 border-amber-200', ring: 'ring-amber-400 shadow-amber-200' },
+          { label: 'قيد المعالجة', filter: 'processing', count: factoryOrders.filter((o: any) => o.status === 'processing').length, color: 'bg-blue-50 text-blue-700 border-blue-200', ring: 'ring-blue-400 shadow-blue-200' },
+          { label: 'تم الشحن', filter: 'shipped', count: factoryOrders.filter((o: any) => o.status === 'shipped').length, color: 'bg-purple-50 text-purple-700 border-purple-200', ring: 'ring-purple-400 shadow-purple-200' },
+          { label: 'إجمالي الطلبات', filter: 'all', count: factoryOrders.length, color: 'bg-muted text-foreground border-border', ring: 'ring-sky-400 shadow-sky-200' },
+        ].map(s => {
+          const isActive = factoryOrderStatusFilter === s.filter;
+          return (
+            <button
+              key={s.label}
+              type="button"
+              onClick={() => setFactoryOrderStatusFilter(s.filter)}
+              aria-pressed={isActive}
+              className={`rounded-xl border p-4 text-start cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${s.color} ${
+                isActive ? `ring-2 shadow-lg ${s.ring}` : ''
+              }`}
+            >
+              <p className="text-2xl font-bold">{s.count}</p>
+              <p className="text-xs font-medium mt-0.5">{s.label}</p>
+            </button>
+          );
+        })}
       </div>
 
       {/* Filter Bar */}
@@ -170,6 +224,16 @@ export default function FactoryOrdersPanel({
                     ? 'لا توجد طلبات مخصصة لمصنعك بعد. ستظهر الطلبات هنا تلقائياً عند تقديمها.'
                     : `لا توجد طلبات بحالة "${factoryOrderStatusFilter}".`}
                 </p>
+                {factoryOrders.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => { setCreateError(''); setShowCreateModal(true); }}
+                    className="mt-4 inline-flex items-center gap-1.5 px-4 py-2.5 bg-sky-600 text-white text-xs font-bold rounded-xl hover:bg-sky-700 transition-colors"
+                  >
+                    <Icon name="PlusIcon" size={14} className="text-white" />
+                    إنشاء أمر إنتاج جديد / Create Production Order
+                  </button>
+                )}
               </div>
             ) : (
               sortedFactoryOrders
@@ -502,6 +566,72 @@ export default function FactoryOrdersPanel({
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" dir="rtl" onClick={() => !createSaving && setShowCreateModal(false)}>
+          <div className="bg-card border border-border rounded-2xl p-5 w-full max-w-md space-y-3" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-foreground">إنشاء أمر إنتاج جديد / Create Production Order</h3>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">اسم المنتج / Product</label>
+              <input
+                value={createForm.productName}
+                onChange={e => setCreateForm(f => ({ ...f, productName: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-foreground text-xs focus:outline-none focus:border-sky-500"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">الكمية / Quantity</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={createForm.quantity}
+                  onChange={e => setCreateForm(f => ({ ...f, quantity: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-foreground text-xs focus:outline-none focus:border-sky-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">سعر الوحدة (USD)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={createForm.unitPrice}
+                  onChange={e => setCreateForm(f => ({ ...f, unitPrice: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-foreground text-xs focus:outline-none focus:border-sky-500"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">ملاحظات (اختياري)</label>
+              <textarea
+                rows={2}
+                value={createForm.note}
+                onChange={e => setCreateForm(f => ({ ...f, note: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-foreground text-xs focus:outline-none focus:border-sky-500 resize-none"
+              />
+            </div>
+            {createError && <p className="text-xs text-red-600 font-semibold">{createError}</p>}
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                disabled={createSaving}
+                className="px-4 py-2 text-xs font-bold rounded-xl border border-border text-muted-foreground hover:bg-muted disabled:opacity-50"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateProductionOrder}
+                disabled={createSaving}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50"
+              >
+                {createSaving ? 'جارٍ الإنشاء...' : 'إنشاء'}
+              </button>
+            </div>
           </div>
         </div>
       )}
