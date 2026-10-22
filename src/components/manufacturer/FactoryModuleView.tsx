@@ -17,7 +17,7 @@ import DisputesPanel from '@/app/manufacturer/dashboard/DisputesPanel';
 import BankAccountsPanel from '@/app/manufacturer/dashboard/BankAccountsPanel';
 import FinancePanel from '@/app/manufacturer/dashboard/FinancePanel';
 import ManufacturerAdvancedModules from '@/components/manufacturer/ManufacturerAdvancedModules';
-import ExportVolumeKPIs from '@/components/manufacturer/ExportVolumeKPIs';
+import ExportVolumeKPIs, { TOTAL_EXPORT_VOLUME_USD } from '@/components/manufacturer/ExportVolumeKPIs';
 import IncomingRFQsPanel from '@/components/manufacturer/IncomingRFQsPanel';
 import FactoryThreadsMessaging from '@/components/manufacturer/FactoryThreadsMessaging';
 import FactoryDocumentUploadPanel from '@/components/manufacturer/FactoryDocumentUploadPanel';
@@ -713,7 +713,10 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
         <AnalyticsPanel
           analyticsLoading={analyticsLoading}
           analyticsData={[]}
-          analyticsStats={analyticsStats}
+          analyticsStats={{
+            ...analyticsStats,
+            totalRevenue: analyticsStats.totalRevenue > 0 ? analyticsStats.totalRevenue : TOTAL_EXPORT_VOLUME_USD,
+          }}
           analyticsPeriod={analyticsPeriod}
           setAnalyticsPeriod={setAnalyticsPeriod}
           products={products}

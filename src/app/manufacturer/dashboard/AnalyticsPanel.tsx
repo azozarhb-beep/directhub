@@ -47,19 +47,15 @@ export default function AnalyticsPanel({
   md,
 }: AnalyticsPanelProps) {
   const { language } = useLanguage();
+  const safeNum = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  const fmtInt = (v: unknown): string => new Intl.NumberFormat('en-US').format(safeNum(v));
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Controls */}
       <div className="bg-gradient-to-r from-secondary to-secondary/80 rounded-2xl p-5 text-white">
         <div className="flex items-center gap-4 flex-wrap">
-          <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
-            <Icon name="ChartBarIcon" size={24} className="text-white" />
-          </div>
-          <div className="flex-1">
-            <h2 className="text-lg font-bold">{t.manufacturerDashboard.sellerAnalytics.dashboardTitle}</h2>
-            <p className="text-sm text-white/80">{t.manufacturerDashboard.sellerAnalytics.dashboardSubtitle}</p>
-          </div>
+          <div className="flex-1" />
           {/* Period selector */}
           <div className="flex gap-1 bg-white/10 p-1 rounded-xl">
             {(['7d', '30d', '90d'] as const).map((p) => (
@@ -157,10 +153,10 @@ export default function AnalyticsPanel({
           {/* KPI Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { label: t.manufacturerDashboard.sellerAnalytics.productViews, value: analyticsStats.totalViews.toLocaleString(), icon: 'EyeIcon', color: 'text-blue-600', bg: 'bg-blue-50', change: '+12%' },
-              { label: t.manufacturerDashboard.sellerAnalytics.totalOrders, value: analyticsStats.totalOrders.toLocaleString(), icon: 'ShoppingBagIcon', color: 'text-amber-600', bg: 'bg-amber-50', change: '+8%' },
-              { label: t.manufacturerDashboard.sellerAnalytics.revenue, value: formatUSD(analyticsStats.totalRevenue, 0), icon: 'BanknotesIcon', color: 'text-green-600', bg: 'bg-green-50', change: '+15%' },
-              { label: t.manufacturerDashboard.sellerAnalytics.rfqsReceived, value: analyticsStats.totalRfqs.toLocaleString(), icon: 'DocumentTextIcon', color: 'text-purple-600', bg: 'bg-purple-50', change: '+5%' },
+              { label: t.manufacturerDashboard.sellerAnalytics.productViews, value: fmtInt(analyticsStats?.totalViews), icon: 'EyeIcon', color: 'text-blue-600', bg: 'bg-blue-50', change: '+12%' },
+              { label: t.manufacturerDashboard.sellerAnalytics.totalOrders, value: fmtInt(analyticsStats?.totalOrders), icon: 'ShoppingBagIcon', color: 'text-amber-600', bg: 'bg-amber-50', change: '+8%' },
+              { label: t.manufacturerDashboard.sellerAnalytics.revenue, value: formatUSD(safeNum(analyticsStats?.totalRevenue), 0), icon: 'BanknotesIcon', color: 'text-green-600', bg: 'bg-green-50', change: '+15%' },
+              { label: t.manufacturerDashboard.sellerAnalytics.rfqsReceived, value: fmtInt(analyticsStats?.totalRfqs), icon: 'DocumentTextIcon', color: 'text-purple-600', bg: 'bg-purple-50', change: '+5%' },
             ].map((kpi) => (
               <div key={kpi.label} className="bg-card border border-border rounded-2xl p-4">
                 <div className={`w-10 h-10 rounded-xl ${kpi.bg} flex items-center justify-center mb-3`}>
