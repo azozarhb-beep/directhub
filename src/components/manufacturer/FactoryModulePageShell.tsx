@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { Store } from 'lucide-react';
 import AppLogo from '@/components/ui/AppLogo';
 import { FACTORY_BACK_LABEL, FACTORY_HUB_PATH } from '@/components/manufacturer/factoryModules';
 
@@ -33,6 +34,13 @@ export default function FactoryModulePageShell({
             </Link>
             <div className="hidden md:block w-px h-6 bg-slate-700" />
             <AppLogo className="h-7 w-auto hidden md:block" />
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 text-white text-xs sm:text-sm font-semibold shadow transition-colors whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"
+            >
+              <Store size={16} className="flex-shrink-0" aria-hidden="true" />
+              <span>🏪 المنصة الرئيسية</span>
+            </Link>
           </div>
           <div className="flex items-center justify-between gap-3 min-w-0">
             <h1 className="text-base sm:text-lg font-bold text-white truncate">

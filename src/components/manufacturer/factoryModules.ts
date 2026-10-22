@@ -168,4 +168,4 @@ export function getFactoryModule(key: FactoryModuleKey): FactoryModuleDef {
 }
 
 export const FACTORY_HUB_PATH = '/manufacturer';
-export const FACTORY_BACK_LABEL = '← العودة لمركز تحكم المصنع';
+export const FACTORY_BACK_LABEL = '← مركز تحكم المصنع';

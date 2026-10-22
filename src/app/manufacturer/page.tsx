@@ -3,11 +3,12 @@
 export const dynamic = 'force-dynamic';
 
 import React, { useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import AppLogo from '@/components/ui/AppLogo';
 import FactoryControlHub from '@/components/manufacturer/FactoryControlHub';
-import { Globe, TrendingUp, Ship, AlertTriangle } from 'lucide-react';
+import { Globe, TrendingUp, Ship, AlertTriangle, Store } from 'lucide-react';
 
 const STAT_CARDS = [
   { key: 'exports', href: '/manufacturer/analytics', label: 'حجم الصادرات', value: '$333K', sub: 'هذا الشهر', icon: TrendingUp, color: 'from-cyan-600 to-cyan-800' },
@@ -34,13 +35,20 @@ export default function ManufacturerHubPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" dir="rtl">
       <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-40">
-        <div className="max-w-screen-2xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div className="max-w-screen-2xl mx-auto px-4 py-3 flex items-center gap-3 flex-wrap">
           <AppLogo className="h-8 w-auto" />
           <div className="hidden sm:block w-px h-6 bg-slate-700" />
           <div className="flex items-center gap-2 min-w-0">
             <Globe size={16} className="text-cyan-300 flex-shrink-0" />
             <h1 className="text-base sm:text-lg font-bold text-white truncate">مركز تحكم المصنع</h1>
           </div>
+          <Link
+            href="/"
+            className="ms-auto inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 text-white text-xs sm:text-sm font-semibold shadow transition-colors whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"
+          >
+            <Store size={16} className="flex-shrink-0" aria-hidden="true" />
+            <span>🏪 المتجر / تصفح المنصة الرئيسية</span>
+          </Link>
         </div>
       </header>
       <main className="max-w-screen-2xl mx-auto px-4 py-6 space-y-4">
