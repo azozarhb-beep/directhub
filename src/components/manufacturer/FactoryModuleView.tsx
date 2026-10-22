@@ -444,7 +444,11 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
       case 'rfq': rfqRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
       case 'documents': docsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
       case 'messages': messagesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
-      case 'finance': case'production':
+      case 'production':
+        document.getElementById('factory-module-body')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        window.dispatchEvent(new Event('factory:add-production-line'));
+        break;
+      case 'finance':
         document.getElementById('factory-module-body')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         break;
       default: setRefreshTick((n) => n + 1);

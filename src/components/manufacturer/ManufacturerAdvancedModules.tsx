@@ -19,8 +19,10 @@ interface ProductionLine {
   name: string;
   name_ar: string;
   capacity_units_per_day: number;
+  capacity_unit: string;
   current_load_percent: number;
   status: 'running' | 'idle' | 'maintenance' | 'stopped';
+  assigned_po: string;
 }
 
 interface ExportInvoiceLine {
@@ -56,12 +58,31 @@ const CURRENCY_LABELS: Record<InvoiceCurrency, { ar: string; en: string }> = {
   SAR: { ar: 'ريال سعودي', en: 'Saudi Riyal (SAR)' },
 };
 
+interface QCLog {
+  id: string;
+  line_id: string;
+  po: string;
+  inspector: string;
+  notes: string;
+  result: 'pass' | 'fail';
+  created_at: string;
+}
+
+const CAPACITY_UNITS = ['وحدة', 'طن', 'كرتون', 'متر', 'كجم', 'لتر', 'قطعة', 'رول', 'طبلية'];
+
+const PO_OPTIONS = [
+  { value: '', label: 'بدون أمر شراء' },
+  { value: 'PO-2026-01 - رولات تغليف', label: 'PO-2026-01 - رولات تغليف' },
+  { value: 'PO-2026-02 - علب كرتون مموج', label: 'PO-2026-02 - علب كرتون مموج' },
+  { value: 'PO-2026-03 - أكياس بلاستيك', label: 'PO-2026-03 - أكياس بلاستيك' },
+];
+
 // ─── Default mock production lines (shown when no DB data) ───────────────────
 
 const DEFAULT_LINES: ProductionLine[] = [
-  { id: '1', name: 'Line A — Assembly', name_ar: 'خط أ — التجميع', capacity_units_per_day: 500, current_load_percent: 78, status: 'running' },
-  { id: '2', name: 'Line B — Packaging', name_ar: 'خط ب — التعبئة', capacity_units_per_day: 300, current_load_percent: 45, status: 'running' },
-  { id: '3', name: 'Line C — Quality Finishing', name_ar: 'خط ج — التشطيب', capacity_units_per_day: 200, current_load_percent: 10, status: 'idle' },
+  { id: '1', name: 'Line A — Assembly', name_ar: 'خط أ — التجميع', capacity_units_per_day: 500, capacity_unit: 'كرتون', current_load_percent: 78, status: 'running', assigned_po: 'PO-2026-01 - رولات تغليف' },
+  { id: '2', name: 'Line B — Packaging', name_ar: 'خط ب — التعبئة', capacity_units_per_day: 300, capacity_unit: 'طن', current_load_percent: 45, status: 'running', assigned_po: 'PO-2026-02 - علب كرتون مموج' },
+  { id: '3', name: 'Line C — Quality Finishing', name_ar: 'خط ج — التشطيب', capacity_units_per_day: 200, capacity_unit: 'متر', current_load_percent: 10, status: 'idle', assigned_po: '' },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -79,7 +100,7 @@ function statusLabel(status: ProductionLine['status']) {
   switch (status) {
     case 'running': return 'تشغيل';
     case 'idle': return 'خامل';
-    case 'maintenance': return 'صيانة';
+    case 'maintenance': return 'صيانة دورية';
     case 'stopped': return 'متوقف';
   }
 }
@@ -255,29 +276,100 @@ function openPrintWindow(html: string): boolean {
 function ProductionCapacityModule({ userId }: { userId: string }) {
   const [lines, setLines] = useState<ProductionLine[]>(DEFAULT_LINES);
   const [showAddLine, setShowAddLine] = useState(false);
-  const [newLine, setNewLine] = useState({ name: '', name_ar: '', capacity_units_per_day: '', current_load_percent: '', status: 'running' as ProductionLine['status'] });
+  const emptyLine = { name: '', name_ar: '', capacity_units_per_day: '', capacity_unit: 'وحدة', current_load_percent: '', status: 'running' as ProductionLine['status'], assigned_po: '' };
+  const [newLine, setNewLine] = useState(emptyLine);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState<'lines' | 'qc'>('lines');
+  const [qcLogs, setQcLogs] = useState<QCLog[]>([
+    { id: 'qc-1', line_id: '1', po: 'PO-2026-01 - رولات تغليف', inspector: 'م. أحمد', notes: 'فحص أبعاد وسماكة الرولات — مطابق للمواصفات', result: 'pass', created_at: '2026-10-20' },
+  ]);
+  const [showQcForm, setShowQcForm] = useState(false);
+  const [newQc, setNewQc] = useState({ line_id: '', inspector: '', notes: '', result: 'pass' as QCLog['result'] });
+  const [poOptions, setPoOptions] = useState(PO_OPTIONS);
+  const supabaseClient = useMemo(() => createClient(), []);
+
+  useEffect(() => {
+    const open = () => {
+      setTab('lines');
+      setEditingId(null);
+      setNewLine(emptyLine);
+      setShowAddLine(true);
+    };
+    window.addEventListener('factory:add-production-line', open);
+    return () => window.removeEventListener('factory:add-production-line', open);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabaseClient
+          .from('orders')
+          .select('id, order_number, product_name, status')
+          .eq('manufacturer_id', userId)
+          .in('status', ['pending', 'confirmed', 'processing', 'in_production'])
+          .order('created_at', { ascending: false })
+          .limit(20);
+        if (cancelled || !data || data.length === 0) return;
+        const dynamic = (data as any[]).map(o => {
+          const label = `${o.order_number || `PO-${String(o.id).slice(0, 8)}`}${o.product_name ? ` - ${o.product_name}` : ''}`;
+          return { value: label, label };
+        });
+        setPoOptions([{ value: '', label: 'بدون أمر شراء' }, ...dynamic]);
+      } catch {
+        // keep defaults
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId, supabaseClient]);
 
   const totalCapacity = lines.reduce((s, l) => s + l.capacity_units_per_day, 0);
   const weightedLoad = lines.length
     ? Math.round(lines.reduce((s, l) => s + l.current_load_percent * l.capacity_units_per_day, 0) / Math.max(totalCapacity, 1))
     : 0;
+  const uniqueUnits = Array.from(new Set(lines.map(l => l.capacity_unit)));
+  const totalCapacityLabel = uniqueUnits.length === 1
+    ? `${totalCapacity.toLocaleString('en-US')} ${uniqueUnits[0]}/يوم`
+    : `${lines.length} خطوط بوحدات مختلفة`;
 
   const handleAddLine = () => {
-    if (!newLine.name.trim()) return;
+    if (!newLine.name.trim() && !newLine.name_ar.trim()) return;
     setSaving(true);
-    const line: ProductionLine = {
-      id: Date.now().toString(),
-      name: newLine.name,
+    const payload = {
+      name: newLine.name || newLine.name_ar,
       name_ar: newLine.name_ar,
       capacity_units_per_day: Number(newLine.capacity_units_per_day) || 100,
+      capacity_unit: newLine.capacity_unit.trim() || 'وحدة',
       current_load_percent: Math.min(100, Math.max(0, Number(newLine.current_load_percent) || 0)),
       status: newLine.status,
+      assigned_po: newLine.assigned_po,
     };
-    setLines(prev => [...prev, line]);
-    setNewLine({ name: '', name_ar: '', capacity_units_per_day: '', current_load_percent: '', status: 'running' });
+    if (editingId) {
+      setLines(prev => prev.map(l => (l.id === editingId ? { ...l, ...payload } : l)));
+    } else {
+      setLines(prev => [...prev, { id: Date.now().toString(), ...payload }]);
+    }
+    setNewLine(emptyLine);
+    setEditingId(null);
     setShowAddLine(false);
     setSaving(false);
+  };
+
+  const startEdit = (line: ProductionLine) => {
+    setEditingId(line.id);
+    setNewLine({
+      name: line.name,
+      name_ar: line.name_ar,
+      capacity_units_per_day: String(line.capacity_units_per_day),
+      capacity_unit: line.capacity_unit,
+      current_load_percent: String(line.current_load_percent),
+      status: line.status,
+      assigned_po: line.assigned_po,
+    });
+    setShowAddLine(true);
   };
 
   const updateLoad = (id: string, val: number) => {
@@ -292,6 +384,28 @@ function ProductionCapacityModule({ userId }: { userId: string }) {
     setLines(prev => prev.filter(l => l.id !== id));
   };
 
+  const handleAddQc = () => {
+    if (!newQc.line_id) return;
+    const line = lines.find(l => l.id === newQc.line_id);
+    setQcLogs(prev => [
+      {
+        id: `qc-${Date.now()}`,
+        line_id: newQc.line_id,
+        po: line?.assigned_po || '',
+        inspector: newQc.inspector.trim() || '—',
+        notes: newQc.notes.trim(),
+        result: newQc.result,
+        created_at: new Date().toISOString().slice(0, 10),
+      },
+      ...prev,
+    ]);
+    setNewQc({ line_id: '', inspector: '', notes: '', result: 'pass' });
+    setShowQcForm(false);
+  };
+
+  const latestQcByLine = (lineId: string) => qcLogs.find(q => q.line_id === lineId);
+  const readyToShip = qcLogs.length > 0 && lines.filter(l => l.assigned_po).every(l => latestQcByLine(l.id)?.result === 'pass');
+
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden">
       {/* Header */}
@@ -305,13 +419,6 @@ function ProductionCapacityModule({ userId }: { userId: string }) {
             <p className="text-white/60 text-xs">Production Capacity & Lines</p>
           </div>
         </div>
-        <button
-          onClick={() => setShowAddLine(v => !v)}
-          className="flex items-center gap-1.5 text-xs bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-colors"
-        >
-          <Icon name="PlusIcon" size={14} />
-          إضافة خط
-        </button>
       </div>
 
       {/* Overall capacity bar */}
@@ -327,15 +434,33 @@ function ProductionCapacityModule({ userId }: { userId: string }) {
           />
         </div>
         <div className="flex justify-between mt-1">
-          <span className="text-[10px] text-muted-foreground">إجمالي الطاقة: {totalCapacity.toLocaleString('en-US')} وحدة/يوم</span>
+          <span className="text-[10px] text-muted-foreground">إجمالي الطاقة: {totalCapacityLabel}</span>
           <span className="text-[10px] text-muted-foreground">{lines.length} خطوط إنتاج</span>
         </div>
       </div>
 
+      {/* Sub-tabs */}
+      <div className="px-5 pt-2 pb-3 flex gap-2">
+        <button
+          type="button"
+          onClick={() => setTab('lines')}
+          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${tab === 'lines' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:border-primary'}`}
+        >
+          خطوط الإنتاج
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('qc')}
+          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${tab === 'qc' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:border-primary'}`}
+        >
+          سجلات فحص الجودة والجاهزية QC Logs
+        </button>
+      </div>
+
       {/* Add line form */}
-      {showAddLine && (
+      {tab === 'lines' && showAddLine && (
         <div className="mx-5 mb-3 p-3 bg-muted/50 rounded-xl border border-border space-y-2">
-          <p className="text-xs font-medium text-foreground mb-1">خط إنتاج جديد</p>
+          <p className="text-xs font-medium text-foreground mb-1">{editingId ? 'تعديل خط الإنتاج' : 'خط إنتاج جديد'}</p>
           <div className="grid grid-cols-2 gap-2">
             <input
               value={newLine.name}
@@ -354,9 +479,23 @@ function ProductionCapacityModule({ userId }: { userId: string }) {
               type="number"
               value={newLine.capacity_units_per_day}
               onChange={e => setNewLine(p => ({ ...p, capacity_units_per_day: e.target.value }))}
-              placeholder="الطاقة (وحدة/يوم)"
+              placeholder="الطاقة اليومية"
               className="px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
             />
+            <div className="flex items-center gap-1">
+              <input
+                list="capacity-unit-options"
+                value={newLine.capacity_unit}
+                onChange={e => setNewLine(p => ({ ...p, capacity_unit: e.target.value }))}
+                placeholder="الوحدة (طن، كرتون، متر...)"
+                dir="rtl"
+                className="flex-1 min-w-0 px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
+              />
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap">/يوم</span>
+              <datalist id="capacity-unit-options">
+                {CAPACITY_UNITS.map(u => <option key={u} value={u} />)}
+              </datalist>
+            </div>
             <input
               type="number"
               value={newLine.current_load_percent}
@@ -364,6 +503,13 @@ function ProductionCapacityModule({ userId }: { userId: string }) {
               placeholder="الحمل الحالي %"
               className="px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
             />
+            <select
+              value={newLine.assigned_po}
+              onChange={e => setNewLine(p => ({ ...p, assigned_po: e.target.value }))}
+              className="px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
+            >
+              {poOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
           </div>
           <div className="flex gap-2">
             {(['running', 'idle', 'maintenance', 'stopped'] as const).map(s => (
@@ -377,34 +523,40 @@ function ProductionCapacityModule({ userId }: { userId: string }) {
             ))}
           </div>
           <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowAddLine(false)} className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors">إلغاء</button>
+            <button onClick={() => { setShowAddLine(false); setEditingId(null); setNewLine(emptyLine); }} className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors">إلغاء</button>
             <button onClick={handleAddLine} disabled={saving} className="text-xs px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity">حفظ</button>
           </div>
         </div>
       )}
 
       {/* Lines list */}
+      {tab === 'lines' && (
       <div className="px-5 pb-5 space-y-3">
         {lines.map(line => (
           <div key={line.id} className="border border-border rounded-xl p-3 bg-background/50">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${statusColor(line.status)}`} />
                 <span className="text-sm font-medium text-foreground">{line.name_ar || line.name}</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full text-white ${statusColor(line.status)}`}>{statusLabel(line.status)}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <select
-                  value={line.status}
-                  onChange={e => updateStatus(line.id, e.target.value as ProductionLine['status'])}
-                  className="text-[10px] border border-border rounded-md px-1.5 py-0.5 bg-background text-foreground focus:outline-none"
-                >
-                  <option value="running">تشغيل</option>
-                  <option value="idle">خامل</option>
-                  <option value="maintenance">صيانة</option>
-                  <option value="stopped">متوقف</option>
-                </select>
-                <button onClick={() => removeLine(line.id)} className="text-muted-foreground hover:text-red-500 transition-colors">
+                <div className="relative">
+                  <select
+                    value={line.status}
+                    onChange={e => updateStatus(line.id, e.target.value as ProductionLine['status'])}
+                    aria-label="حالة الخط"
+                    className={`appearance-none cursor-pointer text-[11px] font-semibold text-white rounded-full ps-3 pe-6 py-1 focus:outline-none focus:ring-2 focus:ring-white/40 ${statusColor(line.status)}`}
+                  >
+                    <option value="running" className="text-foreground bg-background">تشغيل</option>
+                    <option value="idle" className="text-foreground bg-background">خامل</option>
+                    <option value="maintenance" className="text-foreground bg-background">صيانة دورية</option>
+                    <option value="stopped" className="text-foreground bg-background">متوقف</option>
+                  </select>
+                  <span className="pointer-events-none absolute end-2 top-1/2 -translate-y-1/2 text-white text-[9px]">▾</span>
+                </div>
+                <button onClick={() => startEdit(line)} aria-label="تعديل الخط" className="text-muted-foreground hover:text-primary transition-colors">
+                  <Icon name="PencilIcon" size={13} />
+                </button>
+                <button onClick={() => removeLine(line.id)} aria-label="حذف الخط" className="text-muted-foreground hover:text-red-500 transition-colors">
                   <Icon name="TrashIcon" size={13} />
                 </button>
               </div>
@@ -424,10 +576,104 @@ function ProductionCapacityModule({ userId }: { userId: string }) {
               />
               <span className="text-xs text-muted-foreground">%</span>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1">{line.capacity_units_per_day.toLocaleString('en-US')} وحدة/يوم</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{line.capacity_units_per_day.toLocaleString('en-US')} {line.capacity_unit}/يوم</p>
+            {line.assigned_po && line.status === 'running' && (
+              <p className="text-[11px] text-cyan-700 dark:text-cyan-300 mt-1 font-medium">يعمل على أمر: {line.assigned_po}</p>
+            )}
+            {line.assigned_po && line.status !== 'running' && (
+              <p className="text-[11px] text-muted-foreground mt-1">أمر مخصص: {line.assigned_po}</p>
+            )}
           </div>
         ))}
       </div>
+      )}
+
+      {/* QC Logs */}
+      {tab === 'qc' && (
+        <div className="px-5 pb-5 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span
+              className={`text-[11px] font-semibold px-3 py-1 rounded-full ${readyToShip ? 'bg-emerald-500/15 text-emerald-600 border border-emerald-500/30' : 'bg-amber-500/15 text-amber-600 border border-amber-500/30'}`}
+            >
+              {readyToShip ? '✔ جاهز للشحن' : '⏳ غير جاهز للشحن'}
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowQcForm(v => !v)}
+              className="text-xs px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+            >
+              + تسجيل تقرير فحص داخلي / Log QC Inspection
+            </button>
+          </div>
+
+          {showQcForm && (
+            <div className="p-3 bg-muted/50 rounded-xl border border-border space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={newQc.line_id}
+                  onChange={e => setNewQc(p => ({ ...p, line_id: e.target.value }))}
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
+                >
+                  <option value="">اختر خط الإنتاج</option>
+                  {lines.map(l => <option key={l.id} value={l.id}>{l.name_ar || l.name}</option>)}
+                </select>
+                <input
+                  value={newQc.inspector}
+                  onChange={e => setNewQc(p => ({ ...p, inspector: e.target.value }))}
+                  placeholder="اسم المفتش"
+                  dir="rtl"
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
+                />
+              </div>
+              <textarea
+                value={newQc.notes}
+                onChange={e => setNewQc(p => ({ ...p, notes: e.target.value }))}
+                placeholder="ملاحظات الفحص"
+                dir="rtl"
+                rows={2}
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:border-primary"
+              />
+              <div className="flex gap-2">
+                {(['pass', 'fail'] as const).map(r => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setNewQc(p => ({ ...p, result: r }))}
+                    className={`text-[11px] px-3 py-1 rounded-md border transition-colors ${newQc.result === r ? (r === 'pass' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-red-600 text-white border-red-600') : 'border-border text-muted-foreground hover:border-primary'}`}
+                  >
+                    {r === 'pass' ? 'مطابق ✔' : 'غير مطابق ✕'}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setShowQcForm(false)} className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors">إلغاء</button>
+                <button onClick={handleAddQc} disabled={!newQc.line_id} className="text-xs px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity">حفظ</button>
+              </div>
+            </div>
+          )}
+
+          {qcLogs.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-6">لا توجد سجلات فحص بعد</p>
+          ) : (
+            qcLogs.map(q => {
+              const line = lines.find(l => l.id === q.line_id);
+              return (
+                <div key={q.id} className="border border-border rounded-xl p-3 bg-background/50">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-foreground">{line?.name_ar || line?.name || 'خط محذوف'}</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full text-white ${q.result === 'pass' ? 'bg-emerald-500' : 'bg-red-500'}`}>
+                      {q.result === 'pass' ? 'اجتاز — جاهز للشحن' : 'رسب — غير جاهز للشحن'}
+                    </span>
+                  </div>
+                  {q.po && <p className="text-[11px] text-cyan-700 dark:text-cyan-300 mt-1">{q.po}</p>}
+                  {q.notes && <p className="text-[11px] text-foreground mt-1">{q.notes}</p>}
+                  <p className="text-[10px] text-muted-foreground mt-1">المفتش: {q.inspector} · {q.created_at}</p>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
     </div>
   );
 }
