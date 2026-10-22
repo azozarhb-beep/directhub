@@ -16,6 +16,7 @@ import {
   Inbox,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import RFQDetailsDrawer from './RFQDetailsDrawer';
 
 interface IncomingRFQ {
   id: string;
@@ -29,6 +30,8 @@ interface IncomingRFQ {
   target_price: number | null;
   currency: string | null;
   destination_country: string | null;
+  destination_port: string | null;
+  payment_terms: string | null;
   incoterms: string | null;
   urgency: string | null;
   sector: string | null;
@@ -57,6 +60,8 @@ export default function IncomingRFQsPanel({ userId }: IncomingRFQsPanelProps) {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<IncomingRFQ | null>(null);
+  const [detailsRfq, setDetailsRfq] = useState<IncomingRFQ | null>(null);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [form, setForm] = useState({ unit_price: '', currency: 'USD', lead_time_days: '', notes: '' });
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
@@ -69,7 +74,7 @@ export default function IncomingRFQsPanel({ userId }: IncomingRFQsPanelProps) {
       const { data, error: rfqErr } = await supabase
         .from('rfq_requests')
         .select(
-          'id, product_name, custom_product_description, quantity, unit, specifications, customization_notes, additional_notes, target_price, currency, destination_country, incoterms, urgency, sector, category, status, created_at'
+          'id, product_name, custom_product_description, quantity, unit, specifications, customization_notes, additional_notes, target_price, currency, destination_country, destination_port, payment_terms, incoterms, urgency, sector, category, status, created_at'
         )
         .eq('is_published', true)
         .in('status', ['pending', 'responded'])
@@ -96,17 +101,44 @@ export default function IncomingRFQsPanel({ userId }: IncomingRFQsPanelProps) {
     load();
   }, [load]);
 
+  const dismissKey = `dh_dismissed_rfqs_${userId || 'anon'}`;
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(dismissKey);
+      const arr = raw ? (JSON.parse(raw) as string[]) : [];
+      setDismissedIds(new Set(Array.isArray(arr) ? arr : []));
+    } catch {
+      setDismissedIds(new Set());
+    }
+  }, [dismissKey]);
+
+  const dismissRfq = (rfq: IncomingRFQ) => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev).add(rfq.id);
+      try {
+        window.localStorage.setItem(dismissKey, JSON.stringify(Array.from(next)));
+      } catch {
+        // storage unavailable; dismissal stays in memory for this session
+      }
+      return next;
+    });
+    setDetailsRfq(null);
+  };
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rfqs;
-    return rfqs.filter((r) =>
+    const visible = rfqs.filter((r) => !dismissedIds.has(r.id));
+    if (!q) return visible;
+    return visible.filter((r) =>
       [r.product_name, r.custom_product_description, r.specifications, r.category, r.sector, r.destination_country]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q))
     );
-  }, [rfqs, search]);
+  }, [rfqs, search, dismissedIds]);
 
   const openForm = (rfq: IncomingRFQ) => {
+    setDetailsRfq(null);
     setSelected(rfq);
     setForm({ unit_price: '', currency: rfq.currency || 'USD', lead_time_days: '', notes: '' });
     setFormError('');
@@ -211,7 +243,18 @@ export default function IncomingRFQsPanel({ userId }: IncomingRFQsPanelProps) {
             return (
               <div
                 key={rfq.id}
-                className="bg-slate-800/60 border border-slate-700 rounded-xl p-4 flex flex-col gap-3 hover:border-purple-500/50 transition-colors"
+                role="button"
+                tabIndex={0}
+                aria-label={`تفاصيل طلب المشتري: ${title}`}
+                onClick={() => setDetailsRfq(rfq)}
+                onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setDetailsRfq(rfq);
+                  }
+                }}
+                className="bg-slate-800/60 border border-slate-700 rounded-xl p-4 flex flex-col gap-3 hover:border-purple-500/50 hover:bg-slate-800 transition-colors cursor-pointer focus:outline-none focus-visible:border-purple-500"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-2 min-w-0">
@@ -262,7 +305,10 @@ export default function IncomingRFQsPanel({ userId }: IncomingRFQsPanelProps) {
                 </div>
 
                 <button
-                  onClick={() => openForm(rfq)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openForm(rfq);
+                  }}
                   disabled={responded}
                   className={`mt-auto flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
                     responded
@@ -278,8 +324,16 @@ export default function IncomingRFQsPanel({ userId }: IncomingRFQsPanelProps) {
         </div>
       )}
 
+      <RFQDetailsDrawer
+        rfq={detailsRfq}
+        responded={detailsRfq ? respondedIds.has(detailsRfq.id) : false}
+        onClose={() => setDetailsRfq(null)}
+        onSubmitQuote={openForm}
+        onDismiss={dismissRfq}
+      />
+
       {selected && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => !submitting && setSelected(null)}>
+        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" onClick={() => !submitting && setSelected(null)}>
           <form
             onSubmit={submitQuote}
             onClick={(e) => e.stopPropagation()}
