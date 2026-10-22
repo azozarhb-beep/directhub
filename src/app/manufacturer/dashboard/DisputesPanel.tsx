@@ -40,12 +40,28 @@ export default function DisputesPanel({
 }: DisputesPanelProps) {
   const { language } = useLanguage();
   const [reasonFilter, setReasonFilter] = React.useState<string>('all');
+  const [statusFilter, setStatusFilter] = React.useState<'all' | 'needs_reply' | 'awaiting_buyer' | 'resolved' | 'escalated'>('all');
+
+  const statusMatch = (d: any, f: typeof statusFilter) => {
+    switch (f) {
+      case 'needs_reply': return ['open', 'factory_reviewing'].includes(d.dispute_status);
+      case 'awaiting_buyer': return d.dispute_status === 'factory_resolved';
+      case 'resolved': return d.dispute_status === 'buyer_accepted' || d.dispute_status === 'resolved_no_refund';
+      case 'escalated': return d.dispute_status === 'escalated';
+      default: return true;
+    }
+  };
 
   const visibleDisputes = factoryDisputes.filter((d: any) =>
-    reasonFilter === 'all' || normalizeDisputeReason(d.dispute_reason) === reasonFilter
+    (reasonFilter === 'all' || normalizeDisputeReason(d.dispute_reason) === reasonFilter) && statusMatch(d, statusFilter)
   );
   const reasonCount = (code: string) =>
     factoryDisputes.filter((d: any) => normalizeDisputeReason(d.dispute_reason) === code).length;
+
+  const quickResolve = (type: 'compensation' | 'replacement' | 'other', note: string) => {
+    setFactoryResolutionType(type);
+    setFactoryResolutionNote(note);
+  };
 
   return (
     <div className="space-y-5">
@@ -77,16 +93,22 @@ export default function DisputesPanel({
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: md.needsResponse, count: factoryDisputes.filter((o: any) => ['open', 'factory_reviewing'].includes(o.dispute_status)).length, color: 'bg-orange-50 text-orange-700 border-orange-200' },
-          { label: md.awaitingBuyer, count: factoryDisputes.filter((o: any) => o.dispute_status === 'factory_resolved').length, color: 'bg-blue-50 text-blue-700 border-blue-200' },
-          { label: md.resolvedDone, count: factoryDisputes.filter((o: any) => o.dispute_status === 'buyer_accepted' || o.dispute_status === 'resolved_no_refund').length, color: 'bg-green-50 text-green-700 border-green-200' },
-          { label: md.escrowEscalated, count: factoryDisputes.filter((o: any) => o.dispute_status === 'escalated').length, color: 'bg-red-50 text-red-700 border-red-200' },
-        ].map(s => (
-          <div key={s.label} className={`rounded-xl border p-4 ${s.color}`}>
+        {([
+          { key: 'needs_reply', label: md.needsResponse, count: factoryDisputes.filter((o: any) => ['open', 'factory_reviewing'].includes(o.dispute_status)).length, color: 'bg-orange-50 text-orange-700 border-orange-200', active: 'ring-2 ring-orange-500 border-orange-500' },
+          { key: 'awaiting_buyer', label: md.awaitingBuyer, count: factoryDisputes.filter((o: any) => o.dispute_status === 'factory_resolved').length, color: 'bg-blue-50 text-blue-700 border-blue-200', active: 'ring-2 ring-blue-500 border-blue-500' },
+          { key: 'resolved', label: md.resolvedDone, count: factoryDisputes.filter((o: any) => o.dispute_status === 'buyer_accepted' || o.dispute_status === 'resolved_no_refund').length, color: 'bg-green-50 text-green-700 border-green-200', active: 'ring-2 ring-green-500 border-green-500' },
+          { key: 'escalated', label: md.escrowEscalated, count: factoryDisputes.filter((o: any) => o.dispute_status === 'escalated').length, color: 'bg-red-50 text-red-700 border-red-200', active: 'ring-2 ring-red-500 border-red-500' },
+        ] as const).map(s => (
+          <button
+            key={s.key}
+            type="button"
+            onClick={() => setStatusFilter(prev => (prev === s.key ? 'all' : s.key))}
+            aria-pressed={statusFilter === s.key}
+            className={`rounded-xl border p-4 text-start min-w-0 transition-all hover:shadow-md ${s.color} ${statusFilter === s.key ? s.active : ''}`}
+          >
             <p className="text-2xl font-bold">{s.count}</p>
-            <p className="text-xs font-medium mt-0.5">{s.label}</p>
-          </div>
+            <p className="text-xs font-medium mt-0.5 leading-snug break-words whitespace-normal">{s.label}</p>
+          </button>
         ))}
       </div>
 
@@ -98,18 +120,22 @@ export default function DisputesPanel({
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
           {/* List */}
-          <div className="lg:col-span-2 space-y-2">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-bold text-foreground">{md.incomingDisputes} ({factoryDisputes.length})</p>
-              <button onClick={fetchFactoryDisputes} className="text-xs text-primary hover:underline flex items-center gap-1">
+          <div className="lg:col-span-2 space-y-2 min-w-0">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <p className="text-sm font-bold text-foreground">{md.incomingDisputes} ({visibleDisputes.length})</p>
+              <button
+                type="button"
+                onClick={fetchFactoryDisputes}
+                className="shrink-0 text-xs text-primary border border-primary/30 rounded-lg px-2.5 py-1 hover:bg-primary/5 flex items-center gap-1"
+              >
                 <Icon name="ArrowPathIcon" size={12} /> {md.refreshAction}
               </button>
             </div>
-            <div className="flex flex-wrap gap-1.5 mb-2">
+            <div className="flex flex-nowrap gap-1.5 mb-2 overflow-x-auto pb-1.5 -mx-1 px-1">
               <button
                 type="button"
                 onClick={() => setReasonFilter('all')}
-                className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${reasonFilter === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-muted-foreground border-border hover:border-primary/40'}`}
+                className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${reasonFilter === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-muted-foreground border-border hover:border-primary/40'}`}
               >
                 {language === 'ar' ? 'الكل' : 'All'} ({factoryDisputes.length})
               </button>
@@ -118,7 +144,7 @@ export default function DisputesPanel({
                   key={r.value}
                   type="button"
                   onClick={() => setReasonFilter(r.value)}
-                  className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${reasonFilter === r.value ? 'bg-primary text-primary-foreground border-primary' : `${r.badge} hover:opacity-80`}`}
+                  className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${reasonFilter === r.value ? 'bg-primary text-primary-foreground border-primary' : `${r.badge} hover:opacity-80`}`}
                 >
                   {r.emoji} {language === 'ar' ? r.labelAr : r.labelEn} ({reasonCount(r.value)})
                 </button>
@@ -284,6 +310,34 @@ export default function DisputesPanel({
                           {factoryResolveMsg}
                         </div>
                       )}
+                      <div className="mb-3">
+                        <label className="block text-xs font-semibold text-foreground mb-2">
+                          {language === 'ar' ? 'إجراءات الحل السريع (المستوى الأول)' : 'Quick first-level actions'}
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => quickResolve('compensation', 'عرض تسوية مالية: تعويض/خصم على قيمة الطلب بعد مراجعة الشكوى.')}
+                            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border-2 border-emerald-300 bg-emerald-50 text-emerald-800 text-xs font-bold hover:bg-emerald-100 transition-colors"
+                          >
+                            <Icon name="BanknotesIcon" size={14} /> عرض تسوية مالية
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => quickResolve('replacement', 'شحن بديل: سيتم إرسال شحنة بديلة للكمية/المنتج المتضرر على نفقة المصنع.')}
+                            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border-2 border-blue-300 bg-blue-50 text-blue-800 text-xs font-bold hover:bg-blue-100 transition-colors"
+                          >
+                            <Icon name="TruckIcon" size={14} /> شحن بديل
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => quickResolve('other', 'رفض الشكوى: المنتج مطابق للمواصفات المتفق عليها، مرفق تقرير فحص الجودة (QC) المعتمد قبل الشحن.')}
+                            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border-2 border-rose-300 bg-rose-50 text-rose-800 text-xs font-bold hover:bg-rose-100 transition-colors"
+                          >
+                            <Icon name="DocumentCheckIcon" size={14} /> رفض الشكوى وإرفاق تقرير QC
+                          </button>
+                        </div>
+                      </div>
                       <div className="mb-3">
                         <label className="block text-xs font-semibold text-foreground mb-2">{md.proposedResolutionType} <span className="text-red-500">*</span></label>
                         <div className="grid grid-cols-2 gap-2">

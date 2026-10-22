@@ -89,6 +89,7 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
   const docsRef = useRef<HTMLDivElement | null>(null);
   const rfqRef = useRef<HTMLDivElement | null>(null);
   const messagesRef = useRef<HTMLDivElement | null>(null);
+  const [messagesTab, setMessagesTab] = useState<'chats' | 'disputes'>('chats');
 
   // products
   const [products, setProducts] = useState<any[]>([]);
@@ -448,7 +449,10 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
       case 'logistics': setShowNewShipment(true); break;
       case 'rfq': rfqRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
       case 'documents': docsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
-      case 'messages': messagesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
+      case 'messages':
+        messagesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setMessagesTab('chats');
+        break;
       case 'production':
         document.getElementById('factory-module-body')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         window.dispatchEvent(new Event('factory:add-production-line'));
@@ -829,30 +833,57 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
     );
   } else if (moduleKey === 'messages') {
     body = (
-      <div className="space-y-6">
-        <div ref={messagesRef} className="scroll-mt-24">
-          <FactoryThreadsMessaging userId={user.id} viewerRole="factory" shipments={shipments.map((o) => ({
-            id: o.id,
-            portOfLoading: o.origin_port,
-            containerDetails: `${o.container_number || o.tracking_number}${o.bl_number ? ` · B/L ${o.bl_number}` : ''}`,
-          }))} />
+      <div className="space-y-4">
+        <div className="flex gap-2 overflow-x-auto pb-1" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={messagesTab === 'chats'}
+            onClick={() => setMessagesTab('chats')}
+            className={`shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors ${
+              messagesTab === 'chats' ? 'bg-cyan-600 text-white border-cyan-500' : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-cyan-500/50'
+            }`}
+          >
+            💬 المراسلات والقنوات التشغيلية / Direct Chats
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={messagesTab === 'disputes'}
+            onClick={() => setMessagesTab('disputes')}
+            className={`shrink-0 whitespace-nowrap px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors ${
+              messagesTab === 'disputes' ? 'bg-orange-600 text-white border-orange-500' : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-orange-500/50'
+            }`}
+          >
+            ⚖️ مركز الشكاوى والنزاعات / Disputes &amp; Claims
+          </button>
         </div>
-        <DisputesPanel
-          factoryDisputes={factoryDisputes}
-          factoryDisputesLoading={factoryDisputesLoading}
-          selectedFactoryDispute={selectedFactoryDispute}
-          setSelectedFactoryDispute={setSelectedFactoryDispute}
-          factoryResolutionType={factoryResolutionType}
-          setFactoryResolutionType={setFactoryResolutionType}
-          factoryResolutionNote={factoryResolutionNote}
-          setFactoryResolutionNote={setFactoryResolutionNote}
-          factoryResolveLoading={factoryResolveLoading}
-          factoryResolveMsg={factoryResolveMsg}
-          setFactoryResolveMsg={setFactoryResolveMsg}
-          handleFactoryResolve={handleFactoryResolve}
-          fetchFactoryDisputes={fetchFactoryDisputes}
-          md={md}
-        />
+        {messagesTab === 'chats' ? (
+          <div ref={messagesRef} className="scroll-mt-24">
+            <FactoryThreadsMessaging userId={user.id} viewerRole="factory" shipments={shipments.map((o) => ({
+              id: o.id,
+              portOfLoading: o.origin_port,
+              containerDetails: `${o.container_number || o.tracking_number}${o.bl_number ? ` · B/L ${o.bl_number}` : ''}`,
+            }))} />
+          </div>
+        ) : (
+          <DisputesPanel
+            factoryDisputes={factoryDisputes}
+            factoryDisputesLoading={factoryDisputesLoading}
+            selectedFactoryDispute={selectedFactoryDispute}
+            setSelectedFactoryDispute={setSelectedFactoryDispute}
+            factoryResolutionType={factoryResolutionType}
+            setFactoryResolutionType={setFactoryResolutionType}
+            factoryResolutionNote={factoryResolutionNote}
+            setFactoryResolutionNote={setFactoryResolutionNote}
+            factoryResolveLoading={factoryResolveLoading}
+            factoryResolveMsg={factoryResolveMsg}
+            setFactoryResolveMsg={setFactoryResolveMsg}
+            handleFactoryResolve={handleFactoryResolve}
+            fetchFactoryDisputes={fetchFactoryDisputes}
+            md={md}
+          />
+        )}
       </div>
     );
   }

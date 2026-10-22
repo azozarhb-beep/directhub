@@ -8,7 +8,7 @@ import ChatImageAttachment, {
   isImageAttachment,
   type AttachmentState,
 } from '@/components/ChatImageAttachment';
-import { extractInvoiceFromConversation, saveInvoiceDraft } from '@/lib/exportInvoiceAI';
+import { extractInvoiceFromConversation, saveInvoiceDraft, sanitizeExtraction, type ExtractedInvoice } from '@/lib/exportInvoiceAI';
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -100,6 +100,22 @@ function formatTime(dateStr?: string | null): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${hh}:${mm}`;
 }
 
+function attachmentLabel(name?: string | null, url?: string | null): string {
+  const raw = (name || url || '').toLowerCase().split('?')[0];
+  if (/\.(jpe?g|png|gif|webp|heic|heif|bmp)$/.test(raw)) return '[ 📷 صورة مرفقة ]';
+  if (/\.pdf$/.test(raw)) return '[ 📄 ملف PDF مرفق ]';
+  if (/\.(docx?|xlsx?|csv|txt)$/.test(raw)) return '[ 📎 مستند مرفق ]';
+  return '[ 📎 مرفق ]';
+}
+
+function previewText(msg?: string | null): string {
+  if (!msg) return '';
+  const t = msg.trim();
+  if (/^[^\s]+\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(t)) return '[ 📷 صورة مرفقة ]';
+  if (/^[^\s]+\.pdf$/i.test(t)) return '[ 📄 ملف PDF مرفق ]';
+  return t;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function FactoryThreadsMessaging({
@@ -129,6 +145,8 @@ export default function FactoryThreadsMessaging({
   const [filter, setFilter] = useState<'all' | ThreadKind>('all');
   const [extracting, setExtracting] = useState(false);
   const [extractNotice, setExtractNotice] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [piDraft, setPiDraft] = useState<ExtractedInvoice | null>(null);
+  const [piOpen, setPiOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   const activeThread = threads.find(t => t.id === activeId) || null;
@@ -388,16 +406,37 @@ export default function FactoryThreadsMessaging({
         .map(m => `[${ROLE_LABEL[m.sender_role] || m.sender_role} · ${formatTime(m.created_at)}] ${m.message.trim()}`)
         .join('\n');
       const extracted = await extractInvoiceFromConversation(transcript);
-      saveInvoiceDraft(extracted, activeThread.id);
-      setExtractNotice({
-        type: 'ok',
-        text: `تم استخراج بيانات الفاتورة (${extracted.items.length} بند) وتعبئتها في محرك فوترة التصدير الدولية`,
-      });
+      setPiDraft(extracted);
+      setPiOpen(true);
     } catch (e: any) {
       setExtractNotice({ type: 'err', text: e?.message || 'فشل استخراج بيانات الفاتورة من المحادثة' });
     } finally {
       setExtracting(false);
     }
+  };
+
+  const updatePi = (patch: Partial<ExtractedInvoice>) =>
+    setPiDraft(prev => (prev ? { ...prev, ...patch } : prev));
+
+  const updatePiItem = (idx: number, patch: Partial<ExtractedInvoice['items'][number]>) =>
+    setPiDraft(prev => prev ? { ...prev, items: prev.items.map((it, i) => (i === idx ? { ...it, ...patch } : it)) } : prev);
+
+  const addPiItem = () =>
+    setPiDraft(prev => prev ? { ...prev, items: [...prev.items, { description: '', hs_code: '', quantity: 1, unit_price: 0 }] } : prev);
+
+  const removePiItem = (idx: number) =>
+    setPiDraft(prev => prev ? { ...prev, items: prev.items.filter((_, i) => i !== idx) } : prev);
+
+  const piTotal = (piDraft?.items || []).reduce((sum, it) => sum + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0);
+
+  const handleConfirmPi = () => {
+    if (!piDraft || !activeThread) return;
+    saveInvoiceDraft(sanitizeExtraction(piDraft), activeThread.id);
+    setPiOpen(false);
+    setExtractNotice({
+      type: 'ok',
+      text: `تم اعتماد الفاتورة المبدئية (${piDraft.items.length} بند) وتعبئتها في محرك فوترة التصدير الدولية`,
+    });
   };
 
   const visibleThreads = threads.filter(t => filter === 'all' || t.thread_kind === filter);
@@ -550,7 +589,7 @@ export default function FactoryThreadsMessaging({
                         {t.thread_kind === 'logistics' && t.shipment_ref && (
                           <p className="text-[11px] text-violet-300 truncate" dir="ltr">#{t.shipment_ref}</p>
                         )}
-                        <p className="text-[11px] text-slate-500 truncate">{t.last_message || meta.hint}</p>
+                        <p className="text-[11px] text-slate-500 truncate">{previewText(t.last_message) || meta.hint}</p>
                       </div>
                       {t.status === 'closed' && (
                         <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">مغلقة</span>
@@ -574,72 +613,43 @@ export default function FactoryThreadsMessaging({
             <>
               {/* Chat header */}
               <div className="px-4 py-3 border-b border-slate-800 bg-slate-900/60 shrink-0">
-                <div className="flex items-center gap-3">
+                <div className="flex items-start gap-3">
                   <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${KIND_META[activeThread.thread_kind].badge}`}>
                     <Icon name={KIND_META[activeThread.thread_kind].icon as any} size={18} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-white truncate">
+                    <p className="text-sm font-bold text-white leading-snug break-words">
                       {KIND_META[activeThread.thread_kind].label}
                       {activeThread.thread_kind === 'agent' && activeThread.counterpart_name ? ` · ${activeThread.counterpart_name}` : ''}
                     </p>
-                    <p className="text-[11px] text-slate-400 truncate">{KIND_META[activeThread.thread_kind].hint}</p>
+                    <p className="text-[11px] text-slate-400 leading-snug break-words">{KIND_META[activeThread.thread_kind].hint}</p>
                   </div>
-                  {activeThread.thread_kind === 'logistics' && activeThread.shipment_ref && (isFactoryViewer || isAdminViewer) && (
-                    <button
-                      type="button"
-                      onClick={handleToggleClosed}
-                      className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700"
-                    >
-                      {activeThread.status === 'active' ? 'إغلاق المحادثة' : 'إعادة فتح'}
-                    </button>
-                  )}
-                  {isFactoryViewer && (
-                    <button
-                      type="button"
-                      onClick={handleGenerateInvoice}
-                      disabled={extracting || msgsLoading}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-cyan-600 to-indigo-600 text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
-                    >
-                      {extracting ? (
-                        <Icon name="ArrowPathIcon" size={12} className="animate-spin" />
-                      ) : null}
-                      {extracting ? 'جارٍ التحليل...' : 'توليد الفاتورة من المحادثة ✨'}
-                    </button>
-                  )}
                 </div>
-
-                {extractNotice && (
-                  <div
-                    className={`mt-3 px-3 py-2 rounded-lg text-[11px] border ${
-                      extractNotice.type === 'ok' ?'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' :'bg-red-500/10 border-red-500/30 text-red-300'
-                    }`}
-                  >
-                    {extractNotice.text}
+                {((activeThread.thread_kind === 'logistics' && activeThread.shipment_ref && (isFactoryViewer || isAdminViewer)) || isFactoryViewer) && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {isFactoryViewer && (
+                      <button
+                        type="button"
+                        onClick={handleGenerateInvoice}
+                        disabled={extracting || msgsLoading}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-cyan-600 to-indigo-600 text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+                      >
+                        {extracting ? (
+                          <Icon name="ArrowPathIcon" size={12} className="animate-spin" />
+                        ) : null}
+                        {extracting ? 'جارٍ التحليل...' : 'توليد الفاتورة من المحادثة ✨'}
+                      </button>
+                    )}
+                    {activeThread.thread_kind === 'logistics' && activeThread.shipment_ref && (isFactoryViewer || isAdminViewer) && (
+                      <button
+                        type="button"
+                        onClick={handleToggleClosed}
+                        className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700"
+                      >
+                        {activeThread.status === 'active' ? 'إغلاق المحادثة' : 'إعادة فتح'}
+                      </button>
+                    )}
                   </div>
-                )}
-
-                {/* Pinned shipment context */}
-                {activeThread.thread_kind === 'logistics' && activeThread.shipment_ref && (
-                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div className="rounded-lg bg-violet-500/10 border border-violet-500/30 px-3 py-2">
-                      <p className="text-[10px] text-violet-300/80 flex items-center gap-1">
-                        <Icon name="MapPinIcon" size={10} /> رقم الشحنة (Shipment ID)
-                      </p>
-                      <p className="text-xs font-bold text-white mt-0.5" dir="ltr">{activeThread.shipment_ref || '—'}</p>
-                    </div>
-                    <div className="rounded-lg bg-violet-500/10 border border-violet-500/30 px-3 py-2">
-                      <p className="text-[10px] text-violet-300/80">ميناء التحميل</p>
-                      <p className="text-xs font-bold text-white mt-0.5" dir="ltr">{activeThread.port_of_loading || '—'}</p>
-                    </div>
-                    <div className="rounded-lg bg-violet-500/10 border border-violet-500/30 px-3 py-2">
-                      <p className="text-[10px] text-violet-300/80">تفاصيل الحاوية</p>
-                      <p className="text-xs font-bold text-white mt-0.5" dir="ltr">{activeThread.container_details || '—'}</p>
-                    </div>
-                  </div>
-                )}
-                {activeThread.thread_kind === 'agent' && activeThread.order_ref && (
-                  <p className="mt-2 text-[11px] text-blue-300" dir="ltr">Order #{activeThread.order_ref}</p>
                 )}
               </div>
 
@@ -679,11 +689,11 @@ export default function FactoryThreadsMessaging({
                                 className="flex items-center gap-1.5 text-xs underline mb-1.5"
                               >
                                 <Icon name="PaperClipIcon" size={12} />
-                                {m.attachment_name || 'مرفق'}
+                                {attachmentLabel(m.attachment_name, m.attachment_url)}
                               </a>
                             )
                           )}
-                          {m.message && <p className="whitespace-pre-wrap text-xs">{m.message}</p>}
+                          {m.message && <p className="whitespace-pre-wrap text-xs">{previewText(m.message)}</p>}
                         </div>
                       </div>
                     </div>
@@ -739,6 +749,207 @@ export default function FactoryThreadsMessaging({
           )}
         </div>
       </div>
+
+      {/* Editable Proforma Invoice preview modal */}
+      {piOpen && piDraft && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 bg-black/70" dir="rtl" role="dialog" aria-modal="true">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-slate-950 border border-slate-700 rounded-2xl shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800">
+              <div>
+                <h3 className="text-sm font-bold text-white">معاينة الفاتورة المبدئية (Proforma Invoice)</h3>
+                <p className="text-[11px] text-slate-400">بيانات مستخرجة من المحادثة — يمكنك تعديلها قبل الاعتماد</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPiOpen(false)}
+                className="w-8 h-8 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 flex items-center justify-center"
+                aria-label="إغلاق"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">اسم المستلم (Consignee)</label>
+                  <input
+                    value={piDraft.consignee_name}
+                    onChange={e => updatePi({ consignee_name: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">عنوان المستلم</label>
+                  <input
+                    value={piDraft.consignee_address}
+                    onChange={e => updatePi({ consignee_address: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+                {piDraft.scope === 'export' ? (
+                  <>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">الشرط التجاري (Incoterm)</label>
+                      <select
+                        value={piDraft.incoterm}
+                        onChange={e => updatePi({ incoterm: e.target.value === 'CIF' ? 'CIF' : 'FOB' })}
+                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500"
+                      >
+                        <option value="FOB">FOB</option>
+                        <option value="CIF">CIF</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">شروط الدفع</label>
+                      <input
+                        value={piDraft.payment_terms}
+                        onChange={e => updatePi({ payment_terms: e.target.value })}
+                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">ميناء التحميل</label>
+                      <input
+                        value={piDraft.port_of_loading}
+                        onChange={e => updatePi({ port_of_loading: e.target.value })}
+                        dir="ltr"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">ميناء الوصول</label>
+                      <input
+                        value={piDraft.port_of_discharge}
+                        onChange={e => updatePi({ port_of_discharge: e.target.value })}
+                        dir="ltr"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">المحافظة / مكان التسليم</label>
+                      <input
+                        value={piDraft.governorate}
+                        onChange={e => updatePi({ governorate: e.target.value })}
+                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">العملة</label>
+                      <select
+                        value={piDraft.currency}
+                        onChange={e => updatePi({ currency: e.target.value as ExtractedInvoice['currency'] })}
+                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500"
+                      >
+                        <option value="USD">USD</option>
+                        <option value="YER">YER</option>
+                        <option value="SAR">SAR</option>
+                      </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] text-slate-400 mb-1">شروط الدفع</label>
+                      <input
+                        value={piDraft.payment_terms}
+                        onChange={e => updatePi({ payment_terms: e.target.value })}
+                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-white">البنود</p>
+                  <button
+                    type="button"
+                    onClick={addPiItem}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-cyan-600/20 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-600/30"
+                  >
+                    + إضافة بند
+                  </button>
+                </div>
+                {piDraft.items.length === 0 && (
+                  <p className="text-center text-[11px] text-slate-500 py-4 border border-dashed border-slate-700 rounded-lg">
+                    لم يتم استخراج بنود — أضف بنداً يدوياً
+                  </p>
+                )}
+                {piDraft.items.map((it, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800">
+                    <input
+                      value={it.description}
+                      onChange={e => updatePiItem(idx, { description: e.target.value })}
+                      placeholder="الوصف"
+                      className="col-span-12 sm:col-span-5 px-2 py-1.5 rounded-md bg-slate-950 border border-slate-700 text-white text-xs focus:outline-none focus:border-cyan-500"
+                    />
+                    <input
+                      value={it.hs_code}
+                      onChange={e => updatePiItem(idx, { hs_code: e.target.value })}
+                      placeholder="HS"
+                      dir="ltr"
+                      className="col-span-4 sm:col-span-2 px-2 py-1.5 rounded-md bg-slate-950 border border-slate-700 text-white text-xs focus:outline-none focus:border-cyan-500"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      value={it.quantity}
+                      onChange={e => updatePiItem(idx, { quantity: Number(e.target.value) || 0 })}
+                      placeholder="الكمية"
+                      dir="ltr"
+                      className="col-span-3 sm:col-span-2 px-2 py-1.5 rounded-md bg-slate-950 border border-slate-700 text-white text-xs focus:outline-none focus:border-cyan-500"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={it.unit_price}
+                      onChange={e => updatePiItem(idx, { unit_price: Number(e.target.value) || 0 })}
+                      placeholder="السعر"
+                      dir="ltr"
+                      className="col-span-4 sm:col-span-2 px-2 py-1.5 rounded-md bg-slate-950 border border-slate-700 text-white text-xs focus:outline-none focus:border-cyan-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePiItem(idx)}
+                      className="col-span-1 text-red-400 hover:text-red-300 text-sm"
+                      aria-label="حذف البند"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                <span className="text-xs text-emerald-300 font-semibold">الإجمالي</span>
+                <span className="text-sm font-bold text-white" dir="ltr">
+                  {piTotal.toFixed(2)} {piDraft.scope === 'export' ? 'USD' : piDraft.currency}
+                </span>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 flex gap-2 px-4 py-3 bg-slate-900 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={handleConfirmPi}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-gradient-to-r from-cyan-600 to-indigo-600 text-white text-xs font-bold hover:opacity-90"
+              >
+                اعتماد وإرسال إلى محرك الفوترة
+              </button>
+              <button
+                type="button"
+                onClick={() => setPiOpen(false)}
+                className="px-4 py-2.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
