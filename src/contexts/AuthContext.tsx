@@ -181,6 +181,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const signUp = async (email: string, password: string, metadata: any = {}) => {
+    // Wipe any previous account's session/role hints so a stale user
+    // (e.g. a previously tested field agent) can never override the new one.
+    clearRoleCookies();
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch {
+      // ignore — no active session to clear
+    }
+    setSession(null);
+    setUser(null);
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -199,6 +210,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     });
     if (error) throw error;
+
+    // If Supabase auto-signed the new user in, end that session so the user
+    // logs in explicitly and is routed by their own freshly saved role.
+    if (data?.session) {
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch {
+        // ignore
+      }
+      clearRoleCookies();
+      setSession(null);
+      setUser(null);
+    }
     return data;
   };
 

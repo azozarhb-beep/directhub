@@ -84,20 +84,28 @@ function LoginPageInner() {
       const redirect = searchParams?.get('redirect');
       const userRole = user.user_metadata?.role ?? user.app_metadata?.role;
       const accountRoleMeta = user.user_metadata?.account_role as string | undefined;
-      // Manufacturers are routed strictly by factory type (local vs international)
-      if (userRole === 'manufacturer' && accountRoleMeta !== 'commercial_supplier') {
-        if (redirect) {
-          router.replace(redirect);
-          return;
+      // Manufacturers (local/international) are routed strictly by factory type
+      if (
+        (userRole === 'manufacturer' || accountRoleMeta === 'local_manufacturer' || accountRoleMeta === 'international_manufacturer') &&
+        accountRoleMeta !== 'commercial_supplier' &&
+        userRole !== 'field_agent'
+      ) {
+        if (redirect && !redirect.startsWith('/agent')) {
+          router.push(redirect);
+        } else {
+          resolveManufacturerRoomForUser(createClient(), user.id, user.email)
+            .then((dest) => {
+              router.push(dest);
+            })
+            .catch(() => {
+              setSessionChecking(false);
+            });
         }
-        resolveManufacturerRoomForUser(createClient(), user.id, user.email).then((dest) => {
-          router.replace(dest);
-        });
         return;
       }
       // Try to get dashboard_path from user metadata first
       const dashboardPath = user.user_metadata?.dashboard_path;
-      if (dashboardPath) {
+      if (dashboardPath && !(userRole !== 'field_agent' && dashboardPath.startsWith('/agent'))) {
         router.replace(redirect || dashboardPath);
         return;
       }
@@ -142,19 +150,28 @@ function LoginPageInner() {
       const redirect = searchParams?.get('redirect');
       const userRole = data?.user?.user_metadata?.role ?? data?.user?.app_metadata?.role;
       const accountRoleMeta = data?.user?.user_metadata?.account_role as string | undefined;
-      // Manufacturers are routed strictly by factory type (local vs international)
-      if (userRole === 'manufacturer' && accountRoleMeta !== 'commercial_supplier' && data?.user) {
-        if (redirect) {
+      // Manufacturers (local/international) are routed strictly by factory type
+      if (
+        (userRole === 'manufacturer' || accountRoleMeta === 'local_manufacturer' || accountRoleMeta === 'international_manufacturer') &&
+        accountRoleMeta !== 'commercial_supplier' &&
+        userRole !== 'field_agent'
+      ) {
+        if (redirect && !redirect.startsWith('/agent')) {
           router.push(redirect);
         } else {
-          const dest = await resolveManufacturerRoomForUser(createClient(), data.user.id, data.user.email);
-          router.push(dest);
+          resolveManufacturerRoomForUser(createClient(), data.user.id, data.user.email)
+            .then((dest) => {
+              router.push(dest);
+            })
+            .catch(() => {
+              setSessionChecking(false);
+            });
         }
         return;
       }
       // Prefer dashboard_path from user metadata
       const dashboardPath = data?.user?.user_metadata?.dashboard_path;
-      if (dashboardPath) {
+      if (dashboardPath && !(userRole !== 'field_agent' && dashboardPath.startsWith('/agent'))) {
         router.push(redirect || dashboardPath);
         return;
       }
