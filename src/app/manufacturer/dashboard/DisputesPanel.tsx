@@ -3,6 +3,7 @@
 import React from 'react';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { DISPUTE_REASON_OPTIONS, getDisputeReasonMeta, normalizeDisputeReason } from '@/lib/disputeReasons';
 
 interface DisputesPanelProps {
   factoryDisputes: any[];
@@ -38,6 +39,13 @@ export default function DisputesPanel({
   md,
 }: DisputesPanelProps) {
   const { language } = useLanguage();
+  const [reasonFilter, setReasonFilter] = React.useState<string>('all');
+
+  const visibleDisputes = factoryDisputes.filter((d: any) =>
+    reasonFilter === 'all' || normalizeDisputeReason(d.dispute_reason) === reasonFilter
+  );
+  const reasonCount = (code: string) =>
+    factoryDisputes.filter((d: any) => normalizeDisputeReason(d.dispute_reason) === code).length;
 
   return (
     <div className="space-y-5">
@@ -97,12 +105,31 @@ export default function DisputesPanel({
                 <Icon name="ArrowPathIcon" size={12} /> {md.refreshAction}
               </button>
             </div>
-            {factoryDisputes.length === 0 ? (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              <button
+                type="button"
+                onClick={() => setReasonFilter('all')}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${reasonFilter === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-muted-foreground border-border hover:border-primary/40'}`}
+              >
+                {language === 'ar' ? 'الكل' : 'All'} ({factoryDisputes.length})
+              </button>
+              {DISPUTE_REASON_OPTIONS.map(r => (
+                <button
+                  key={r.value}
+                  type="button"
+                  onClick={() => setReasonFilter(r.value)}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${reasonFilter === r.value ? 'bg-primary text-primary-foreground border-primary' : `${r.badge} hover:opacity-80`}`}
+                >
+                  {r.emoji} {language === 'ar' ? r.labelAr : r.labelEn} ({reasonCount(r.value)})
+                </button>
+              ))}
+            </div>
+            {visibleDisputes.length === 0 ? (
               <div className="bg-card border border-border rounded-xl p-8 text-center">
                 <Icon name="CheckCircleIcon" size={28} className="text-emerald-500 mx-auto mb-2" />
                 <p className="text-sm text-muted-foreground">{md.noIncomingDisputes}</p>
               </div>
-            ) : factoryDisputes.map((order: any) => {
+            ) : visibleDisputes.map((order: any) => {
               const isOpen = ['open', 'factory_reviewing'].includes(order.dispute_status);
               const isResolved = order.dispute_status === 'factory_resolved';
               const isEscalated = order.dispute_status === 'escalated';
@@ -128,11 +155,18 @@ export default function DisputesPanel({
                       {isOpen ? md.needsResponseShort : isEscalated ? md.escalatedShort : isResolved ? md.waitBuyer : md.escrowClosed}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground">
-                      {order.dispute_reason === 'late_delivery' ? md.lateDelivery : md.mismatch}
-                    </p>
-                    <p className="text-sm font-bold text-foreground">${order.total?.toLocaleString()} USD</p>
+                  <div className="flex items-center justify-between gap-2">
+                    {(() => {
+                      const rm = getDisputeReasonMeta(order.dispute_reason);
+                      return rm ? (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${rm.badge}`}>
+                          {rm.emoji} {language === 'ar' ? rm.labelAr : rm.labelEn}
+                        </span>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">{order.dispute_reason || md.mismatch}</p>
+                      );
+                    })()}
+                    <p className="text-sm font-bold text-foreground shrink-0">${order.total?.toLocaleString()} USD</p>
                   </div>
                 </button>
               );
@@ -179,7 +213,10 @@ export default function DisputesPanel({
                     <div>
                       <p className="text-muted-foreground">{md.disputeReasonLabel}</p>
                       <p className="font-bold text-orange-700 mt-0.5">
-                        {selectedFactoryDispute.dispute_reason === 'late_delivery' ? md.lateInDelivery : md.specMismatch}
+                        {(() => {
+                          const rm = getDisputeReasonMeta(selectedFactoryDispute.dispute_reason);
+                          return rm ? `${rm.emoji} ${language === 'ar' ? rm.labelAr : rm.labelEn}` : (selectedFactoryDispute.dispute_reason || md.specMismatch);
+                        })()}
                       </p>
                     </div>
                     <div>

@@ -71,13 +71,13 @@ const KIND_META: Record<ThreadKind, { label: string; hint: string; icon: string;
   },
   agent: {
     label: 'المندوب المسؤول',
-    hint: 'متابعة تقدم التصنيع بعد تأكيد الدفع',
+    hint: 'متاح دائماً لاستفسارات الصفقات وتأهيل المصنع',
     icon: 'UserCircleIcon',
     badge: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
   },
   logistics: {
     label: 'لوجستي الشحن / المخلص الجمركي',
-    hint: 'جدولة الاستلام وتوثيق ختم الحاوية وتسليم المستندات',
+    hint: 'متاح دائماً لعروض أسعار الشحن ومواصفات الحاويات والحجز',
     icon: 'TruckIcon',
     badge: 'bg-violet-500/15 text-violet-300 border-violet-500/30',
   },
@@ -155,44 +155,60 @@ export default function FactoryThreadsMessaging({
           });
         }
 
-        // Assigned account agent — only after a confirmed payment (funds secured)
+        // Assigned account agent — always available (no payment confirmation required)
         const { data: existingAgent } = await supabase
           .from('factory_threads')
-          .select('id')
+          .select('id, counterpart_id')
           .eq('factory_id', userId)
           .eq('thread_kind', 'agent')
           .maybeSingle();
         if (!existingAgent) {
-          const { data: paid } = await supabase
-            .from('orders')
-            .select('id, order_number')
-            .eq('factory_user_id', userId)
-            .eq('escrow_status', 'funds_secured')
-            .limit(1);
-          if (paid && paid.length > 0) {
-            const { data: reg } = await supabase
-              .from('factory_registrations')
-              .select('referred_by_agent_id')
-              .eq('user_id', userId)
-              .not('referred_by_agent_id', 'is', null)
-              .limit(1)
+          const { data: reg } = await supabase
+            .from('factory_registrations')
+            .select('referred_by_agent_id')
+            .eq('user_id', userId)
+            .not('referred_by_agent_id', 'is', null)
+            .limit(1)
+            .maybeSingle();
+          const agentId = ((reg as any)?.referred_by_agent_id as string | undefined) || null;
+          let agentName: string = KIND_META.agent.label;
+          if (agentId) {
+            const { data: agentProfile } = await supabase
+              .from('user_profiles')
+              .select('full_name, email')
+              .eq('id', agentId)
               .maybeSingle();
-            const agentId = (reg as any)?.referred_by_agent_id as string | undefined;
-            if (agentId) {
-              const { data: agentProfile } = await supabase
-                .from('user_profiles')
-                .select('full_name, email')
-                .eq('id', agentId)
-                .maybeSingle();
-              await supabase.from('factory_threads').insert({
-                factory_id: userId,
-                thread_kind: 'agent',
-                counterpart_id: agentId,
-                counterpart_name: (agentProfile as any)?.full_name || (agentProfile as any)?.email || KIND_META.agent.label,
-                order_ref: (paid[0] as any)?.order_number ?? null,
-              });
-            }
+            agentName = (agentProfile as any)?.full_name || (agentProfile as any)?.email || KIND_META.agent.label;
           }
+          const { data: latestOrder } = await supabase
+            .from('orders')
+            .select('order_number')
+            .eq('factory_user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          await supabase.from('factory_threads').insert({
+            factory_id: userId,
+            thread_kind: 'agent',
+            counterpart_id: agentId,
+            counterpart_name: agentName,
+            order_ref: (latestOrder?.[0] as any)?.order_number ?? null,
+          });
+        }
+
+        // General logistics coordinator — always available (freight quotes, container specs, booking)
+        const { data: existingGeneralLogistics } = await supabase
+          .from('factory_threads')
+          .select('id')
+          .eq('factory_id', userId)
+          .eq('thread_kind', 'logistics')
+          .is('shipment_ref', null)
+          .maybeSingle();
+        if (!existingGeneralLogistics) {
+          await supabase.from('factory_threads').insert({
+            factory_id: userId,
+            thread_kind: 'logistics',
+            counterpart_name: KIND_META.logistics.label,
+          });
         }
       }
 
@@ -385,7 +401,6 @@ export default function FactoryThreadsMessaging({
   };
 
   const visibleThreads = threads.filter(t => filter === 'all' || t.thread_kind === filter);
-  const hasAgentThread = threads.some(t => t.thread_kind === 'agent');
 
   return (
     <div className="space-y-3" dir="rtl">
@@ -405,7 +420,7 @@ export default function FactoryThreadsMessaging({
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition-colors"
           >
             <Icon name="TruckIcon" size={14} />
-            فتح محادثة لوجستي لشحنة
+            محادثة شحنة محددة (اختياري)
           </button>
         )}
       </div>
@@ -545,11 +560,6 @@ export default function FactoryThreadsMessaging({
                 );
               })
             )}
-            {isFactoryViewer && !loading && !hasAgentThread && (
-              <div className="m-3 p-3 rounded-lg bg-blue-500/5 border border-blue-500/20 text-[11px] text-blue-300 leading-relaxed">
-                سيتم ربط المندوب المسؤول عن تسجيل المصنع تلقائياً بعد تأكيد الدفع لمتابعة تقدم التصنيع.
-              </div>
-            )}
           </div>
         </div>
 
@@ -575,7 +585,7 @@ export default function FactoryThreadsMessaging({
                     </p>
                     <p className="text-[11px] text-slate-400 truncate">{KIND_META[activeThread.thread_kind].hint}</p>
                   </div>
-                  {activeThread.thread_kind === 'logistics' && (isFactoryViewer || isAdminViewer) && (
+                  {activeThread.thread_kind === 'logistics' && activeThread.shipment_ref && (isFactoryViewer || isAdminViewer) && (
                     <button
                       type="button"
                       onClick={handleToggleClosed}
@@ -610,7 +620,7 @@ export default function FactoryThreadsMessaging({
                 )}
 
                 {/* Pinned shipment context */}
-                {activeThread.thread_kind === 'logistics' && (
+                {activeThread.thread_kind === 'logistics' && activeThread.shipment_ref && (
                   <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div className="rounded-lg bg-violet-500/10 border border-violet-500/30 px-3 py-2">
                       <p className="text-[10px] text-violet-300/80 flex items-center gap-1">

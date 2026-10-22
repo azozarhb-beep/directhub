@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import Header from '@/components/Header';
 import { createNotification } from '@/lib/notificationEngine';
+import { DISPUTE_REASON_OPTIONS, getDisputeReasonMeta, normalizeDisputeReason } from '@/lib/disputeReasons';
 
 import Icon from '@/components/ui/AppIcon';
 
@@ -2142,6 +2143,7 @@ export default function AdminControlRoomPage() {
   const [disputeOrders, setDisputeOrders] = useState<any[]>([]);
   const [disputeLoading, setDisputeLoading] = useState(false);
   const [selectedDisputeOrder, setSelectedDisputeOrder] = useState<any | null>(null);
+  const [disputeReasonFilter, setDisputeReasonFilter] = useState<string>('all');
   const [disputeActionLoading, setDisputeActionLoading] = useState(false);
   const [disputeResolutionNote, setDisputeResolutionNote] = useState('');
   const [disputeActionMsg, setDisputeActionMsg] = useState('');
@@ -5921,7 +5923,7 @@ export default function AdminControlRoomPage() {
                     {[
                       { label: '🚨 مُصعَّد — تدخل مطلوب', count: disputeOrders.filter((o: any) => o.dispute_status === 'escalated' || o.escrow_status === 'escrow_frozen_escalated').length, color: 'bg-red-50 text-red-700 border-red-200' },
                       { label: '🔒 محفظة مجمّدة (L1)', count: disputeOrders.filter((o: any) => o.escrow_status === 'escrow_frozen' && o.dispute_status !== 'escalated').length, color: 'bg-orange-50 text-orange-700 border-orange-200' },
-                      { label: 'تأخر في التسليم', count: disputeOrders.filter((o: any) => o.dispute_reason === 'late_delivery').length, color: 'bg-amber-50 text-amber-700 border-amber-200' },
+                      { label: 'تأخر في التسليم', count: disputeOrders.filter((o: any) => normalizeDisputeReason(o.dispute_reason) === 'delivery_delay').length, color: 'bg-amber-50 text-amber-700 border-amber-200' },
                       { label: '✅ تم الاسترجاع', count: disputeOrders.filter((o: any) => o.escrow_status === 'refund_processed').length, color: 'bg-green-50 text-green-700 border-green-200' },
                     ].map(s => (
                       <div key={s.label} className={`rounded-xl border p-4 ${s.color}`}>
@@ -5964,6 +5966,25 @@ export default function AdminControlRoomPage() {
                     <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
                       {/* List */}
                       <div className="lg:col-span-2 space-y-2">
+                        <div className="flex flex-wrap gap-1.5 mb-1">
+                          <button
+                            type="button"
+                            onClick={() => setDisputeReasonFilter('all')}
+                            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${disputeReasonFilter === 'all' ? 'bg-red-600 text-white border-red-600' : 'bg-card text-muted-foreground border-border hover:border-red-300'}`}
+                          >
+                            الكل ({disputeOrders.length})
+                          </button>
+                          {DISPUTE_REASON_OPTIONS.map(r => (
+                            <button
+                              key={r.value}
+                              type="button"
+                              onClick={() => setDisputeReasonFilter(r.value)}
+                              className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${disputeReasonFilter === r.value ? 'bg-red-600 text-white border-red-600' : `${r.badge} hover:opacity-80`}`}
+                            >
+                              {r.emoji} {r.labelAr} ({disputeOrders.filter((o: any) => normalizeDisputeReason(o.dispute_reason) === r.value).length})
+                            </button>
+                          ))}
+                        </div>
                         {disputeOrders.length === 0 ? (
                           <div className="bg-card border border-border rounded-xl p-8 text-center">
                             <Icon name="CheckCircleIcon" size={28} className="text-emerald-500 mx-auto mb-2" />
@@ -5972,7 +5993,7 @@ export default function AdminControlRoomPage() {
                               <Icon name="ArrowPathIcon" size={12} /> تحديث
                             </button>
                           </div>
-                        ) : disputeOrders.map((order: any) => {
+                        ) : disputeOrders.filter((o: any) => disputeReasonFilter === 'all' || normalizeDisputeReason(o.dispute_reason) === disputeReasonFilter).map((order: any) => {
                           const isEscalated = order.dispute_status === 'escalated' || order.escrow_status === 'escrow_frozen_escalated';
                           const isFrozen = order.escrow_status === 'escrow_frozen' && !isEscalated;
                           const isRefunded = order.escrow_status === 'refund_processed';
@@ -6015,8 +6036,13 @@ export default function AdminControlRoomPage() {
                                 </div>
                               </div>
                               <div className="flex items-center justify-between">
-                                <p className="text-xs text-muted-foreground">
-                                  {order.dispute_reason === 'late_delivery' ? '⏰ تأخر تسليم' : '⚠️ عدم مطابقة'}
+                                <p className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                                  {(() => {
+                                    const rm = getDisputeReasonMeta(order.dispute_reason);
+                                    return rm ? (
+                                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${rm.badge}`}>{rm.emoji} {rm.labelAr}</span>
+                                    ) : (order.dispute_reason || '—');
+                                  })()}
                                   {(order.dispute_tier === 2 || isEscalated) && <span className="ml-1 text-red-600 font-bold">· مستوى 2</span>}
                                 </p>
                                 <p className="text-sm font-bold text-red-700">${order.total?.toLocaleString('en-US')} USD</p>
@@ -6074,7 +6100,7 @@ export default function AdminControlRoomPage() {
                                 <div>
                                   <p className="text-muted-foreground">سبب الشكوى</p>
                                   <p className="font-bold text-red-700 mt-0.5">
-                                    {selectedDisputeOrder.dispute_reason === 'late_delivery' ? '⏰ تأخر في التسليم' : '⚠️ عدم مطابقة المواصفات'}
+                                    {(() => { const rm = getDisputeReasonMeta(selectedDisputeOrder.dispute_reason); return rm ? `${rm.emoji} ${rm.labelAr}` : (selectedDisputeOrder.dispute_reason || '—'); })()}
                                   </p>
                                 </div>
                                 <div>
