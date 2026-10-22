@@ -17,7 +17,7 @@ import DisputesPanel from '@/app/manufacturer/dashboard/DisputesPanel';
 import BankAccountsPanel from '@/app/manufacturer/dashboard/BankAccountsPanel';
 import FinancePanel from '@/app/manufacturer/dashboard/FinancePanel';
 import ManufacturerAdvancedModules from '@/components/manufacturer/ManufacturerAdvancedModules';
-import ExportVolumeKPIs, { TOTAL_EXPORT_VOLUME_USD } from '@/components/manufacturer/ExportVolumeKPIs';
+import ExportVolumeKPIs, { getShipmentsForPeriod, getPreviousShipmentsForPeriod, PERIOD_DAYS } from '@/components/manufacturer/ExportVolumeKPIs';
 import IncomingRFQsPanel from '@/components/manufacturer/IncomingRFQsPanel';
 import FactoryThreadsMessaging from '@/components/manufacturer/FactoryThreadsMessaging';
 import FactoryDocumentUploadPanel from '@/components/manufacturer/FactoryDocumentUploadPanel';
@@ -133,6 +133,8 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
     totalViews: 0, totalOrders: 0, totalRfqs: 0, avgRating: 0, reviewCount: 0, activeProducts: 0, totalRevenue: 0,
   });
   const [analyticsPeriod, setAnalyticsPeriod] = useState<'7d' | '30d' | '90d'>('30d');
+  const [analyticsPrev, setAnalyticsPrev] = useState({ totalOrders: 0, totalRfqs: 0, totalRevenue: 0 });
+  const [analyticsSeries, setAnalyticsSeries] = useState<any[]>([]);
   // disputes
   const [factoryDisputes, setFactoryDisputes] = useState<any[]>([]);
   const [factoryDisputesLoading, setFactoryDisputesLoading] = useState(false);
@@ -210,17 +212,65 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
     if (!user) return;
     setAnalyticsLoading(true);
     try {
+      const days = PERIOD_DAYS[analyticsPeriod];
+      const now = Date.now();
+      const periodStart = now - days * 86400000;
+      const prevStart = now - days * 2 * 86400000;
       const { data: orders } = await supabase.from('orders').select('total_amount, created_at').eq('manufacturer_id', user.id);
-      const totalRevenue = (orders || []).reduce((sum: number, o: any) => sum + (o.total_amount || 0), 0);
+      const { data: rfqResp } = await supabase.from('rfq_responses').select('created_at').eq('manufacturer_id', user.id);
       const { data: prods } = await supabase.from('manufacturer_products').select('id, is_active').eq('manufacturer_id', user.id);
+
+      const inRange = (iso: string | null | undefined, from: number, to: number) => {
+        const ts = iso ? new Date(iso).getTime() : NaN;
+        return Number.isFinite(ts) && ts >= from && ts < to;
+      };
+      const curOrders = (orders || []).filter((o: any) => inRange(o.created_at, periodStart, now + 1));
+      const prevOrders = (orders || []).filter((o: any) => inRange(o.created_at, prevStart, periodStart));
+      const curRfqs = (rfqResp || []).filter((r: any) => inRange(r.created_at, periodStart, now + 1));
+      const prevRfqs = (rfqResp || []).filter((r: any) => inRange(r.created_at, prevStart, periodStart));
+      const sumAmt = (list: any[]) => list.reduce((sum: number, o: any) => sum + (Number(o.total_amount) || 0), 0);
+
+      // Aligned shipment data (completed export shipments are real fulfilled sales)
+      const curShip = getShipmentsForPeriod(analyticsPeriod);
+      const prevShip = getPreviousShipmentsForPeriod(analyticsPeriod);
+      const shipRevenue = curShip.reduce((s, x) => s + x.volume, 0);
+      const prevShipRevenue = prevShip.reduce((s, x) => s + x.volume, 0);
+
+      // Daily series for charts (bucketed so long ranges stay readable)
+      const bucketDays = days <= 7 ? 1 : days <= 30 ? 3 : 10;
+      const bucketCount = Math.ceil(days / bucketDays);
+      const series: any[] = [];
+      for (let i = bucketCount - 1; i >= 0; i--) {
+        const endAgo = i * bucketDays;
+        const startAgo = endAgo + bucketDays;
+        const from = now - startAgo * 86400000;
+        const to = now - endAgo * 86400000;
+        const bucketOrders = curOrders.filter((o: any) => inRange(o.created_at, from, to));
+        const bucketShips = curShip.filter((x) => x.daysAgo >= endAgo && x.daysAgo < startAgo);
+        const label = new Date(to - 1).toISOString().slice(5, 10);
+        series.push({
+          date: label,
+          views: 0,
+          orders: bucketOrders.length + bucketShips.length,
+          revenue: sumAmt(bucketOrders) + bucketShips.reduce((s, x) => s + x.volume, 0),
+        });
+      }
+
+      setAnalyticsSeries(series);
+      setAnalyticsPrev({
+        totalOrders: prevOrders.length + prevShip.length,
+        totalRfqs: prevRfqs.length,
+        totalRevenue: sumAmt(prevOrders) + prevShipRevenue,
+      });
       setAnalyticsStats((prev) => ({
         ...prev,
-        totalOrders: (orders || []).length,
-        totalRevenue,
+        totalOrders: curOrders.length + curShip.length,
+        totalRfqs: curRfqs.length,
+        totalRevenue: sumAmt(curOrders) + shipRevenue,
         activeProducts: (prods || []).filter((p: any) => p.is_active).length,
       }));
     } catch (e) { console.error(e); } finally { setAnalyticsLoading(false); }
-  }, [user, supabase]);
+  }, [user, supabase, analyticsPeriod]);
 
   const fetchFactoryDisputes = useCallback(async () => {
     if (!user) return;
@@ -807,14 +857,12 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
   } else if (moduleKey === 'analytics') {
     body = (
       <div className="space-y-6">
-        <ExportVolumeKPIs />
+        <ExportVolumeKPIs period={analyticsPeriod} />
         <AnalyticsPanel
           analyticsLoading={analyticsLoading}
-          analyticsData={[]}
-          analyticsStats={{
-            ...analyticsStats,
-            totalRevenue: analyticsStats.totalRevenue > 0 ? analyticsStats.totalRevenue : TOTAL_EXPORT_VOLUME_USD,
-          }}
+          analyticsData={analyticsSeries}
+          analyticsStats={analyticsStats}
+          analyticsPrev={analyticsPrev}
           analyticsPeriod={analyticsPeriod}
           setAnalyticsPeriod={setAnalyticsPeriod}
           products={products}
