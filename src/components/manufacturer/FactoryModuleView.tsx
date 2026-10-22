@@ -93,6 +93,11 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
   // products
   const [products, setProducts] = useState<any[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
+  const [productFilterStatus, setProductFilterStatus] = useState('all');
+  const [productFilterCategory, setProductFilterCategory] = useState('all');
+  const [productFilterSource, setProductFilterSource] = useState('all');
+  const [productSearch, setProductSearch] = useState('');
+  const [productDeleteId, setProductDeleteId] = useState<string | null>(null);
   // inventory
   const [inventoryItems, setInventoryItems] = useState<any[]>([]);
   const [inventoryLoading, setInventoryLoading] = useState(false);
@@ -467,11 +472,59 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
   let body: React.ReactNode = null;
 
   if (moduleKey === 'products') {
+    const handleProductToggleActive = async (product: any) => {
+      try {
+        const { error } = await supabase
+          .from('manufacturer_products')
+          .update({ is_active: !product.is_active })
+          .eq('id', product.id)
+          .eq('manufacturer_id', user.id);
+        if (error) throw error;
+        await fetchProducts();
+      } catch (e) { console.error('Toggle failed:', e); }
+    };
+    const handleProductDelete = async (id: string) => {
+      try {
+        const { error } = await supabase
+          .from('manufacturer_products')
+          .delete()
+          .eq('id', id)
+          .eq('manufacturer_id', user.id);
+        if (error) throw error;
+        setProductDeleteId(null);
+        await fetchProducts();
+      } catch (e) { console.error('Delete failed:', e); }
+    };
+    const handleProductApprove = async (product: any) => {
+      try {
+        const { error } = await supabase
+          .from('manufacturer_products')
+          .update({ approval_status: 'approved', is_active: true, is_published: true })
+          .eq('id', product.id)
+          .eq('manufacturer_id', user.id);
+        if (error) throw error;
+        await fetchProducts();
+      } catch (e) { console.error('Approve failed:', e); }
+    };
+    const productQuery = productSearch.trim().toLowerCase();
+    const visibleProducts = products.filter((p: any) => {
+      const matchStatus = productFilterStatus === 'all' || p.inventory_status === productFilterStatus;
+      const matchCategory = productFilterCategory === 'all' || p.category === productFilterCategory;
+      const matchSource =
+        productFilterSource === 'all' ||
+        (productFilterSource === 'agent' ? p.created_by_role === 'agent' : p.created_by_role !== 'agent');
+      const matchSearch =
+        !productQuery ||
+        String(p.name || '').toLowerCase().includes(productQuery) ||
+        String(p.name_ar || '').toLowerCase().includes(productQuery) ||
+        String(p.sku || '').toLowerCase().includes(productQuery);
+      return matchStatus && matchCategory && matchSource && matchSearch;
+    });
     body = (
       <ProductsPanel
         products={products}
-        filteredProducts={products}
-        sortedProducts={products}
+        filteredProducts={visibleProducts}
+        sortedProducts={visibleProducts}
         fetchLoading={productsLoading}
         showAddModal={false}
         setShowAddModal={() => {}}
@@ -480,14 +533,16 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
         setFormData={() => {}}
         formLoading={false}
         formError=""
-        deleteId={null}
-        setDeleteId={() => {}}
-        filterStatus="all"
-        setFilterStatus={() => {}}
-        filterCategory="all"
-        setFilterCategory={() => {}}
-        searchQuery=""
-        setSearchQuery={() => {}}
+        deleteId={productDeleteId}
+        setDeleteId={setProductDeleteId}
+        filterStatus={productFilterStatus}
+        setFilterStatus={setProductFilterStatus}
+        filterCategory={productFilterCategory}
+        setFilterCategory={setProductFilterCategory}
+        filterSource={productFilterSource}
+        setFilterSource={setProductFilterSource}
+        searchQuery={productSearch}
+        setSearchQuery={setProductSearch}
         selectedProducts={new Set()}
         setSelectedProducts={() => {}}
         bulkActionLoading={false}
@@ -522,8 +577,9 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
         inquiryError=""
         handleOpenAddModal={() => router.push('/seller/products?add=1&returnTo=/manufacturer/products')}
         handleFormSubmit={async () => {}}
-        handleDelete={async () => {}}
-        handleToggleActive={async () => {}}
+        handleDelete={handleProductDelete}
+        handleToggleActive={handleProductToggleActive}
+        handleApproveProduct={handleProductApprove}
         handleBulkToggleActive={async () => {}}
         handleBulkDelete={async () => {}}
         handleDocumentUpload={async () => {}}
@@ -531,9 +587,9 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
         openEditModal={() => {}}
         stats={{
           total: products.length,
-          active: products.filter((p: any) => p.is_active).length,
-          inactive: products.filter((p: any) => !p.is_active).length,
-          lowStock: 0,
+          inStock: products.filter((p: any) => p.inventory_status === 'in_stock').length,
+          lowStock: products.filter((p: any) => p.inventory_status === 'low_stock').length,
+          outOfStock: products.filter((p: any) => p.inventory_status === 'out_of_stock').length,
         }}
         SortIcon={() => null}
         t={t as any}

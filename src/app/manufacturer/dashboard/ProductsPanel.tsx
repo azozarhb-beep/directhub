@@ -415,24 +415,33 @@ export default function ProductsPanel({
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {[
-          { labelKey: 'totalProducts', value: stats.total, icon: 'CubeIcon', gradient: 'linear-gradient(135deg, #6366F1, #4F46E5)', shadow: 'shadow-indigo-100' },
-          { labelKey: 'inStock', value: stats.inStock, icon: 'CheckCircleIcon', gradient: 'linear-gradient(135deg, #10B981, #059669)', shadow: 'shadow-emerald-100' },
-          { labelKey: 'lowStock', value: stats.lowStock, icon: 'ExclamationTriangleIcon', gradient: 'linear-gradient(135deg, #F59E0B, #D97706)', shadow: 'shadow-amber-100' },
-          { labelKey: 'outOfStock', value: stats.outOfStock, icon: 'XCircleIcon', gradient: 'linear-gradient(135deg, #EF4444, #DC2626)', shadow: 'shadow-red-100' },
-        ].map((stat) => (
-          <div key={stat.labelKey} className={`relative bg-card border border-border/60 rounded-2xl p-4 shadow-md ${stat.shadow} overflow-hidden transition-all hover:shadow-lg hover:-translate-y-0.5`}>
-            <div className="absolute top-0 right-0 w-20 h-20 rounded-full opacity-5 -translate-y-4 translate-x-4" style={{ background: stat.gradient }} />
-            <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-sm" style={{ background: stat.gradient }}>
-                <Icon name={stat.icon as any} size={16} className="text-white" />
+          { labelKey: 'totalProducts', filter: 'all', value: stats.total, icon: 'CubeIcon', gradient: 'linear-gradient(135deg, #6366F1, #4F46E5)', shadow: 'shadow-indigo-100', ring: 'border-indigo-500 ring-2 ring-indigo-500/40' },
+          { labelKey: 'inStock', filter: 'in_stock', value: stats.inStock ?? 0, icon: 'CheckCircleIcon', gradient: 'linear-gradient(135deg, #10B981, #059669)', shadow: 'shadow-emerald-100', ring: 'border-emerald-500 ring-2 ring-emerald-500/40' },
+          { labelKey: 'lowStock', filter: 'low_stock', value: stats.lowStock ?? 0, icon: 'ExclamationTriangleIcon', gradient: 'linear-gradient(135deg, #F59E0B, #D97706)', shadow: 'shadow-amber-100', ring: 'border-amber-500 ring-2 ring-amber-500/40' },
+          { labelKey: 'outOfStock', filter: 'out_of_stock', value: stats.outOfStock ?? 0, icon: 'XCircleIcon', gradient: 'linear-gradient(135deg, #EF4444, #DC2626)', shadow: 'shadow-red-100', ring: 'border-red-500 ring-2 ring-red-500/40' },
+        ].map((stat) => {
+          const isActiveCard = filterStatus === stat.filter;
+          return (
+            <button
+              type="button"
+              key={stat.labelKey}
+              onClick={() => setFilterStatus(stat.filter)}
+              aria-pressed={isActiveCard}
+              className={`relative flex flex-col items-stretch text-start bg-card border rounded-2xl p-4 shadow-md ${stat.shadow} overflow-hidden transition-all hover:shadow-lg hover:-translate-y-0.5 cursor-pointer ${isActiveCard ? stat.ring : 'border-border/60'}`}
+            >
+              <div className="absolute top-0 right-0 w-20 h-20 rounded-full opacity-5 -translate-y-4 translate-x-4 pointer-events-none" style={{ background: stat.gradient }} />
+              <div className="relative flex items-center gap-2.5 mb-3">
+                <div className="w-9 h-9 shrink-0 rounded-xl flex items-center justify-center shadow-sm" style={{ background: stat.gradient }}>
+                  <Icon name={stat.icon as any} size={16} className="text-white" />
+                </div>
+                <span className="text-xs text-muted-foreground font-semibold leading-tight">
+                  {t.manufacturerDashboard[stat.labelKey as keyof typeof t.manufacturerDashboard] as string}
+                </span>
               </div>
-              <span className="text-xs text-muted-foreground font-semibold leading-tight">
-                {t.manufacturerDashboard[stat.labelKey as keyof typeof t.manufacturerDashboard] as string}
-              </span>
-            </div>
-            <p className="text-3xl font-black text-foreground tracking-tight">{stat.value}</p>
-          </div>
-        ))}
+              <p className="relative text-3xl font-black text-foreground tracking-tight leading-none">{stat.value}</p>
+            </button>
+          );
+        })}
       </div>
 
       {/* Filters */}
@@ -512,7 +521,7 @@ export default function ProductsPanel({
                           )}
                         </div>
                         <div className="min-w-0">
-                      <p className="font-medium text-foreground">{product.name}</p>
+                      <p className="font-medium text-foreground break-words">{product.name}</p>
                       {renderOriginBadge(product)}
                       {product.origin_country && (
                         <div className="flex items-center gap-1.5 mt-0.5">
@@ -525,7 +534,7 @@ export default function ProductsPanel({
                     </td>
                     <td className="px-4 py-3"><span className="text-xs text-muted-foreground capitalize">{product.category.replace('_', ' ')}</span></td>
                     <td className="px-4 py-3"><span className="font-mono text-xs text-muted-foreground">{product.sku || '—'}</span></td>
-                    <td className="px-4 py-3 text-right"><span className="font-semibold text-foreground">${product.unit_price.toFixed(2)}</span><span className="text-xs text-muted-foreground">/{product.unit}</span></td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap" dir="ltr"><span className="font-semibold text-foreground">${product.unit_price.toFixed(2)}</span><span className="text-xs text-muted-foreground"> / {product.unit}</span></td>
                     <td className="px-4 py-3 text-right"><span className="font-medium text-foreground">{product.stock_quantity}</span><span className="text-xs text-muted-foreground"> {product.unit}</span></td>
                     <td className="px-4 py-3">
                       {renderStatus(product)}
@@ -569,14 +578,14 @@ export default function ProductsPanel({
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-foreground truncate">{product.name}</p>
+                    <p className="font-semibold text-foreground break-words">{product.name}</p>
                     <p className="text-xs text-muted-foreground capitalize">{product.category.replace('_', ' ')}</p>
                     {renderOriginBadge(product)}
                   </div>
                   <span className="shrink-0">{renderStatus(product)}</span>
                 </div>
                 <div className="flex items-center gap-4 text-sm mb-3">
-                  <span><span className="font-semibold text-foreground">${product.unit_price.toFixed(2)}</span><span className="text-muted-foreground">/{product.unit}</span></span>
+                  <span dir="ltr" className="whitespace-nowrap"><span className="font-semibold text-foreground">${product.unit_price.toFixed(2)}</span><span className="text-muted-foreground"> / {product.unit}</span></span>
                   <span className="text-muted-foreground">Stock: <span className="text-foreground font-medium">{product.stock_quantity} {product.unit}</span></span>
                 </div>
                 {isPending(product) && (
@@ -588,13 +597,13 @@ export default function ProductsPanel({
                 <div className="flex items-center gap-2">
                   <button onClick={() => handleToggleActive(product)} className="flex-1 h-8 flex items-center justify-center gap-1 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
                     <Icon name={product.is_active ? 'EyeIcon' : 'EyeSlashIcon'} size={13} />
-                    {product.is_active ? 'Active' : 'Inactive'}
+                    {product.is_active ? (isAr ? 'نشط' : 'Active') : (isAr ? 'غير نشط' : 'Inactive')}
                   </button>
                   <button onClick={() => openEditModal(product)} className="flex-1 h-8 flex items-center justify-center gap-1 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
-                    <Icon name="PencilSquareIcon" size={13} /> Edit
+                    <Icon name="PencilSquareIcon" size={13} /> {isAr ? 'تعديل' : 'Edit'}
                   </button>
                   <button onClick={() => setDeleteId(product.id)} className="flex-1 h-8 flex items-center justify-center gap-1 rounded-lg border border-red-200 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors">
-                    <Icon name="TrashIcon" size={13} /> Delete
+                    <Icon name="TrashIcon" size={13} /> {isAr ? 'حذف' : 'Delete'}
                   </button>
                 </div>
                 <div className="mt-3 pt-3 border-t border-slate-700">
@@ -714,11 +723,11 @@ export default function ProductsPanel({
             <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
               <Icon name="TrashIcon" size={22} className="text-red-600" />
             </div>
-            <h3 className="text-center font-bold text-foreground mb-1">Delete Product?</h3>
-            <p className="text-center text-sm text-muted-foreground mb-5">This action cannot be undone. The product will be permanently removed.</p>
+            <h3 className="text-center font-bold text-foreground mb-1">{isAr ? 'حذف المنتج؟' : 'Delete Product?'}</h3>
+            <p className="text-center text-sm text-muted-foreground mb-5">{isAr ? 'لا يمكن التراجع عن هذا الإجراء. سيتم حذف المنتج نهائياً.' : 'This action cannot be undone. The product will be permanently removed.'}</p>
             <div className="flex gap-3">
-              <button onClick={() => setDeleteId(null)} className="flex-1 h-10 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">Cancel</button>
-              <button onClick={() => handleDelete(deleteId)} className="flex-1 h-10 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors">Delete</button>
+              <button onClick={() => setDeleteId(null)} className="flex-1 h-10 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">{isAr ? 'إلغاء' : 'Cancel'}</button>
+              <button onClick={() => handleDelete(deleteId)} className="flex-1 h-10 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors">{isAr ? 'حذف' : 'Delete'}</button>
             </div>
           </div>
         </div>
