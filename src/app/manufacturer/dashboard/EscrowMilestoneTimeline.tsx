@@ -224,11 +224,42 @@ export default function EscrowMilestoneTimeline({ order, userId, compact = false
     );
   }
 
+  const releasedAmount = Number(order.total || 0);
+
   return (
     <div className="bg-card border border-border rounded-2xl p-4 space-y-4" dir="rtl">
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-bold text-foreground">مراحل صرف الضمان (30% / 40% / 30%)</h4>
-        <span className="text-[10px] text-muted-foreground">إجمالي الطلب: ${Number(order.total || 0).toLocaleString('en-US')}</span>
+        <span className="text-[10px] text-muted-foreground" dir="ltr">Order total: ${Number(order.total || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} USD</span>
+      </div>
+
+      {/* Visual 3-step release progress bar */}
+      <div className="rounded-xl border border-border bg-muted/30 p-3" aria-label="تقدم صرف الدفعات">
+        <div className="flex items-center">
+          {steps.map((s, i) => {
+            const st = stateStyle(s.state);
+            return (
+              <React.Fragment key={s.key}>
+                <div className="flex flex-col items-center gap-1 min-w-[64px]">
+                  <div className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-xs font-bold ${st.dot}`}>
+                    {s.state === 'paid' ? <Icon name="CheckIcon" size={16} /> : `${s.pct}%`}
+                  </div>
+                  <span className={`text-[10px] font-bold ${st.text}`}>{st.badgeText}</span>
+                </div>
+                {i < steps.length - 1 && (
+                  <div className="flex-1 h-1.5 mx-1 rounded-full bg-border overflow-hidden mb-4">
+                    <div className={`h-full rounded-full transition-all ${s.state === 'paid' ? 'bg-green-500 w-full' : 'w-0'}`} />
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+        <p className="text-[11px] text-muted-foreground text-center mt-1">
+          المحرَّر: <span className="font-bold text-green-700" dir="ltr">${releasedAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} USD</span>
+          {' '}من{' '}
+          <span className="font-bold" dir="ltr">${Number(order.total || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} USD</span>
+        </p>
       </div>
 
       <ol className="space-y-3">
@@ -248,9 +279,26 @@ export default function EscrowMilestoneTimeline({ order, userId, compact = false
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${st.badge}`}>{st.badgeText}</span>
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">{s.hint}</p>
-                <p className={`text-xs font-bold mt-1.5 ${st.text}`}>
-                  ${s.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <p className={`text-xs font-bold mt-1.5 ${st.text}`} dir="ltr">
+                  ${s.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
                 </p>
+
+                {s.key === 1 && (
+                  <div className="mt-2 space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-[11px]">
+                      <Icon name={order.factory_accepted_at || order.factory_status === 'accepted' ? 'CheckCircleIcon' : 'ClockIcon'} size={13} className={order.factory_accepted_at || order.factory_status === 'accepted' ? 'text-green-600' : 'text-muted-foreground'} />
+                      <span className={order.factory_accepted_at || order.factory_status === 'accepted' ? 'text-green-700' : 'text-muted-foreground'}>
+                        {order.factory_accepted_at || order.factory_status === 'accepted' ? 'قبل المصنع الطلب' : 'بانتظار قبول المصنع للطلب'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[11px]">
+                      <Icon name={FUNDED_STATUSES.includes(order.escrow_status || '') ? 'CheckCircleIcon' : 'ClockIcon'} size={13} className={FUNDED_STATUSES.includes(order.escrow_status || '') ? 'text-green-600' : 'text-muted-foreground'} />
+                      <span className={FUNDED_STATUSES.includes(order.escrow_status || '') ? 'text-green-700' : 'text-muted-foreground'}>
+                        {FUNDED_STATUSES.includes(order.escrow_status || '') ? 'تم تأكيد إيداع الضمان' : 'بانتظار تأكيد إيداع الضمان'}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {s.key === 2 && (
                   <div className="mt-2 space-y-1.5">
@@ -289,7 +337,7 @@ export default function EscrowMilestoneTimeline({ order, userId, compact = false
                           {qcUploading ? (
                             <><Icon name="ArrowPathIcon" size={14} className="animate-spin" /> جاري الرفع...</>
                           ) : (
-                            <><Icon name="DocumentCheckIcon" size={14} /> {order.qc_report_url ? 'استبدال تقرير الفحص (QC)' : 'رفع تقرير الفحص (QC) للاعتماد'}</>
+                            <><Icon name="DocumentCheckIcon" size={14} /> {order.qc_report_url ? 'استبدال تقرير الفحص / Replace QC Report' : 'رفع تقرير الفحص / Upload QC Inspection Report'}</>
                           )}
                         </button>
                       </>
@@ -328,7 +376,7 @@ export default function EscrowMilestoneTimeline({ order, userId, compact = false
                           {uploading ? (
                             <><Icon name="ArrowPathIcon" size={14} className="animate-spin" /> جاري الرفع...</>
                           ) : (
-                            <><Icon name="ArrowUpTrayIcon" size={14} /> {blUrl ? 'استبدال بوليصة الشحن / إيصال التسليم' : 'رفع بوليصة الشحن / إيصال تسليم الحاوية'}</>
+                            <><Icon name="ArrowUpTrayIcon" size={14} /> {blUrl ? 'استبدال بوليصة الشحن / Replace Bill of Lading' : 'رفع بوليصة الشحن B/L والمستندات / Upload Bill of Lading'}</>
                           )}
                         </button>
                       </>

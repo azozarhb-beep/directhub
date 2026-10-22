@@ -35,7 +35,7 @@ interface EscrowOrdersPanelProps {
 export default function EscrowOrdersPanel({
   escrowOrders,
   escrowOrdersLoading,
-  selectedEscrowOrder,
+  selectedEscrowOrder: selectedEscrowOrderRaw,
   setSelectedEscrowOrder,
   deliveryPinInput,
   setDeliveryPinInput,
@@ -58,15 +58,37 @@ export default function EscrowOrdersPanel({
   md,
 }: EscrowOrdersPanelProps) {
   const { language } = useLanguage();
+  const [escrowTab, setEscrowTab] = React.useState<'b2b' | 'b2c'>('b2b');
 
   // Keep the selected order in sync with refreshed list data (e.g. after a B/L upload)
   React.useEffect(() => {
-    if (!selectedEscrowOrder?.id) return;
-    const fresh = escrowOrders.find((o: any) => o.id === selectedEscrowOrder.id);
-    if (fresh && fresh !== selectedEscrowOrder) setSelectedEscrowOrder(fresh);
+    if (!selectedEscrowOrderRaw?.id) return;
+    const fresh = escrowOrders.find((o: any) => o.id === selectedEscrowOrderRaw.id);
+    if (fresh && fresh !== selectedEscrowOrderRaw) setSelectedEscrowOrder(fresh);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [escrowOrders]);
 
+  const b2bOrders = escrowOrders.filter((o: any) => isB2BOrder(o));
+  const b2cOrders = escrowOrders.filter((o: any) => !isB2BOrder(o));
+  const tabOrders = escrowTab === 'b2b' ? b2bOrders : b2cOrders;
+
+  const formatUsd = (n: number) =>
+    `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} USD`;
+  const sumTotal = (list: any[]) => list.reduce((acc: number, o: any) => acc + Number(o.total || 0), 0);
+
+  const switchTab = (tab: 'b2b' | 'b2c') => {
+    setEscrowTab(tab);
+    setSelectedEscrowOrder(null);
+    setDeliveryPinMsg('');
+    setDeliveryPinInput('');
+    setDeliveryPinSuccess(false);
+  };
+
+  // Only show detail for an order belonging to the active tab
+  const selectedEscrowOrder =
+    selectedEscrowOrderRaw && isB2BOrder(selectedEscrowOrderRaw) === (escrowTab === 'b2b')
+      ? selectedEscrowOrderRaw
+      : null;
   const selectedIsB2B = isB2BOrder(selectedEscrowOrder);
 
   return (
@@ -79,43 +101,80 @@ export default function EscrowOrdersPanel({
           </div>
           <div className="flex-1">
             <h2 className="text-lg font-bold">{md.escrowCenterTitle}</h2>
-            <p className="text-sm text-white/80">{md.escrowTrackHint}</p>
+            <p className="text-sm text-white/80">
+              {escrowTab === 'b2b' ?'تتبع طلبات الجملة والتصدير المحمية بنظام الضمان — تُحرَّر الدفعات بالمستندات (QC و B/L) وليس برمز تسليم' :'تتبع طلبات التجزئة المحمية بنظام الضمان — يُحرَّر المبلغ بعد تأكيد التسليم المحلي برمز PIN'}
+            </p>
           </div>
           <div className="text-right shrink-0">
-            <p className="text-2xl font-bold">{escrowOrders.filter((o: any) => ['funds_secured', 'shipped'].includes(o.escrow_status)).length}</p>
+            <p className="text-2xl font-bold">{tabOrders.filter((o: any) => ['funds_secured', 'shipped'].includes(o.escrow_status)).length}</p>
             <p className="text-xs text-white/70">{md.activeOrderLabel}</p>
           </div>
         </div>
       </div>
 
-      {/* Flow Info Banner — B2B milestone escrow vs B2C delivery PIN */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {/* Tabs: B2B milestones vs B2C PIN delivery */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-muted/50 p-1.5 rounded-2xl" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={escrowTab === 'b2b'}
+          onClick={() => switchTab('b2b')}
+          className={`flex items-center justify-between gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+            escrowTab === 'b2b' ? 'bg-indigo-600 text-white shadow' : 'bg-card text-foreground hover:bg-indigo-50'
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <Icon name="DocumentCheckIcon" size={16} />
+            صفقات التصدير والجملة B2B / Milestones (30/40/30)
+          </span>
+          <span className={`text-[11px] px-2 py-0.5 rounded-full ${escrowTab === 'b2b' ? 'bg-white/20' : 'bg-indigo-100 text-indigo-700'}`}>{b2bOrders.length}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={escrowTab === 'b2c'}
+          onClick={() => switchTab('b2c')}
+          className={`flex items-center justify-between gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+            escrowTab === 'b2c' ? 'bg-emerald-600 text-white shadow' : 'bg-card text-foreground hover:bg-emerald-50'
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <Icon name="KeyIcon" size={16} />
+            مبيعات التجزئة والتسليم المحلي / B2C PIN Delivery
+          </span>
+          <span className={`text-[11px] px-2 py-0.5 rounded-full ${escrowTab === 'b2c' ? 'bg-white/20' : 'bg-emerald-100 text-emerald-700'}`}>{b2cOrders.length}</span>
+        </button>
+      </div>
+
+      {/* Flow Info Banner — only the banner relevant to the active tab */}
+      {escrowTab === 'b2b' ? (
         <div className="flex items-start gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
           <Icon name="DocumentCheckIcon" size={18} className="text-indigo-600 shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-semibold text-indigo-800">ضمان المراحل للطلبات التجارية B2B (30% / 40% / 30%)</p>
-            <p className="text-xs text-indigo-700 mt-0.5">30% دفعة مقدمة عند قبول المصنع • 40% عند اعتماد تقرير الفحص (QC) • 30% عند رفع بوليصة الشحن (B/L) والمستندات والتحقق منها.</p>
+            <p className="text-xs text-indigo-700 mt-0.5">30% دفعة مقدمة عند قبول المصنع وتأكيد إيداع الضمان • 40% عند رفع واعتماد تقرير الفحص (QC) • 30% عند رفع بوليصة الشحن (B/L) والمستندات والتحقق منها.</p>
           </div>
         </div>
+      ) : (
         <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
           <Icon name="KeyIcon" size={18} className="text-emerald-600 shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-semibold text-emerald-800">رمز التسليم PIN — لطلبات التجزئة B2C فقط</p>
-            <p className="text-xs text-emerald-700 mt-0.5">يُستخدم رمز التسليم المكوّن من 6 أرقام حصرياً في التسليم المحلي عبر شركة الشحن/المندوب، ولا ينطبق على طلبات الجملة والتصدير.</p>
+            <p className="text-xs text-emerald-700 mt-0.5">يُستخدم رمز التسليم المكوّن من 6 أرقام حصرياً في التسليم المحلي عبر شركة الشحن/المندوب.</p>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Stats */}
+      {/* Stats (currency formatted) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: md.escrowFundsSecured, count: escrowOrders.filter((o: any) => ['funds_secured', 'shipped'].includes(o.escrow_status)).length, color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-          { label: md.escrowReadyInspection, count: escrowOrders.filter((o: any) => o.escrow_status === 'ready_for_inspection').length, color: 'bg-amber-50 text-amber-700 border-amber-200' },
-          { label: md.escrowCompleted, count: escrowOrders.filter((o: any) => o.escrow_status === 'funds_released').length, color: 'bg-green-50 text-green-700 border-green-200' },
-          { label: md.escrowTotalOrders, count: escrowOrders.length, color: 'bg-muted text-foreground border-border' },
+          { label: md.escrowFundsSecured, value: formatUsd(sumTotal(tabOrders.filter((o: any) => ['funds_secured', 'shipped'].includes(o.escrow_status)))), color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+          { label: md.escrowReadyInspection, value: formatUsd(sumTotal(tabOrders.filter((o: any) => o.escrow_status === 'ready_for_inspection'))), color: 'bg-amber-50 text-amber-700 border-amber-200' },
+          { label: md.escrowCompleted, value: formatUsd(sumTotal(tabOrders.filter((o: any) => o.escrow_status === 'funds_released'))), color: 'bg-green-50 text-green-700 border-green-200' },
+          { label: md.escrowTotalOrders, value: formatUsd(sumTotal(tabOrders)), color: 'bg-muted text-foreground border-border' },
         ].map(s => (
           <div key={s.label} className={`rounded-xl border p-4 ${s.color}`}>
-            <p className="text-2xl font-bold">{s.count}</p>
+            <p className="text-xl font-bold" dir="ltr">{s.value}</p>
             <p className="text-xs font-medium mt-0.5">{s.label}</p>
           </div>
         ))}
@@ -131,17 +190,17 @@ export default function EscrowOrdersPanel({
           {/* Orders List */}
           <div className="lg:col-span-2 space-y-2">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-bold text-foreground">{md.ordersCountLabel} ({escrowOrders.length})</p>
+              <p className="text-sm font-bold text-foreground">{md.ordersCountLabel} ({tabOrders.length})</p>
               <button onClick={fetchEscrowOrders} className="text-xs text-primary hover:underline flex items-center gap-1">
                 <Icon name="ArrowPathIcon" size={12} /> {md.refreshAction}
               </button>
             </div>
-            {escrowOrders.length === 0 ? (
+            {tabOrders.length === 0 ? (
               <div className="bg-card border border-border rounded-xl p-8 text-center">
                 <Icon name="ShieldCheckIcon" size={28} className="text-muted-foreground mx-auto mb-2" />
                 <p className="text-sm text-muted-foreground">{md.noEscrowYet}</p>
               </div>
-            ) : escrowOrders.map((order: any) => {
+            ) : tabOrders.map((order: any) => {
               const isActive = ['funds_secured', 'shipped'].includes(order.escrow_status);
               const isReadyForInspection = order.escrow_status === 'ready_for_inspection';
               const isComplete = order.escrow_status === 'funds_released';
