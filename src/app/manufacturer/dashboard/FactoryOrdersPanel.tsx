@@ -6,6 +6,7 @@ import DispatchChatRoom from '@/components/DispatchChatRoom';
 import PortFreeTimeBadge from '@/components/PortFreeTimeBadge';
 import { createClient } from '@/lib/supabase/client';
 import { computeFreeTime } from '@/lib/portFreeTime';
+import { isB2BOrder } from './EscrowMilestoneTimeline';
 
 interface FactoryOrdersPanelProps {
   factoryOrders: any[];
@@ -25,6 +26,8 @@ interface FactoryOrdersPanelProps {
   fetchFactoryOrders: () => void;
   md: any;
   currentUserId?: string;
+  /** Local Yemeni manufacturer inbox mode (B2B/B2C segments, search, inbox wording). Omitted for International. */
+  localInbox?: boolean;
 }
 
 export default function FactoryOrdersPanel({
@@ -45,7 +48,10 @@ export default function FactoryOrdersPanel({
   fetchFactoryOrders,
   md,
   currentUserId,
+  localInbox = false,
 }: FactoryOrdersPanelProps) {
+  const [segment, setSegment] = useState<'all' | 'b2b' | 'b2c'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [showDispatchChat, setShowDispatchChat] = useState<string | null>(null);
   const [portShipments, setPortShipments] = useState<Record<string, any[]>>({});
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -128,6 +134,29 @@ export default function FactoryOrdersPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [factoryOrders, portShipments]);
 
+  const matchesLocalFilters = (o: any): boolean => {
+    if (!localInbox) return true;
+    if (segment === 'b2b' && !isB2BOrder(o)) return false;
+    if (segment === 'b2c' && isB2BOrder(o)) return false;
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    const itemNames = Array.isArray(o.items)
+      ? o.items.map((it: any) => `${it?.name || ''} ${it?.product_name || ''}`).join(' ')
+      : '';
+    const haystack = [
+      o.order_number,
+      o.user_profiles?.full_name,
+      o.user_profiles?.company_name,
+      itemNames,
+    ].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(q);
+  };
+
+  const visibleOrders = sortedFactoryOrders.filter(
+    (o: any) => (factoryOrderStatusFilter === 'all' || o.status === factoryOrderStatusFilter) && matchesLocalFilters(o)
+  );
+  const hasLocalFilters = localInbox && (segment !== 'all' || searchQuery.trim() !== '');
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -137,7 +166,7 @@ export default function FactoryOrdersPanel({
             <Icon name="ClipboardDocumentListIcon" size={24} className="text-white" />
           </div>
           <div className="flex-1">
-            <h2 className="text-lg font-bold">قائمة انتظار الطلبات الذاتية</h2>
+            <h2 className="text-lg font-bold">{localInbox ? 'صندوق الطلبات الواردة' : 'قائمة انتظار الطلبات الذاتية'}</h2>
             <p className="text-sm text-white/80">عرض وإدارة جميع الطلبات الواردة المخصصة لمصنعك</p>
           </div>
           <div className="text-right shrink-0">
@@ -146,6 +175,43 @@ export default function FactoryOrdersPanel({
           </div>
         </div>
       </div>
+
+      {localInbox && (
+        <div className="space-y-3" dir="rtl">
+          <div className="relative">
+            <span className="absolute inset-y-0 start-3 flex items-center pointer-events-none">
+              <Icon name="MagnifyingGlassIcon" size={16} className="text-muted-foreground" />
+            </span>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="ابحث برقم الطلب، اسم المشتري، أو المنتج..."
+              className="w-full ps-10 pe-3 py-2.5 rounded-xl border border-border bg-card text-foreground text-xs focus:outline-none focus:border-sky-500"
+            />
+          </div>
+          <div className="inline-flex flex-wrap items-center gap-1 bg-muted/50 p-1 rounded-xl" role="tablist">
+            {[
+              { value: 'all' as const, label: 'الكل' },
+              { value: 'b2b' as const, label: 'طلبات الجملة والتوريد B2B' },
+              { value: 'b2c' as const, label: 'مبيعات التجزئة B2C' },
+            ].map(s => (
+              <button
+                key={s.value}
+                type="button"
+                role="tab"
+                aria-selected={segment === s.value}
+                onClick={() => setSegment(s.value)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  segment === s.value ? 'bg-sky-600 text-white shadow' : 'text-muted-foreground hover:bg-card'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -214,15 +280,17 @@ export default function FactoryOrdersPanel({
           {/* Orders List */}
           <div className="lg:col-span-2 space-y-2">
             <p className="text-sm font-bold text-foreground mb-2">
-              الطلبات ({factoryOrders.filter((o: any) => factoryOrderStatusFilter === 'all' || o.status === factoryOrderStatusFilter).length})
+              الطلبات ({visibleOrders.length})
             </p>
-            {factoryOrders.filter((o: any) => factoryOrderStatusFilter === 'all' || o.status === factoryOrderStatusFilter).length === 0 ? (
+            {visibleOrders.length === 0 ? (
               <div className="bg-card border border-border rounded-xl p-8 text-center">
                 <Icon name="ClipboardDocumentListIcon" size={28} className="text-muted-foreground mx-auto mb-2" />
                 <p className="text-sm text-muted-foreground">
                   {factoryOrders.length === 0
                     ? 'لا توجد طلبات مخصصة لمصنعك بعد. ستظهر الطلبات هنا تلقائياً عند تقديمها.'
-                    : `لا توجد طلبات بحالة "${factoryOrderStatusFilter}".`}
+                    : hasLocalFilters
+                      ? 'لا توجد طلبات مطابقة للبحث أو التصنيف المحدد.'
+                      : `لا توجد طلبات بحالة "${factoryOrderStatusFilter}".`}
                 </p>
                 {factoryOrders.length === 0 && (
                   <button
@@ -231,13 +299,12 @@ export default function FactoryOrdersPanel({
                     className="mt-4 inline-flex items-center gap-1.5 px-4 py-2.5 bg-sky-600 text-white text-xs font-bold rounded-xl hover:bg-sky-700 transition-colors"
                   >
                     <Icon name="PlusIcon" size={14} className="text-white" />
-                    إنشاء أمر إنتاج جديد / Create Production Order
+                    {localInbox ? 'تسجيل طلب بيع يدوي' : 'إنشاء أمر إنتاج جديد / Create Production Order'}
                   </button>
                 )}
               </div>
             ) : (
-              sortedFactoryOrders
-                .filter((o: any) => factoryOrderStatusFilter === 'all' || o.status === factoryOrderStatusFilter)
+              visibleOrders
                 .map((order: any) => {
                   const isSelected = selectedFactoryOrder?.id === order.id;
                   const statusColors: Record<string, string> = {
@@ -573,7 +640,7 @@ export default function FactoryOrdersPanel({
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" dir="rtl" onClick={() => !createSaving && setShowCreateModal(false)}>
           <div className="bg-card border border-border rounded-2xl p-5 w-full max-w-md space-y-3" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-foreground">إنشاء أمر إنتاج جديد / Create Production Order</h3>
+            <h3 className="text-sm font-bold text-foreground">{localInbox ? 'تسجيل طلب بيع يدوي' : 'إنشاء أمر إنتاج جديد / Create Production Order'}</h3>
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">اسم المنتج / Product</label>
               <input

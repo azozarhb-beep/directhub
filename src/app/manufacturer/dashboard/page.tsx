@@ -2773,6 +2773,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
             fetchFactoryOrders={fetchFactoryOrders}
             md={md}
             currentUserId={user?.id}
+            localInbox
           />
         )}
 
