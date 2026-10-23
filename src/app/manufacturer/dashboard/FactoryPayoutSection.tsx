@@ -32,7 +32,7 @@ const FactoryPayoutSection: React.FC<FactoryPayoutSectionProps> = ({ userId, has
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [form, setForm] = useState({ bank_name: '', account_holder_name: '', iban: '', swift_bic: '' });
+  const [form, setForm] = useState({ bank_name: '', account_holder_name: '', account_number: '', iban: '', swift_bic: '' });
 
   const load = async () => {
     const supabase = createClient();
@@ -53,8 +53,8 @@ const FactoryPayoutSection: React.FC<FactoryPayoutSectionProps> = ({ userId, has
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setMsg(null);
-    if (!form.bank_name.trim() || !form.account_holder_name.trim() || !form.iban.trim()) {
-      setMsg({ type: 'error', text: 'اسم البنك واسم المستفيد ورقم الآيبان حقول مطلوبة' });
+    if (!form.bank_name.trim() || !form.account_holder_name.trim() || !form.account_number.trim()) {
+      setMsg({ type: 'error', text: 'اسم البنك واسم المستفيد ورقم الحساب حقول مطلوبة' });
       return;
     }
     if (!hasPinSet) {
@@ -63,15 +63,16 @@ const FactoryPayoutSection: React.FC<FactoryPayoutSectionProps> = ({ userId, has
     }
     setSaving(true);
     const supabase = createClient();
+    const accountNumber = form.account_number.replace(/\s+/g, '').toUpperCase();
     const iban = form.iban.replace(/\s+/g, '').toUpperCase();
     const { error } = await supabase.from('manufacturer_bank_accounts').insert({
       user_id: userId,
       manufacturer_id: userId,
-      account_type: 'international_general',
+      account_type: 'local_collection',
       account_holder_name: form.account_holder_name.trim(),
       bank_name: form.bank_name.trim(),
-      account_number: iban,
-      iban,
+      account_number: accountNumber,
+      iban: iban || null,
       swift_bic: form.swift_bic.trim().toUpperCase() || null,
       status: 'pending_review',
     });
@@ -80,7 +81,7 @@ const FactoryPayoutSection: React.FC<FactoryPayoutSectionProps> = ({ userId, has
       setMsg({ type: 'error', text: error.message || 'فشل حفظ الحساب البنكي' });
       return;
     }
-    setForm({ bank_name: '', account_holder_name: '', iban: '', swift_bic: '' });
+    setForm({ bank_name: '', account_holder_name: '', account_number: '', iban: '', swift_bic: '' });
     setMsg({ type: 'success', text: 'تم إرسال الحساب البنكي للمراجعة ✓' });
     load();
   };
@@ -139,12 +140,16 @@ const FactoryPayoutSection: React.FC<FactoryPayoutSectionProps> = ({ userId, has
           <input type="text" value={form.account_holder_name} onChange={(e) => setForm((p) => ({ ...p, account_holder_name: e.target.value }))} placeholder="الاسم كما هو في الحساب البنكي" className={inputCls} />
         </div>
         <div>
-          <label className="block text-xs font-bold text-muted-foreground mb-1">رقم الآيبان (IBAN) <span className="text-red-500">*</span></label>
-          <input type="text" dir="ltr" value={form.iban} onChange={(e) => setForm((p) => ({ ...p, iban: e.target.value }))} placeholder="SA00 0000 0000 0000 0000 0000" className={inputCls} />
+          <label className="block text-xs font-bold text-muted-foreground mb-1">رقم الحساب المحلي <span className="text-red-500">*</span></label>
+          <input type="text" dir="ltr" value={form.account_number} onChange={(e) => setForm((p) => ({ ...p, account_number: e.target.value }))} placeholder="رقم الحساب المحلي (مثال: بنك الكريمي)" className={inputCls} />
         </div>
         <div>
-          <label className="block text-xs font-bold text-muted-foreground mb-1">رمز السويفت (SWIFT/BIC)</label>
-          <input type="text" dir="ltr" value={form.swift_bic} onChange={(e) => setForm((p) => ({ ...p, swift_bic: e.target.value }))} placeholder="XXXXSAXX" className={inputCls} />
+          <label className="block text-xs font-bold text-muted-foreground mb-1">رقم الآيبان (IBAN) — اختياري</label>
+          <input type="text" dir="ltr" value={form.iban} onChange={(e) => setForm((p) => ({ ...p, iban: e.target.value }))} placeholder="YE00 0000 0000 0000 0000" className={inputCls} />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-muted-foreground mb-1">رمز السويفت (SWIFT/BIC) — اختياري</label>
+          <input type="text" dir="ltr" value={form.swift_bic} onChange={(e) => setForm((p) => ({ ...p, swift_bic: e.target.value }))} placeholder="اختياري — للتحويلات الدولية فقط" className={inputCls} />
         </div>
         <button
           type="submit"

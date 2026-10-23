@@ -307,7 +307,7 @@ export default function BankAccountsPanel({
                   dir="ltr"
                   value={bankFormData.iban}
                   onChange={e => setBankFormData({ ...bankFormData, iban: e.target.value.replace(/[^a-zA-Z0-9\s]/g, '').toUpperCase() })}
-                  placeholder="YE00 0000 0000 0000 0000 0000 (اختياري)"
+                  placeholder="YE00 0000 0000 0000 0000"
                   className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm font-mono focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30"
                 />
                 <p className="text-[11px] text-muted-foreground mt-1">اتركه فارغاً للحسابات المحلية، أو أدخل آيبان يمني يبدأ بـ YE.</p>
