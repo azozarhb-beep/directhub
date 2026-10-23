@@ -37,6 +37,8 @@ import EscrowOrdersPanel from './EscrowOrdersPanel';
 import AnalyticsPanel from './AnalyticsPanel';
 import DisputesPanel from './DisputesPanel';
 import FinancialHubPanel from './FinancialHubPanel';
+import FactoryPinPayoutPanel from './FactoryPinPayoutPanel';
+import FactorySettingsPanel from './FactorySettingsPanel';
 import SellerFulfillmentPanel from './SellerFulfillmentPanel';
 import ShipmentBidsPanel from '@/components/ShipmentBidsPanel';
 import DealLinkGeneratorModal from '@/components/manufacturer/DealLinkGeneratorModal';
@@ -261,10 +263,11 @@ const EMPTY_PAYMENT_SETTINGS: PaymentSettings = {
   kuraimi_pos_name: '',
 };
 
-type DashboardTab = 'products' | 'financial_hub' | 'escrow_orders' | 'disputes' | 'analytics' | 'admin_messaging' | 'finance' | 'inventory' | 'archive' | 'sales_team' | 'factory_orders' | 'seller_fulfillment' | 'freight_bids' | 'contracts';
+type DashboardTab = 'products' | 'financial_hub' | 'escrow_orders' | 'disputes' | 'analytics' | 'admin_messaging' | 'finance' | 'inventory' | 'archive' | 'sales_team' | 'factory_orders' | 'seller_fulfillment' | 'freight_bids' | 'contracts' | 'factory_settings';
 
 /** Dedicated full-screen routes for each dashboard card (card key → href + page title). */
 const MODULE_ROUTES: Partial<Record<DashboardTab, { href: string; title: string }>> = {
+  factory_settings: { href: '/manufacturer/settings', title: 'إعدادات وتوثيق المصنع' },
   analytics: { href: '/manufacturer/analytics', title: 'التحليلات' },
   inventory: { href: '/manufacturer/raw-materials', title: 'مواد الإنتاج والخامات' },
   seller_fulfillment: { href: '/manufacturer/logistics', title: 'الشحن الشامل / عروض الشحن' },
@@ -2157,6 +2160,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
           {([
             { key: 'products', label: t.manufacturerDashboard.productsAndInventory, icon: 'CubeIcon', gradient: 'linear-gradient(135deg,#3B82F6,#2563EB)', shadow: 'shadow-blue-100', show: true },
             { key: 'financial_hub', label: 'الحسابات المالية وطرق الدفع', icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#10B981,#059669)', shadow: 'shadow-emerald-100', show: !isSalesRep },
+            { key: 'factory_settings', label: 'إعدادات وتوثيق المصنع', icon: 'IdentificationIcon', gradient: 'linear-gradient(135deg,#0D9488,#0F766E)', shadow: 'shadow-teal-100', show: !isSalesRep },
             { key: 'finance', label: md.tabFinance, icon: 'ChartBarIcon', gradient: 'linear-gradient(135deg,#16A34A,#15803D)', shadow: 'shadow-green-100', show: !isSalesRep },
             { key: 'escrow_orders', label: t.manufacturerDashboard.escrowOrders, icon: 'ShieldCheckIcon', gradient: 'linear-gradient(135deg,#6366F1,#4F46E5)', shadow: 'shadow-indigo-100', show: true, badge: escrowOrders.filter((o: any) => o.escrow_status === 'funds_secured').length || undefined },
             { key: 'seller_fulfillment', label: 'الشحن الشامل', icon: 'TruckIcon', gradient: 'linear-gradient(135deg,#059669,#047857)', shadow: 'shadow-emerald-100', show: true },
@@ -2573,6 +2577,12 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         )}
 
         {/* ── BANK ACCOUNTS TAB ── */}
+        {activeTab === 'financial_hub' && !isSalesRep && user?.id && (
+          <FactoryPinPayoutPanel userId={user.id} />
+        )}
+        {activeTab === 'factory_settings' && !isSalesRep && user?.id && (
+          <FactorySettingsPanel userId={user.id} />
+        )}
         {activeTab === 'financial_hub' && !isSalesRep && (
           <FinancialHubPanel
             bankAccounts={bankAccounts}

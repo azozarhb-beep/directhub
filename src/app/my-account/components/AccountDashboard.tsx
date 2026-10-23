@@ -8,8 +8,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
-import { PinSetupCard } from '@/components/PinSecurity';
-import FactoryPayoutSection from './FactoryPayoutSection';
 import {
   resolvePlatformRole,
   getHomeRoomForRole,
@@ -1629,60 +1627,8 @@ const AccountDashboard: React.FC = () => {
               )}
             </div>
 
-            {/* Right: Quick actions as cards */}
+            {/* Right: Platform info */}
             <div className="lg:col-span-4 flex flex-col gap-4">
-              <div className="bg-card border border-border rounded-2xl p-5">
-                <h3 className="text-sm font-extrabold text-foreground mb-4">{t.myAccount.quickActions}</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  {/* RFQ Management Center */}
-                  <button
-                    onClick={() => router.push('/rfq-management')}
-                    className="flex flex-col items-center gap-3 p-4 bg-card border border-border rounded-2xl hover:shadow-md hover:border-primary/40 transition-all text-center group w-full"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                      <Icon name="PlusCircleIcon" size={22} className="text-primary" />
-                    </div>
-                    <span className="text-xs font-bold text-foreground group-hover:text-primary transition-colors leading-tight">{t.myAccount.actionPostRFQ}</span>
-                  </button>
-                  {/* Browse */}
-                  <Link href="/search" className="flex flex-col items-center gap-3 p-4 bg-card border border-border rounded-2xl hover:shadow-md hover:border-blue-300 transition-all text-center group">
-                    <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                      <Icon name="MagnifyingGlassIcon" size={22} className="text-blue-600" />
-                    </div>
-                    <span className="text-xs font-bold text-foreground group-hover:text-blue-600 transition-colors leading-tight">{t.myAccount.actionBrowse}</span>
-                  </Link>
-                  {/* Invoices */}
-                  <Link href="/invoices" className="flex flex-col items-center gap-3 p-4 bg-card border border-border rounded-2xl hover:shadow-md hover:border-gray-300 transition-all text-center group">
-                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center group-hover:bg-gray-200 transition-colors">
-                      <Icon name="DocumentArrowDownIcon" size={22} className="text-gray-600" />
-                    </div>
-                    <span className="text-xs font-bold text-foreground group-hover:text-gray-700 transition-colors leading-tight">{t.myAccount.actionInvoices}</span>
-                  </Link>
-                  {/* Financial */}
-                  <Link href="/financial-accounts" className="flex flex-col items-center gap-3 p-4 bg-card border border-border rounded-2xl hover:shadow-md hover:border-green-300 transition-all text-center group">
-                    <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center group-hover:bg-green-200 transition-colors">
-                      <Icon name="BanknotesIcon" size={22} className="text-green-600" />
-                    </div>
-                    <span className="text-xs font-bold text-foreground group-hover:text-green-600 transition-colors leading-tight">{t.myAccount.actionFinancial}</span>
-                  </Link>
-                  {/* Add Product — role-aware: suppliers/manufacturers go to dashboard, buyers see upgrade prompt */}
-                  <RoleBasedAddProductButton
-                    profile={profile}
-                    label={t.myAccount.actionAddProduct}
-                    sublabel={t.myAccount.actionAddProductSub}
-                  />
-                  {/* Upgrade — buyer only */}
-                  {isBuyer && (
-                    <Link href="/account/upgrade" className="flex flex-col items-center gap-3 p-4 bg-card border border-amber-200 rounded-2xl hover:shadow-md hover:border-amber-400 transition-all text-center group">
-                      <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center group-hover:bg-amber-200 transition-colors">
-                        <Icon name="ArrowUpCircleIcon" size={22} className="text-amber-600" />
-                      </div>
-                      <span className="text-xs font-bold text-foreground group-hover:text-amber-700 transition-colors leading-tight">{t.myAccount.actionUpgrade}</span>
-                    </Link>
-                  )}
-                </div>
-              </div>
-
               {/* Platform Info Links */}
               <div className="bg-gradient-to-br from-primary/5 to-orange-50 border border-primary/20 rounded-2xl p-5">
                 <h3 className="text-sm font-extrabold text-foreground mb-3 flex items-center gap-2">
@@ -1894,22 +1840,15 @@ const AccountDashboard: React.FC = () => {
                 </div>
 
                 <button
-                  onClick={() => {
-                    const workspaceRole = getUserWorkspaceRole(profile);
-                    if (workspaceRole === 'manufacturer') {
-                      router.push('/my-account/supplier-profile');
-                    } else {
-                      router.push('/my-account/edit-profile');
-                    }
-                  }}
+                  onClick={() => router.push('/my-account/edit-profile')}
                   className="w-full flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground text-sm font-extrabold rounded-xl hover:opacity-90 transition-opacity shadow-md shadow-primary/20"
                 >
                   <Icon name="PencilSquareIcon" size={16} />
-                  {getUserWorkspaceRole(profile) === 'manufacturer' ? t.myAccount.editManufacturerProfile : t.myAccount.editBuyerProfile}
+                  {t.myAccount.editBuyerProfile}
                 </button>
                 <p className="text-[11px] text-muted-foreground text-center mt-2 flex items-center justify-center gap-1">
                   <Icon name="InformationCircleIcon" size={11} />
-                  {getUserWorkspaceRole(profile) === 'manufacturer' ? t.myAccount.editManufacturerProfileHint : t.myAccount.editBuyerProfileHint}
+                  {t.myAccount.editBuyerProfileHint}
                 </p>
               </div>
 
@@ -1968,12 +1907,6 @@ const AccountDashboard: React.FC = () => {
 
             {/* Right sidebar */}
             <div className="lg:col-span-4 flex flex-col gap-4">
-              {!isBuyer && <PinSetupCard hasPinSet={!!profile?.transaction_pin_hash} onPinSet={() => setProfile((prev) => prev ? { ...prev, transaction_pin_hash: 'set' } : prev)} />}
-
-              {!isBuyer && <KYCStatusCard userId={user.id} />}
-
-              {!isBuyer && <FactoryPayoutSection userId={user.id} hasPinSet={!!profile?.transaction_pin_hash} />}
-
               {/* Security */}
               <div className="bg-card border border-border rounded-2xl p-5">
                 <h3 className="text-sm font-extrabold text-foreground mb-4 flex items-center gap-2">
