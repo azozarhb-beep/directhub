@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from 'react';
 import { PinSetupCard } from '@/components/PinSecurity';
-import FactoryPayoutSection from './FactoryPayoutSection';
 import { createClient } from '@/lib/supabase/client';
 
 interface FactoryPinPayoutPanelProps {
@@ -41,12 +40,9 @@ export default function FactoryPinPayoutPanel({ userId }: FactoryPinPayoutPanelP
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+    <div className="grid grid-cols-1 gap-5 mb-6">
       <div className="flex flex-col gap-4">
         <PinSetupCard hasPinSet={hasPinSet} onPinSet={() => setHasPinSet(true)} />
-      </div>
-      <div className="flex flex-col gap-4">
-        <FactoryPayoutSection userId={userId} hasPinSet={hasPinSet} />
       </div>
     </div>
   );
