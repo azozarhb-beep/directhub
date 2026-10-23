@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { PinSetupCard } from '@/components/PinSecurity';
-import FactoryPayoutSection from '@/app/my-account/components/FactoryPayoutSection';
+import FactoryPayoutSection from './FactoryPayoutSection';
 import { createClient } from '@/lib/supabase/client';
 
 interface FactoryPinPayoutPanelProps {

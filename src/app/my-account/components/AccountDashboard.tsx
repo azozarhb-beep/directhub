@@ -235,62 +235,6 @@ const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnTyp
   );
 };
 
-/* ─── Role-Based Add Product Button ─── */
-const RoleBasedAddProductButton: React.FC<{
-  profile: UserProfile | null;
-  label: string;
-  sublabel: string;
-}> = ({ profile, label, sublabel }) => {
-  const router = useRouter();
-
-  const workspaceRole = getUserWorkspaceRole(profile);
-  const accountRole = (profile?.account_role || '').toLowerCase().trim();
-  const isSeller =
-    workspaceRole === 'manufacturer' ||
-    workspaceRole === 'commercial_supplier' ||
-    accountRole === 'commercial_supplier' ||
-    accountRole === 'local_manufacturer' ||
-    accountRole === 'international_manufacturer' ||
-    (profile?.is_verified === true && workspaceRole !== 'buyer' && workspaceRole !== 'unknown');
-
-  const getAddProductDestination = (): string => {
-    if (accountRole === 'commercial_supplier') return '/supplier/local-dashboard';
-    if (accountRole === 'local_manufacturer') return '/manufacturer/dashboard';
-    if (accountRole === 'international_manufacturer') return '/manufacturer/international-dashboard';
-    if (workspaceRole === 'commercial_supplier') return '/supplier/local-dashboard';
-    if (workspaceRole === 'manufacturer') return '/manufacturer/dashboard';
-    return '/manufacturer/dashboard';
-  };
-
-  const handleClick = () => {
-    if (isSeller) {
-      router.push(getAddProductDestination());
-    } else {
-      router.push('/account/upgrade');
-    }
-  };
-
-  const displayLabel = isSeller ? label : 'ترقية الحساب للبيع';
-  const displaySublabel = isSeller ? sublabel : 'سجّل كمصنع أو مورد لعرض منتجاتك الصناعية';
-
-  return (
-    <button
-      onClick={handleClick}
-      className="flex flex-col items-center gap-3 p-4 bg-card border border-border rounded-2xl hover:shadow-md hover:border-orange-300 transition-all text-center group w-full"
-    >
-      <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center group-hover:bg-orange-200 transition-colors shrink-0">
-        <Icon name={isSeller ? 'PlusCircleIcon' : 'ArrowUpCircleIcon'} size={22} className="text-orange-600" />
-      </div>
-      <div className="min-w-0">
-        <span className="text-xs font-bold text-foreground group-hover:text-orange-600 transition-colors block leading-tight">
-          {displayLabel}
-        </span>
-        <span className="text-[11px] text-muted-foreground mt-0.5 block">{displaySublabel}</span>
-      </div>
-    </button>
-  );
-};
-
 /* ─── Tracking Code Input ─── */
 const TrackingCodeInput: React.FC<{ orderId: string }> = ({ orderId }) => {
   const [code, setCode] = useState('');
@@ -811,104 +755,6 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
 
         </div>
       </div>
-    </div>
-  );
-};
-
-/* ─── KYC Status Card ─── */
-const KYCStatusCard: React.FC<{ userId: string }> = ({ userId }) => {
-  const router = useRouter();
-  const { t } = useLanguage();
-  const [kycStatus, setKycStatus] = useState<'none' | 'pending' | 'under_review' | 'approved' | 'rejected'>('none');
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchKYC = async () => {
-      try {
-        const supabase = createClient();
-        const { data } = await supabase
-          .from('factory_registrations')
-          .select('kyc_status')
-          .eq('user_id', userId)
-          .maybeSingle();
-        setKycStatus(data?.kyc_status ?? 'none');
-      } catch {
-        setKycStatus('none');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchKYC();
-  }, [userId]);
-
-  const statusConfig = {
-    none: { label: 'Not Submitted', labelAr: 'لم يُقدَّم', color: 'text-muted-foreground', bg: 'bg-muted', border: 'border-border', icon: 'IdentificationIcon', iconColor: 'text-muted-foreground', badgeBg: 'bg-muted text-muted-foreground' },
-    pending: { label: 'Pending Review', labelAr: 'قيد المراجعة', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', icon: 'ClockIcon', iconColor: 'text-amber-600', badgeBg: 'bg-amber-100 text-amber-700' },
-    under_review: { label: 'Under Review', labelAr: 'تحت المراجعة', color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', icon: 'MagnifyingGlassIcon', iconColor: 'text-blue-600', badgeBg: 'bg-blue-100 text-blue-700' },
-    approved: { label: 'Verified', labelAr: 'موثّق', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: 'ShieldCheckIcon', iconColor: 'text-emerald-600', badgeBg: 'bg-emerald-100 text-emerald-700' },
-    rejected: { label: 'Action Required', labelAr: 'يتطلب إجراء', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', icon: 'ExclamationCircleIcon', iconColor: 'text-red-600', badgeBg: 'bg-red-100 text-red-700' },
-  };
-
-  const cfg = statusConfig[kycStatus];
-
-  return (
-    <div className={`bg-card border ${cfg.border} rounded-2xl p-5`}>
-      <h3 className="text-sm font-extrabold text-foreground mb-4 flex items-center gap-2">
-        <div className={`w-7 h-7 rounded-full ${cfg.bg} flex items-center justify-center`}>
-          <Icon name="IdentificationIcon" size={14} className={cfg.iconColor} />
-        </div>
-        توثيق هوية المنشأة (KYC)
-      </h3>
-
-      {loading ? (
-        <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-xl animate-pulse">
-          <div className="w-10 h-10 rounded-xl bg-muted shrink-0" />
-          <div className="flex-1 space-y-2">
-            <div className="h-3 bg-muted rounded w-2/3" />
-            <div className="h-2.5 bg-muted rounded w-1/2" />
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          <div className={`flex items-center gap-3 p-3 ${cfg.bg} border ${cfg.border} rounded-xl`}>
-            <div className={`w-10 h-10 rounded-xl bg-card flex items-center justify-center shrink-0`}>
-              <Icon name={cfg.icon as Parameters<typeof Icon>[0]['name']} size={18} className={cfg.iconColor} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-extrabold text-foreground">التحقق من الهوية</p>
-              <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full mt-0.5 ${cfg.badgeBg}`}>
-                {kycStatus === 'none' ? 'لم يتم التقديم' : cfg.labelAr}
-              </span>
-            </div>
-          </div>
-
-          {kycStatus === 'approved' && (
-            <div className="flex items-center gap-2 p-2.5 bg-emerald-50 border border-emerald-100 rounded-xl">
-              <Icon name="CheckBadgeIcon" size={14} className="text-emerald-600 shrink-0" />
-              <p className="text-[11px] font-bold text-emerald-700">تم توثيق منشأتك بالكامل على DirectHub</p>
-            </div>
-          )}
-
-          {kycStatus === 'rejected' && (
-            <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-100 rounded-xl">
-              <Icon name="ExclamationCircleIcon" size={14} className="text-red-600 shrink-0" />
-              <p className="text-[11px] font-bold text-red-700">المستندات تحتاج إلى مراجعة — يرجى إعادة الإرسال</p>
-            </div>
-          )}
-
-          <button
-            onClick={() => router.push('/kyc')}
-            className={`w-full flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-all ${
-              kycStatus === 'approved' ?'border border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-                : kycStatus === 'rejected' ?'bg-red-600 text-white hover:bg-red-700'
-                : kycStatus === 'none' ?'bg-primary text-primary-foreground hover:opacity-90' :'border border-border text-foreground hover:bg-muted'
-            }`}
-          >
-            <Icon name={kycStatus === 'approved' ? 'EyeIcon' : kycStatus === 'none' ? 'PlusCircleIcon' : 'ArrowTopRightOnSquareIcon'} size={13} />
-            {kycStatus === 'approved' ? 'عرض مستندات التوثيق' : kycStatus === 'none' ? 'بدء التحقق والتوثيق' : kycStatus === 'rejected' ? 'إعادة إرسال المستندات' : 'تتبع حالة التوثيق'}
-          </button>
-        </div>
-      )}
     </div>
   );
 };
@@ -1491,7 +1337,7 @@ const AccountDashboard: React.FC = () => {
                 onClick={() => {
                   const workspaceRole = getUserWorkspaceRole(profile);
                   if (workspaceRole === 'manufacturer') {
-                    router.push('/my-account/supplier-profile');
+                    router.push('/manufacturer/settings');
                   } else {
                     router.push('/my-account/edit-profile');
                   }
