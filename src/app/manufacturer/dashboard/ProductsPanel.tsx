@@ -325,11 +325,10 @@ export default function ProductsPanel({
                 <div className="h-full rounded-full transition-all duration-700" style={{ width: `${trustPercentage}%`, background: verifiedTier === 'verified' ? 'linear-gradient(90deg, #10B981, #059669)' : verifiedTier === 'partial' ? 'linear-gradient(90deg, #F59E0B, #D97706)' : 'linear-gradient(90deg, #9CA3AF, #6B7280)' }} />
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="mt-3 grid grid-cols-2 gap-2">
               {[
                 { key: 'trade_license', label: 'السجل التجاري', hasDoc: !!factoryRegistration?.trade_license_url },
                 { key: 'manufacturing_license', label: 'الترخيص الصناعي', hasDoc: !!factoryRegistration?.manufacturing_license_url },
-                { key: 'tax_id', label: 'الرقم الضريبي', hasDoc: !!factoryRegistration?.tax_id },
               ].map((doc) => (
                 <div key={doc.key} className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] font-medium border ${doc.hasDoc ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-600'}`}>
                   <Icon name={doc.hasDoc ? 'CheckCircleIcon' : 'XCircleIcon'} size={11} className={doc.hasDoc ? 'text-emerald-600 shrink-0' : 'text-red-400 shrink-0'} />

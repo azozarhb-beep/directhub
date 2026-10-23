@@ -1378,7 +1378,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       const missing: string[] = [];
       if (!data?.trade_license_url) missing.push('trade_license');
       if (!data?.manufacturing_license_url) missing.push('manufacturing_license');
-      if (!data?.tax_id) missing.push('tax_id');
       setMissingDocuments(missing);
     } catch (err) {
       console.error('Failed to fetch factory registration:', err);

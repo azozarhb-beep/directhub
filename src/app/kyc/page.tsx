@@ -183,7 +183,7 @@ export default function KYCPage() {
     const status = kycRecord.kyc_status;
     if (stepKey === 'submitted') return kycRecord.submitted_at ? 'done' : 'active';
     if (stepKey === 'documents') {
-      const hasDocs = !!(kycRecord.trade_license_url || kycRecord.cr_document_url || kycRecord.tax_certificate_url);
+      const hasDocs = !!(kycRecord.trade_license_url || kycRecord.cr_document_url);
       if (hasDocs) return 'done';
       if (kycRecord.submitted_at) return 'active';
       return 'pending';
@@ -214,13 +214,6 @@ export default function KYCPage() {
       desc: k.docs.cr_document.desc,
       url: kycRecord?.cr_document_url,
       required: true,
-    },
-    {
-      key: 'tax_certificate',
-      label: k.docs.tax_certificate.label,
-      desc: k.docs.tax_certificate.desc,
-      url: kycRecord?.tax_certificate_url,
-      required: false,
     },
     {
       key: 'factory_license',
