@@ -35,6 +35,7 @@ interface Product {
   sku: string;
   unit: string;
   unit_price: number;
+  currency?: string | null;
   tiered_pricing?: unknown;
   minimum_order_qty: number;
   stock_quantity: number;
@@ -70,6 +71,7 @@ interface ProductFormData {
   sku: string;
   unit: string;
   unit_price: string;
+  currency: string;
   tiers: TierFormRow[];
   minimum_order_qty: string;
   stock_quantity: string;
@@ -108,7 +110,21 @@ const CATEGORIES = [
   { value: 'other', label: 'Other' },
 ];
 
-const UNITS = ['kg', 'ton', 'piece', 'set', 'meter', 'roll', 'box', 'carton', 'liter', 'sqm', 'unit'];
+const UNITS = ['carton', 'roll', 'ton', 'piece', 'kg', 'liter', 'meter'];
+
+const UNIT_LABELS_AR: Record<string, string> = {
+  carton: 'كرتون',
+  roll: 'رول',
+  ton: 'طن',
+  piece: 'قطعة / حبة',
+  kg: 'كجم',
+  liter: 'لتر / برميل',
+  meter: 'متر',
+  set: 'طقم',
+  box: 'صندوق',
+  sqm: 'متر مربع',
+  unit: 'وحدة',
+};
 
 const INCOTERM_OPTIONS = ['FOB', 'CIF', 'EXW', 'CFR', 'DAP'];
 
@@ -123,7 +139,7 @@ const EMPTY_FORM: ProductFormData = {
   name: '', name_ar: '', description: '', description_ar: '',
   specifications_en: '', specifications_ar: '',
   category: 'raw_materials', sku: '', unit: 'kg',
-  unit_price: '', tiers: [{ ...EMPTY_TIER_ROW }], minimum_order_qty: '1', stock_quantity: '',
+  unit_price: '', currency: 'YER', tiers: [{ ...EMPTY_TIER_ROW }], minimum_order_qty: '1', stock_quantity: '',
   inventory_status: 'in_stock', origin_country: '',
   image_url: '', imageFile: null, imagePreview: '', sales_model: 'both',
   certifications: '', delivery_time_days: '',
@@ -140,7 +156,7 @@ export default function SellerProductManagerPage() {
   const sp = t.sellerProducts;
   const f = sp.form;
   const catLabel = (v: string) => (f.categories as Record<string, string>)[v] || v;
-  const unitLabel = (v: string) => (f.units as Record<string, string>)[v] || v;
+  const unitLabel = (v: string) => UNIT_LABELS_AR[v] || (f.units as Record<string, string>)[v] || v;
   const invLabel = (v: string) => (f.inventory as Record<string, string>)[v] || v;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -228,13 +244,14 @@ export default function SellerProductManagerPage() {
       name: product.name || '',
       name_ar: product.name_ar || '',
       description: product.description || '',
-      description_ar: '',
+      description_ar: (product as any).description_ar || '',
       specifications_en: '',
       specifications_ar: '',
       category: product.category || 'raw_materials',
       sku: product.sku || '',
       unit: product.unit || 'kg',
       unit_price: String(product.unit_price || ''),
+      currency: product.currency || 'YER',
       tiers: (() => {
         const rows = tiersToFormRows(product.tiered_pricing);
         return rows.length > 0
@@ -283,7 +300,8 @@ export default function SellerProductManagerPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    if (!formData.name.trim()) { setFormError(f.errNameRequired); return; }
+    if (!formData.name_ar.trim()) { setFormError('اسم المنتج بالعربية مطلوب'); return; }
+    if (!formData.description_ar.trim()) { setFormError('وصف المنتج بالعربية مطلوب'); return; }
     const tierError = validateTierRows(formData.tiers);
     if (tierError) { setFormError(tierError); return; }
     const tierPayload = formRowsToPayload(formData.tiers);
@@ -330,13 +348,14 @@ export default function SellerProductManagerPage() {
       }
 
       const payload: any = {
-        name: formData.name.trim(),
+        name: formData.name.trim() || formData.name_ar.trim(),
         name_ar: formData.name_ar.trim(),
         description: formData.description.trim(),
         description_ar: formData.description_ar.trim(),
         category: formData.category,
         sku: formData.sku.trim(),
         unit: formData.unit,
+        currency: formData.currency || 'YER',
         unit_price: Math.min(...tierPayload.map((t) => t.unit_price)),
         tiered_pricing: tierPayload,
         minimum_order_qty: tierPayload[0].min_qty,
@@ -715,39 +734,54 @@ export default function SellerProductManagerPage() {
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-bold text-foreground mb-1.5">{f.nameEn} *</label>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">اسم المنتج (بالعربية) *</label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.name_ar}
+                          onChange={(e) => setFormData((p) => ({ ...p, name_ar: e.target.value }))}
+                          placeholder={sp.nameArPlaceholder}
+                          dir="rtl"
+                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">اسم المنتج (بالإنجليزية)</label>
                         <input
                           type="text"
                           value={formData.name}
                           onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
                           placeholder={f.nameEnPlaceholder}
-                          dir="auto"
-                          className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-foreground mb-1.5">{sp.nameArLabel}</label>
-                        <input
-                          type="text"
-                          value={formData.name_ar}
-                          onChange={(e) => setFormData((p) => ({ ...p, name_ar: e.target.value }))}
-                          placeholder={sp.nameArPlaceholder}
-                          dir="auto"
+                          dir="ltr"
                           className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-start"
                         />
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-foreground mb-1.5">{f.descEn}</label>
-                      <textarea
-                        value={formData.description}
-                        onChange={(e) => setFormData((p) => ({ ...p, description: e.target.value }))}
-                        rows={3}
-                        placeholder={f.descEnPlaceholder}
-                        dir="auto"
-                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none text-start"
-                      />
+                    <div className="grid grid-cols-1 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">وصف المنتج (بالعربية) *</label>
+                        <textarea
+                          required
+                          value={formData.description_ar}
+                          onChange={(e) => setFormData((p) => ({ ...p, description_ar: e.target.value }))}
+                          rows={3}
+                          placeholder="اكتب وصفاً لمنتجك — المواصفات، الاستخدامات، معايير الجودة..."
+                          dir="rtl"
+                          className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none text-start"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">وصف المنتج (بالإنجليزية)</label>
+                        <textarea
+                          value={formData.description}
+                          onChange={(e) => setFormData((p) => ({ ...p, description: e.target.value }))}
+                          rows={3}
+                          placeholder={f.descEnPlaceholder}
+                          dir="ltr"
+                          className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none text-start"
+                        />
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -780,6 +814,8 @@ export default function SellerProductManagerPage() {
                           tiers={formData.tiers}
                           onChange={(tiers) => setFormData((p) => ({ ...p, tiers }))}
                           unitLabel={unitLabel(formData.unit)}
+                          currency={formData.currency}
+                          onCurrencyChange={(currency) => setFormData((p) => ({ ...p, currency }))}
                         />
                       </div>
                       <div>
@@ -789,7 +825,7 @@ export default function SellerProductManagerPage() {
                           onChange={(e) => setFormData((p) => ({ ...p, unit: e.target.value }))}
                           className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:border-primary"
                         >
-                          {UNITS.map((u) => <option key={u} value={u}>{unitLabel(u)}</option>)}
+                          {(UNITS.includes(formData.unit) ? UNITS : [...UNITS, formData.unit]).map((u) => <option key={u} value={u}>{unitLabel(u)}</option>)}
                         </select>
                       </div>
                       <div>
