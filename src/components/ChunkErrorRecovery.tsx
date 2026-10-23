@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 
 const RELOAD_KEY = 'dh_chunk_reload_at';
 const RELOAD_COUNT_KEY = 'dh_chunk_reload_count';
-const RELOAD_WINDOW_MS = 10000;
+const RELOAD_WINDOW_MS = 3000;
 const MAX_RELOADS = 3;
 
 function isChunkError(value: unknown): boolean {
@@ -33,7 +33,13 @@ function reloadOnce() {
   } catch {
     // sessionStorage unavailable — fall through to a single reload attempt
   }
-  window.location.reload();
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('_cb', String(Date.now()));
+    window.location.replace(url.toString());
+  } catch {
+    window.location.reload();
+  }
 }
 
 export default function ChunkErrorRecovery() {
