@@ -2740,7 +2740,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
 
         {/* ── FREIGHT BIDS TAB ── */}
         {activeTab === 'freight_bids' && (
-          <ShipmentBidsPanel mode="shipper" />
+          <ShipmentBidsPanel mode="shipper" yemenLocal />
         )}
 
         {/* ── FACTORY ORDER QUEUE TAB ── */}
