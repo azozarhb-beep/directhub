@@ -2083,15 +2083,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
                   <span className="lg:hidden">🌐</span>
                 </Link>
                 <Link
-                  href="/factory/local-dashboard"
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-orange-300 bg-orange-50 text-orange-700 rounded-lg text-sm font-semibold hover:bg-orange-100 transition-colors"
-                  title="Local Factory Control Room"
-                >
-                  <Icon name="BuildingOffice2Icon" size={15} />
-                  <span className="hidden lg:inline">المحلي</span>
-                  <span className="lg:hidden">🏭</span>
-                </Link>
-                <Link
                   href="/manufacturer/b2b"
                   className="hidden sm:flex items-center gap-2 px-3 py-2 border border-indigo-300 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-semibold hover:bg-indigo-100 transition-colors"
                   title="B2B Sales System"

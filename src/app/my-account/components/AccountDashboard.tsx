@@ -183,7 +183,7 @@ const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnTyp
   } else if (accountRole === 'local_manufacturer') {
     title = 'غرفة تحكم المصنع المحلي';
     description = 'إدارة خطوط الإنتاج والقدرة التشغيلية والمنتجات';
-    destination = '/factory/local-dashboard';
+    destination = '/manufacturer/dashboard';
   } else if (accountRole === 'international_manufacturer') {
     title = 'غرفة تحكم المصنع الدولي';
     description = 'إدارة منتجاتك وعروضك للأسواق الدولية';
@@ -257,11 +257,11 @@ const RoleBasedAddProductButton: React.FC<{
 
   const getAddProductDestination = (): string => {
     if (accountRole === 'commercial_supplier') return '/supplier/local-dashboard';
-    if (accountRole === 'local_manufacturer') return '/factory/local-dashboard';
+    if (accountRole === 'local_manufacturer') return '/manufacturer/dashboard';
     if (accountRole === 'international_manufacturer') return '/manufacturer/international-dashboard';
     if (workspaceRole === 'commercial_supplier') return '/supplier/local-dashboard';
-    if (workspaceRole === 'manufacturer') return '/factory/local-dashboard';
-    return '/factory/local-dashboard';
+    if (workspaceRole === 'manufacturer') return '/manufacturer/dashboard';
+    return '/manufacturer/dashboard';
   };
 
   const handleClick = () => {

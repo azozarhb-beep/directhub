@@ -550,7 +550,7 @@ export const CONTROL_ROOMS: RoomMetadata[] = [
     market: 'الجمهورية اليمنية — المصانع والمنتجون المحليون',
     color: 'orange',
     icon: 'Factory',
-    path: '/factory/local-dashboard',
+    path: '/manufacturer/dashboard',
   },
   {
     id: 'international-factory-control-room',

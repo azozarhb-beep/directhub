@@ -21,7 +21,7 @@ type AccountRole =
 
 const ACCOUNT_ROLES: { value: AccountRole; labelAr: string; labelEn: string; dashboardPath: string; role: string }[] = [
   { value: 'buyer', labelAr: 'مشتري / عميل', labelEn: 'Buyer / Customer', dashboardPath: '/buyer-dashboard', role: 'buyer' },
-  { value: 'local_manufacturer', labelAr: 'مصنع محلي', labelEn: 'Local Manufacturer', dashboardPath: '/factory/local-dashboard', role: 'manufacturer' },
+  { value: 'local_manufacturer', labelAr: 'مصنع محلي', labelEn: 'Local Manufacturer', dashboardPath: '/manufacturer/dashboard', role: 'manufacturer' },
   { value: 'international_manufacturer', labelAr: 'مصنع دولي', labelEn: 'International Manufacturer', dashboardPath: '/manufacturer/international-dashboard', role: 'manufacturer' },
   { value: 'commercial_supplier', labelAr: 'مورّد تجاري', labelEn: 'Commercial Supplier', dashboardPath: '/supplier/local-dashboard', role: 'manufacturer' },
   { value: 'logistics_partner', labelAr: 'مندوب لوجستي', labelEn: 'Logistics Agent', dashboardPath: '/logistics/dashboard', role: 'logistics_partner' },
