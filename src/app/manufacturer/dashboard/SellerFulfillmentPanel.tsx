@@ -176,7 +176,7 @@ export default function SellerFulfillmentPanel({ user }: SellerFulfillmentPanelP
       await supabase.from('order_status_history').insert({
         order_id: selectedOrder.id,
         status: 'shipped',
-        note: `تم إدخال بيانات الشحن بواسطة المصنع — ${shippingForm.seller_carrier_name} — B/L: ${shippingForm.seller_tracking_number}`,
+        note: `تم إدخال بيانات الشحن بواسطة المصنع — المركبة/مكتب النقل: ${shippingForm.seller_carrier_name} — السائق: ${shippingForm.seller_tracking_number} — هاتف: ${shippingForm.seller_container_number}`,
       });
 
       setFormMsg('✅ تم حفظ بيانات الشحن بنجاح — الطلب الآن في حالة "تم الشحن"');
@@ -252,7 +252,7 @@ export default function SellerFulfillmentPanel({ user }: SellerFulfillmentPanelP
             <Icon name="TruckIcon" size={24} className="text-white" />
           </div>
           <div className="flex-1">
-            <h2 className="text-lg font-bold">الشحن الشامل بواسطة المصنع</h2>
+            <h2 className="text-lg font-bold">توصيل المصنع (شحن ذاتي)</h2>
             <p className="text-sm text-white/80">إدارة بيانات الشحن ورفع الوثائق للطلبات المُسندة إليك</p>
           </div>
           <div className="text-right shrink-0">
@@ -266,9 +266,9 @@ export default function SellerFulfillmentPanel({ user }: SellerFulfillmentPanelP
       <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
         <Icon name="InformationCircleIcon" size={18} className="text-blue-600 shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm font-semibold text-blue-800">كيف يعمل نظام الشحن الشامل؟</p>
+          <p className="text-sm font-semibold text-blue-800">كيف يعمل نظام توصيل المصنع (شحن ذاتي)؟</p>
           <p className="text-xs text-blue-700 mt-0.5 leading-relaxed">
-            عند اختيار المشتري "شحن بواسطة المصنع"، يتم تجميد قيمة الطلب الكاملة في حساب الضمان. يجب عليك إدخال بيانات الشحن ورفع الوثائق المطلوبة. لن يتم تحرير أي مبالغ إلا بعد تأكيد المشتري استلام الشحنة عبر رمز التسليم السري.
+            عند اختيار المشتري "توصيل المصنع (شحن ذاتي)"، يتم تجميد قيمة الطلب الكاملة في حساب الضمان. يجب عليك إدخال بيانات الشحن ورفع الوثائق المطلوبة. لا يتم تحرير أي مبالغ إلا بعد التحقق من التسليم: في طلبات التجزئة (B2C) عبر رمز PIN السري الذي يؤكده المشتري عند التسليم على الباب، وطلبات الجملة (B2B) عبر رفع سند استلام بضاعة (POD) مختوم.
           </p>
         </div>
       </div>
@@ -409,7 +409,7 @@ export default function SellerFulfillmentPanel({ user }: SellerFulfillmentPanelP
                     <div>
                       <p className="text-xs font-bold text-indigo-800">قيمة الطلب مجمدة في حساب الضمان</p>
                       <p className="text-[11px] text-indigo-700 mt-0.5 leading-relaxed">
-                        مبلغ <span className="font-bold">${selectedOrder.total?.toLocaleString()} USD</span> محجوز في الضمان المشروط. سيتم تحريره فور تأكيد المشتري استلام الشحنة عبر رمز التسليم السري.
+                        مبلغ <span className="font-bold">${selectedOrder.total?.toLocaleString()} USD</span> محجوز في الضمان المشروط. يتم تحريره عند التحقق من التسليم: طلبات التجزئة (B2C) عبر رمز PIN السري الذي يؤكده المشتري عند التسليم على الباب، وطلبات الجملة (B2B) عبر رفع سند استلام بضاعة (POD) مختوم.
                       </p>
                     </div>
                   </div>
@@ -426,47 +426,49 @@ export default function SellerFulfillmentPanel({ user }: SellerFulfillmentPanelP
                       <div className="grid grid-cols-1 gap-3">
                         <div>
                           <label className="block text-xs font-semibold text-foreground mb-1.5">
-                            اسم شركة الملاحة / الشحن <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={shippingForm.seller_carrier_name}
-                            onChange={e => setShippingForm(p => ({ ...p, seller_carrier_name: e.target.value }))}
-                            placeholder="مثال: COSCO Shipping، MSC، Maersk"
-                            className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-300 transition-colors"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-foreground mb-1.5">
-                            رقم بوليصة الشحن (B/L Number) <span className="text-red-500">*</span>
+                            اسم السائق / المندوب <span className="text-red-500">*</span>
                           </label>
                           <input
                             type="text"
                             required
                             value={shippingForm.seller_tracking_number}
                             onChange={e => setShippingForm(p => ({ ...p, seller_tracking_number: e.target.value }))}
-                            placeholder="مثال: COSU1234567890"
-                            className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm font-mono focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-300 transition-colors"
+                            placeholder="مثال: محمد أحمد الصنعاني"
+                            className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-300 transition-colors"
                           />
                         </div>
                         <div>
                           <label className="block text-xs font-semibold text-foreground mb-1.5">
-                            رقم الحاوية (Container Number) <span className="text-red-500">*</span>
+                            رقم هاتف السائق / واتساب - صيغة يمنية <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="tel"
+                            inputMode="tel"
+                            dir="ltr"
+                            required
+                            value={shippingForm.seller_container_number}
+                            onChange={e => setShippingForm(p => ({ ...p, seller_container_number: e.target.value }))}
+                            placeholder="مثال: 77X XXX XXX أو +967 77X XXX XXX"
+                            className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm font-mono text-right focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-300 transition-colors"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-foreground mb-1.5">
+                            رقم لوحة المركبة أو اسم مكتب النقل المحلي <span className="text-red-500">*</span>
                           </label>
                           <input
                             type="text"
                             required
-                            value={shippingForm.seller_container_number}
-                            onChange={e => setShippingForm(p => ({ ...p, seller_container_number: e.target.value }))}
-                            placeholder="مثال: CSQU3054383"
-                            className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm font-mono focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-300 transition-colors"
+                            value={shippingForm.seller_carrier_name}
+                            onChange={e => setShippingForm(p => ({ ...p, seller_carrier_name: e.target.value }))}
+                            placeholder="مثال: لوحة 123456 صنعاء، أو مكتب الأمانة للنقل"
+                            className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-300 transition-colors"
                           />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="block text-xs font-semibold text-foreground mb-1.5">
-                              تاريخ الإبحار (ETD) <span className="text-red-500">*</span>
+                              تاريخ الانطلاق <span className="text-red-500">*</span>
                             </label>
                             <input
                               type="date"
@@ -478,7 +480,7 @@ export default function SellerFulfillmentPanel({ user }: SellerFulfillmentPanelP
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-foreground mb-1.5">
-                              تاريخ الوصول المتوقع (ETA) <span className="text-red-500">*</span>
+                              تاريخ الوصول المتوقع <span className="text-red-500">*</span>
                             </label>
                             <input
                               type="date"
