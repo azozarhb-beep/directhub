@@ -2536,6 +2536,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         {/* ── DISPUTES TAB — Level 1: Factory Resolution Panel ── */}
         {activeTab === 'disputes' && (
           <DisputesPanel
+            localMode
             factoryDisputes={factoryDisputes}
             factoryDisputesLoading={factoryDisputesLoading}
             selectedFactoryDispute={selectedFactoryDispute}

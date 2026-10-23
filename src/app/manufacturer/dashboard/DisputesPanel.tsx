@@ -20,7 +20,16 @@ interface DisputesPanelProps {
   handleFactoryResolve: (e: React.FormEvent) => void;
   fetchFactoryDisputes: () => void;
   md: any;
+  localMode?: boolean;
 }
+
+const LOCAL_SHORT_REASON_LABELS: Record<string, string> = {
+  quality_defect: 'عيوب جودة ومواصفات',
+  delivery_delay: 'تأخير التسليم والشحن',
+  quantity_shortage: 'نقص الكميات',
+  transit_damage: 'تلف وأضرار النقل',
+  payment_dispute: 'خلافات الدفع والأسعار',
+};
 
 export default function DisputesPanel({
   factoryDisputes,
@@ -37,6 +46,7 @@ export default function DisputesPanel({
   handleFactoryResolve,
   fetchFactoryDisputes,
   md,
+  localMode = false,
 }: DisputesPanelProps) {
   const { language } = useLanguage();
   const [reasonFilter, setReasonFilter] = React.useState<string>('all');
@@ -131,11 +141,11 @@ export default function DisputesPanel({
                 <Icon name="ArrowPathIcon" size={12} /> {md.refreshAction}
               </button>
             </div>
-            <div className="flex flex-nowrap gap-1.5 mb-2 overflow-x-auto pb-1.5 -mx-1 px-1">
+            <div className={localMode ? 'flex flex-wrap gap-2 mb-2' : 'flex flex-nowrap gap-1.5 mb-2 overflow-x-auto pb-1.5 -mx-1 px-1'}>
               <button
                 type="button"
                 onClick={() => setReasonFilter('all')}
-                className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${reasonFilter === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-muted-foreground border-border hover:border-primary/40'}`}
+                className={`${localMode ? '' : 'shrink-0 whitespace-nowrap '}px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${reasonFilter === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-muted-foreground border-border hover:border-primary/40'}`}
               >
                 {language === 'ar' ? 'الكل' : 'All'} ({factoryDisputes.length})
               </button>
@@ -144,17 +154,25 @@ export default function DisputesPanel({
                   key={r.value}
                   type="button"
                   onClick={() => setReasonFilter(r.value)}
-                  className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${reasonFilter === r.value ? 'bg-primary text-primary-foreground border-primary' : `${r.badge} hover:opacity-80`}`}
+                  className={`${localMode ? '' : 'shrink-0 whitespace-nowrap '}px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${reasonFilter === r.value ? 'bg-primary text-primary-foreground border-primary' : `${r.badge} hover:opacity-80`}`}
                 >
-                  {r.emoji} {language === 'ar' ? r.labelAr : r.labelEn} ({reasonCount(r.value)})
+                  {r.emoji} {language === 'ar' ? (localMode ? (LOCAL_SHORT_REASON_LABELS[r.value] ?? r.labelAr) : r.labelAr) : r.labelEn} ({reasonCount(r.value)})
                 </button>
               ))}
             </div>
             {visibleDisputes.length === 0 ? (
+              localMode ? (
+                <div className="bg-card border border-border rounded-xl p-8 text-center">
+                  <Icon name="CheckCircleIcon" size={28} className="text-emerald-500 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-foreground">{md.noIncomingDisputes}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{md.selectDisputeHint}</p>
+                </div>
+              ) : (
               <div className="bg-card border border-border rounded-xl p-8 text-center">
                 <Icon name="CheckCircleIcon" size={28} className="text-emerald-500 mx-auto mb-2" />
                 <p className="text-sm text-muted-foreground">{md.noIncomingDisputes}</p>
               </div>
+              )
             ) : visibleDisputes.map((order: any) => {
               const isOpen = ['open', 'factory_reviewing'].includes(order.dispute_status);
               const isResolved = order.dispute_status === 'factory_resolved';
@@ -200,7 +218,7 @@ export default function DisputesPanel({
           </div>
 
           {/* Detail + Resolution Panel */}
-          <div className="lg:col-span-3">
+          <div className={localMode && visibleDisputes.length === 0 && !selectedFactoryDispute ? 'hidden' : 'lg:col-span-3'}>
             {!selectedFactoryDispute ? (
               <div className="bg-card border border-border rounded-xl p-8 text-center">
                 <Icon name="CursorArrowRaysIcon" size={28} className="text-muted-foreground mx-auto mb-2" />
