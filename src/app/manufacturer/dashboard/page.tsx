@@ -38,10 +38,12 @@ import AnalyticsPanel from './AnalyticsPanel';
 import DisputesPanel from './DisputesPanel';
 import FinancialHubPanel from './FinancialHubPanel';
 import FactoryPinPayoutPanel from './FactoryPinPayoutPanel';
-import FactorySettingsPanel from './FactorySettingsPanel';
+
 import SellerFulfillmentPanel from './SellerFulfillmentPanel';
 import ShipmentBidsPanel from '@/components/ShipmentBidsPanel';
 import DealLinkGeneratorModal from '@/components/manufacturer/DealLinkGeneratorModal';
+import FinancialSummaryHeader from '@/app/manufacturer/dashboard/FinancialSummaryHeader';
+
 
 // ── Sales Rep interfaces ─────────────────────────────────────────────────────
 interface SalesRep {
@@ -2594,10 +2596,10 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
 
         {/* ── BANK ACCOUNTS TAB ── */}
         {activeTab === 'financial_hub' && !isSalesRep && user?.id && (
-          <FactoryPinPayoutPanel userId={user.id} />
+          <FinancialSummaryHeader userId={user.id} currency={bankAccounts?.[0]?.currency || 'YER'} />
         )}
-        {activeTab === 'factory_settings' && !isSalesRep && user?.id && (
-          <FactorySettingsPanel userId={user.id} />
+        {activeTab === 'financial_hub' && !isSalesRep && user?.id && (
+          <FactoryPinPayoutPanel userId={user.id} />
         )}
         {activeTab === 'financial_hub' && !isSalesRep && (
           <FinancialHubPanel
