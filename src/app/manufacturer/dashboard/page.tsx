@@ -371,6 +371,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   // Payment settings state
   const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(EMPTY_PAYMENT_SETTINGS);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [factoryCurrency, setFactoryCurrency] = useState<string | null>(null);
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [paymentError, setPaymentError] = useState('');
 
@@ -1145,7 +1146,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
           .gte('viewed_at', fromISO),
         supabase
           .from('orders')
-          .select('created_at, total, status')
+          .select('created_at, total, status, items')
           .eq('factory_id', user.id)
           .gte('created_at', fromISO),
         supabase
@@ -1170,25 +1171,59 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       const reviewsData = reviewsRes.data || [];
       const activeProductsCount = countRes.count || 0;
 
-      // Build daily chart data
-      const dailyMap: Record<string, { views: number; orders: number; revenue: number }> = {};
+      // Wholesale (B2B) vs retail (B2C) classification: an order is wholesale when any line
+      // reaches the product's B2B minimum quantity, otherwise it is a retail (consumer) sale.
+      const { data: moqRows } = await supabase
+        .from('manufacturer_products')
+        .select('id, b2b_min_quantity')
+        .eq('manufacturer_id', user.id);
+      const moqById: Record<string, number> = {};
+      (moqRows || []).forEach((p: any) => {
+        moqById[String(p.id)] = Number(p.b2b_min_quantity) || 10;
+      });
+      const isWholesaleOrder = (o: any): boolean => {
+        const lines = Array.isArray(o?.items) ? o.items : [];
+        if (lines.length === 0) return true;
+        return lines.some((li: any) => {
+          const qty = Number(li?.quantity) || 0;
+          const pid = String(li?.productId ?? li?.product_id ?? li?.id ?? '');
+          const moq = moqById[pid] ?? Number(li?.moqNumber) ?? 10;
+          return qty >= (Number.isFinite(moq) && moq > 0 ? moq : 10);
+        });
+      };
+
+      // Build daily chart data (key = YYYY-MM-DD; localized at render time)
+      const dayKey = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      type DayBucket = {
+        views: number; orders: number; revenue: number;
+        ordersB2B: number; revenueB2B: number; ordersB2C: number; revenueB2C: number;
+      };
+      const dailyMap: Record<string, DayBucket> = {};
       for (let i = days - 1; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const key = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        dailyMap[key] = { views: 0, orders: 0, revenue: 0 };
+        dailyMap[dayKey(d)] = { views: 0, orders: 0, revenue: 0, ordersB2B: 0, revenueB2B: 0, ordersB2C: 0, revenueB2C: 0 };
       }
 
       viewsData.forEach((v: any) => {
-        const key = new Date(v.viewed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const key = dayKey(new Date(v.viewed_at));
         if (dailyMap[key]) dailyMap[key].views++;
       });
 
       ordersData.forEach((o: any) => {
-        const key = new Date(o.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const key = dayKey(new Date(o.created_at));
         if (dailyMap[key]) {
+          const amt = Number(o.total) || 0;
           dailyMap[key].orders++;
-          dailyMap[key].revenue += Number(o.total) || 0;
+          dailyMap[key].revenue += amt;
+          if (isWholesaleOrder(o)) {
+            dailyMap[key].ordersB2B++;
+            dailyMap[key].revenueB2B += amt;
+          } else {
+            dailyMap[key].ordersB2C++;
+            dailyMap[key].revenueB2C += amt;
+          }
         }
       });
 
@@ -1871,7 +1906,15 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       case 'escrow_orders': fetchEscrowOrders(); break;
       case 'factory_orders': fetchFactoryOrders(); break;
       case 'disputes': fetchFactoryDisputes(); break;
-      case 'analytics': fetchAnalytics(); break;
+            case 'analytics':
+        fetchAnalytics();
+        supabase
+          .from('manufacturer_payment_settings')
+          .select('bank_currency')
+          .eq('manufacturer_id', user.id)
+          .maybeSingle()
+          .then(({ data }: any) => setFactoryCurrency(data?.bank_currency || null));
+        break;
       case 'admin_messaging': fetchAdminConversation(); break;
       case 'inventory': fetchInventoryItems(); break;
       case 'archive': fetchArchiveRecords(); break;
@@ -2484,6 +2527,8 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         {/* ── ANALYTICS TAB ── */}
         {activeTab === 'analytics' && (
           <AnalyticsPanel
+            variant="local"
+            currency={factoryCurrency}
             analyticsLoading={analyticsLoading}
             analyticsData={analyticsData}
             analyticsStats={analyticsStats}

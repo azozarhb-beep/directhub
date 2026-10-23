@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
+import Link from 'next/link';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
@@ -13,6 +14,27 @@ const formatUSD = (amount: number, fractionDigits = 0): string =>
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   }).format(Number.isFinite(amount) ? amount : 0);
+
+type LocalCurrency = 'YER' | 'SAR' | 'USD';
+
+const normalizeCurrency = (c: unknown): LocalCurrency => {
+  const v = typeof c === 'string' ? c.trim().toUpperCase() : '';
+  if (v === 'SAR' || v === 'USD' || v === 'YER') return v;
+  return 'YER';
+};
+
+const CURRENCY_SYMBOL_AR: Record<LocalCurrency, string> = { YER: 'ر.ي', SAR: 'ر.س', USD: '$' };
+
+const AR_MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+
+/** "2026-09-24" → "24 سبتمبر". Falls back to the raw label when it isn't a date key. */
+const formatArabicDay = (key: unknown): string => {
+  const raw = typeof key === 'string' ? key : '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!m) return raw;
+  const month = AR_MONTHS[Number(m[2]) - 1];
+  return month ? `${Number(m[3])} ${month}` : raw;
+};
 
 const CATEGORY_AR: Record<string, string> = {
   raw_materials: 'مواد خام',
@@ -82,7 +104,13 @@ interface AnalyticsPanelProps {
   user: any;
   t: any;
   md: any;
+  /** 'local' enables the Yemeni-manufacturer enhancements; omitted = international behaviour. */
+  variant?: 'local' | 'international';
+  /** Factory's active currency (local variant). Defaults to YER. */
+  currency?: string | null;
 }
+
+type Channel = 'all' | 'b2b' | 'b2c';
 
 export default function AnalyticsPanel({
   analyticsLoading,
@@ -96,8 +124,38 @@ export default function AnalyticsPanel({
   user,
   t,
   md,
+  variant = 'international',
+  currency,
 }: AnalyticsPanelProps) {
   const { language } = useLanguage();
+  const isLocal = variant === 'local';
+  const [channel, setChannel] = useState<Channel>('all');
+  const activeCurrency = normalizeCurrency(currency);
+
+  /** Money formatter: local variant uses the factory currency; international stays USD. */
+  const fmtMoney = (amount: number, fractionDigits = 0): string => {
+    if (!isLocal) return formatUSD(amount, fractionDigits);
+    const n = new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    }).format(Number.isFinite(amount) ? amount : 0);
+    return activeCurrency === 'USD' ? `$${n}` : `${n} ${CURRENCY_SYMBOL_AR[activeCurrency]}`;
+  };
+  const fmtAxisMoney = (v: number): string => {
+    if (!isLocal) return v >= 1000 ? `$${v / 1000}K` : `$${v}`;
+    const n = v >= 1000000 ? `${+(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${+(v / 1000).toFixed(1)}K` : `${v}`;
+    return activeCurrency === 'USD' ? `$${n}` : n;
+  };
+  const fmtDate = (d: unknown): string => (isLocal ? formatArabicDay(d) : String(d ?? ''));
+
+  // Channel-segmented series (local variant only; rows without channel fields fall back to totals)
+  const chartData = isLocal
+    ? analyticsData.map((d: any) => {
+        if (channel === 'b2b') return { ...d, orders: d.ordersB2B ?? 0, revenue: d.revenueB2B ?? 0 };
+        if (channel === 'b2c') return { ...d, orders: d.ordersB2C ?? 0, revenue: d.revenueB2C ?? 0 };
+        return d;
+      })
+    : analyticsData;
   const safeNum = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
   const fmtInt = (v: unknown): string => new Intl.NumberFormat('en-US').format(safeNum(v));
   const sa = t.manufacturerDashboard.sellerAnalytics;
@@ -110,7 +168,7 @@ export default function AnalyticsPanel({
   const handleExportCsv = () => {
     const rows: unknown[][] = [
       [sa.csvDate, sa.csvViews, sa.csvOrders, sa.csvRevenue],
-      ...analyticsData.map((d: any) => [d.date, d.views, d.orders, d.revenue]),
+      ...analyticsData.map((d: any) => [fmtDate(d.date), d.views, d.orders, d.revenue]),
       [],
       [sa.csvSummary, `${periodDays} ${sa.reportDays}`],
       [sa.reportTotalViews, analyticsStats.totalViews],
@@ -151,27 +209,35 @@ export default function AnalyticsPanel({
     lines.push(sa.reportDailyBreakdown);
     lines.push(sa.reportDateHeader);
     analyticsData.forEach((d: any) => {
-      lines.push(`${d.date} | ${d.views} | ${d.orders} | ${formatUSD(Number(d.revenue) || 0, 2)}`);
+      lines.push(`${fmtDate(d.date)} | ${d.views} | ${d.orders} | ${fmtMoney(Number(d.revenue) || 0, 2)}`);
     });
     lines.push('');
     lines.push(sa.reportProducts);
     products.forEach((p) => {
-      lines.push(`${p.name} | ${localizeCategory(p.category, language)} | ${formatUSD(Number(p.unit_price) || 0, 2)} | ${p.inventory_status}`);
+      lines.push(`${p.name} | ${localizeCategory(p.category, language)} | ${fmtMoney(Number(p.unit_price) || 0, 2)} | ${p.inventory_status}`);
     });
     downloadFile(lines.join('\n'), 'text/plain;charset=utf-8;', `analytics_report_${analyticsPeriod}_${new Date().toISOString().split('T')[0]}.txt`);
   };
 
   const kpiCards = [
-    { label: sa.productViews, value: fmtInt(analyticsStats?.totalViews), icon: 'EyeIcon', color: 'text-blue-600', bg: 'bg-blue-50', growth: null as ReturnType<typeof growthLabel> },
-    { label: sa.totalOrders, value: fmtInt(analyticsStats?.totalOrders), icon: 'ShoppingBagIcon', color: 'text-amber-600', bg: 'bg-amber-50', growth: growthLabel(analyticsStats.totalOrders, prev.totalOrders) },
-    { label: sa.revenue, value: formatUSD(safeNum(analyticsStats?.totalRevenue), 0), icon: 'BanknotesIcon', color: 'text-green-600', bg: 'bg-green-50', growth: growthLabel(analyticsStats.totalRevenue, prev.totalRevenue) },
-    { label: sa.rfqsReceived, value: fmtInt(analyticsStats?.totalRfqs), icon: 'DocumentTextIcon', color: 'text-purple-600', bg: 'bg-purple-50', growth: growthLabel(analyticsStats.totalRfqs, prev.totalRfqs) },
+    { label: sa.productViews, value: fmtInt(analyticsStats?.totalViews), icon: 'EyeIcon', color: 'text-blue-600', bg: 'bg-blue-50', growth: null as ReturnType<typeof growthLabel>, href: '/manufacturer/products' },
+    { label: sa.totalOrders, value: fmtInt(analyticsStats?.totalOrders), icon: 'ShoppingBagIcon', color: 'text-amber-600', bg: 'bg-amber-50', growth: growthLabel(analyticsStats.totalOrders, prev.totalOrders), href: '/manufacturer/orders' },
+    { label: sa.revenue, value: fmtMoney(safeNum(analyticsStats?.totalRevenue), 0), icon: 'BanknotesIcon', color: 'text-green-600', bg: 'bg-green-50', growth: growthLabel(analyticsStats.totalRevenue, prev.totalRevenue), href: '/manufacturer/finance' },
+    { label: sa.rfqsReceived, value: fmtInt(analyticsStats?.totalRfqs), icon: 'DocumentTextIcon', color: 'text-purple-600', bg: 'bg-purple-50', growth: growthLabel(analyticsStats.totalRfqs, prev.totalRfqs), href: '/manufacturer/rfq' },
+  ];
+
+  const cardInteractive = 'block cursor-pointer transition-all hover:border-primary/40 hover:shadow-md active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary';
+
+  const channelOptions: { key: Channel; label: string }[] = [
+    { key: 'all', label: 'الكل' },
+    { key: 'b2b', label: 'صفقات الجملة B2B' },
+    { key: 'b2c', label: 'مبيعات التجزئة B2C' },
   ];
 
   return (
     <div className="space-y-6">
       {/* Controls */}
-      <div className="bg-gradient-to-r from-secondary to-secondary/80 rounded-2xl p-5 text-white">
+      <div className={isLocal ? 'bg-secondary rounded-2xl p-5 text-white' : 'bg-gradient-to-r from-secondary to-secondary/80 rounded-2xl p-5 text-white'}>
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex-1" />
           {/* Period selector */}
@@ -216,44 +282,73 @@ export default function AnalyticsPanel({
         <>
           {/* KPI Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {kpiCards.map((kpi) => (
-              <div key={kpi.label} className="bg-card border border-border rounded-2xl p-4">
-                <div className={`w-10 h-10 rounded-xl ${kpi.bg} flex items-center justify-center mb-3`}>
-                  <Icon name={kpi.icon as any} size={20} className={kpi.color} />
+            {kpiCards.map((kpi) => {
+              const inner = (
+                <>
+                  <div className={`w-10 h-10 rounded-xl ${kpi.bg} flex items-center justify-center mb-3`}>
+                    <Icon name={kpi.icon as any} size={20} className={kpi.color} />
+                  </div>
+                  <p className="text-2xl font-extrabold text-foreground">{kpi.value}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{kpi.label}</p>
+                  {kpi.growth ? (
+                    <p className={`text-xs font-semibold mt-1 ${kpi.growth.positive ? 'text-green-600' : 'text-red-600'}`}>
+                      <span dir="ltr">{kpi.growth.text}</span> {sa.vsPrevPeriod}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground font-semibold mt-1">-</p>
+                  )}
+                </>
+              );
+              return isLocal ? (
+                <Link key={kpi.label} href={kpi.href} className={`bg-card border border-border rounded-2xl p-4 ${cardInteractive}`}>
+                  {inner}
+                </Link>
+              ) : (
+                <div key={kpi.label} className="bg-card border border-border rounded-2xl p-4">
+                  {inner}
                 </div>
-                <p className="text-2xl font-extrabold text-foreground">{kpi.value}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{kpi.label}</p>
-                {kpi.growth ? (
-                  <p className={`text-xs font-semibold mt-1 ${kpi.growth.positive ? 'text-green-600' : 'text-red-600'}`}>
-                    <span dir="ltr">{kpi.growth.text}</span> {sa.vsPrevPeriod}
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground font-semibold mt-1">-</p>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Secondary stats */}
           <div className="grid grid-cols-3 gap-4">
-            <div className="bg-card border border-border rounded-2xl p-4 text-center">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <Icon name="StarIcon" size={16} variant="solid" className="text-amber-400" />
-                <span className="text-2xl font-extrabold text-foreground">
-                  {analyticsStats.avgRating > 0 ? analyticsStats.avgRating.toFixed(1) : '—'}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">{sa.avgRating}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{analyticsStats.reviewCount} {sa.reviews}</p>
-            </div>
-            <div className="bg-card border border-border rounded-2xl p-4 text-center">
-              <p className="text-2xl font-extrabold text-foreground">{analyticsStats.activeProducts}</p>
-              <p className="text-xs text-muted-foreground mt-1">{sa.activeProducts}</p>
-            </div>
+            {(() => {
+              const ratingInner = (
+                <>
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <Icon name="StarIcon" size={16} variant="solid" className="text-amber-400" />
+                    <span className="text-2xl font-extrabold text-foreground">
+                      {analyticsStats.avgRating > 0 ? analyticsStats.avgRating.toFixed(1) : '—'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{sa.avgRating}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{analyticsStats.reviewCount} {sa.reviews}</p>
+                </>
+              );
+              const activeInner = (
+                <>
+                  <p className="text-2xl font-extrabold text-foreground">{analyticsStats.activeProducts}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{sa.activeProducts}</p>
+                </>
+              );
+              const base = 'bg-card border border-border rounded-2xl p-4 text-center';
+              return isLocal ? (
+                <>
+                  <Link href="/manufacturer/products#reviews" className={`${base} ${cardInteractive}`}>{ratingInner}</Link>
+                  <Link href="/manufacturer/products" className={`${base} ${cardInteractive}`}>{activeInner}</Link>
+                </>
+              ) : (
+                <>
+                  <div className={base}>{ratingInner}</div>
+                  <div className={base}>{activeInner}</div>
+                </>
+              );
+            })()}
             <div className="bg-card border border-border rounded-2xl p-4 text-center">
               <p className="text-2xl font-extrabold text-foreground">
                 {analyticsStats.totalOrders > 0
-                  ? formatUSD(analyticsStats.totalRevenue / analyticsStats.totalOrders, 0)
+                  ? fmtMoney(analyticsStats.totalRevenue / analyticsStats.totalOrders, 0)
                   : '—'}
               </p>
               <p className="text-xs text-muted-foreground mt-1">{sa.avgOrderValue}</p>
@@ -276,9 +371,9 @@ export default function AnalyticsPanel({
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E8E4DE" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#8A8680' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#8A8680' }} tickLine={false} axisLine={false} interval="preserveStartEnd" tickFormatter={fmtDate} />
                   <YAxis tick={{ fontSize: 10, fill: '#8A8680' }} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ background: '#fff', border: '1px solid #D4CFC8', borderRadius: 12, fontSize: 12, color: '#111827' }} labelStyle={{ fontWeight: 700, color: '#111827' }} />
+                  <Tooltip labelFormatter={fmtDate} contentStyle={{ background: '#fff', border: '1px solid #D4CFC8', borderRadius: 12, fontSize: 12, color: '#111827' }} labelStyle={{ fontWeight: 700, color: '#111827' }} />
                   <Area type="monotone" dataKey="views" stroke="#C8611A" strokeWidth={2} fill="url(#viewsGradient)" name={sa.productViews} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -292,12 +387,30 @@ export default function AnalyticsPanel({
                 <Icon name="BanknotesIcon" size={16} className="text-green-600" />
                 {sa.revenueAndOrders}
               </h3>
+              {isLocal && (
+                <div className="flex gap-1 bg-muted p-1 rounded-xl mb-4 overflow-x-auto" role="tablist" aria-label="قناة البيع">
+                  {channelOptions.map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={channel === opt.key}
+                      onClick={() => setChannel(opt.key)}
+                      className={`flex-1 whitespace-nowrap px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
+                        channel === opt.key ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
               <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={analyticsData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                <BarChart data={chartData} margin={{ top: 5, right: 10, left: isLocal ? 0 : -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E8E4DE" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#8A8680' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                  <YAxis tick={{ fontSize: 10, fill: '#8A8680' }} tickLine={false} axisLine={false} tickFormatter={(v: number) => (v >= 1000 ? `$${v / 1000}K` : `$${v}`)} />
-                  <Tooltip formatter={(value: any, name: any) => (name === sa.revenue ? formatUSD(Number(value) || 0, 2) : value)} contentStyle={{ background: '#fff', border: '1px solid #D4CFC8', borderRadius: 12, fontSize: 12, color: '#111827' }} labelStyle={{ fontWeight: 700, color: '#111827' }} />
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#8A8680' }} tickLine={false} axisLine={false} interval="preserveStartEnd" tickFormatter={fmtDate} />
+                  <YAxis tick={{ fontSize: 10, fill: '#8A8680' }} tickLine={false} axisLine={false} tickFormatter={fmtAxisMoney} />
+                  <Tooltip labelFormatter={fmtDate} formatter={(value: any, name: any) => (name === sa.revenue ? fmtMoney(Number(value) || 0, isLocal ? 0 : 2) : value)} contentStyle={{ background: '#fff', border: '1px solid #D4CFC8', borderRadius: 12, fontSize: 12, color: '#111827' }} labelStyle={{ fontWeight: 700, color: '#111827' }} />
                   <Bar dataKey="revenue" fill="#2E5E3E" radius={[4, 4, 0, 0]} name={sa.revenue} />
                   <Bar dataKey="orders" fill="#C8611A" radius={[4, 4, 0, 0]} name={sa.totalOrders} />
                 </BarChart>
@@ -325,7 +438,7 @@ export default function AnalyticsPanel({
                       <p className="text-[10px] text-muted-foreground">{localizeCategory(product.category, language)}</p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-xs font-bold text-foreground" dir="ltr">{formatUSD(Number(product.unit_price) || 0, 2)}</p>
+                      <p className="text-xs font-bold text-foreground" dir="ltr">{fmtMoney(Number(product.unit_price) || 0, 2)}</p>
                       <div className="flex items-center gap-1 justify-end mt-0.5">
                         <Icon name="StarIcon" size={10} variant="solid" className="text-amber-400" />
                         <span className="text-[10px] text-muted-foreground">
