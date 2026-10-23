@@ -267,6 +267,13 @@ type DashboardTab = 'products' | 'financial_hub' | 'escrow_orders' | 'disputes' 
 
 /** Dedicated full-screen routes for each dashboard card (card key → href + page title). */
 const MODULE_ROUTES: Partial<Record<DashboardTab, { href: string; title: string }>> = {
+  products: { href: '/manufacturer/products', title: 'المنتجات للبيع' },
+  finance: { href: '/manufacturer/revenue', title: 'المالية والإيرادات' },
+  escrow_orders: { href: '/manufacturer/escrow', title: 'طلبات الضمان' },
+  admin_messaging: { href: '/manufacturer/messages', title: 'مراسلات الإدارة' },
+  archive: { href: '/manufacturer/archive', title: 'الأرشيف' },
+  all_sales: { href: '/manufacturer/all-sales', title: 'جميع طرق البيع' },
+  contracts: { href: '/manufacturer/contracts', title: 'العقود والاتفاقيات' },
   factory_settings: { href: '/manufacturer/settings', title: 'إعدادات وتوثيق المصنع' },
   analytics: { href: '/manufacturer/analytics', title: 'التحليلات' },
   inventory: { href: '/manufacturer/raw-materials', title: 'مواد الإنتاج والخامات' },
@@ -2027,6 +2034,16 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
                     </button>
                   )}
                 </div>
+              )}
+              {moduleTab === 'products' && !isSalesRep && (
+                <button
+                  type="button"
+                  onClick={() => handleOpenAddModal()}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs sm:text-sm font-semibold hover:opacity-90 transition-opacity"
+                >
+                  <Icon name="PlusIcon" size={14} />
+                  <span className="hidden sm:inline">إضافة منتج</span>
+                </button>
               )}
             </div>
           </div>

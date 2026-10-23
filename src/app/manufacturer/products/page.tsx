@@ -2,8 +2,8 @@
 
 export const dynamic = 'force-dynamic';
 
-import FactoryModuleView from '@/components/manufacturer/FactoryModuleView';
+import ManufacturerModuleRoute from '@/components/manufacturer/ManufacturerModuleRoute';
 
 export default function ManufacturerProductsPage() {
-  return <FactoryModuleView moduleKey="products" />;
+  return <ManufacturerModuleRoute localTab="products" internationalKey="products" />;
 }

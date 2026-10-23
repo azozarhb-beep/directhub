@@ -2,8 +2,8 @@
 
 export const dynamic = 'force-dynamic';
 
-import FactoryModuleView from '@/components/manufacturer/FactoryModuleView';
+import ManufacturerModuleRoute from '@/components/manufacturer/ManufacturerModuleRoute';
 
 export default function ManufacturerEscrowPage() {
-  return <FactoryModuleView moduleKey="escrow" />;
+  return <ManufacturerModuleRoute localTab="escrow_orders" internationalKey="escrow" />;
 }

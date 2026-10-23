@@ -2,8 +2,8 @@
 
 export const dynamic = 'force-dynamic';
 
-import FactoryModuleView from '@/components/manufacturer/FactoryModuleView';
+import ManufacturerModuleRoute from '@/components/manufacturer/ManufacturerModuleRoute';
 
 export default function ManufacturerMessagesPage() {
-  return <FactoryModuleView moduleKey="messages" />;
+  return <ManufacturerModuleRoute localTab="admin_messaging" internationalKey="messages" />;
 }
