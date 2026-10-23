@@ -36,7 +36,7 @@ interface SupplierProfileData {
   website_url?: string | null;
 }
 
-export default function SupplierProfilePage() {
+export default function SupplierProfilePage({ backPath = '/my-account' }: { backPath?: string } = {}) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const supabase = createClient();
@@ -264,7 +264,7 @@ export default function SupplierProfilePage() {
           <div className="max-w-4xl mx-auto px-4 md:px-6 py-8 relative z-10">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => router.push('/my-account')}
+                onClick={() => router.push(backPath)}
                 className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 transition-colors"
                 aria-label="Back"
               >
@@ -537,7 +537,7 @@ export default function SupplierProfilePage() {
                     )}
                   </button>
                   <button
-                    onClick={() => router.push('/my-account')}
+                    onClick={() => router.push(backPath)}
                     className="px-5 py-3.5 border border-border text-sm font-bold rounded-xl hover:bg-muted transition-colors text-foreground"
                   >
                     إلغاء

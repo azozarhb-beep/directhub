@@ -100,7 +100,7 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
           حدّث بيانات المصنع التعريفية ومعلومات التواصل التي تظهر للمشترين.
         </p>
         <Link
-          href="/my-account/supplier-profile"
+          href="/manufacturer/profile/edit"
           className="w-full flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground text-sm font-extrabold rounded-xl hover:opacity-90 transition-opacity shadow-md shadow-primary/20"
         >
           <Icon name="PencilSquareIcon" size={16} />
