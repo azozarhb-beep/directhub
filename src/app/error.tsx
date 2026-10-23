@@ -11,6 +11,16 @@ function isChunkLoadError(error: Error | undefined): boolean {
   return CHUNK_ERROR_RE.test(`${error?.name ?? ''} ${error?.message ?? ''}`);
 }
 
+function hardReload() {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('_cb', String(Date.now()));
+    window.location.replace(url.toString());
+  } catch {
+    window.location.reload();
+  }
+}
+
 export default function Error({
   error,
   reset,
@@ -29,10 +39,10 @@ export default function Error({
         if (now - last > 3000 && count < 3) {
           sessionStorage.setItem('dh_chunk_reload_at', String(now));
           sessionStorage.setItem('dh_chunk_reload_count', String(count + 1));
-          window.location.reload();
+          hardReload();
         }
       } catch {
-        window.location.reload();
+        hardReload();
       }
     }
   }, [error]);
@@ -45,7 +55,7 @@ export default function Error({
       } catch {
         // ignore
       }
-      window.location.reload();
+      hardReload();
       return;
     }
     reset();

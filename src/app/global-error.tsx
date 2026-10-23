@@ -9,6 +9,16 @@ function isChunkErr(error: Error | undefined): boolean {
   return CHUNK_ERROR_RE.test(`${error?.name || ''} ${error?.message || ''}`);
 }
 
+function hardReload() {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('_cb', String(Date.now()));
+    window.location.replace(url.toString());
+  } catch {
+    window.location.reload();
+  }
+}
+
 export default function GlobalError({
   error,
   reset,
@@ -28,10 +38,10 @@ export default function GlobalError({
       if (count < 3) {
         sessionStorage.setItem('dh_chunk_reload_at', String(now));
         sessionStorage.setItem('dh_ge_reload_count', String(count + 1));
-        timer = setTimeout(() => window.location.reload(), 1000 + count * 2000);
+        timer = setTimeout(() => hardReload(), 1000 + count * 2000);
       }
     } catch {
-      timer = setTimeout(() => window.location.reload(), 1500);
+      timer = setTimeout(() => hardReload(), 1500);
     }
     return () => {
       if (timer) clearTimeout(timer);
@@ -45,7 +55,7 @@ export default function GlobalError({
       } catch {
         // ignore
       }
-      window.location.reload();
+      hardReload();
       return;
     }
     reset();
