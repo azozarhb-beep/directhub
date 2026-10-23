@@ -2006,16 +2006,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
                   <span className="hidden sm:inline">تحديث</span>
                 </button>
               )}
-              {moduleTab === 'inventory' && (
-                <button
-                  type="button"
-                  onClick={() => setShowAddInventoryModal(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs sm:text-sm font-semibold hover:opacity-90 transition-opacity"
-                >
-                  <Icon name="PlusIcon" size={14} />
-                  <span className="hidden sm:inline">إضافة مادة خام</span>
-                </button>
-              )}
               {moduleTab === 'seller_fulfillment' && (
                 <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs sm:text-sm font-semibold">
                   <button

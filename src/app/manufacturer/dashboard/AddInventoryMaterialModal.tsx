@@ -34,7 +34,7 @@ const EMPTY_FORM: MaterialFormState = {
   unit: 'ton',
   reorder_level: '',
   unit_cost: '',
-  currency: 'USD',
+  currency: 'YER',
   warehouse_location: '',
 };
 
@@ -51,7 +51,11 @@ const UNITS = [
   { value: 'carton', ar: 'كرتون', en: 'Carton' },
 ];
 
-const CURRENCIES = ['USD', 'SAR', 'AED', 'YER', 'EUR', 'CNY', 'TRY'];
+const CURRENCIES = [
+  { value: 'YER', ar: 'ريال يمني (YER)', en: 'Yemeni Rial (YER)' },
+  { value: 'SAR', ar: 'ريال سعودي (SAR)', en: 'Saudi Riyal (SAR)' },
+  { value: 'USD', ar: 'دولار أمريكي (USD)', en: 'US Dollar (USD)' },
+];
 
 const inputClass =
   'w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-amber-500';
@@ -183,7 +187,7 @@ export default function AddInventoryMaterialModal({ open, onClose, onSaved }: Ad
             </div>
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1">
-                {L('اسم المادة / الخامة (إنجليزي)', 'Material name (English)')}
+                {L('اسم المادة / الخامة (إنجليزي) - اختياري', 'Material name (English) - optional')}
               </label>
               <input
                 type="text"
@@ -279,7 +283,7 @@ export default function AddInventoryMaterialModal({ open, onClose, onSaved }: Ad
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1">
-                {L('سعر التكلفة (للوحدة)', 'Unit cost')}
+                {L('سعر التكلفة للوحدة', 'Unit cost')}
               </label>
               <input
                 type="number"
@@ -301,8 +305,8 @@ export default function AddInventoryMaterialModal({ open, onClose, onSaved }: Ad
                 className={inputClass}
               >
                 {CURRENCIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
+                  <option key={c.value} value={c.value}>
+                    {isAr ? c.ar : c.en}
                   </option>
                 ))}
               </select>

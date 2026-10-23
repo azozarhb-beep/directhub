@@ -55,7 +55,7 @@ export default function InventoryPanel({
         onChanged={() => onSaved?.()}
       />
       <div className="bg-gradient-to-r from-amber-500 to-orange-600 rounded-2xl p-5 text-white">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
               <Icon name="ArchiveBoxIcon" size={22} className="text-white" />
@@ -65,6 +65,16 @@ export default function InventoryPanel({
               <p className="text-amber-100 text-xs">{md.inventoryHeading}</p>
             </div>
           </div>
+          {!inventoryLoading && inventoryItems.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAddInventoryModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-white text-amber-700 rounded-xl text-sm font-semibold hover:bg-amber-50 transition-colors shrink-0"
+            >
+              <Icon name="PlusIcon" size={16} />
+              {md.addMaterialNew}
+            </button>
+          )}
         </div>
       </div>
 
