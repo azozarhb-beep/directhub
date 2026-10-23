@@ -111,7 +111,11 @@ export default function SupplierFinancialHubWrapper({ userId }: Props) {
         .select('*')
         .eq('manufacturer_id', userId)
         .maybeSingle();
-      setPaymentSettings(data || {});
+      setPaymentSettings({
+        ...(data || {}),
+        bank_country: data?.bank_country || 'Yemen',
+        bank_currency: data?.bank_currency || 'YER',
+      });
     } catch (err) {
       console.error('Failed to fetch payment settings:', err);
     } finally {
