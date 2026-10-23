@@ -38,6 +38,7 @@ import AnalyticsPanel from './AnalyticsPanel';
 import DisputesPanel from './DisputesPanel';
 import FinancialHubPanel from './FinancialHubPanel';
 import FactoryPinPayoutPanel from './FactoryPinPayoutPanel';
+import FactorySettingsPanel from './FactorySettingsPanel';
 
 import SellerFulfillmentPanel from './SellerFulfillmentPanel';
 import ShipmentBidsPanel from '@/components/ShipmentBidsPanel';
@@ -2377,6 +2378,9 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
             t={t}
             md={md}
           />
+        )}
+        {activeTab === 'factory_settings' && !isSalesRep && (
+          <FactorySettingsPanel userId={user?.id ?? null} />
         )}
         {activeTab === 'products' && (
           <ProductsPanel
