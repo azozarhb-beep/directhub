@@ -5919,7 +5919,8 @@
             "statusDisputed": "Disputed",
             "statusCancelled": "Cancelled",
             "orderLabel": "Order #{id}",
-            "sar": "SAR"
+            "sar": "SAR",
+            "yer": "YER"
         },
         "amalPartner": {
             "title": "Amal — Executive Director",

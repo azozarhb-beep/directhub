@@ -6062,7 +6062,8 @@
             "statusDisputed": "نزاع",
             "statusCancelled": "ملغي",
             "orderLabel": "طلب #{id}",
-            "sar": "ر.س"
+            "sar": "ر.س",
+            "yer": "ر.ي"
         },
         "amalPartner": {
             "title": "أمل — المديرة التنفيذية",

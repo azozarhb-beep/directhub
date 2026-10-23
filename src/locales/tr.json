@@ -5920,7 +5920,8 @@
             "statusDisputed": "Disputed",
             "statusCancelled": "Cancelled",
             "orderLabel": "Sipariş #{id}",
-            "sar": "SAR"
+            "sar": "SAR",
+            "yer": "YER"
         },
         "amalPartner": {
             "title": "Amal — İcra Direktörü",

@@ -5920,7 +5920,8 @@
             "statusDisputed": "Disputed",
             "statusCancelled": "Cancelled",
             "orderLabel": "订单 #{id}",
-            "sar": "SAR"
+            "sar": "SAR",
+            "yer": "YER"
         },
         "amalPartner": {
             "title": "Amal — 执行总监",

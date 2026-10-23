@@ -90,38 +90,22 @@ export default function AllSalesMethodsPanel() {
     {
       ...SALES_METHODS[0],
       title: ui.b2bTitle, desc: ui.b2bDesc, badge: 'RFQ + Escrow',
-      actions: [
-        { label: ui.actionRfqBoard, href: '/rfq-management', icon: 'DocumentTextIcon', primary: true },
-        { label: ui.actionEscrow, href: '/financial-accounts', icon: 'ShieldCheckIcon' },
-        { label: ui.actionInvoices, href: '/invoices', icon: 'DocumentDuplicateIcon' },
-      ],
+      href: '/manufacturer/contracts',
     },
     {
       ...SALES_METHODS[1],
       title: ui.b2sTitle, desc: ui.b2sDesc, badge: ui.b2sBadge,
-      actions: [
-        { label: ui.actionFulfillment, href: '/order-fulfillment', icon: 'CheckBadgeIcon', primary: true },
-        { label: ui.actionIncoming, href: '/orders', icon: 'ArchiveBoxIcon' },
-        { label: ui.actionTracking, href: '/order-tracking', icon: 'TruckIcon' },
-      ],
+      href: '/manufacturer/orders',
     },
     {
       ...SALES_METHODS[2],
       title: ui.b2cTitle, desc: ui.b2cDesc, badge: ui.b2cBadge,
-      actions: [
-        { label: ui.actionMyProducts, href: '/seller/products', icon: 'CubeIcon', primary: true },
-        { label: ui.actionOrders, href: '/orders', icon: 'ArchiveBoxIcon' },
-        { label: ui.actionReviews, href: '/my-account', icon: 'StarIcon' },
-      ],
+      href: '/manufacturer/products',
     },
     {
       ...SALES_METHODS[3],
       title: ui.escrowTitle, desc: ui.escrowDesc, badge: ui.escrowBadge,
-      actions: [
-        { label: ui.actionFinancial, href: '/financial-accounts', icon: 'BanknotesIcon', primary: true },
-        { label: ui.actionDisputes, href: '/disputes', icon: 'ScaleIcon' },
-        { label: ui.actionInvoices, href: '/invoices', icon: 'DocumentDuplicateIcon' },
-      ],
+      href: '/manufacturer/escrow',
     },
   ];
   const statusConfig = {
@@ -146,6 +130,7 @@ export default function AllSalesMethodsPanel() {
     b2cOrders: 0,
   });
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [revenueCurrency, setRevenueCurrency] = useState<string>('YER');
   const [loading, setLoading] = useState(true);
   const [activeMethod, setActiveMethod] = useState<SalesMethod | 'all'>('all');
 
@@ -167,7 +152,7 @@ export default function AllSalesMethodsPanel() {
           type: (o.order_type === 'rfq' ? 'b2b_rfq' : o.order_type === 'b2s' ? 'b2s_light' : o.escrow_status ? 'escrow_deal' : 'b2c_direct') as SalesMethod,
           buyer_name: ui.buyer,
           amount: o.total_amount || 0,
-          currency: o.currency || 'SAR',
+          currency: o.currency || 'YER',
           status: (o.status || 'pending') as TransactionStatus,
           created_at: o.created_at,
           order_id: o.id,
@@ -176,6 +161,8 @@ export default function AllSalesMethodsPanel() {
         setTransactions(txns);
 
         const completed = orders.filter(o => o.status === 'delivered' || o.status === 'completed');
+        const completedCurrencies = Array.from(new Set(completed.map(o => o.currency).filter(Boolean)));
+        setRevenueCurrency(completedCurrencies.length === 1 ? String(completedCurrencies[0]) : 'YER');
         const escrowActive = orders.filter(o => o.escrow_status && o.escrow_status !== 'released');
         setStats({
           totalRevenue: completed.reduce((s, o) => s + (o.total_amount || 0), 0),
@@ -216,7 +203,7 @@ export default function AllSalesMethodsPanel() {
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: ui.totalRevenue, value: `${stats.totalRevenue.toLocaleString()} ${ui.sar}`, icon: 'BanknotesIcon', color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { label: ui.totalRevenue, value: `${stats.totalRevenue.toLocaleString()} ${revenueCurrency === 'YER' ? ui.yer : revenueCurrency}`, icon: 'BanknotesIcon', color: 'text-emerald-600', bg: 'bg-emerald-50' },
           { label: ui.pendingOrders, value: stats.pendingOrders, icon: 'ClockIcon', color: 'text-amber-600', bg: 'bg-amber-50' },
           { label: ui.activeEscrow, value: stats.activeEscrow, icon: 'ShieldCheckIcon', color: 'text-blue-600', bg: 'bg-blue-50' },
           { label: ui.completedDeals, value: stats.completedDeals, icon: 'CheckBadgeIcon', color: 'text-green-600', bg: 'bg-green-50' },
@@ -236,13 +223,17 @@ export default function AllSalesMethodsPanel() {
       {/* Sales Method Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {methods.map(method => (
-          <div key={method.id} className={`bg-white rounded-2xl border ${method.borderColor} p-5`}>
-            <div className="flex items-start gap-3 mb-4">
+          <Link
+            key={method.id}
+            href={method.href}
+            className={`group block bg-white rounded-2xl border ${method.borderColor} p-5 transition-all hover:shadow-md hover:-translate-y-0.5 active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary`}
+          >
+            <div className="flex items-center gap-3">
               <div className={`w-11 h-11 rounded-xl ${method.bgColor} flex items-center justify-center shrink-0`}>
                 <Icon name={method.icon as any} size={22} className={method.color} />
               </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-0.5">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                   <h3 className="font-bold text-gray-900 text-sm">{method.title}</h3>
                   <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${method.bgColor} ${method.color}`}>
                     {method.badge}
@@ -250,24 +241,13 @@ export default function AllSalesMethodsPanel() {
                 </div>
                 <p className="text-xs text-gray-500">{method.desc}</p>
               </div>
+              <Icon
+                name={isRTL ? 'ChevronLeftIcon' : 'ChevronRightIcon'}
+                size={20}
+                className={`${method.color} shrink-0 transition-transform ${isRTL ? 'group-hover:-translate-x-1' : 'group-hover:translate-x-1'}`}
+              />
             </div>
-            <div className="flex flex-wrap gap-2">
-              {method.actions.map(action => (
-                <Link
-                  key={action.href}
-                  href={action.href}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
-                    action.primary
-                      ? `${method.bgColor} ${method.color} hover:opacity-80`
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  <Icon name={action.icon as any} size={13} />
-                  {action.label}
-                </Link>
-              ))}
-            </div>
-          </div>
+          </Link>
         ))}
       </div>
 
