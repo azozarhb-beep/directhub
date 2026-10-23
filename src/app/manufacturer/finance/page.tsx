@@ -2,8 +2,20 @@
 
 export const dynamic = 'force-dynamic';
 
+import { Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import ManufacturerModuleRoute from '@/components/manufacturer/ManufacturerModuleRoute';
 
+function FinanceRoute() {
+  const params = useSearchParams();
+  const view = params?.get('view') ?? undefined;
+  return <ManufacturerModuleRoute localTab="financial_hub" view={view} internationalKey="finance" />;
+}
+
 export default function ManufacturerFinancePage() {
-  return <ManufacturerModuleRoute localTab="financial_hub" internationalKey="finance" />;
+  return (
+    <Suspense fallback={null}>
+      <FinanceRoute />
+    </Suspense>
+  );
 }

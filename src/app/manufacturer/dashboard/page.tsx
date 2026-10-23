@@ -270,20 +270,20 @@ type DashboardTab = 'products' | 'financial_hub' | 'escrow_orders' | 'disputes' 
 /** Dedicated full-screen routes for each dashboard card (card key → href + page title). */
 const MODULE_ROUTES: Partial<Record<DashboardTab, { href: string; title: string }>> = {
   products: { href: '/manufacturer/products', title: 'المنتجات للبيع' },
-  finance: { href: '/manufacturer/revenue', title: 'المالية والإيرادات' },
+  finance: { href: '/manufacturer/finance?view=revenue', title: 'المالية والأرباح' },
   escrow_orders: { href: '/manufacturer/escrow', title: 'طلبات الضمان' },
   admin_messaging: { href: '/manufacturer/messages', title: 'مراسلات الإدارة' },
   archive: { href: '/manufacturer/archive', title: 'الأرشيف' },
-  all_sales: { href: '/manufacturer/all-sales', title: 'جميع طرق البيع' },
+  all_sales: { href: '/manufacturer/sales-channels', title: 'صفقات وقنوات البيع' },
   contracts: { href: '/manufacturer/contracts', title: 'العقود والاتفاقيات' },
   factory_settings: { href: '/manufacturer/settings', title: 'إعدادات وتوثيق المصنع' },
   analytics: { href: '/manufacturer/analytics', title: 'التحليلات' },
-  inventory: { href: '/manufacturer/raw-materials', title: 'مواد الإنتاج والخامات' },
-  seller_fulfillment: { href: '/manufacturer/logistics', title: 'توصيل المصنع / عروض الشحن' },
-  freight_bids: { href: '/manufacturer/logistics?view=bids', title: 'توصيل المصنع / عروض الشحن' },
-  sales_team: { href: '/manufacturer/sales-team', title: 'فريق المبيعات' },
+  inventory: { href: '/manufacturer/materials', title: 'مواد الإنتاج والخامات' },
+  seller_fulfillment: { href: '/manufacturer/logistics', title: 'الشحن والخدمات اللوجستية' },
+  freight_bids: { href: '/manufacturer/logistics?view=bids', title: 'الشحن والخدمات اللوجستية' },
+  sales_team: { href: '/manufacturer/team', title: 'فريق المبيعات' },
   disputes: { href: '/manufacturer/disputes', title: 'الشكاوى والنزاعات' },
-  financial_hub: { href: '/manufacturer/finance', title: 'الحسابات المالية وطرق الدفع' },
+  financial_hub: { href: '/manufacturer/finance', title: 'المالية والأرباح' },
   factory_orders: { href: '/manufacturer/orders', title: 'إدارة الطلبات' },
 };
 
@@ -1929,6 +1929,15 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     if (moduleTab === 'seller_fulfillment' && moduleView === 'bids') setActiveTab('freight_bids');
   }, [moduleTab, moduleView]);
 
+  // Finance merges two cards: ?view=revenue selects the revenue sub-view
+  useEffect(() => {
+    if (moduleTab === 'financial_hub' && moduleView === 'revenue') {
+      setActiveTab('finance');
+      fetchFinanceRecords();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moduleTab, moduleView]);
+
   const moduleMeta = moduleTab ? MODULE_ROUTES[moduleTab] : undefined;
 
   if (authLoading) {
@@ -2039,6 +2048,24 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
               {moduleMeta?.title}
             </h1>
             <div className={`order-3 flex items-center gap-2 ${moduleTab === 'seller_fulfillment' ? 'w-full sm:w-auto sm:shrink-0' : 'shrink-0'}`}>
+              {moduleTab === 'financial_hub' && !isSalesRep && (
+                <div className="flex sm:inline-flex rounded-lg border border-border overflow-hidden text-xs sm:text-sm font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('financial_hub')}
+                    className={`px-3 py-2 transition-colors ${activeTab === 'financial_hub' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+                  >
+                    الحسابات وطرق الدفع
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTab('finance'); fetchFinanceRecords(); }}
+                    className={`px-3 py-2 transition-colors ${activeTab === 'finance' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+                  >
+                    الإيرادات
+                  </button>
+                </div>
+              )}
               {moduleTab === 'factory_orders' && (
                 <button
                   type="button"
@@ -2056,7 +2083,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
                     onClick={() => setActiveTab('seller_fulfillment')}
                     className={`flex-1 sm:flex-none px-3 py-2 transition-colors ${activeTab === 'seller_fulfillment' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
                   >
-                    توصيل المصنع (شحن ذاتي)
+                    الشحن الذاتي
                   </button>
                   {!isSalesRep && (
                     <button
@@ -2210,12 +2237,10 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
           {([
             { key: 'products', label: t.manufacturerDashboard.productsAndInventory, icon: 'CubeIcon', gradient: 'linear-gradient(135deg,#3B82F6,#2563EB)', shadow: 'shadow-blue-100', show: true },
-            { key: 'financial_hub', label: 'الحسابات المالية وطرق الدفع', icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#10B981,#059669)', shadow: 'shadow-emerald-100', show: !isSalesRep },
+            { key: 'financial_hub', label: 'المالية والأرباح', icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#10B981,#059669)', shadow: 'shadow-emerald-100', show: !isSalesRep },
             { key: 'factory_settings', label: 'إعدادات وتوثيق المصنع', icon: 'IdentificationIcon', gradient: 'linear-gradient(135deg,#0D9488,#0F766E)', shadow: 'shadow-teal-100', show: !isSalesRep },
-            { key: 'finance', label: md.tabFinance, icon: 'ChartBarIcon', gradient: 'linear-gradient(135deg,#16A34A,#15803D)', shadow: 'shadow-green-100', show: !isSalesRep },
             { key: 'escrow_orders', label: t.manufacturerDashboard.escrowOrders, icon: 'ShieldCheckIcon', gradient: 'linear-gradient(135deg,#6366F1,#4F46E5)', shadow: 'shadow-indigo-100', show: true, badge: escrowOrders.filter((o: any) => o.escrow_status === 'funds_secured').length || undefined },
-            { key: 'seller_fulfillment', label: 'توصيل المصنع (شحن ذاتي)', icon: 'TruckIcon', gradient: 'linear-gradient(135deg,#059669,#047857)', shadow: 'shadow-emerald-100', show: true },
-            { key: 'freight_bids', label: 'عروض الشحن', icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#2563EB,#1D4ED8)', shadow: 'shadow-blue-100', show: !isSalesRep },
+            { key: 'seller_fulfillment', label: 'الشحن والخدمات اللوجستية', icon: 'TruckIcon', gradient: 'linear-gradient(135deg,#059669,#047857)', shadow: 'shadow-emerald-100', show: true },
             { key: 'factory_orders', label: 'إدارة الطلبات', icon: 'ClipboardDocumentListIcon', gradient: 'linear-gradient(135deg,#0EA5E9,#0284C7)', shadow: 'shadow-sky-100', show: true, badge: factoryOrders.filter((o: any) => o.status === 'pending').length || undefined },
             { key: 'disputes', label: t.manufacturerDashboard.disputesAndComplaints, icon: 'FlagIcon', gradient: 'linear-gradient(135deg,#EF4444,#DC2626)', shadow: 'shadow-red-100', show: true, badge: factoryDisputes.filter((o: any) => ['open', 'factory_reviewing'].includes(o.dispute_status)).length || undefined },
             { key: 'analytics', label: t.manufacturerDashboard.analytics, icon: 'PresentationChartLineIcon', gradient: 'linear-gradient(135deg,#F97316,#EA580C)', shadow: 'shadow-orange-100', show: true },
@@ -2223,8 +2248,8 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
             { key: 'inventory', label: md.tabInventory, icon: 'ArchiveBoxIcon', gradient: 'linear-gradient(135deg,#F59E0B,#D97706)', shadow: 'shadow-amber-100', show: true },
             { key: 'archive', label: md.tabArchive, icon: 'FolderOpenIcon', gradient: 'linear-gradient(135deg,#64748B,#475569)', shadow: 'shadow-slate-100', show: true },
             { key: 'sales_team', label: md.tabSalesTeam, icon: 'UserGroupIcon', gradient: 'linear-gradient(135deg,#06B6D4,#0891B2)', shadow: 'shadow-cyan-100', show: !isSalesRep, badge: salesReps.filter(r => r.status === 'active').length || undefined },
-            { key: 'all_sales', label: md.tabAllSalesMethods, icon: 'CurrencyDollarIcon', gradient: 'linear-gradient(135deg,#059669,#047857)', shadow: 'shadow-emerald-100', show: !isSalesRep },
-            { key: 'contracts', label: 'العقود والاتفاقيات / Contracts', icon: 'DocumentCheckIcon', gradient: 'linear-gradient(135deg,#D97706,#EA580C)', shadow: 'shadow-amber-100', show: !isSalesRep },
+            { key: 'all_sales', label: 'صفقات وقنوات البيع', icon: 'CurrencyDollarIcon', gradient: 'linear-gradient(135deg,#059669,#047857)', shadow: 'shadow-emerald-100', show: !isSalesRep },
+            { key: 'contracts', label: 'العقود والاتفاقيات', icon: 'DocumentCheckIcon', gradient: 'linear-gradient(135deg,#D97706,#EA580C)', shadow: 'shadow-amber-100', show: !isSalesRep },
           ] as Array<{ key: string; label: string; icon: string; gradient: string; shadow: string; show: boolean; badge?: number | string }>)
             .filter(tab => tab.show)
             .map(tab => {
