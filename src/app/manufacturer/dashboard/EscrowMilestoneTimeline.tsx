@@ -101,8 +101,8 @@ export function computeMilestones(order: EscrowMilestoneOrder): Step[] {
       pct: 30,
       amount: total * 0.3,
       state: s3,
-      label: s3 === 'paid' ? 'دفعة الشحن النهائي (30%) - مكتملة' : 'دفعة الشحن النهائي (30%) - بانتظار بوليصة الشحن',
-      hint: 'تُفتح عند رفع بوليصة الشحن (B/L) أو إيصال تسليم الحاوية والتحقق منها.',
+      label: s3 === 'paid' ? 'دفعة الشحن النهائي (30%) - مكتملة' : 'دفعة الشحن النهائي (30%) - بانتظار سند استلام البضاعة (POD) أو بوليصة الشحن (B/L)',
+      hint: 'تُفتح عند رفع سند استلام البضاعة (POD) أو بوليصة الشحن (B/L) أو إيصال تسليم الحاوية والتحقق منه.',
     },
   ];
 }
@@ -111,12 +111,13 @@ interface Props {
   order: EscrowMilestoneOrder;
   userId?: string;
   compact?: boolean;
+  currency?: string;
   onChanged?: () => void;
 }
 
 const BUCKET = 'order-receipts';
 
-export default function EscrowMilestoneTimeline({ order, userId, compact = false, onChanged }: Props) {
+export default function EscrowMilestoneTimeline({ order, userId, compact = false, currency = 'USD', onChanged }: Props) {
   const supabase = createClient();
   const blInputRef = useRef<HTMLInputElement>(null);
   const qcInputRef = useRef<HTMLInputElement>(null);
@@ -230,7 +231,7 @@ export default function EscrowMilestoneTimeline({ order, userId, compact = false
     <div className="bg-card border border-border rounded-2xl p-4 space-y-4" dir="rtl">
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-bold text-foreground">مراحل صرف الضمان (30% / 40% / 30%)</h4>
-        <span className="text-[10px] text-muted-foreground" dir="ltr">Order total: ${Number(order.total || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} USD</span>
+        <span className="text-[10px] text-muted-foreground" dir="ltr">Order total: {Number(order.total || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} {currency}</span>
       </div>
 
       {/* Visual 3-step release progress bar */}
@@ -256,9 +257,9 @@ export default function EscrowMilestoneTimeline({ order, userId, compact = false
           })}
         </div>
         <p className="text-[11px] text-muted-foreground text-center mt-1">
-          المحرَّر: <span className="font-bold text-green-700" dir="ltr">${releasedAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} USD</span>
+          المحرَّر: <span className="font-bold text-green-700" dir="ltr">{releasedAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} {currency}</span>
           {' '}من{' '}
-          <span className="font-bold" dir="ltr">${Number(order.total || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} USD</span>
+          <span className="font-bold" dir="ltr">{Number(order.total || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} {currency}</span>
         </p>
       </div>
 
@@ -280,7 +281,7 @@ export default function EscrowMilestoneTimeline({ order, userId, compact = false
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">{s.hint}</p>
                 <p className={`text-xs font-bold mt-1.5 ${st.text}`} dir="ltr">
-                  ${s.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                  {s.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}
                 </p>
 
                 {s.key === 1 && (
@@ -350,7 +351,7 @@ export default function EscrowMilestoneTimeline({ order, userId, compact = false
                     <div className="flex items-center gap-1.5 text-[11px]">
                       <Icon name={blUrl ? 'CheckCircleIcon' : 'ClockIcon'} size={13} className={blUrl ? 'text-green-600' : 'text-muted-foreground'} />
                       <span className={blUrl ? 'text-green-700' : 'text-muted-foreground'}>
-                        {blUrl ? (order.bl_verified_at ? 'تم التحقق من بوليصة الشحن' : 'تم الرفع — بانتظار التحقق') : 'لم يتم رفع بوليصة الشحن / إيصال تسليم الحاوية'}
+                        {blUrl ? (order.bl_verified_at ? 'تم التحقق من سند الاستلام / بوليصة الشحن' : 'تم الرفع — بانتظار التحقق') : 'لم يتم رفع سند استلام البضاعة (POD) أو بوليصة الشحن (B/L)'}
                       </span>
                       {blUrl && (
                         <a href={blUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline mr-1">
@@ -376,7 +377,7 @@ export default function EscrowMilestoneTimeline({ order, userId, compact = false
                           {uploading ? (
                             <><Icon name="ArrowPathIcon" size={14} className="animate-spin" /> جاري الرفع...</>
                           ) : (
-                            <><Icon name="ArrowUpTrayIcon" size={14} /> {blUrl ? 'استبدال بوليصة الشحن / Replace Bill of Lading' : 'رفع بوليصة الشحن B/L والمستندات / Upload Bill of Lading'}</>
+                            <><Icon name="ArrowUpTrayIcon" size={14} /> {blUrl ? 'استبدال المستند (POD / B/L)' : 'رفع سند استلام البضاعة (POD) أو بوليصة الشحن (B/L)'}</>
                           )}
                         </button>
                       </>

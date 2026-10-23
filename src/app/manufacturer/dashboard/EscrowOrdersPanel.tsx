@@ -5,8 +5,12 @@ import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { OrderWhatsAppActions } from '@/components/OrderWhatsAppButton';
 import EscrowMilestoneTimeline, { isB2BOrder } from './EscrowMilestoneTimeline';
+import { createClient } from '@/lib/supabase/client';
+
+const SUPPORTED_CURRENCIES = ['YER', 'SAR', 'USD'];
 
 interface EscrowOrdersPanelProps {
+  currency?: string;
   escrowOrders: any[];
   escrowOrdersLoading: boolean;
   selectedEscrowOrder: any | null;
@@ -33,6 +37,7 @@ interface EscrowOrdersPanelProps {
 }
 
 export default function EscrowOrdersPanel({
+  currency: currencyProp,
   escrowOrders,
   escrowOrdersLoading,
   selectedEscrowOrder: selectedEscrowOrderRaw,
@@ -59,6 +64,35 @@ export default function EscrowOrdersPanel({
 }: EscrowOrdersPanelProps) {
   const { language } = useLanguage();
   const [escrowTab, setEscrowTab] = React.useState<'b2b' | 'b2c'>('b2b');
+  const [resolvedCurrency, setResolvedCurrency] = React.useState<string>('');
+
+  // Resolve the factory's active currency (YER / SAR / USD) from its bank accounts
+  React.useEffect(() => {
+    if (currencyProp || !user?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from('factory_bank_accounts')
+          .select('currency, status, created_at')
+          .eq('manufacturer_id', user.id)
+          .order('created_at', { ascending: false });
+        const rows: any[] = Array.isArray(data) ? data : [];
+        const pick =
+          rows.find((r) => r.status === 'approved' && SUPPORTED_CURRENCIES.includes(String(r.currency || '').toUpperCase())) ||
+          rows.find((r) => SUPPORTED_CURRENCIES.includes(String(r.currency || '').toUpperCase()));
+        if (!cancelled && pick) setResolvedCurrency(String(pick.currency).toUpperCase());
+      } catch {
+        /* keep default currency */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currencyProp, user?.id]);
+
+  const activeCurrency = (currencyProp || resolvedCurrency || 'USD').toUpperCase();
 
   // Keep the selected order in sync with refreshed list data (e.g. after a B/L upload)
   React.useEffect(() => {
@@ -72,8 +106,8 @@ export default function EscrowOrdersPanel({
   const b2cOrders = escrowOrders.filter((o: any) => !isB2BOrder(o));
   const tabOrders = escrowTab === 'b2b' ? b2bOrders : b2cOrders;
 
-  const formatUsd = (n: number) =>
-    `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} USD`;
+  const formatMoney = (n: number) =>
+    `${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${activeCurrency}`;
   const sumTotal = (list: any[]) => list.reduce((acc: number, o: any) => acc + Number(o.total || 0), 0);
 
   const switchTab = (tab: 'b2b' | 'b2c') => {
@@ -102,7 +136,7 @@ export default function EscrowOrdersPanel({
           <div className="flex-1">
             <h2 className="text-lg font-bold">{md.escrowCenterTitle}</h2>
             <p className="text-sm text-white/80">
-              {escrowTab === 'b2b' ?'تتبع طلبات الجملة والتصدير المحمية بنظام الضمان — تُحرَّر الدفعات بالمستندات (QC و B/L) وليس برمز تسليم' :'تتبع طلبات التجزئة المحمية بنظام الضمان — يُحرَّر المبلغ بعد تأكيد التسليم المحلي برمز PIN'}
+              مركز الضمان المالي: حماية الدفعات لعقود الجملة والتوريد بالمستندات، ومبيعات التجزئة والتسليم المباشر برمز التسليم الآمن.
             </p>
           </div>
           <div className="text-right shrink-0">
@@ -152,7 +186,7 @@ export default function EscrowOrdersPanel({
           <Icon name="DocumentCheckIcon" size={18} className="text-indigo-600 shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-semibold text-indigo-800">ضمان المراحل للطلبات التجارية B2B (30% / 40% / 30%)</p>
-            <p className="text-xs text-indigo-700 mt-0.5">30% دفعة مقدمة عند قبول المصنع وتأكيد إيداع الضمان • 40% عند رفع واعتماد تقرير الفحص (QC) • 30% عند رفع بوليصة الشحن (B/L) والمستندات والتحقق منها.</p>
+            <p className="text-xs text-indigo-700 mt-0.5">30% دفعة مقدمة عند قبول المصنع وتأكيد إيداع الضمان • 40% عند رفع واعتماد تقرير الفحص (QC) • 30% عند رفع سند استلام البضاعة (POD) أو بوليصة الشحن (B/L) والتحقق منه.</p>
           </div>
         </div>
       ) : (
@@ -168,10 +202,10 @@ export default function EscrowOrdersPanel({
       {/* Stats (currency formatted) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: md.escrowFundsSecured, value: formatUsd(sumTotal(tabOrders.filter((o: any) => ['funds_secured', 'shipped'].includes(o.escrow_status)))), color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-          { label: md.escrowReadyInspection, value: formatUsd(sumTotal(tabOrders.filter((o: any) => o.escrow_status === 'ready_for_inspection'))), color: 'bg-amber-50 text-amber-700 border-amber-200' },
-          { label: md.escrowCompleted, value: formatUsd(sumTotal(tabOrders.filter((o: any) => o.escrow_status === 'funds_released'))), color: 'bg-green-50 text-green-700 border-green-200' },
-          { label: md.escrowTotalOrders, value: formatUsd(sumTotal(tabOrders)), color: 'bg-muted text-foreground border-border' },
+          { label: md.escrowFundsSecured, value: formatMoney(sumTotal(tabOrders.filter((o: any) => ['funds_secured', 'shipped'].includes(o.escrow_status)))), color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+          { label: md.escrowReadyInspection, value: formatMoney(sumTotal(tabOrders.filter((o: any) => o.escrow_status === 'ready_for_inspection'))), color: 'bg-amber-50 text-amber-700 border-amber-200' },
+          { label: md.escrowCompleted, value: formatMoney(sumTotal(tabOrders.filter((o: any) => o.escrow_status === 'funds_released'))), color: 'bg-green-50 text-green-700 border-green-200' },
+          { label: md.escrowTotalOrders, value: formatMoney(sumTotal(tabOrders)), color: 'bg-muted text-foreground border-border' },
         ].map(s => (
           <div key={s.label} className={`rounded-xl border p-4 ${s.color}`}>
             <p className="text-xl font-bold" dir="ltr">{s.value}</p>
@@ -198,7 +232,9 @@ export default function EscrowOrdersPanel({
             {tabOrders.length === 0 ? (
               <div className="bg-card border border-border rounded-xl p-8 text-center">
                 <Icon name="ShieldCheckIcon" size={28} className="text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">{md.noEscrowYet}</p>
+                <p className="text-sm text-muted-foreground">
+                  {escrowTab === 'b2c' ? 'اختر طلباً لعرض تفاصيله وإدخال رمز التسليم' : md.selectOrderHint}
+                </p>
               </div>
             ) : tabOrders.map((order: any) => {
               const isActive = ['funds_secured', 'shipped'].includes(order.escrow_status);
@@ -248,7 +284,7 @@ export default function EscrowOrdersPanel({
                        isComplete ? md.escrowFundsReleased : ''}
                     </p>
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-bold text-foreground">${order.total?.toLocaleString()} USD</p>
+                      <p className="text-sm font-bold text-foreground" dir="ltr">{formatMoney(Number(order.total || 0))}</p>
                       <OrderWhatsAppActions
                         factoryPhone={user?.user_metadata?.phone}
                         factoryCountry={user?.user_metadata?.country}
@@ -278,7 +314,9 @@ export default function EscrowOrdersPanel({
             {!selectedEscrowOrder ? (
               <div className="bg-card border border-border rounded-xl p-8 text-center">
                 <Icon name="CursorArrowRaysIcon" size={28} className="text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">{md.selectOrderHint}</p>
+                <p className="text-sm text-muted-foreground">
+                  {escrowTab === 'b2c' ? 'اختر طلباً لعرض تفاصيله وإدخال رمز التسليم' : md.selectOrderHint}
+                </p>
               </div>
             ) : (
               <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
@@ -305,7 +343,7 @@ export default function EscrowOrdersPanel({
                   </div>
                   <div>
                     <p className="text-muted-foreground mb-0.5">{md.totalAmountLabel}</p>
-                    <p className="font-bold text-foreground">${selectedEscrowOrder.total?.toLocaleString()} USD</p>
+                    <p className="font-bold text-foreground" dir="ltr">{formatMoney(Number(selectedEscrowOrder.total || 0))}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground mb-0.5">{md.orderDateLabel}</p>
@@ -331,6 +369,7 @@ export default function EscrowOrdersPanel({
                   <EscrowMilestoneTimeline
                     order={selectedEscrowOrder}
                     userId={user?.id}
+                    currency={activeCurrency}
                     onChanged={async () => {
                       await fetchEscrowOrders();
                     }}
@@ -460,7 +499,7 @@ export default function EscrowOrdersPanel({
                       <div className="flex-1">
                         <h4 className="text-sm font-bold text-indigo-900">التحقق من المستندات</h4>
                         <p className="text-xs text-indigo-700 mt-1 leading-relaxed">
-                          لا يُستخدم رمز PIN في طلبات الجملة والتصدير. تُحرَّر الدفعات بالتحقق من المستندات: رفع تقرير الفحص (QC) واعتماده لفتح دفعة 40%، ثم رفع بوليصة الشحن (B/L) والتحقق منها لفتح دفعة 30% الأخيرة.
+                          تُحرَّر دفعات الجملة والتوريد بالتحقق من المستندات: رفع تقرير الفحص (QC) واعتماده لفتح دفعة 40%، ثم رفع سند استلام البضاعة (POD) أو بوليصة الشحن (B/L) والتحقق منه لفتح دفعة 30% الأخيرة.
                         </p>
                         <ul className="mt-3 space-y-1.5 text-xs">
                           <li className="flex items-center gap-1.5">
@@ -472,7 +511,7 @@ export default function EscrowOrdersPanel({
                           <li className="flex items-center gap-1.5">
                             <Icon name={(selectedEscrowOrder.bl_document_url || selectedEscrowOrder.bill_of_lading_url) ? 'CheckCircleIcon' : 'ClockIcon'} size={14} className={(selectedEscrowOrder.bl_document_url || selectedEscrowOrder.bill_of_lading_url) ? 'text-green-600' : 'text-muted-foreground'} />
                             <span className={(selectedEscrowOrder.bl_document_url || selectedEscrowOrder.bill_of_lading_url) ? 'text-green-800' : 'text-muted-foreground'}>
-                              بوليصة الشحن (B/L) {selectedEscrowOrder.bl_verified_at ? '— تم التحقق' : (selectedEscrowOrder.bl_document_url || selectedEscrowOrder.bill_of_lading_url) ? '— بانتظار التحقق' : '— لم تُرفع بعد'}
+                              سند استلام البضاعة (POD) أو بوليصة الشحن (B/L) {selectedEscrowOrder.bl_verified_at ? '— تم التحقق' : (selectedEscrowOrder.bl_document_url || selectedEscrowOrder.bill_of_lading_url) ? '— بانتظار التحقق' : '— لم يُرفع بعد'}
                             </span>
                           </li>
                         </ul>
