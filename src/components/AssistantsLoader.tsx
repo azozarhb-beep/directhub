@@ -84,9 +84,42 @@ function SafeAmalPartnerAssistant() {
   );
 }
 
+function SafePWAInstallBanner() {
+  const Comp = useSafeComponent(() => import('@/components/PWAInstallBanner'));
+  if (!Comp) return null;
+  return (
+    <ChunkErrorBoundary>
+      <Comp />
+    </ChunkErrorBoundary>
+  );
+}
+
+function SafePushSubscriptionManager() {
+  const Comp = useSafeComponent(() => import('@/components/PushSubscriptionManager'));
+  if (!Comp) return null;
+  return (
+    <ChunkErrorBoundary>
+      <Comp />
+    </ChunkErrorBoundary>
+  );
+}
+
+function SafeVisitorTracker() {
+  const Comp = useSafeComponent(() => import('@/components/VisitorTracker'));
+  if (!Comp) return null;
+  return (
+    <ChunkErrorBoundary>
+      <Comp />
+    </ChunkErrorBoundary>
+  );
+}
+
 export default function AssistantsLoader() {
   return (
     <>
+      <SafeVisitorTracker />
+      <SafePushSubscriptionManager />
+      <SafePWAInstallBanner />
       <SafeDirectHubAssistant />
       <SafeAmalPartnerAssistant />
     </>
