@@ -2,7 +2,7 @@
 
 import { useLanguage } from '@/contexts/LanguageContext';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
@@ -463,6 +463,9 @@ export default function ProductDetailPage() {
 
   const [product, setProduct] = useState<ProductDetail>(productDatabase[id] || fallbackProduct);
   const [activeImage, setActiveImage] = useState(0);
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const thumbsRef = useRef<HTMLDivElement | null>(null);
   const [activeTab, setActiveTab] = useState<'description' | 'specs' | 'pricing' | 'shipping' | 'reviews'>('description');
   const [relatedProducts, setRelatedProducts] = useState<ProductDetail[]>([]);
   const [addedToCart, setAddedToCart] = useState(false);
@@ -479,6 +482,43 @@ export default function ProductDetailPage() {
     const p = productDatabase[id];
     return !!(p && p.priceTiers && p.priceTiers.length > 0);
   });
+
+  useEffect(() => {
+    setActiveImage(0);
+  }, [product.id]);
+
+  useEffect(() => {
+    const container = thumbsRef.current;
+    const el = container?.children?.[activeImage] as HTMLElement | undefined;
+    if (container && el) {
+      container.scrollTo({
+        left: el.offsetLeft - container.clientWidth / 2 + el.clientWidth / 2,
+        behavior: 'smooth'
+      });
+    }
+  }, [activeImage]);
+
+  const goToImage = (index: number) => {
+    const total = product.images?.length || 0;
+    if (total <= 1) return;
+    setActiveImage((index % total + total) % total);
+  };
+
+  const handleGalleryTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0]?.clientX ?? null;
+    touchStartY.current = e.touches[0]?.clientY ?? null;
+  };
+
+  const handleGalleryTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const dx = (e.changedTouches[0]?.clientX ?? 0) - touchStartX.current;
+    const dy = (e.changedTouches[0]?.clientY ?? 0) - touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+    if (dx < 0) goToImage(activeImage + 1);else
+    goToImage(activeImage - 1);
+  };
 
   useEffect(() => {
     const current = productDatabase[id] || fallbackProduct;
@@ -835,15 +875,37 @@ export default function ProductDetailPage() {
           {/* ── Column 1: Image Gallery ── */}
           <div className="space-y-3">
             {/* Main Image */}
-            <div className="relative aspect-square rounded-2xl overflow-hidden bg-muted border border-border group">
+            <div
+              className="relative aspect-square rounded-2xl overflow-hidden bg-muted border border-border group touch-pan-y select-none"
+              onTouchStart={handleGalleryTouchStart}
+              onTouchEnd={handleGalleryTouchEnd}>
               <AppImage
+                key={`main-${activeImage}-${product.images[activeImage]?.src || product.images[0]?.src}`}
                 src={product.images[activeImage]?.src || product.images[0]?.src}
                 alt={product.images[activeImage]?.alt || product.name}
                 fill
-                className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                className="object-contain transition-opacity duration-300"
+                style={{ objectFit: 'contain' }}
                 sizes="(max-width: 768px) 100vw, 33vw"
                 priority />
-              
+              {product.images.length > 1 &&
+              <>
+                  <button
+                  type="button"
+                  onClick={() => goToImage(activeImage - 1)}
+                  aria-label="Previous image"
+                  className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 items-center justify-center rounded-full bg-black/40 hover:bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <Icon name="ChevronLeftIcon" size={18} />
+                  </button>
+                  <button
+                  type="button"
+                  onClick={() => goToImage(activeImage + 1)}
+                  aria-label="Next image"
+                  className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 items-center justify-center rounded-full bg-black/40 hover:bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <Icon name="ChevronRightIcon" size={18} />
+                  </button>
+                </>
+              }
               {/* Top-left badges */}
               <div className="absolute top-3 left-3 flex flex-col gap-1.5">
                 {product.verified &&
@@ -875,15 +937,17 @@ export default function ProductDetailPage() {
 
             {/* Thumbnails */}
             {product.images.length > 1 &&
-            <div className="flex gap-2 overflow-x-auto hide-scrollbar">
+            <div ref={thumbsRef} className="flex gap-2 overflow-x-auto hide-scrollbar">
                 {product.images.map((img, i) =>
               <button
                 key={i}
+                type="button"
                 onClick={() => setActiveImage(i)}
                 className={`relative shrink-0 w-16 h-16 md:w-18 md:h-18 rounded-xl overflow-hidden border-2 transition-all duration-200 ${
-                activeImage === i ? 'border-primary shadow-md shadow-primary/20 scale-105' : 'border-border hover:border-primary/50'}`
+                activeImage === i ? 'border-primary ring-2 ring-primary/40 shadow-md shadow-primary/20 scale-105' : 'border-border hover:border-primary/50'}`
                 }
-                aria-label={`View image ${i + 1}`}>
+                aria-label={`View image ${i + 1}`}
+                aria-current={activeImage === i}>
                 
                     <AppImage src={img.src} alt={img.alt} fill className="object-cover" sizes="72px" />
                   </button>
