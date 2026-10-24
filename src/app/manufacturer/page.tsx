@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import AppLogo from '@/components/ui/AppLogo';
 import FactoryControlHub from '@/components/manufacturer/FactoryControlHub';
+import { useSalesRepAccess } from '@/components/manufacturer/useSalesRepAccess';
 import { Globe, TrendingUp, Ship, AlertTriangle, Store } from 'lucide-react';
 
 const STAT_CARDS = [
@@ -19,18 +20,21 @@ const STAT_CARDS = [
 export default function ManufacturerHubPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const { loading: roleLoading, isSalesRep } = useSalesRepAccess();
 
   useEffect(() => {
     if (!loading && !user) router?.push('/manufacturer/login');
   }, [user, loading, router]);
 
-  if (loading || !user) {
+  if (loading || !user || roleLoading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
+
+  const visibleStatCards = isSalesRep ? STAT_CARDS?.filter((c) => c?.key !== 'exports') : STAT_CARDS;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" dir="rtl">
@@ -53,7 +57,7 @@ export default function ManufacturerHubPage() {
       </header>
       <main className="max-w-screen-2xl mx-auto px-4 py-6 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {STAT_CARDS?.map((card) => (
+          {visibleStatCards?.map((card) => (
             <button
               type="button"
               key={card?.key}

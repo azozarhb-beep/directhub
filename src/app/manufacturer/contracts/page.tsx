@@ -3,7 +3,12 @@
 export const dynamic = 'force-dynamic';
 
 import ManufacturerModuleRoute from '@/components/manufacturer/ManufacturerModuleRoute';
+import FinancialRouteGuard from '@/components/manufacturer/FinancialRouteGuard';
 
 export default function ManufacturerContractsPage() {
-  return <ManufacturerModuleRoute localTab="contracts" />;
+  return (
+    <FinancialRouteGuard>
+      <ManufacturerModuleRoute localTab="contracts" />
+    </FinancialRouteGuard>
+  );
 }

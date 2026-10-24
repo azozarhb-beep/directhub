@@ -553,25 +553,32 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   // ── Detect if current user is a sales rep (not factory owner) ────────────
   const detectSalesRepRole = useCallback(async () => {
     if (!user) { setSalesRepLoading(false); return; }
-    const role = user.user_metadata?.role;
-    // Only check if not a factory owner / admin
-    if (role === 'manufacturer' || role === 'admin') {
-      setIsSalesRep(false);
-      setSalesRepLoading(false);
-      return;
-    }
     try {
+      // Authoritative: an active factory_sales_reps row ALWAYS makes the user a sales rep,
+      // regardless of user_metadata.role.
       const { data } = await supabase
         .from('factory_sales_reps')
         .select('*')
         .eq('rep_user_id', user.id)
         .eq('status', 'active')
+        .limit(1)
         .maybeSingle();
       if (data) {
         setIsSalesRep(true);
         setSalesRepRecord(data);
       } else {
-        setIsSalesRep(false);
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('role, factory_id')
+          .eq('id', user.id)
+          .maybeSingle();
+        const p = profile as { role?: string | null; factory_id?: string | null } | null;
+        const metaRole = (user.user_metadata?.role as string | undefined) || '';
+        const subAccount =
+          ['sales_rep', 'manufacturer_agent'].includes(metaRole) ||
+          ['sales_rep', 'manufacturer_agent'].includes(p?.role ?? '') ||
+          (!!p?.factory_id && p.factory_id !== user.id && p?.role !== 'admin');
+        setIsSalesRep(subAccount);
       }
     } catch {
       setIsSalesRep(false);
@@ -1951,7 +1958,25 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
 
   const moduleMeta = moduleTab ? MODULE_ROUTES[moduleTab] : undefined;
 
-  if (authLoading) {
+  // ── Hard RBAC: sub-accounts can never reach restricted modules ───────────
+  const SALES_REP_RESTRICTED_TABS: string[] = [
+    'financial_hub', 'finance', 'escrow_orders', 'factory_settings', 'sales_team',
+    'contracts', 'analytics', 'all_sales', 'invoicing', 'production',
+  ];
+  useEffect(() => {
+    if (salesRepLoading || !isSalesRep) return;
+    if (moduleTab && SALES_REP_RESTRICTED_TABS.includes(moduleTab)) {
+      alert('غير مصرح لك بالوصول إلى هذه الصفحة.\nUnauthorized: this area is restricted to the factory owner.');
+      router.replace('/manufacturer');
+      return;
+    }
+    if (SALES_REP_RESTRICTED_TABS.includes(activeTab)) {
+      setActiveTab('products');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [salesRepLoading, isSalesRep, moduleTab, activeTab]);
+
+  if (authLoading || (user && salesRepLoading) || (isSalesRep && moduleTab && SALES_REP_RESTRICTED_TABS.includes(moduleTab))) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Icon name="ArrowPathIcon" size={24} className="animate-spin text-primary" />

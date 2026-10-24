@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import ManufacturerModuleRoute from '@/components/manufacturer/ManufacturerModuleRoute';
+import FinancialRouteGuard from '@/components/manufacturer/FinancialRouteGuard';
 
 function FinanceRoute() {
   const params = useSearchParams();
@@ -14,8 +15,10 @@ function FinanceRoute() {
 
 export default function ManufacturerFinancePage() {
   return (
-    <Suspense fallback={null}>
-      <FinanceRoute />
-    </Suspense>
+    <FinancialRouteGuard>
+      <Suspense fallback={null}>
+        <FinanceRoute />
+      </Suspense>
+    </FinancialRouteGuard>
   );
 }

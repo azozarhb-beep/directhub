@@ -6,8 +6,13 @@ import {
   FACTORY_MODULES,
   FACTORY_SECTIONS,
   type FactoryModuleDef,
+  type FactoryModuleKey,
 } from '@/components/manufacturer/factoryModules';
 import { useFactoryHubCounts, type FactoryModuleCounts } from '@/components/manufacturer/useFactoryHubCounts';
+import { useSalesRepAccess } from '@/components/manufacturer/useSalesRepAccess';
+
+/** Modules a sales-rep sub-account may see on the hub. Everything else is removed. */
+const SALES_REP_ALLOWED_MODULES: FactoryModuleKey[] = ['products', 'inventory', 'rfq', 'orders', 'logistics', 'messages'];
 
 interface Badge {
   label: string;
@@ -65,11 +70,25 @@ interface FactoryControlHubProps {
 
 export default function FactoryControlHub({ userId }: FactoryControlHubProps) {
   const { counts } = useFactoryHubCounts(userId);
+  const { loading: roleLoading, isSalesRep } = useSalesRepAccess();
+
+  if (roleLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  const visibleModules = FACTORY_MODULES.filter(
+    (m) => !isSalesRep || SALES_REP_ALLOWED_MODULES.includes(m.key)
+  );
 
   return (
     <div className="space-y-8" dir="rtl">
       {FACTORY_SECTIONS.map((section) => {
-        const modules = FACTORY_MODULES.filter((m) => m.section === section.key);
+        const modules = visibleModules.filter((m) => m.section === section.key);
+        if (modules.length === 0) return null;
         return (
           <section key={section.key} aria-labelledby={`hub-${section.key}`}>
             <div className="flex items-center gap-3 mb-3">
