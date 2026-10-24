@@ -20,6 +20,14 @@ import ProductMediaUploader, {
 } from '@/components/manufacturer/ProductMediaUploader';
 import TierPricingEditor from '@/components/manufacturer/TierPricingEditor';
 import {
+  compressImage,
+  withTimeout,
+  MediaUploadError,
+  UploadTimeoutError,
+  IMAGE_ONLY_TIMEOUT_MS,
+  VIDEO_UPLOAD_TIMEOUT_MS,
+} from '@/lib/mediaUpload';
+import {
   EMPTY_TIER_ROW,
   formRowsToPayload,
   tiersToFormRows,
@@ -172,6 +180,7 @@ export default function SellerProductManagerPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState<ProductFormData>(EMPTY_FORM);
   const [formLoading, setFormLoading] = useState(false);
+  const [uploadStage, setUploadStage] = useState<'' | 'images' | 'video' | 'saving'>('');
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -378,15 +387,30 @@ export default function SellerProductManagerPage() {
         throw new Error('رابط الفيديو غير مدعوم. استخدم YouTube أو Vimeo أو Cloudinary.');
       }
 
+      const hasVideoFile = !!media.videoFile;
+      const imageTimeoutMs = hasVideoFile ? VIDEO_UPLOAD_TIMEOUT_MS : IMAGE_ONLY_TIMEOUT_MS;
+
       const uploadImage = async (file: File): Promise<string> => {
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const { data: up, error: upErr } = await supabase.storage
-          .from('product-images')
-          .upload(`products/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`, file, { upsert: true });
-        if (upErr || !up) throw new Error(upErr?.message || 'فشل رفع الصورة');
-        return supabase.storage.from('product-images').getPublicUrl(up.path).data.publicUrl;
+        try {
+          const optimized = await compressImage(file);
+          const safeName = optimized.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const { data: up, error: upErr } = await withTimeout(
+            supabase.storage
+              .from('product-images')
+              .upload(`products/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`, optimized, {
+                upsert: true,
+                contentType: optimized.type || undefined,
+              }),
+            imageTimeoutMs
+          );
+          if (upErr || !up) throw new Error(upErr?.message || 'فشل رفع الصورة');
+          return supabase.storage.from('product-images').getPublicUrl(up.path).data.publicUrl;
+        } catch (err: any) {
+          throw new MediaUploadError('image', err instanceof UploadTimeoutError, err?.message || 'فشل رفع الصورة');
+        }
       };
 
+      setUploadStage('images');
       let finalImageUrl = media.primaryImageUrl.trim() || formData.image_url.trim() || null;
       if (media.primaryFile) {
         finalImageUrl = await uploadImage(media.primaryFile);
@@ -400,13 +424,22 @@ export default function SellerProductManagerPage() {
 
       let finalVideoUrl: string | null = media.videoUrl.trim() || null;
       if (media.videoFile) {
-        const safeVideo = media.videoFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const { data: vUp, error: vErr } = await supabase.storage
-          .from('product-videos')
-          .upload(`${user.id}/${Date.now()}-${safeVideo}`, media.videoFile, { upsert: true, contentType: 'video/mp4' });
-        if (vErr || !vUp) throw new Error(vErr?.message || 'فشل رفع الفيديو');
-        finalVideoUrl = supabase.storage.from('product-videos').getPublicUrl(vUp.path).data.publicUrl;
+        setUploadStage('video');
+        try {
+          const safeVideo = media.videoFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const { data: vUp, error: vErr } = await withTimeout(
+            supabase.storage
+              .from('product-videos')
+              .upload(`${user.id}/${Date.now()}-${safeVideo}`, media.videoFile, { upsert: true, contentType: 'video/mp4' }),
+            VIDEO_UPLOAD_TIMEOUT_MS
+          );
+          if (vErr || !vUp) throw new Error(vErr?.message || 'فشل رفع الفيديو');
+          finalVideoUrl = supabase.storage.from('product-videos').getPublicUrl(vUp.path).data.publicUrl;
+        } catch (err: any) {
+          throw new MediaUploadError('video', err instanceof UploadTimeoutError, err?.message || 'فشل رفع الفيديو');
+        }
       }
+      setUploadStage('saving');
 
       const payload: any = {
         name: formData.name.trim() || formData.name_ar.trim(),
@@ -466,8 +499,15 @@ export default function SellerProductManagerPage() {
       await fetchProducts();
       setTimeout(() => { setShowModal(false); setFormSuccess(''); }, 1200);
     } catch (err: any) {
-      setFormError(err.message || f.errSaveFailed);
+      if (err instanceof MediaUploadError) {
+        const msg = err.kind === 'video' ?'تعذر رفع الفيديو، يرجى التأكد من سرعة الإنترنت أو استخدام خيار رابط فيديو' :'تعذر رفع الصور، يرجى التأكد من سرعة الإنترنت والمحاولة مرة أخرى';
+        setFormError(msg);
+        toast.error(msg, { duration: 6000 });
+      } else {
+        setFormError(err.message || f.errSaveFailed);
+      }
     } finally {
+      setUploadStage('');
       setFormLoading(false);
     }
   };
@@ -1266,6 +1306,12 @@ export default function SellerProductManagerPage() {
               {/* Form Footer */}
               <div className="px-5 py-4 border-t border-border bg-muted/20 shrink-0 flex items-center gap-3">
                 {formError && <p className="text-xs text-red-600 flex-1">{formError}</p>}
+                {formLoading && (uploadStage === 'images' || uploadStage === 'video') && (
+                  <p className="text-xs text-primary font-semibold flex-1 flex items-center gap-2" role="status" aria-live="polite">
+                    <span className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />
+                    {uploadStage === 'images' ?'جاري رفع الصور...' :'جاري رفع الفيديو (قد يستغرق وقتاً حسب سرعة الاتصال)...'}
+                  </p>
+                )}
                 {formSuccess && <p className="text-xs text-green-600 flex-1">{formSuccess}</p>}
                 <div className="flex items-center gap-3 ms-auto">
                   <button
@@ -1300,7 +1346,8 @@ export default function SellerProductManagerPage() {
                       className="px-5 py-2 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
                     >
                       {formLoading && <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />}
-                      {editingProduct ? f.saveChanges : 'حفظ ونشر المنتج 🚀'}
+                      {formLoading && uploadStage === 'images' ?'جاري رفع الصور...'
+                        : formLoading && uploadStage === 'video' ?'جاري رفع الفيديو (قد يستغرق وقتاً حسب سرعة الاتصال)...' : editingProduct ? f.saveChanges :'حفظ ونشر المنتج 🚀'}
                     </button>
                   )}
                 </div>

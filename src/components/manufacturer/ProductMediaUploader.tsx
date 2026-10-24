@@ -28,7 +28,7 @@ interface ProductMediaUploaderProps {
 
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 25 * 1024 * 1024;
 const MAX_GALLERY = 5;
 
 const VIDEO_URL_PATTERN =
@@ -119,7 +119,7 @@ export default function ProductMediaUploader({ value, onChange, disabled }: Prod
   const setVideoFile = (file: File | undefined) => {
     if (!file) return;
     if (file.type !== 'video/mp4') { setError('يُسمح بملفات MP4 فقط'); return; }
-    if (file.size > MAX_VIDEO_BYTES) { setError('حجم الفيديو يتجاوز 30 ميجابايت'); return; }
+    if (file.size > MAX_VIDEO_BYTES) { setError('حجم الفيديو يتجاوز 25 ميجابايت'); return; }
     setError('');
     onChange({ ...value, videoFile: file, videoUrl: '' });
   };
@@ -276,7 +276,7 @@ export default function ProductMediaUploader({ value, onChange, disabled }: Prod
                 className="cursor-pointer rounded-xl border-2 border-dashed border-border hover:border-primary px-4 py-6 text-center"
               >
                 <p className="text-sm font-semibold text-foreground">اضغط لاختيار فيديو MP4</p>
-                <p className="text-[11px] text-muted-foreground mt-1">حتى 30 ميجابايت</p>
+                <p className="text-[11px] text-muted-foreground mt-1">حتى 25 ميجابايت</p>
               </div>
             )}
           </>
