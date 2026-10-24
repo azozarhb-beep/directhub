@@ -54,6 +54,7 @@ interface Product {
   hs_code?: string | null;
   supported_incoterms?: string[] | null;
   port_of_loading?: string | null;
+  shipping_terms?: string | null;
   sample_available?: boolean;
   sample_price?: number;
   tags?: string[];
@@ -89,6 +90,7 @@ interface ProductFormData {
   hs_code: string;
   supported_incoterms: string[];
   port_of_loading: string;
+  shipping_terms: 'EX_FACTORY' | 'DELIVERY_INCLUDED';
   sample_available: boolean;
   sample_price: string;
   tags: string;
@@ -145,6 +147,7 @@ const EMPTY_FORM: ProductFormData = {
   certifications: '', delivery_time_days: '',
   weight_kg: '', dimensions: '', warranty_months: '',
   hs_code: '', supported_incoterms: [], port_of_loading: '',
+  shipping_terms: 'EX_FACTORY',
   sample_available: false, sample_price: '', tags: '',
 };
 
@@ -274,6 +277,7 @@ export default function SellerProductManagerPage() {
       hs_code: product.hs_code || '',
       supported_incoterms: product.supported_incoterms || [],
       port_of_loading: product.port_of_loading || '',
+      shipping_terms: product.shipping_terms === 'DELIVERY_INCLUDED' ? 'DELIVERY_INCLUDED' : 'EX_FACTORY',
       sample_available: product.sample_available || false,
       sample_price: String(product.sample_price || ''),
       tags: (product.tags || []).join(', '),
@@ -372,6 +376,7 @@ export default function SellerProductManagerPage() {
         hs_code: formData.hs_code.trim() || null,
         supported_incoterms: formData.supported_incoterms,
         port_of_loading: formData.port_of_loading.trim() || null,
+        shipping_terms: formData.shipping_terms,
         sample_available: formData.sample_available,
         sample_price: formData.sample_price ? parseFloat(formData.sample_price) : null,
         tags: formData.tags ? formData.tags.split(',').map((s) => s.trim()).filter(Boolean) : [],
@@ -952,6 +957,42 @@ export default function SellerProductManagerPage() {
                 {/* Logistics Tab */}
                 {activeFormTab === 'logistics' && (
                   <>
+                    <div>
+                      <label className="block text-xs font-bold text-foreground mb-1.5">طريقة / شرط التسليم المحلي</label>
+                      <div role="radiogroup" aria-label="طريقة / شرط التسليم المحلي" className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {([
+                          { value: 'EX_FACTORY', title: 'استلام من باب المصنع (سعر المصنع)', desc: 'تُجهَّز البضاعة عند باب المصنع ليستلمها المشتري أو الناقل.' },
+                          { value: 'DELIVERY_INCLUDED', title: 'شامل التجهيز والتوصيل', desc: 'يتولى المصنع التصنيع والنقل مباشرة إلى موقع العميل.' },
+                        ] as const).map((opt) => {
+                          const selected = formData.shipping_terms === opt.value;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              role="radio"
+                              aria-checked={selected}
+                              onClick={() => setFormData((p) => ({ ...p, shipping_terms: opt.value }))}
+                              className={`flex items-start gap-2 p-3 rounded-xl border text-start transition-colors ${
+                                selected
+                                  ? 'border-primary bg-primary/10' :'border-border bg-background hover:border-primary'
+                              }`}
+                            >
+                              <span
+                                className={`mt-0.5 w-4 h-4 shrink-0 rounded-full border-2 flex items-center justify-center ${
+                                  selected ? 'border-primary' : 'border-muted-foreground'
+                                }`}
+                              >
+                                {selected && <span className="w-2 h-2 rounded-full bg-primary" />}
+                              </span>
+                              <span>
+                                <span className="block text-sm font-bold text-foreground">{opt.title}</span>
+                                <span className="block text-[11px] text-muted-foreground mt-0.5">{opt.desc}</span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-bold text-foreground mb-1.5">{f.deliveryTime}</label>
