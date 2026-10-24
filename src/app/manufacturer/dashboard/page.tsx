@@ -2200,18 +2200,22 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
               <button
                 type="button"
                 onClick={() => setShowDealLinkModal(true)}
-                className="flex items-center gap-2 px-3 py-2 border border-emerald-300 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-semibold hover:bg-emerald-100 transition-colors"
+                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 border border-emerald-300 bg-emerald-50 text-emerald-700 rounded-lg text-xs sm:text-sm font-semibold hover:bg-emerald-100 transition-colors"
+                aria-label="إنشاء رابط صفقة"
               >
                 <Icon name="LinkIcon" size={15} />
+                <span className="sm:hidden">رابط صفقة</span>
                 <span className="hidden sm:inline">إنشاء رابط صفقة مخصصة</span>
               </button>
             )}
             {!isSalesRep && (
               <Link
                 href="/seller/products"
-                className="flex items-center gap-2 px-3 py-2 border border-primary/30 bg-primary/5 text-primary rounded-lg text-sm font-semibold hover:bg-primary/10 transition-colors"
+                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 border border-primary/30 bg-primary/5 text-primary rounded-lg text-xs sm:text-sm font-semibold hover:bg-primary/10 transition-colors"
+                aria-label="إدارة المنتجات"
               >
                 <Icon name="ArrowTopRightOnSquareIcon" size={15} />
+                <span className="sm:hidden">إدارة المنتجات</span>
                 <span className="hidden sm:inline">{t.manufacturerDashboard.productManager}</span>
               </Link>
             )}
