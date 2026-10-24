@@ -27,7 +27,7 @@ function isGlobalErrorChunk(value: unknown): boolean {
   if (!value) return false;
   const err = value as { message?: string; request?: string };
   const text = `${err?.message || ''} ${err?.request || ''} ${typeof value === 'string' ? value : ''}`;
-  return /app\/global-error/i.test(text);
+  return /app\/(global-)?error(\.js)?\b/i.test(text);
 }
 
 function reloadOnce() {
@@ -73,7 +73,7 @@ export default function ChunkErrorRecovery() {
       const target = event.target as (HTMLScriptElement & HTMLLinkElement) | null;
       if (!target || target === (window as unknown as EventTarget)) return;
       const src = target.src || target.href;
-      if (/app\/global-error/i.test(src || '')) return;
+      if (/app\/(global-)?error(\.js)?\b/i.test(src || '')) return;
       if (isNextChunkUrl(src)) reloadOnce();
     };
     window.addEventListener('error', onError);
