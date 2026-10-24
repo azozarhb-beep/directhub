@@ -20,6 +20,16 @@ function isNextChunkUrl(url: string | undefined | null): boolean {
   return !!url && /\/_next\/static\/(chunks|css)\//.test(url);
 }
 
+// The global-error chunk is only needed once a fatal render error occurs.
+// A transient failure to load it (dev recompilation, preview proxy hiccup)
+// must not trigger a full page reload nor consume the reload budget.
+function isGlobalErrorChunk(value: unknown): boolean {
+  if (!value) return false;
+  const err = value as { message?: string; request?: string };
+  const text = `${err?.message || ''} ${err?.request || ''} ${typeof value === 'string' ? value : ''}`;
+  return /app\/global-error/i.test(text);
+}
+
 function reloadOnce() {
   try {
     const now = Date.now();
@@ -45,9 +55,17 @@ function reloadOnce() {
 export default function ChunkErrorRecovery() {
   useEffect(() => {
     const onError = (event: ErrorEvent) => {
+      if (isGlobalErrorChunk(event.error) || isGlobalErrorChunk(event.message)) {
+        event.preventDefault();
+        return;
+      }
       if (isChunkError(event.error) || isChunkError(event.message)) reloadOnce();
     };
     const onRejection = (event: PromiseRejectionEvent) => {
+      if (isGlobalErrorChunk(event.reason)) {
+        event.preventDefault();
+        return;
+      }
       if (isChunkError(event.reason)) reloadOnce();
     };
     // Script/link load failures do not bubble; capture them to detect stale chunks.
@@ -55,6 +73,7 @@ export default function ChunkErrorRecovery() {
       const target = event.target as (HTMLScriptElement & HTMLLinkElement) | null;
       if (!target || target === (window as unknown as EventTarget)) return;
       const src = target.src || target.href;
+      if (/app\/global-error/i.test(src || '')) return;
       if (isNextChunkUrl(src)) reloadOnce();
     };
     window.addEventListener('error', onError);
