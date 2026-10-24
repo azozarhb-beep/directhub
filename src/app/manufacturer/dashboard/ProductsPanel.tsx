@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 import AIProductAssistant from '@/components/AIProductAssistant';
@@ -224,6 +224,71 @@ export default function ProductsPanel({
   const { user: authUser } = useAuth();
   const [copiedProductId, setCopiedProductId] = React.useState<string | null>(null);
   const [showVerifiedDetails, setShowVerifiedDetails] = React.useState(false);
+  const [sheetFilter, setSheetFilter] = React.useState<'all' | 'in_stock' | 'low_stock' | 'out_of_stock' | null>(null);
+  const [sheetVisible, setSheetVisible] = React.useState(false);
+
+  const openSheet = (f: 'all' | 'in_stock' | 'low_stock' | 'out_of_stock') => {
+    setSheetFilter(f);
+    requestAnimationFrame(() => requestAnimationFrame(() => setSheetVisible(true)));
+  };
+  const closeSheet = () => {
+    setSheetVisible(false);
+    setTimeout(() => setSheetFilter(null), 300);
+  };
+
+  React.useEffect(() => {
+    if (!sheetFilter) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeSheet(); };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheetFilter]);
+
+  const SHEET_META: Record<'all' | 'in_stock' | 'low_stock' | 'out_of_stock', { title: string; iconName: string; iconBg: string; badge: string }> = {
+    all: { title: 'إجمالي المنتجات', iconName: 'CubeIcon', iconBg: 'linear-gradient(135deg, #8B5CF6, #7C3AED)', badge: 'text-violet-700 bg-violet-50 border-violet-200' },
+    in_stock: { title: 'المنتجات المتوفرة', iconName: 'CheckCircleIcon', iconBg: 'linear-gradient(135deg, #10B981, #059669)', badge: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+    out_of_stock: { title: 'المنتجات غير المتوفرة', iconName: 'XCircleIcon', iconBg: 'linear-gradient(135deg, #EF4444, #DC2626)', badge: 'text-red-700 bg-red-50 border-red-200' },
+    low_stock: { title: 'المنتجات منخفضة المخزون', iconName: 'ExclamationTriangleIcon', iconBg: 'linear-gradient(135deg, #F59E0B, #D97706)', badge: 'text-amber-700 bg-amber-50 border-amber-200' },
+  };
+  const sheetProducts: Product[] = sheetFilter
+    ? (sheetFilter === 'all' ? products : products.filter((p) => p.inventory_status === sheetFilter))
+    : [];
+  const formatNum = (n: number) => new Intl.NumberFormat('en-US').format(Number(n) || 0);
+  const unitLabelAr = (u: string) => {
+    const k = (u || '').toLowerCase();
+    if (k === 'carton' || k === 'cartons' || k === 'box' || k === 'boxes' || k === 'كرتون') return 'كرتون';
+    return u || 'وحدة';
+  };
+  const currencyAr = (c?: string | null) => {
+    const k = String(c || 'YER').toUpperCase();
+    if (k === 'YER') return 'ر.ي';
+    if (k === 'SAR') return 'ر.س';
+    if (k === 'USD') return '$';
+    return k;
+  };
+  const sheetStatusText = (p: Product) => {
+    if (p.inventory_status === 'in_stock') return 'متوفر';
+    if (p.inventory_status === 'low_stock') return 'مخزون منخفض';
+    if (p.inventory_status === 'out_of_stock') return 'غير متوفر';
+    return 'متوقف';
+  };
+  const sheetStockText = (p: Product) => {
+    const u = unitLabelAr(p.unit);
+    const q = formatNum(p.stock_quantity);
+    if (p.inventory_status === 'out_of_stock') return `غير متوفر في المخزون (${q} ${u})`;
+    if (p.inventory_status === 'low_stock') return `مخزون منخفض (${q} ${u})`;
+    if (p.inventory_status === 'in_stock') return `متوفر في المخزون (${q} ${u})`;
+    return `متوقف (${q} ${u})`;
+  };
+  const sheetStatusColor = (p: Product) =>
+    p.inventory_status === 'in_stock' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+      : p.inventory_status === 'low_stock' ? 'bg-amber-50 text-amber-700 border-amber-200'
+      : p.inventory_status === 'out_of_stock'? 'bg-red-50 text-red-700 border-red-200' :'bg-gray-100 text-gray-600 border-gray-200';
   const isFullyVerified = verifiedTier === 'verified' && trustPercentage >= 100;
   const isAgentManaged = !!(
     factoryRegistration?.agent_id ||
@@ -443,12 +508,13 @@ export default function ProductsPanel({
           { labelKey: 'lowStock', filter: 'low_stock', value: stats.lowStock ?? 0, icon: 'ExclamationTriangleIcon', gradient: 'linear-gradient(135deg, #F59E0B, #D97706)', shadow: 'shadow-amber-100', ring: 'border-amber-500 ring-2 ring-amber-500/40' },
           { labelKey: 'outOfStock', filter: 'out_of_stock', value: stats.outOfStock ?? 0, icon: 'XCircleIcon', gradient: 'linear-gradient(135deg, #EF4444, #DC2626)', shadow: 'shadow-red-100', ring: 'border-red-500 ring-2 ring-red-500/40' },
         ].map((stat) => {
-          const isActiveCard = filterStatus === stat.filter;
+          const isActiveCard = sheetFilter === stat.filter;
           return (
             <button
               type="button"
               key={stat.labelKey}
-              onClick={() => setFilterStatus(stat.filter)}
+              onClick={() => openSheet(stat.filter as 'all' | 'in_stock' | 'low_stock' | 'out_of_stock')}
+              aria-haspopup="dialog"
               aria-pressed={isActiveCard}
               className={`relative flex flex-col items-stretch text-start bg-card border rounded-2xl p-4 shadow-md ${stat.shadow} overflow-hidden transition-all hover:shadow-lg hover:-translate-y-0.5 cursor-pointer ${isActiveCard ? stat.ring : 'border-border/60'}`}
             >
@@ -762,7 +828,7 @@ export default function ProductsPanel({
 
       {/* Delete Confirmation Modal */}
       {deleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 px-4">
           <div className="w-full max-w-sm bg-card rounded-2xl border border-border shadow-xl p-6">
             <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
               <Icon name="TrashIcon" size={22} className="text-red-600" />
@@ -802,6 +868,116 @@ export default function ProductsPanel({
                   {t?.common?.close || 'Close'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stat Card Bottom Sheet */}
+      {sheetFilter && (
+        <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true" aria-label={SHEET_META[sheetFilter].title} dir="rtl">
+          <div
+            onClick={closeSheet}
+            className={`absolute inset-0 bg-black/60 transition-opacity duration-300 ${sheetVisible ? 'opacity-100' : 'opacity-0'}`}
+          />
+          <div
+            className={`absolute bottom-0 inset-x-0 mx-auto w-full max-w-2xl h-[75vh] bg-background rounded-t-3xl shadow-2xl flex flex-col transition-transform duration-300 ease-out ${sheetVisible ? 'translate-y-0' : 'translate-y-full'}`}
+          >
+            <div className="pt-2.5 pb-1 flex justify-center shrink-0">
+              <span className="w-12 h-1.5 rounded-full bg-border" />
+            </div>
+            <div className="flex items-center gap-3 px-4 pb-3 pt-1 border-b border-border shrink-0">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm" style={{ background: SHEET_META[sheetFilter].iconBg }}>
+                <Icon name={SHEET_META[sheetFilter].iconName as any} size={20} className="text-white" />
+              </div>
+              <h3 className="flex-1 min-w-0 font-black text-foreground text-base sm:text-lg leading-tight">
+                {SHEET_META[sheetFilter].title} ({sheetProducts.length})
+              </h3>
+              <button
+                type="button"
+                onClick={closeSheet}
+                aria-label="إغلاق"
+                className="w-9 h-9 flex items-center justify-center rounded-full bg-muted hover:bg-muted/70 text-foreground transition-colors shrink-0"
+              >
+                <Icon name="XMarkIcon" size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+              {sheetProducts.length === 0 ? (
+                <div className="h-full min-h-[240px] flex flex-col items-center justify-center text-center px-6">
+                  <div className="relative w-28 h-28 mb-5">
+                    <div className="absolute inset-0 rounded-full bg-muted" />
+                    <div className="absolute inset-3 rounded-full bg-card border border-dashed border-border flex items-center justify-center">
+                      <Icon name="ArchiveBoxIcon" size={44} className="text-muted-foreground" />
+                    </div>
+                    <span className="absolute -top-1 -left-1 w-6 h-6 rounded-full bg-amber-200/70" />
+                    <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-indigo-200/70" />
+                  </div>
+                  <p className="font-bold text-foreground text-base">لا توجد منتجات في هذه الفئة حالياً</p>
+                </div>
+              ) : (
+                sheetProducts.map((product) => {
+                  const thumb = getProductThumb(product);
+                  const cur = currencyAr((product as any).currency);
+                  return (
+                    <div key={product.id} className={`w-full bg-card border border-border rounded-2xl p-3.5 shadow-sm ${!product.is_active ? 'opacity-60' : ''}`}>
+                      <div className="flex items-start gap-3">
+                        <div className="w-20 h-20 rounded-xl bg-muted overflow-hidden shrink-0 border border-border flex items-center justify-center">
+                          {thumb ? (
+                            <img src={thumb} alt={product.name_ar || product.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <Icon name="PhotoIcon" size={28} className="text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-foreground text-sm leading-snug break-words">{product.name_ar || product.name}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5 capitalize">{(product.category || '').replace('_', ' ')}</p>
+                          <span className={`inline-flex items-center mt-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold border ${sheetStatusColor(product)}`}>
+                            {sheetStatusText(product)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="mt-3 text-xs font-semibold text-foreground/80">{sheetStockText(product)}</p>
+
+                      <div className="mt-2 rounded-xl bg-primary/10 border border-primary/20 px-3 py-2 flex items-center justify-center">
+                        <span className="font-black text-primary text-base">
+                          {formatNum(product.unit_price)} {cur} / {unitLabelAr(product.unit)}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { closeSheet(); openEditModal(product); }}
+                          className="flex-1 h-10 inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary text-primary-foreground text-xs sm:text-sm font-bold hover:opacity-90 transition-opacity"
+                        >
+                          تعديل المنتج ✏️
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const ok = await copyProductShareText({ id: product.id, name: product.name, name_ar: (product as any).name_ar, sku: product.sku, currency: (product as any).currency || 'YER' });
+                            if (ok) { setCopiedProductId(product.id); setTimeout(() => setCopiedProductId(null), 2500); }
+                          }}
+                          className="flex-1 h-10 inline-flex items-center justify-center gap-1.5 rounded-xl border border-primary text-primary text-xs sm:text-sm font-bold hover:bg-primary/5 transition-colors"
+                        >
+                          {copiedProductId === product.id ? '✓ تم النسخ' : 'نسخ رابط الصفقة 🔗'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteId(product.id)}
+                          aria-label="حذف المنتج"
+                          className="w-10 h-10 shrink-0 inline-flex items-center justify-center rounded-xl border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <Icon name="TrashIcon" size={17} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
