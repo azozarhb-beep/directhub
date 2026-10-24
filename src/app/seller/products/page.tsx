@@ -92,6 +92,7 @@ interface ProductFormData {
   supported_incoterms: string[];
   port_of_loading: string;
   shipping_terms: 'EX_FACTORY' | 'DELIVERY_INCLUDED';
+  delivery_coverage: 'YEMEN_ALL' | 'FACTORY_GOVERNORATE';
   sample_available: boolean;
   sample_price: string;
   tags: string;
@@ -149,6 +150,7 @@ const EMPTY_FORM: ProductFormData = {
   weight_kg: '', dimensions: '', warranty_months: '',
   hs_code: '', supported_incoterms: [], port_of_loading: '',
   shipping_terms: 'EX_FACTORY',
+  delivery_coverage: 'YEMEN_ALL',
   sample_available: false, sample_price: '', tags: '',
 };
 
@@ -280,6 +282,7 @@ export default function SellerProductManagerPage() {
       supported_incoterms: product.supported_incoterms || [],
       port_of_loading: product.port_of_loading || '',
       shipping_terms: product.shipping_terms === 'DELIVERY_INCLUDED' ? 'DELIVERY_INCLUDED' : 'EX_FACTORY',
+      delivery_coverage: product.shipping_port === 'FACTORY_GOVERNORATE' ? 'FACTORY_GOVERNORATE' : 'YEMEN_ALL',
       sample_available: product.sample_available || false,
       sample_price: String(product.sample_price || ''),
       tags: (product.tags || []).join(', '),
@@ -379,6 +382,7 @@ export default function SellerProductManagerPage() {
         supported_incoterms: formData.supported_incoterms,
         port_of_loading: formData.port_of_loading.trim() || null,
         shipping_terms: formData.shipping_terms,
+        shipping_port: formData.shipping_terms === 'DELIVERY_INCLUDED' ? formData.delivery_coverage : null,
         sample_available: formData.sample_available,
         sample_price: formData.sample_price ? parseFloat(formData.sample_price) : null,
         tags: formData.tags ? formData.tags.split(',').map((s) => s.trim()).filter(Boolean) : [],
@@ -975,7 +979,7 @@ export default function SellerProductManagerPage() {
                       <div role="radiogroup" aria-label="طريقة / شرط التسليم المحلي" className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {([
                           { value: 'EX_FACTORY', title: 'استلام من باب المصنع (سعر المصنع)', desc: 'تُجهَّز البضاعة عند باب المصنع ليستلمها المشتري أو الناقل.' },
-                          { value: 'DELIVERY_INCLUDED', title: 'شامل التجهيز والتوصيل', desc: 'يتولى المصنع التصنيع والنقل مباشرة إلى موقع العميل.' },
+                          { value: 'DELIVERY_INCLUDED', title: 'شامل الشحن والتوصيل داخل المحافظات اليمنية', desc: 'يتكفل المصنع بتجهيز البضاعة ونقلها حتى موقع ومستودع المشتري داخل المحافظات المحددة.' },
                         ] as const).map((opt) => {
                           const selected = formData.shipping_terms === opt.value;
                           return (
@@ -1005,6 +1009,34 @@ export default function SellerProductManagerPage() {
                           );
                         })}
                       </div>
+                      {formData.shipping_terms === 'DELIVERY_INCLUDED' && (
+                        <div className="mt-3">
+                          <label className="block text-xs font-bold text-foreground mb-1.5">نطاق التوصيل</label>
+                          <div role="radiogroup" aria-label="نطاق التوصيل" className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {([
+                              { value: 'YEMEN_ALL', label: 'كافة المحافظات اليمنية' },
+                              { value: 'FACTORY_GOVERNORATE', label: 'نطاق محافظة المصنع فقط' },
+                            ] as const).map((c) => {
+                              const active = formData.delivery_coverage === c.value;
+                              return (
+                                <button
+                                  key={c.value}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={active}
+                                  onClick={() => setFormData((p) => ({ ...p, delivery_coverage: c.value }))}
+                                  className={`px-3 py-2 rounded-xl border text-sm font-semibold text-start transition-colors ${
+                                    active
+                                      ? 'border-primary bg-primary/10 text-foreground' :'border-border bg-background text-muted-foreground hover:border-primary'
+                                  }`}
+                                >
+                                  {c.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
