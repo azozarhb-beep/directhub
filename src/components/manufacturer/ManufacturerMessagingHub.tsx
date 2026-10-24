@@ -211,6 +211,45 @@ export default function ManufacturerMessagingHub({ userId }: ManufacturerMessagi
     loadThreads();
   }, [loadThreads]);
 
+  // ── Realtime: admin assigns / changes the field rep → update card instantly ─
+  useEffect(() => {
+    if (!userId) return;
+    const refreshSupervisor = async () => {
+      const { data: supData } = await supabase.rpc('get_factory_supervisor_card');
+      const supRow = (Array.isArray(supData) ? supData[0] : supData) as SupervisorCard | undefined;
+      setSupervisor(supRow ?? null);
+      if (supRow) {
+        setThreads((prev) => {
+          const agentThread = prev.agent;
+          if (!agentThread) return prev;
+          return {
+            ...prev,
+            agent: { ...agentThread, counterpart_id: supRow.agent_id, counterpart_name: supRow.full_name || agentThread.counterpart_name },
+          };
+        });
+        await supabase
+          .from('factory_threads')
+          .update({ counterpart_id: supRow.agent_id, counterpart_name: supRow.full_name || THREAD_NAME.agent })
+          .eq('factory_id', userId)
+          .eq('thread_kind', 'agent')
+          .is('shipment_ref', null);
+      }
+    };
+    const channel = supabase
+      .channel(`mfr-rep-${userId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'factory_registrations', filter: `user_id=eq.${userId}` },
+        () => {
+          refreshSupervisor();
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, supabase]);
+
   // ── Latest paid order (pinned banner on the supervisor channel) ───────────
   useEffect(() => {
     if (!userId) return;

@@ -60,6 +60,66 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
   const [taxId, setTaxId] = useState('');
   const [registration, setRegistration] = useState<RegistrationInfo | null>(null);
 
+  const [repId, setRepId] = useState<string | null>(null);
+  const [repCode, setRepCode] = useState('');
+  const [repLinking, setRepLinking] = useState(false);
+  const [repError, setRepError] = useState('');
+  const [repSuccess, setRepSuccess] = useState('');
+
+  useEffect(() => {
+    if (!userId) return;
+    const supabase = createClient();
+    let active = true;
+    const loadRep = async () => {
+      const { data } = await supabase.rpc('get_factory_rep_id');
+      if (active) setRepId((data as string | null) ?? null);
+    };
+    loadRep();
+    const channel = supabase
+      .channel(`settings-rep-${userId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'factory_registrations', filter: `user_id=eq.${userId}` },
+        () => {
+          loadRep();
+        },
+      )
+      .subscribe();
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
+
+  const handleLinkRep = async () => {
+    setRepError('');
+    setRepSuccess('');
+    const code = repCode.trim();
+    if (!code) {
+      setRepError('أدخل كود المندوب الميداني أولاً.');
+      return;
+    }
+    setRepLinking(true);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.rpc('link_factory_to_rep_code', { p_code: code });
+      if (error) {
+        const msg = error.message || '';
+        if (msg.includes('already_assigned')) throw new Error('تم تعيين مندوب لمصنعك مسبقاً.');
+        if (msg.includes('invalid_code')) throw new Error('كود المندوب غير صحيح.');
+        throw error;
+      }
+      const row = (Array.isArray(data) ? data[0] : data) as { agent_id?: string; full_name?: string } | null;
+      setRepId(row?.agent_id ?? 'linked');
+      setRepCode('');
+      setRepSuccess(`تم ربط مصنعك بالمندوب${row?.full_name ? `: ${row.full_name}` : ''}.`);
+    } catch (err: any) {
+      setRepError(err?.message || 'تعذر ربط المندوب.');
+    } finally {
+      setRepLinking(false);
+    }
+  };
+
   useEffect(() => {
     if (!userId) {
       setLoading(false);
@@ -404,6 +464,57 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
           </button>
         </div>
       </form>
+
+      {/* Field rep self-link (only while awaiting assignment) */}
+      {!repId && (
+        <div className="bg-card border border-border rounded-2xl p-5 flex flex-col gap-3">
+          <h3 className="text-sm font-extrabold text-foreground flex items-center gap-2">
+            <span className="w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center">
+              <Icon name="UserCircleIcon" size={14} className="text-amber-600" />
+            </span>
+            المندوب الميداني
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+              بانتظار التعيين
+            </span>
+          </h3>
+          <div>
+            <label htmlFor="factory-rep-code" className="block text-xs font-bold text-foreground mb-1.5">
+              كود المندوب الميداني (إن وجد)
+            </label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                id="factory-rep-code"
+                type="text"
+                dir="ltr"
+                value={repCode}
+                onChange={(e) => setRepCode(e.target.value)}
+                placeholder="AGT-XXXXXXXX"
+                className="flex-1 h-11 px-3 rounded-xl border border-border bg-background text-sm text-foreground text-left focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <button
+                type="button"
+                onClick={handleLinkRep}
+                disabled={repLinking || !repCode.trim()}
+                className="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl bg-primary text-primary-foreground text-sm font-extrabold hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {repLinking && <Icon name="ArrowPathIcon" size={14} className="animate-spin" />}
+                حفظ وربط
+              </button>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              حقل اختياري — إن لم يكن لديك كود، ستقوم الإدارة بتعيين مندوب لمصنعك.
+            </p>
+          </div>
+          {repError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl px-4 py-3">{repError}</div>
+          )}
+        </div>
+      )}
+      {repId && repSuccess && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-xl px-4 py-3">
+          {repSuccess}
+        </div>
+      )}
     </div>
   );
 }
