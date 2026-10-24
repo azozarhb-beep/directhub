@@ -7,7 +7,7 @@ import type { FactoryModuleKey } from '@/components/manufacturer/factoryModules'
 import { useFactoryRoom, FactoryRoomSpinner } from '@/components/manufacturer/useFactoryRoom';
 
 type LocalTab =
-  | 'analytics' |'inventory' |'seller_fulfillment' |'sales_team' |'disputes' |'financial_hub' |'factory_orders' |'factory_settings' |'products' |'finance' |'escrow_orders' |'admin_messaging' |'archive' |'all_sales' |'contracts';
+  | 'analytics' |'inventory' |'seller_fulfillment' |'sales_team' |'disputes' |'financial_hub' |'factory_orders' |'factory_settings' |'products' |'finance' |'escrow_orders' |'admin_messaging' |'archive' |'all_sales' |'contracts' |'invoicing' |'production';
 
 interface ManufacturerModuleRouteProps {
   /** Local workspace tab rendered full-screen. */

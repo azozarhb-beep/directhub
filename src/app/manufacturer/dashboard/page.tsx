@@ -267,7 +267,7 @@ const EMPTY_PAYMENT_SETTINGS: PaymentSettings = {
   kuraimi_pos_name: '',
 };
 
-type DashboardTab = 'products' | 'financial_hub' | 'escrow_orders' | 'disputes' | 'analytics' | 'admin_messaging' | 'finance' | 'inventory' | 'archive' | 'sales_team' | 'factory_orders' | 'seller_fulfillment' | 'freight_bids' | 'contracts' | 'factory_settings';
+type DashboardTab = 'products' | 'financial_hub' | 'escrow_orders' | 'disputes' | 'analytics' | 'admin_messaging' | 'finance' | 'inventory' | 'archive' | 'sales_team' | 'factory_orders' | 'seller_fulfillment' | 'freight_bids' | 'contracts' | 'factory_settings' | 'invoicing' | 'production';
 
 /** Dedicated full-screen routes for each dashboard card (card key → href + page title). */
 const MODULE_ROUTES: Partial<Record<DashboardTab, { href: string; title: string }>> = {
@@ -278,6 +278,8 @@ const MODULE_ROUTES: Partial<Record<DashboardTab, { href: string; title: string 
   archive: { href: '/manufacturer/archive', title: 'الأرشيف' },
   all_sales: { href: '/manufacturer/sales-channels', title: 'صفقات وقنوات البيع' },
   contracts: { href: '/manufacturer/contracts', title: 'العقود والاتفاقيات' },
+  invoicing: { href: '/manufacturer/invoicing', title: 'فوترة التصدير الدولية' },
+  production: { href: '/manufacturer/production-lines', title: 'خطوط الإنتاج والجودة' },
   factory_settings: { href: '/manufacturer/settings', title: 'إعدادات وتوثيق المصنع' },
   analytics: { href: '/manufacturer/analytics', title: 'التحليلات' },
   inventory: { href: '/manufacturer/materials', title: 'مواد الإنتاج والخامات' },
@@ -2256,6 +2258,8 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
             { key: 'sales_team', label: md.tabSalesTeam, icon: 'UserGroupIcon', gradient: 'linear-gradient(135deg,#06B6D4,#0891B2)', shadow: 'shadow-cyan-100', show: !isSalesRep, badge: salesReps.filter(r => r.status === 'active').length || undefined },
             { key: 'all_sales', label: 'صفقات وقنوات البيع', icon: 'CurrencyDollarIcon', gradient: 'linear-gradient(135deg,#059669,#047857)', shadow: 'shadow-emerald-100', show: !isSalesRep },
             { key: 'contracts', label: 'العقود والاتفاقيات', icon: 'DocumentCheckIcon', gradient: 'linear-gradient(135deg,#D97706,#EA580C)', shadow: 'shadow-amber-100', show: !isSalesRep },
+            { key: 'invoicing', label: 'فوترة التصدير الدولية', icon: 'DocumentTextIcon', gradient: 'linear-gradient(135deg,#0891B2,#0E7490)', shadow: 'shadow-cyan-100', show: !isSalesRep },
+            { key: 'production', label: 'خطوط الإنتاج والجودة', icon: 'Cog6ToothIcon', gradient: 'linear-gradient(135deg,#475569,#334155)', shadow: 'shadow-slate-100', show: !isSalesRep },
           ] as Array<{ key: string; label: string; icon: string; gradient: string; shadow: string; show: boolean; badge?: number | string }>)
             .filter(tab => tab.show)
             .map(tab => {
@@ -2821,16 +2825,23 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         <div className="p-4 md:p-6">
           <AIContractAssistant
             onPushedToInvoice={() => {
-              document.getElementById('manufacturer-invoicing-anchor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              router.push('/manufacturer/invoicing');
             }}
           />
         </div>
       )}
 
-      {/* ── ADVANCED MODULES (always visible for local factories) ── */}
-      {!isSalesRep && user && !isModuleMode && (
-        <div id="manufacturer-invoicing-anchor" className="p-4 md:p-6 border-t border-border mt-2">
-          <ManufacturerAdvancedModules userId={user.id} />
+      {/* ── INVOICING MODULE (dedicated card / sub-route only) ── */}
+      {moduleTab === 'invoicing' && !isSalesRep && user && (
+        <div id="manufacturer-invoicing-anchor" className="p-4 md:p-6">
+          <ManufacturerAdvancedModules userId={user.id} mode="finance" />
+        </div>
+      )}
+
+      {/* ── PRODUCTION CAPACITY & QC MODULE (dedicated card / sub-route only) ── */}
+      {moduleTab === 'production' && !isSalesRep && user && (
+        <div className="p-4 md:p-6">
+          <ManufacturerAdvancedModules userId={user.id} mode="production" />
         </div>
       )}
 
