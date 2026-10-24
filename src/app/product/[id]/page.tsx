@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import WishlistButton from '@/components/WishlistButton';
 import { buildProductShareLinkNoPhone } from '@/lib/whatsappOrderLinks';
+import { copyProductShareText, isDomesticCurrency } from '@/lib/productCode';
 
 interface Specification {
   label: string;
@@ -118,6 +119,9 @@ interface ProductDetail {
   samplePrice?: number;
   sellerBadge?: 'certified_factory' | 'local_supplier' | null;
   videoUrl?: string;
+  productCode?: string;
+  incoterms?: string[];
+  portOfLoading?: string;
 }
 
 const productDatabase: Record<string, ProductDetail> = {
@@ -385,7 +389,7 @@ const CATEGORY_AR: Record<string, string> = {
 // ── Helper: extract unit label from a price tier string ───────────────────────
 // e.g. "$420/unit" → "unit", "$5.80/m" → "م", "$72/m" → "م"
 function extractUnitFromPrice(priceStr: string): string {
-  const match = priceStr.match(/\/(.+)$/);
+  let match = priceStr.match(/\/(.+)$/);
   return match ? match[1].trim() : 'unit';
 }
 
@@ -469,6 +473,7 @@ export default function ProductDetailPage() {
   const [confirmationSubmitted, setConfirmationSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(!productDatabase[id]);
   const [notFound, setNotFound] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
   // Derived B2B flag — true when product has wholesale pricing tiers or sales_model indicates B2B
   const [isB2B, setIsB2B] = useState<boolean>(() => {
     const p = productDatabase[id];
@@ -488,9 +493,10 @@ export default function ProductDetailPage() {
         const { data } = await supabase.
         from('manufacturer_products').
         select('*, user_profiles!manufacturer_products_manufacturer_id_fkey(full_name, company_name, country, is_verified, supplier_profiles(id, rating, review_count, response_rate, avg_response_time, tier, is_verified))').
-        eq('id', id).
+        or(`id.eq.${id},slug.eq.${id},sku.eq.${id}`).
         eq('is_active', true).
-        single();
+        limit(1).
+        maybeSingle();
 
         if (data) {
           const images =
@@ -538,16 +544,20 @@ export default function ProductDetailPage() {
           dbTiers[0].min_qty :
           parseInt(String(data.minimum_order_qty || data.min_order_quantity || data.moq || 1)) || 1;
           const tierUnit = data.unit || 'unit';
+          const rowCurrency = String(data.currency || 'YER').toUpperCase();
+          const curSym = rowCurrency === 'YER' ? '' : '$';
+          const curSuffix = rowCurrency === 'YER' ? ' ر.ي' : '';
+          const fmtCur = (n: number) => `${curSym}${n.toFixed(2)}${curSuffix}`;
           let finalPriceTiers: PriceTier[] = [];
           if (dbTiers.length > 0) {
             finalPriceTiers = dbTiers.map((tier) => ({
               minQty: String(tier.min_qty),
               maxQty: tier.max_qty !== null ? String(tier.max_qty) : '+',
-              price: `$${tier.unit_price.toFixed(2)}/${tierUnit}`
+              price: `${fmtCur(tier.unit_price)}/${tierUnit}`
             }));
           } else if (unitPriceNum > 0) {
             finalPriceTiers = [
-            { minQty: String(moqNum), maxQty: '+', price: `$${unitPriceNum.toFixed(2)}/${tierUnit}` }];
+            { minQty: String(moqNum), maxQty: '+', price: `${fmtCur(unitPriceNum)}/${tierUnit}` }];
 
           }
           const tierBounds = getTierPriceBounds(dbTiers);
@@ -560,8 +570,8 @@ export default function ProductDetailPage() {
             nameAr: data.name_ar || data.name,
             images,
             price: String(tierBounds ? tierBounds.min : unitPriceNum),
-            priceRange: rangeMin > 0 ? rangeMin === rangeMax ? `$${rangeMin.toFixed(2)}` : `$${rangeMin.toFixed(2)} – $${rangeMax.toFixed(2)}` : language === 'ar' ? 'تواصل لمعرفة السعر' : 'Contact for pricing',
-            currency: 'USD',
+            priceRange: rangeMin > 0 ? rangeMin === rangeMax ? fmtCur(rangeMin) : `${fmtCur(rangeMin)} – ${fmtCur(rangeMax)}` : language === 'ar' ? 'تواصل لمعرفة السعر' : 'Contact for pricing',
+            currency: rowCurrency === 'YER' ? 'YER' : 'USD',
             moq: `${moqNum} ${data.unit || (language === 'ar' ? 'وحدة' : 'units')}`,
             supplier: supplierName,
             supplierId: supplierProfile?.id || data.manufacturer_id,
@@ -593,7 +603,10 @@ export default function ProductDetailPage() {
             sampleAvailable: data.sample_available || false,
             samplePrice: data.sample_price ? parseFloat(data.sample_price) : undefined,
             sellerBadge: data.seller_badge || null,
-            videoUrl: data.video_url || undefined
+            videoUrl: data.video_url || undefined,
+            productCode: data.sku || undefined,
+            incoterms: Array.isArray(data.supported_incoterms) ? data.supported_incoterms.filter(Boolean) : [],
+            portOfLoading: data.port_of_loading || undefined
           });
           // Determine B2B: sales_model field, b2b_enabled flag, or has tiered pricing
           const salesModel = (data.sales_model || '').toLowerCase();
@@ -664,13 +677,16 @@ export default function ProductDetailPage() {
   const unitPrice = activeTier ? activeTier.unit_price : parseFloat(String(product.price ?? '').replace(/,/g, '')) || 0;
   const subtotal = parseFloat((unitPrice * orderQty).toFixed(2));
   const isDeliveryIncluded = product.shippingTerms === 'DELIVERY_INCLUDED';
-  // Shipping is strictly 0 when the price already includes delivery; otherwise it is arranged after order confirmation
-  const shippingCost = 0;
-  const escrowFee = parseFloat((subtotal * 0.015).toFixed(2));
-  const buyerReserve = parseFloat((subtotal * 0.30).toFixed(2));
-  const supplierAdvance = parseFloat((subtotal * 0.70).toFixed(2));
-  const totalEscrow = parseFloat((subtotal + escrowFee + shippingCost).toFixed(2));
-
+  const isDomestic = isDomesticCurrency(product.currency);
+  const money = (n: number, opts?: Intl.NumberFormatOptions) => {
+    const s = n.toLocaleString('en-US', opts);
+    return isDomestic ? `${s} ر.ي` : `$${s}`;
+  };
+  // Escrow calculations
+  const escrowFee = parseFloat((subtotal * 0.02).toFixed(2));
+  const totalEscrow = parseFloat((subtotal + escrowFee).toFixed(2));
+  const buyerReserve = parseFloat((totalEscrow * 0.3).toFixed(2));
+  const supplierAdvance = parseFloat((totalEscrow * 0.7).toFixed(2));
   const handleConfirmOrder = () => {
     setShowConfirmation(false);
     setConfirmationSubmitted(true);
@@ -678,11 +694,24 @@ export default function ProductDetailPage() {
       setConfirmationSubmitted(false);
       setShowCheckoutPanel(false);
       if (checkoutMode === 'escrow') {
-        router.push(`/checkout/rfq?productId=${product.id}&type=escrow&qty=${orderQty}`);
+        router.push('/orders');
       } else {
-        router.push(`/rfq/${product.id}?qty=${orderQty}`);
+        router.push(`/rfq/create?productId=${product.id}&qty=${orderQty}`);
       }
     }, 1800);
+  };
+  const handleCopyCode = async () => {
+    const ok = await copyProductShareText({
+      id: product.id,
+      name: product.name,
+      name_ar: product.nameAr,
+      sku: product.productCode,
+      currency: product.currency
+    });
+    if (ok) {
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2500);
+    }
   };
 
   const inventoryBadge = () => {
@@ -905,47 +934,54 @@ export default function ProductDetailPage() {
               {inventoryBadge()}
             </div>
 
-            {/* Sample badge */}
-            {product.sampleAvailable &&
-            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/8 text-primary text-xs font-bold rounded-full border border-primary/20 w-fit">
-                <Icon name="BeakerIcon" size={12} variant="solid" />
-                {pp.sampleAvailable}{product.samplePrice ? ` · $${product.samplePrice}` : ''}
-              </div>
-            }
-
-            {/* ── Price Block ── */}
-            <div className="rounded-2xl border border-primary/25 overflow-hidden">
-              <div className="bg-gradient-to-br from-primary/8 via-primary/5 to-transparent px-5 py-5">
-                <p className="text-[10px] font-extrabold text-primary/70 uppercase tracking-widest mb-2">{pp.priceRange}</p>
-                <p className="text-3xl font-extrabold text-foreground tracking-tight leading-tight min-h-[2.5rem] flex items-center" dir="ltr">{product.priceRange}</p>
-                <p className="text-xs text-muted-foreground mt-2">{pp.perUnitByQty}</p>
-              </div>
-              <div className="px-5 py-3 bg-muted/30 border-t border-primary/15 flex items-center gap-4 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Icon name="CubeIcon" size={14} className="text-primary" />
+            {/* ── Product Code + Adaptive Trade Terms ── */}
+            {product.productCode &&
+            <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 space-y-2.5">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Icon name="TagIcon" size={14} className="text-primary" />
+                    <span className="text-[11px] text-muted-foreground font-semibold">{isArabic ? 'كود المنتج' : 'Product Code'}</span>
+                    <span className="text-sm font-extrabold text-foreground font-mono" dir="ltr">{product.productCode}</span>
                   </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">{pp.moq}</p>
-                    <p className="text-sm font-extrabold text-foreground">{product.moq}</p>
-                  </div>
+                  <button
+                  type="button"
+                  onClick={handleCopyCode}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/30 text-primary text-xs font-bold hover:bg-primary/5 transition-colors">
+                    {codeCopied ? isArabic ? '✓ تم النسخ' : '✓ Copied' : '🔗 نسخ رابط وكود المنتج'}
+                  </button>
                 </div>
-                {product.supplyAbility &&
-                <>
-                    <div className="w-px h-8 bg-border" />
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center">
-                        <Icon name="BuildingStorefrontIcon" size={14} className="text-muted-foreground" />
+                {isDomestic ?
+              <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                    <Icon name="TruckIcon" size={14} className="text-green-600" />
+                    <span>
+                      {isDeliveryIncluded ? 'شامل التوصيل' : 'استلام من باب المصنع'}
+                    </span>
+                    <span className="text-[10px] font-semibold text-muted-foreground">
+                      {isArabic ? '· دفع عبر الضمان بوسائل الدفع اليمنية' : '· Escrow with Yemeni payment methods'}
+                    </span>
+                  </div> :
+
+              <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap text-xs font-bold text-foreground">
+                      <Icon name="GlobeAltIcon" size={14} className="text-primary" />
+                      <span>{isArabic ? 'شروط التجارة الدولية (Incoterms):' : 'International trade terms (Incoterms):'}</span>
+                      <span dir="ltr" className="font-mono">{product.incoterms && product.incoterms.length > 0 ? product.incoterms.join(' / ') : 'FOB / CIF'}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div className="px-2.5 py-1.5 rounded-lg bg-background border border-border">
+                        <p className="text-muted-foreground font-semibold">{isArabic ? 'ميناء الشحن' : 'Port of loading'}</p>
+                        <p className="font-bold text-foreground" dir="ltr">{product.portOfLoading || product.port || '—'}</p>
                       </div>
-                      <div>
-                        <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">{pp.supplyCapacity}</p>
-                        <p className="text-sm font-bold text-foreground">{product.supplyAbility}</p>
+                      <div className="px-2.5 py-1.5 rounded-lg bg-background border border-border">
+                        <p className="text-muted-foreground font-semibold">{isArabic ? 'ميناء التفريغ' : 'Port of discharge'}</p>
+                        <p className="font-bold text-foreground">{isArabic ? 'يُحدد عند الطلب' : 'Set at order / inquiry'}</p>
                       </div>
                     </div>
-                  </>
-                }
+                    <p className="text-[10px] text-muted-foreground">{isArabic ? 'ضمان B2B دولي وطلب استفسار' : 'B2B international escrow & inquiry checkout'}</p>
+                  </div>
+              }
               </div>
-            </div>
+            }
 
             {/* ── MOQ Pricing Tiers (B2B Volume Discounts) — only for B2B products ── */}
             {isB2B && product.priceTiers && product.priceTiers.length > 0 &&
@@ -1025,8 +1061,8 @@ export default function ProductDetailPage() {
                     className="w-28 text-center py-1.5 border border-border rounded-lg bg-background text-foreground font-bold text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground" dir="ltr">
-                    <span>{orderQty} × ${activeTier.unit_price.toFixed(2)}</span>
-                    <span className="text-base font-extrabold text-primary">{isArabic ? 'الإجمالي: ' : 'Total: '}${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span>{orderQty} × {money(activeTier.unit_price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-base font-extrabold text-primary">{isArabic ? 'الإجمالي: ' : 'Total: '}{money(subtotal, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 </div>
               }
@@ -1974,9 +2010,9 @@ export default function ProductDetailPage() {
                   <div className="flex items-center justify-between px-4 py-3">
                     <div className="flex items-center gap-2">
                       <Icon name="CubeIcon" size={13} className="text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground">Subtotal ({orderQty} × ${unitPrice})</span>
+                      <span className="text-xs text-muted-foreground">Subtotal ({orderQty} × {money(unitPrice)})</span>
                     </div>
-                    <span className="text-sm font-bold text-foreground">${subtotal.toLocaleString()}</span>
+                    <span className="text-sm font-bold text-foreground">{money(subtotal)}</span>
                   </div>
                   {isDeliveryIncluded &&
               <div className="flex items-center justify-between px-4 py-3">
@@ -1984,7 +2020,7 @@ export default function ProductDetailPage() {
                       <Icon name="TruckIcon" size={13} className="text-green-600" />
                       <span className="text-xs text-muted-foreground">{pp.shippingLabel}</span>
                     </div>
-                    <span className="text-sm font-bold text-green-600">{pp.shippingFree} · $0</span>
+                    <span className="text-sm font-bold text-green-600">{pp.shippingFree} · {money(0)}</span>
                   </div>
               }
                   <div className="flex items-center justify-between px-4 py-3">
@@ -1992,26 +2028,26 @@ export default function ProductDetailPage() {
                       <Icon name="ShieldCheckIcon" size={13} className="text-muted-foreground" />
                       <span className="text-xs text-muted-foreground">{pp.escrowServiceFee}</span>
                     </div>
-                    <span className="text-sm font-bold text-foreground">${escrowFee.toLocaleString()}</span>
+                    <span className="text-sm font-bold text-foreground">{money(escrowFee)}</span>
                   </div>
                   <div className="px-4 py-3 bg-muted/40">
                     <div className="flex items-center justify-between mb-2.5">
                       <span className="text-xs font-extrabold text-foreground">{pp.totalHeldInEscrow}</span>
-                      <span className="text-base font-extrabold text-primary">${totalEscrow.toLocaleString()}</span>
+                      <span className="text-base font-extrabold text-primary">{money(totalEscrow)}</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 mt-2">
                       <div className="flex items-center gap-1.5 p-2 bg-primary/10 rounded-lg border border-primary/20">
                         <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
                         <div>
                           <p className="text-[10px] text-muted-foreground font-semibold">{pp.buyerReserve}</p>
-                          <p className="text-xs font-extrabold text-primary">${buyerReserve.toLocaleString()}</p>
+                          <p className="text-xs font-extrabold text-primary">{money(buyerReserve)}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 p-2 bg-accent/10 rounded-lg border border-accent/20">
                         <div className="w-2 h-2 rounded-full bg-accent shrink-0" />
                         <div>
                           <p className="text-[10px] text-muted-foreground font-semibold">{pp.supplierAdvance}</p>
-                          <p className="text-xs font-extrabold text-accent">${supplierAdvance.toLocaleString()}</p>
+                          <p className="text-xs font-extrabold text-accent">{money(supplierAdvance)}</p>
                         </div>
                       </div>
                     </div>
@@ -2083,7 +2119,7 @@ export default function ProductDetailPage() {
             
               <Icon name={checkoutMode === 'escrow' ? 'LockClosedIcon' : 'PaperAirplaneIcon'} size={18} variant="solid" />
               {checkoutMode === 'escrow' ?
-            `${pp.initiateEscrowOrder} · $${totalEscrow.toLocaleString()}` :
+            `${pp.initiateEscrowOrder} · ${money(totalEscrow)}` :
             pp.sendRfqUnits.replace('{qty}', String(orderQty))}
             </button>
 
@@ -2141,15 +2177,15 @@ export default function ProductDetailPage() {
                 <>
                       <div className="border-t border-border pt-2 flex items-center justify-between">
                         <span className="text-xs text-muted-foreground">{pp.subtotal}</span>
-                        <span className="text-xs font-bold text-foreground">${subtotal.toLocaleString()}</span>
+                        <span className="text-xs font-bold text-foreground">{money(subtotal)}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-muted-foreground">{pp.escrowServiceFee}</span>
-                        <span className="text-xs font-bold text-foreground">${escrowFee.toLocaleString()}</span>
+                        <span className="text-xs font-bold text-foreground">{money(escrowFee)}</span>
                       </div>
                       <div className="border-t border-border pt-2 flex items-center justify-between">
                         <span className="text-sm font-extrabold text-foreground">{pp.total}</span>
-                        <span className="text-sm font-extrabold text-primary">${totalEscrow.toLocaleString()}</span>
+                        <span className="text-sm font-extrabold text-primary">{money(totalEscrow)}</span>
                       </div>
                     </>
                 }

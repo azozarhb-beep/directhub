@@ -12,6 +12,7 @@ import BottomNav from '@/components/BottomNav';
 import Footer from '@/components/Footer';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { buildProductShareLinkNoPhone } from '@/lib/whatsappOrderLinks';
+import { copyProductShareText, buildPublicProductUrl } from '@/lib/productCode';
 import ProductMediaUploader, {
   EMPTY_PRODUCT_MEDIA,
   isValidVideoUrl,
@@ -172,6 +173,7 @@ export default function SellerProductManagerPage() {
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [copiedProductId, setCopiedProductId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -663,16 +665,27 @@ export default function SellerProductManagerPage() {
                       <Icon name="PencilSquareIcon" size={16} />
                     </button>
                     <Link
-                      href={`/product/${product.id}`}
+                      href={`/p/${product.id}`}
                       className="p-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors"
                       title={f.titleView}
                     >
                       <Icon name="EyeIcon" size={16} />
                     </Link>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const ok = await copyProductShareText({ id: product.id, name: product.name, name_ar: product.name_ar, sku: product.sku, currency: product.currency });
+                        if (ok) { setCopiedProductId(product.id); setTimeout(() => setCopiedProductId(null), 2500); }
+                      }}
+                      className="px-2 py-1.5 rounded-lg hover:bg-muted text-xs font-semibold text-foreground whitespace-nowrap transition-colors"
+                      title="نسخ رابط وكود المنتج"
+                    >
+                      {copiedProductId === product.id ? '✓ تم النسخ' : '🔗 نسخ رابط وكود المنتج'}
+                    </button>
                     {/* WhatsApp Share */}
                     <a
                       href={buildProductShareLinkNoPhone(
-                        `${process.env.NEXT_PUBLIC_SITE_URL || 'https://direct-hub.net'}/product/${product.id}`,
+                        buildPublicProductUrl(product.id),
                         false
                       )}
                       target="_blank"
