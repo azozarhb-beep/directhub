@@ -327,8 +327,6 @@ export default function SellerProductManagerPage() {
       let finalImageUrl = media.primaryImageUrl.trim() || formData.image_url.trim() || null;
       if (media.primaryFile) {
         finalImageUrl = await uploadImage(media.primaryFile);
-      } else if (formData.imageFile) {
-        finalImageUrl = await uploadImage(formData.imageFile);
       }
 
       const uploadedGallery: string[] = [];
@@ -867,40 +865,6 @@ export default function SellerProductManagerPage() {
                           ))}
                         </select>
                       </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-foreground mb-1.5">{f.productImage}</label>
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            setFormData((prev) => ({
-                              ...prev,
-                              imageFile: file,
-                              imagePreview: URL.createObjectURL(file),
-                            }));
-                          }}
-                          className="hidden"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="py-1.5 px-3 rounded-lg text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-                        >
-                          {f.browse}
-                        </button>
-                        <span className="text-sm text-muted-foreground truncate max-w-[16rem]" dir="auto">
-                          {formData.imageFile ? formData.imageFile.name : f.noFileSelected}
-                        </span>
-                      </div>
-                      {formData.imagePreview && (
-                        <img src={formData.imagePreview} alt={f.imagePreviewAlt} className="w-24 h-24 object-cover rounded-lg mt-2 border border-border" />
-                      )}
                     </div>
 
                     <div>
