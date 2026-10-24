@@ -61,7 +61,8 @@ function Icon({ name, size = 20, className = '' }: { name: string; size?: number
 
 // ─── Room Identity ─────────────────────────────────────────────────────────────
 const ROOM_ID = 'local-supplier-control-room';
-const ROOM_LABEL_AR = 'غرفة تحكم المورد المحلي والتجاري';
+const ROOM_LABEL_AR = 'لوحة تحكم المورد والوكيل التجاري';
+const ROOM_SUBTITLE_AR = 'إدارة المنتجات، التوريدات، المخزون، وإعدادات الوكالة والدفع';
 const ROOM_LABEL_EN = 'Local & Commercial Supplier Control Room';
 const ROOM_MARKET = 'السوق اليمني المحلي — Yemen Domestic Market';
 
@@ -117,6 +118,7 @@ interface SupplierCredentials {
   commercialRegister: string;
   tradeName: string;
   taxNumber: string;
+  agencyAuthorization: string;
 }
 
 function formatDate(dateStr: string | null | undefined): string {
@@ -173,7 +175,7 @@ export default function LocalSupplierControlRoom() {
   const [products, setProducts] = useState<LocalProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [profileData, setProfileData] = useState<{ company_name?: string; city?: string; full_name?: string } | null>(null);
-  const [credentials, setCredentials] = useState<SupplierCredentials>({ commercialRegister: '', tradeName: '', taxNumber: '' });
+  const [credentials, setCredentials] = useState<SupplierCredentials>({ commercialRegister: '', tradeName: '', taxNumber: '', agencyAuthorization: '' });
 
   // ─── Role Guard ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -250,11 +252,12 @@ export default function LocalSupplierControlRoom() {
       }));
 
       if (regRes?.data) {
-        setCredentials({
+        setCredentials(prev => ({
+          ...prev,
           commercialRegister: regRes.data.commercial_registration_number || '',
           tradeName: regRes.data.company_name || '',
           taxNumber: regRes.data.tax_id || '',
-        });
+        }));
       }
     } catch (err) {
       console.error('LocalSupplierControlRoom load error:', err);
@@ -301,7 +304,7 @@ export default function LocalSupplierControlRoom() {
 
   const TABS: { id: ActiveTab; label: string; icon: string }[] = [
     { id: 'overview', label: 'نظرة عامة', icon: 'LayoutDashboard' },
-    { id: 'products', label: 'المنتجات', icon: 'Package' },
+    { id: 'products', label: 'المنتجات والتوريدات', icon: 'Package' },
     { id: 'orders', label: 'الطلبات المحلية', icon: 'ShoppingCart' },
     { id: 'wholesale', label: 'البيع بالجملة', icon: 'Boxes' },
     { id: 'retail', label: 'البيع بالتجزئة', icon: 'Store' },
@@ -342,6 +345,7 @@ export default function LocalSupplierControlRoom() {
             </div>
             <div>
               <h1 className="text-lg font-bold leading-tight">{ROOM_LABEL_AR}</h1>
+              <p className="text-emerald-100 text-xs mt-0.5">{ROOM_SUBTITLE_AR}</p>
               <p className="text-emerald-200 text-xs">{ROOM_MARKET}</p>
             </div>
           </div>
@@ -543,7 +547,7 @@ export default function LocalSupplierControlRoom() {
         {activeTab === 'products' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-gray-800">منتجاتي في السوق المحلي</h2>
+              <h2 className="text-lg font-bold text-gray-800">المنتجات والتوريدات التجارية</h2>
               <Link href="/my-account/add-product" className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors">
                 <Icon name="Plus" size={15} />
                 إضافة منتج
@@ -750,11 +754,12 @@ export default function LocalSupplierControlRoom() {
           <div className="space-y-4">
             <h2 className="text-lg font-bold text-gray-800">إعدادات غرفة التحكم</h2>
             <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-              <h3 className="font-semibold text-gray-800 text-sm mb-3">بيانات التوثيق</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <h3 className="font-semibold text-gray-800 text-sm mb-3">إعدادات وتوثيق المورد والوكيل التجاري</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {[
                   { label: 'السجل التجاري', value: credentials.commercialRegister },
-                  { label: 'الاسم التجاري', value: credentials.tradeName || profileData?.company_name || '' },
+                  { label: 'عقود / شهادات الوكالة التجارية والتوزيع', value: credentials.agencyAuthorization },
+                  { label: 'الاسم التجاري المعتمد', value: credentials.tradeName || profileData?.company_name || '' },
                   { label: 'الرقم الضريبي', value: credentials.taxNumber },
                 ].map(f => (
                   <div key={f.label} className="bg-gray-50 rounded-lg p-3">
