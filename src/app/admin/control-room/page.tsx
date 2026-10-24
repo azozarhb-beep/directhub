@@ -4724,6 +4724,18 @@ export default function AdminControlRoomPage() {
                 <span className="text-[11px] leading-snug text-slate-400">إدارة المناديب، توثيق المصانع، الكتالوج الشامل، ومهام التفتيش الميداني، وتعيين مشرفي الميدان</span>
               </Link>
 
+              {/* Global Territory Hub → /admin/territories */}
+              <Link
+                href="/admin/territories"
+                className="relative flex flex-col items-center gap-2.5 p-4 rounded-2xl border bg-[#161b22] border-[#30363d] text-[#8b949e] hover:border-[#484f58] hover:bg-[#1c2330] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 text-center overflow-hidden col-span-2 sm:col-span-3 md:col-span-2"
+              >
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm" style={{ background: 'linear-gradient(135deg,#14B8A6,#6366F1)' }}>
+                  <Icon name="GlobeAltIcon" size={22} className="text-white" />
+                </div>
+                <span className="text-sm font-bold leading-tight text-slate-100">مركز المربعات الجغرافية العالمي</span>
+                <span className="text-[11px] leading-snug text-slate-400">ربط المشرفين الميدانيين بالمربعات الصناعية لكل دولة، إعادة الإسناد، وحل الحسابات بانتظار التعيين</span>
+              </Link>
+
               {/* Financial Escrow, Treasury & Commission Clearing Engine → /admin/finance */}
               <Link
                 href="/admin/finance"
