@@ -106,18 +106,38 @@ function FileUploadZone({
   label: string;
   hint?: string;
 }) {
+  const { t, language } = useLanguage();
+  const pg = t?.paymentGateway;
   const [preview, setPreview] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const isAr = language === 'ar';
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    onFileChange(f);
-    if (f.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (ev) => setPreview(ev.target?.result as string);
-      reader.readAsDataURL(f);
-    } else {
-      setPreview(null);
+    try {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      if (f.size > 10 * 1024 * 1024) {
+        setUploadError(isAr ? 'حجم الملف يجب ألا يتجاوز 10MB' : 'File size must be less than 10MB');
+        e.target.value = '';
+        return;
+      }
+      setUploadError(null);
+      onFileChange(f);
+      if (f.type.startsWith('image/')) {
+        try {
+          const reader = new FileReader();
+          reader.onload = (ev) => setPreview((ev.target?.result as string) || null);
+          reader.onerror = () => setPreview(null);
+          reader.readAsDataURL(f);
+        } catch {
+          setPreview(null);
+        }
+      } else {
+        setPreview(null);
+      }
+    } catch (err: any) {
+      console.warn('[FileUploadZone]', err?.message);
+      setUploadError(isAr ? 'تعذر قراءة الملف، حاول مرة أخرى' : 'Could not read the file, please try again');
     }
   };
 
@@ -132,14 +152,14 @@ function FileUploadZone({
               <Icon name="DocumentTextIcon" size={20} className="text-primary" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-foreground">{file.name}</p>
-              <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
+              <p className="text-sm font-semibold text-foreground">{file?.name}</p>
+              <p className="text-xs text-muted-foreground">{((file?.size || 0) / 1024).toFixed(1)} KB</p>
             </div>
           </div>
         )}
         <button
           type="button"
-          onClick={() => { onClear(); setPreview(null); }}
+          onClick={() => { onClear(); setPreview(null); setUploadError(null); }}
           className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-sm"
           aria-label="Remove file"
         >
@@ -147,21 +167,26 @@ function FileUploadZone({
         </button>
         <div className="px-4 pb-3 flex items-center gap-1.5">
           <Icon name="CheckCircleIcon" size={14} className="text-green-600" />
-          <span className="text-xs text-green-700 font-medium">{pg.uploadSuccess}</span>
+          <span className="text-xs text-green-700 font-medium">{pg?.uploadSuccess || (isAr ? 'تم رفع الملف' : 'File attached')}</span>
         </div>
       </div>
     );
   }
 
   return (
-    <label className="flex flex-col items-center justify-center gap-2 h-28 rounded-xl border-2 border-dashed border-border hover:border-primary/50 bg-muted/20 cursor-pointer transition-colors group">
-      <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-        <Icon name="ArrowUpTrayIcon" size={18} className="text-muted-foreground group-hover:text-primary transition-colors" />
-      </div>
-      <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">{label}</span>
-      {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
-      <input type="file" accept="image/*,.pdf" onChange={handleChange} className="sr-only" />
-    </label>
+    <div>
+      <label className="flex flex-col items-center justify-center gap-2 h-28 rounded-xl border-2 border-dashed border-border hover:border-primary/50 bg-muted/20 cursor-pointer transition-colors group">
+        <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center group-hover:bg-primary/10 transition-colors">
+          <Icon name="ArrowUpTrayIcon" size={18} className="text-muted-foreground group-hover:text-primary transition-colors" />
+        </div>
+        <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">{label}</span>
+        {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
+        <input type="file" accept="image/*,.pdf" onChange={handleChange} className="sr-only" />
+      </label>
+      {uploadError && (
+        <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{uploadError}</p>
+      )}
+    </div>
   );
 }
 
@@ -196,8 +221,9 @@ function LocalWalletSection({
   data: LocalWalletData;
   onChange: (d: LocalWalletData) => void;
 }) {
-  const { t, dir } = useLanguage();
+  const { t, dir, language } = useLanguage();
   const pg = t.paymentGateway;
+  const isAr = language === 'ar';
   const walletName = (id: string) => (pg.wallets as Record<string, string>)[id] || id;
   const bankName = (key: string) => (pg.banks as Record<string, string>)[key] || key;
 
@@ -307,7 +333,7 @@ function LocalWalletSection({
             <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
               <Icon name="LinkIcon" size={13} className="text-indigo-600" />
             </div>
-            <label className="text-xs font-bold text-indigo-900">{pg.transferRef}<span className="mr-1 text-red-500">*</span>
+            <label className="text-xs font-bold text-indigo-900">{isAr ? 'رقم عملية المحفظة (Transaction ID)' : pg.transferRef}<span className="mr-1 text-red-500">*</span>
             </label>
             <span className="mr-auto text-[10px] font-semibold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">{pg.mandatory}</span>
           </div>
@@ -328,12 +354,12 @@ function LocalWalletSection({
       {/* Receipt Upload */}
       <div>
         <label className="block text-xs font-semibold text-foreground mb-2 uppercase tracking-wide flex items-center gap-1.5">
-          <Icon name="PhotoIcon" size={13} className="text-primary" />{pg.x7}</label>
+          <Icon name="PhotoIcon" size={13} className="text-primary" />{isAr ? 'إرفاق إشعار المحفظة' : pg.x7}</label>
         <FileUploadZone
           file={data.receiptFile}
           onFileChange={(f) => onChange({ ...data, receiptFile: f })}
           onClear={() => onChange({ ...data, receiptFile: null })}
-          label={pg.clickUploadReceipt}
+          label={isAr ? 'انقر لإرفاق إشعار المحفظة' : pg.clickUploadReceipt}
           hint={pg.x0}
         />
       </div>
@@ -349,8 +375,9 @@ function LocalBankSection({
   data: LocalBankData;
   onChange: (d: LocalBankData) => void;
 }) {
-  const { t, dir } = useLanguage();
+  const { t, dir, language } = useLanguage();
   const pg = t.paymentGateway;
+  const isAr = language === 'ar';
   const bankName = (key: string) => (pg.banks as Record<string, string>)[key] || key;
 
   return (
@@ -447,7 +474,7 @@ function LocalBankSection({
             <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
               <Icon name="LinkIcon" size={13} className="text-indigo-600" />
             </div>
-            <label className="text-xs font-bold text-indigo-900">{pg.transferRef}<span className="mr-1 text-red-500">*</span>
+            <label className="text-xs font-bold text-indigo-900">{isAr ? 'رقم الإيداع / السند البنكي' : pg.transferRef}<span className="mr-1 text-red-500">*</span>
             </label>
             <span className="mr-auto text-[10px] font-semibold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">{pg.mandatory}</span>
           </div>
@@ -468,12 +495,12 @@ function LocalBankSection({
       {/* Receipt Upload */}
       <div>
         <label className="block text-xs font-semibold text-foreground mb-2 uppercase tracking-wide flex items-center gap-1.5">
-          <Icon name="DocumentArrowUpIcon" size={13} className="text-primary" />{pg.x11}</label>
+          <Icon name="DocumentArrowUpIcon" size={13} className="text-primary" />{isAr ? 'إشعار السند البنكي' : pg.x11}</label>
         <FileUploadZone
           file={data.receiptFile}
           onFileChange={(f) => onChange({ ...data, receiptFile: f })}
           onClear={() => onChange({ ...data, receiptFile: null })}
-          label={pg.clickUploadVoucher}
+          label={isAr ? 'انقر لرفع إشعار السند البنكي' : pg.clickUploadVoucher}
           hint={pg.x0}
         />
         <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">

@@ -8,7 +8,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
-import { PinSetupCard } from '@/components/PinSecurity';
 import {
   resolvePlatformRole,
   getHomeRoomForRole,
@@ -167,6 +166,8 @@ const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnTyp
   if (workspaceRole === 'buyer' || workspaceRole === 'unknown') return null;
 
   const accountRole = (profile?.account_role || '').toLowerCase().trim();
+  // Field-agent control room is strictly for field agents and admins
+  const canSeeAgentRoom = workspaceRole === 'agent' || workspaceRole === 'admin';
 
   // Determine title, description, and destination based on account_role
   let title = '';
@@ -180,7 +181,7 @@ const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnTyp
   } else if (accountRole === 'local_manufacturer') {
     title = 'غرفة تحكم المصنع المحلي';
     description = 'إدارة خطوط الإنتاج والقدرة التشغيلية والمنتجات';
-    destination = '/factory/local-dashboard';
+    destination = '/manufacturer/dashboard';
   } else if (accountRole === 'international_manufacturer') {
     title = 'غرفة تحكم المصنع الدولي';
     description = 'إدارة منتجاتك وعروضك للأسواق الدولية';
@@ -189,7 +190,7 @@ const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnTyp
     title = 'غرفة تحكم المندوب اللوجستي';
     description = 'إدارة الشحنات والتوصيلات وتتبع الطلبات';
     destination = '/logistics/dashboard';
-  } else if (accountRole === 'field_agent') {
+  } else if (accountRole === 'field_agent' && (workspaceRole === 'agent' || workspaceRole === 'admin')) {
     title = 'غرفة تحكم المندوب الميداني';
     description = 'إدارة مهامك الميدانية وتسجيل المصانع والعمولات';
     destination = '/agent/dashboard';
@@ -201,7 +202,7 @@ const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnTyp
     title = 'غرفة تحكم اللوجستيات';
     description = 'إدارة الشحنات والتوصيلات';
     destination = '/logistics/dashboard';
-  } else if (workspaceRole === 'agent') {
+  } else if (canSeeAgentRoom && workspaceRole === 'agent') {
     title = 'غرفة تحكم المندوب الميداني';
     description = 'إدارة مهامك الميدانية والعمولات';
     destination = '/agent/dashboard';
@@ -231,62 +232,6 @@ const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnTyp
         الذهاب إلى مساحة العمل
       </button>
     </div>
-  );
-};
-
-/* ─── Role-Based Add Product Button ─── */
-const RoleBasedAddProductButton: React.FC<{
-  profile: UserProfile | null;
-  label: string;
-  sublabel: string;
-}> = ({ profile, label, sublabel }) => {
-  const router = useRouter();
-
-  const workspaceRole = getUserWorkspaceRole(profile);
-  const accountRole = (profile?.account_role || '').toLowerCase().trim();
-  const isSeller =
-    workspaceRole === 'manufacturer' ||
-    workspaceRole === 'commercial_supplier' ||
-    accountRole === 'commercial_supplier' ||
-    accountRole === 'local_manufacturer' ||
-    accountRole === 'international_manufacturer' ||
-    (profile?.is_verified === true && workspaceRole !== 'buyer' && workspaceRole !== 'unknown');
-
-  const getAddProductDestination = (): string => {
-    if (accountRole === 'commercial_supplier') return '/supplier/local-dashboard';
-    if (accountRole === 'local_manufacturer') return '/factory/local-dashboard';
-    if (accountRole === 'international_manufacturer') return '/manufacturer/international-dashboard';
-    if (workspaceRole === 'commercial_supplier') return '/supplier/local-dashboard';
-    if (workspaceRole === 'manufacturer') return '/factory/local-dashboard';
-    return '/factory/local-dashboard';
-  };
-
-  const handleClick = () => {
-    if (isSeller) {
-      router.push(getAddProductDestination());
-    } else {
-      router.push('/account/upgrade');
-    }
-  };
-
-  const displayLabel = isSeller ? label : 'ترقية الحساب للبيع';
-  const displaySublabel = isSeller ? sublabel : 'سجّل كمصنع أو مورد لعرض منتجاتك الصناعية';
-
-  return (
-    <button
-      onClick={handleClick}
-      className="flex flex-col items-center gap-3 p-4 bg-card border border-border rounded-2xl hover:shadow-md hover:border-orange-300 transition-all text-center group w-full"
-    >
-      <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center group-hover:bg-orange-200 transition-colors shrink-0">
-        <Icon name={isSeller ? 'PlusCircleIcon' : 'ArrowUpCircleIcon'} size={22} className="text-orange-600" />
-      </div>
-      <div className="min-w-0">
-        <span className="text-xs font-bold text-foreground group-hover:text-orange-600 transition-colors block leading-tight">
-          {displayLabel}
-        </span>
-        <span className="text-[11px] text-muted-foreground mt-0.5 block">{displaySublabel}</span>
-      </div>
-    </button>
   );
 };
 
@@ -329,8 +274,79 @@ const TrackingCodeInput: React.FC<{ orderId: string }> = ({ orderId }) => {
   );
 };
 
+/* ─── My RFQs list (price requests) ─── */
+interface AccountRfq {
+  id: string;
+  product_name: string;
+  quantity: number;
+  unit: string;
+  target_price: number | null;
+  currency: string | null;
+  destination_country: string | null;
+  status: string;
+  created_at: string;
+}
+
+const RFQ_STATUS_LABELS: Record<string, { ar: string; en: string; cls: string }> = {
+  pending: { ar: 'معلق', en: 'Pending', cls: 'bg-yellow-100 text-yellow-700' },
+  responded: { ar: 'تم الرد', en: 'Responded', cls: 'bg-purple-100 text-purple-700' },
+  accepted: { ar: 'مقبول', en: 'Accepted', cls: 'bg-green-100 text-green-700' },
+  rejected: { ar: 'مرفوض', en: 'Rejected', cls: 'bg-red-100 text-red-700' },
+  expired: { ar: 'منتهي', en: 'Expired', cls: 'bg-muted text-muted-foreground' },
+};
+
+const MyRfqList: React.FC<{ rfqs: AccountRfq[]; dataLoading: boolean }> = ({ rfqs, dataLoading }) => {
+  const { language, dir } = useLanguage();
+  const isAr = language === 'ar';
+  if (dataLoading || rfqs.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-3 mb-6" dir={dir}>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-extrabold text-foreground">{isAr ? 'طلباتي للأسعار' : 'My Price Requests'}</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">{rfqs.length} {isAr ? 'طلب' : 'requests'}</p>
+        </div>
+        <Link href="/rfq-management" className="px-3 py-1.5 text-xs font-bold border border-border rounded-lg hover:bg-muted transition-colors text-foreground">
+          {isAr ? 'عرض الكل' : 'View all'}
+        </Link>
+      </div>
+      {rfqs.map((rfq) => {
+        const st = RFQ_STATUS_LABELS[rfq.status] || RFQ_STATUS_LABELS.pending;
+        return (
+          <div key={rfq.id} className="bg-card border border-border rounded-2xl p-4 md:p-5 hover:shadow-sm transition-shadow">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+                <Icon name="ClipboardDocumentListIcon" size={22} className="text-orange-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <p className="text-sm font-extrabold text-foreground truncate">{rfq.product_name}</p>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{isAr ? st.ar : st.en}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {rfq.quantity} {rfq.unit}
+                  {rfq.destination_country ? ` · ${rfq.destination_country}` : ''}
+                </p>
+                <p className="text-xs text-muted-foreground font-mono mt-0.5">{formatDateSafe(rfq.created_at)}</p>
+              </div>
+              <div className="flex sm:flex-col items-center sm:items-end gap-3 shrink-0">
+                {rfq.target_price ? (
+                  <p className="text-base font-extrabold text-foreground">{rfq.currency || 'USD'} {formatNumber(rfq.target_price)}</p>
+                ) : null}
+                <Link href="/rfq-management" className="px-3 py-1.5 text-xs font-bold border border-border rounded-lg hover:bg-muted transition-colors text-foreground">
+                  {isAr ? 'عرض التفاصيل' : 'View details'}
+                </Link>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 /* ─── My Orders Tab ─── */
-const MyOrdersTab: React.FC<{ orders: Order[]; dataLoading: boolean; orderStats: { total: number; pending: number; completed: number; totalSpent: number } }> = ({ orders, dataLoading, orderStats }) => {
+const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: boolean; orderStats: { total: number; pending: number; completed: number; totalSpent: number } }> = ({ orders, rfqs, dataLoading, orderStats }) => {
   const { t, dir, isRTL, language } = useLanguage();
   const ma = t.myAccount;
   const [activeOrderTab, setActiveOrderTab] = useState<'processing' | 'ready' | 'shipped' | 'completed' | 'history'>('processing');
@@ -388,6 +404,9 @@ const MyOrdersTab: React.FC<{ orders: Order[]; dataLoading: boolean; orderStats:
   }
 
   if (orders.length === 0) {
+    if (rfqs.length > 0) {
+      return <MyRfqList rfqs={rfqs} dataLoading={dataLoading} />;
+    }
     return (
       <div className="text-center py-20 bg-card border border-border rounded-2xl">
         <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -407,6 +426,7 @@ const MyOrdersTab: React.FC<{ orders: Order[]; dataLoading: boolean; orderStats:
 
   return (
     <div className="flex flex-col gap-6" dir={dir}>
+      <MyRfqList rfqs={rfqs} dataLoading={dataLoading} />
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -739,104 +759,6 @@ const MyOrdersTab: React.FC<{ orders: Order[]; dataLoading: boolean; orderStats:
   );
 };
 
-/* ─── KYC Status Card ─── */
-const KYCStatusCard: React.FC<{ userId: string }> = ({ userId }) => {
-  const router = useRouter();
-  const { t } = useLanguage();
-  const [kycStatus, setKycStatus] = useState<'none' | 'pending' | 'under_review' | 'approved' | 'rejected'>('none');
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchKYC = async () => {
-      try {
-        const supabase = createClient();
-        const { data } = await supabase
-          .from('factory_registrations')
-          .select('kyc_status')
-          .eq('user_id', userId)
-          .maybeSingle();
-        setKycStatus(data?.kyc_status ?? 'none');
-      } catch {
-        setKycStatus('none');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchKYC();
-  }, [userId]);
-
-  const statusConfig = {
-    none: { label: 'Not Submitted', labelAr: 'لم يُقدَّم', color: 'text-muted-foreground', bg: 'bg-muted', border: 'border-border', icon: 'IdentificationIcon', iconColor: 'text-muted-foreground', badgeBg: 'bg-muted text-muted-foreground' },
-    pending: { label: 'Pending Review', labelAr: 'قيد المراجعة', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', icon: 'ClockIcon', iconColor: 'text-amber-600', badgeBg: 'bg-amber-100 text-amber-700' },
-    under_review: { label: 'Under Review', labelAr: 'تحت المراجعة', color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', icon: 'MagnifyingGlassIcon', iconColor: 'text-blue-600', badgeBg: 'bg-blue-100 text-blue-700' },
-    approved: { label: 'Verified', labelAr: 'موثّق', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: 'ShieldCheckIcon', iconColor: 'text-emerald-600', badgeBg: 'bg-emerald-100 text-emerald-700' },
-    rejected: { label: 'Action Required', labelAr: 'يتطلب إجراء', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', icon: 'ExclamationCircleIcon', iconColor: 'text-red-600', badgeBg: 'bg-red-100 text-red-700' },
-  };
-
-  const cfg = statusConfig[kycStatus];
-
-  return (
-    <div className={`bg-card border ${cfg.border} rounded-2xl p-5`}>
-      <h3 className="text-sm font-extrabold text-foreground mb-4 flex items-center gap-2">
-        <div className={`w-7 h-7 rounded-full ${cfg.bg} flex items-center justify-center`}>
-          <Icon name="IdentificationIcon" size={14} className={cfg.iconColor} />
-        </div>
-        KYC Verification
-      </h3>
-
-      {loading ? (
-        <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-xl animate-pulse">
-          <div className="w-10 h-10 rounded-xl bg-muted shrink-0" />
-          <div className="flex-1 space-y-2">
-            <div className="h-3 bg-muted rounded w-2/3" />
-            <div className="h-2.5 bg-muted rounded w-1/2" />
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          <div className={`flex items-center gap-3 p-3 ${cfg.bg} border ${cfg.border} rounded-xl`}>
-            <div className={`w-10 h-10 rounded-xl bg-card flex items-center justify-center shrink-0`}>
-              <Icon name={cfg.icon as Parameters<typeof Icon>[0]['name']} size={18} className={cfg.iconColor} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-extrabold text-foreground">Identity Verification</p>
-              <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full mt-0.5 ${cfg.badgeBg}`}>
-                {cfg.label}
-              </span>
-            </div>
-          </div>
-
-          {kycStatus === 'approved' && (
-            <div className="flex items-center gap-2 p-2.5 bg-emerald-50 border border-emerald-100 rounded-xl">
-              <Icon name="CheckBadgeIcon" size={14} className="text-emerald-600 shrink-0" />
-              <p className="text-[11px] font-bold text-emerald-700">Your business is fully verified on DirectHub</p>
-            </div>
-          )}
-
-          {kycStatus === 'rejected' && (
-            <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-100 rounded-xl">
-              <Icon name="ExclamationCircleIcon" size={14} className="text-red-600 shrink-0" />
-              <p className="text-[11px] font-bold text-red-700">Documents need attention — please resubmit</p>
-            </div>
-          )}
-
-          <button
-            onClick={() => router.push('/kyc')}
-            className={`w-full flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-all ${
-              kycStatus === 'approved' ?'border border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-                : kycStatus === 'rejected' ?'bg-red-600 text-white hover:bg-red-700'
-                : kycStatus === 'none' ?'bg-primary text-primary-foreground hover:opacity-90' :'border border-border text-foreground hover:bg-muted'
-            }`}
-          >
-            <Icon name={kycStatus === 'approved' ? 'EyeIcon' : kycStatus === 'none' ? 'PlusCircleIcon' : 'ArrowTopRightOnSquareIcon'} size={13} />
-            {kycStatus === 'approved' ? 'View KYC Documents' : kycStatus === 'none' ? 'Start KYC Verification' : kycStatus === 'rejected' ? 'Resubmit Documents' : 'Track KYC Status'}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-};
-
 // ─── Live Order Status Widget ───────────────────────────────────────────────
 interface LiveStatusEvent {
   orderId: string;
@@ -1106,6 +1028,7 @@ const AccountDashboard: React.FC = () => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [rfqs, setRfqs] = useState<AccountRfq[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [orderStats, setOrderStats] = useState({ total: 0, pending: 0, completed: 0, totalSpent: 0 });
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
@@ -1141,10 +1064,11 @@ const AccountDashboard: React.FC = () => {
     const fetchData = async () => {
       setDataLoading(true);
       try {
-        const [profileRes, ordersRes, productsRes] = await Promise.all([
+        const [profileRes, ordersRes, productsRes, rfqsRes] = await Promise.all([
           supabase.from('user_profiles').select('*').eq('id', user.id).single(),
           supabase.from('orders').select('id, order_number, status, total, created_at, items').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
           supabase.from('manufacturer_products').select('id, name, name_ar, unit_price, minimum_order_qty, unit, inventory_status, is_active, image_url, created_at').eq('manufacturer_id', user.id).order('created_at', { ascending: false }),
+          supabase.from('rfq_requests').select('id, product_name, quantity, unit, target_price, currency, destination_country, status, created_at').eq('buyer_id', user.id).order('created_at', { ascending: false }).limit(20),
         ]);
         if (profileRes.data) {
           setProfile(profileRes.data);
@@ -1165,6 +1089,7 @@ const AccountDashboard: React.FC = () => {
           setOrderStats({ total, pending, completed, totalSpent });
         }
         if (productsRes.data) setProducts(productsRes.data);
+        if (rfqsRes.data) setRfqs(rfqsRes.data as AccountRfq[]);
         const identities = user.identities ?? [];
         setIsGoogleUser(!!identities.find((id: any) => id.provider === 'google'));
         setHasLocalPassword(!!identities.find((id: any) => id.provider === 'email'));
@@ -1412,7 +1337,7 @@ const AccountDashboard: React.FC = () => {
                 onClick={() => {
                   const workspaceRole = getUserWorkspaceRole(profile);
                   if (workspaceRole === 'manufacturer') {
-                    router.push('/my-account/supplier-profile');
+                    router.push('/manufacturer/settings');
                   } else {
                     router.push('/my-account/edit-profile');
                   }
@@ -1420,9 +1345,6 @@ const AccountDashboard: React.FC = () => {
                 className="px-4 py-2 border border-primary-foreground/20 text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary-foreground/10 transition-colors"
               >
                 {t.myAccount.editProfile}
-              </button>
-              <button onClick={() => router.push('/rfq/create')} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 transition-opacity">
-                {t.myAccount.postRFQ}
               </button>
             </div>
           </div>
@@ -1551,60 +1473,8 @@ const AccountDashboard: React.FC = () => {
               )}
             </div>
 
-            {/* Right: Quick actions as cards */}
+            {/* Right: Platform info */}
             <div className="lg:col-span-4 flex flex-col gap-4">
-              <div className="bg-card border border-border rounded-2xl p-5">
-                <h3 className="text-sm font-extrabold text-foreground mb-4">{t.myAccount.quickActions}</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Post RFQ */}
-                  <button
-                    onClick={() => router.push('/rfq/create')}
-                    className="flex flex-col items-center gap-3 p-4 bg-card border border-border rounded-2xl hover:shadow-md hover:border-primary/40 transition-all text-center group w-full"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                      <Icon name="PlusCircleIcon" size={22} className="text-primary" />
-                    </div>
-                    <span className="text-xs font-bold text-foreground group-hover:text-primary transition-colors leading-tight">{t.myAccount.actionPostRFQ}</span>
-                  </button>
-                  {/* Browse */}
-                  <Link href="/search" className="flex flex-col items-center gap-3 p-4 bg-card border border-border rounded-2xl hover:shadow-md hover:border-blue-300 transition-all text-center group">
-                    <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                      <Icon name="MagnifyingGlassIcon" size={22} className="text-blue-600" />
-                    </div>
-                    <span className="text-xs font-bold text-foreground group-hover:text-blue-600 transition-colors leading-tight">{t.myAccount.actionBrowse}</span>
-                  </Link>
-                  {/* Invoices */}
-                  <Link href="/invoices" className="flex flex-col items-center gap-3 p-4 bg-card border border-border rounded-2xl hover:shadow-md hover:border-gray-300 transition-all text-center group">
-                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center group-hover:bg-gray-200 transition-colors">
-                      <Icon name="DocumentArrowDownIcon" size={22} className="text-gray-600" />
-                    </div>
-                    <span className="text-xs font-bold text-foreground group-hover:text-gray-700 transition-colors leading-tight">{t.myAccount.actionInvoices}</span>
-                  </Link>
-                  {/* Financial */}
-                  <Link href="/financial-accounts" className="flex flex-col items-center gap-3 p-4 bg-card border border-border rounded-2xl hover:shadow-md hover:border-green-300 transition-all text-center group">
-                    <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center group-hover:bg-green-200 transition-colors">
-                      <Icon name="BanknotesIcon" size={22} className="text-green-600" />
-                    </div>
-                    <span className="text-xs font-bold text-foreground group-hover:text-green-600 transition-colors leading-tight">{t.myAccount.actionFinancial}</span>
-                  </Link>
-                  {/* Add Product — role-aware: suppliers/manufacturers go to dashboard, buyers see upgrade prompt */}
-                  <RoleBasedAddProductButton
-                    profile={profile}
-                    label={t.myAccount.actionAddProduct}
-                    sublabel={t.myAccount.actionAddProductSub}
-                  />
-                  {/* Upgrade — buyer only */}
-                  {isBuyer && (
-                    <Link href="/account/upgrade" className="flex flex-col items-center gap-3 p-4 bg-card border border-amber-200 rounded-2xl hover:shadow-md hover:border-amber-400 transition-all text-center group">
-                      <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center group-hover:bg-amber-200 transition-colors">
-                        <Icon name="ArrowUpCircleIcon" size={22} className="text-amber-600" />
-                      </div>
-                      <span className="text-xs font-bold text-foreground group-hover:text-amber-700 transition-colors leading-tight">{t.myAccount.actionUpgrade}</span>
-                    </Link>
-                  )}
-                </div>
-              </div>
-
               {/* Platform Info Links */}
               <div className="bg-gradient-to-br from-primary/5 to-orange-50 border border-primary/20 rounded-2xl p-5">
                 <h3 className="text-sm font-extrabold text-foreground mb-3 flex items-center gap-2">
@@ -1648,6 +1518,9 @@ const AccountDashboard: React.FC = () => {
             {dataLoading ? (
               <div className="flex flex-col gap-3">{[...Array(5)].map((_, i) => <div key={i} className="bg-card border border-border rounded-2xl p-5 animate-pulse h-24" />)}</div>
             ) : orders.length === 0 ? (
+              rfqs.length > 0 ? (
+                <MyRfqList rfqs={rfqs} dataLoading={dataLoading} />
+              ) : (
               <div className="text-center py-20 bg-card border border-border rounded-2xl">
                 <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <Icon name="ShoppingBagIcon" size={28} className="text-muted-foreground" />
@@ -1656,8 +1529,10 @@ const AccountDashboard: React.FC = () => {
                 <p className="text-sm text-muted-foreground mb-4">{t.myAccount.noOrdersSub}</p>
                 <Link href="/search" className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl">{t.myAccount.browseProducts}</Link>
               </div>
+              )
             ) : (
               <div className="flex flex-col gap-3">
+                <MyRfqList rfqs={rfqs} dataLoading={dataLoading} />
                 {orders.map((order) => (
                   <div key={order.id} className="bg-card border border-border rounded-2xl p-4 md:p-5 hover:shadow-sm transition-shadow">
                     <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -1775,7 +1650,7 @@ const AccountDashboard: React.FC = () => {
 
         {/* ════ MY ORDERS TAB (buyers only) ════ */}
         {activeTab === 'my-orders' && (
-          <MyOrdersTab orders={orders} dataLoading={dataLoading} orderStats={orderStats} />
+          <MyOrdersTab orders={orders} rfqs={rfqs} dataLoading={dataLoading} orderStats={orderStats} />
         )}
 
         {/* ════ SETTINGS TAB ════ */}
@@ -1811,22 +1686,15 @@ const AccountDashboard: React.FC = () => {
                 </div>
 
                 <button
-                  onClick={() => {
-                    const workspaceRole = getUserWorkspaceRole(profile);
-                    if (workspaceRole === 'manufacturer') {
-                      router.push('/my-account/supplier-profile');
-                    } else {
-                      router.push('/my-account/edit-profile');
-                    }
-                  }}
+                  onClick={() => router.push('/my-account/edit-profile')}
                   className="w-full flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground text-sm font-extrabold rounded-xl hover:opacity-90 transition-opacity shadow-md shadow-primary/20"
                 >
                   <Icon name="PencilSquareIcon" size={16} />
-                  {getUserWorkspaceRole(profile) === 'manufacturer' ? t.myAccount.editManufacturerProfile : t.myAccount.editBuyerProfile}
+                  {t.myAccount.editBuyerProfile}
                 </button>
                 <p className="text-[11px] text-muted-foreground text-center mt-2 flex items-center justify-center gap-1">
                   <Icon name="InformationCircleIcon" size={11} />
-                  {getUserWorkspaceRole(profile) === 'manufacturer' ? t.myAccount.editManufacturerProfileHint : t.myAccount.editBuyerProfileHint}
+                  {t.myAccount.editBuyerProfileHint}
                 </p>
               </div>
 
@@ -1885,10 +1753,6 @@ const AccountDashboard: React.FC = () => {
 
             {/* Right sidebar */}
             <div className="lg:col-span-4 flex flex-col gap-4">
-              {!isBuyer && <PinSetupCard hasPinSet={!!profile?.transaction_pin_hash} onPinSet={() => setProfile((prev) => prev ? { ...prev, transaction_pin_hash: 'set' } : prev)} />}
-
-              {!isBuyer && <KYCStatusCard userId={user.id} />}
-
               {/* Security */}
               <div className="bg-card border border-border rounded-2xl p-5">
                 <h3 className="text-sm font-extrabold text-foreground mb-4 flex items-center gap-2">
@@ -1945,21 +1809,7 @@ const AccountDashboard: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Log Out button inside security section */}
-                  <button
-                    onClick={async () => {
-                      const supabaseClient = createClient();
-                      await supabaseClient.auth.signOut();
-                      router.push('/login');
-                    }}
-                    className="flex items-center gap-3 p-3 rounded-xl hover:bg-red-50 transition-colors text-left w-full border border-transparent hover:border-red-200"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                      <Icon name="ArrowRightOnRectangleIcon" size={14} className="text-red-600" />
-                    </div>
-                    <span className="text-sm font-semibold text-red-600 flex-1">{t.myAccount.signOut}</span>
-                    <Icon name={isRTL ? 'ChevronLeftIcon' : 'ChevronRightIcon'} size={14} className="text-red-400" />
-                  </button>
+                  {/* Log Out moved to isolated bottom section */}
 
                   {[
                     { label: t.myAccount.twoFactorAuth, icon: 'ShieldCheckIcon', bg: 'bg-gray-100', color: 'text-gray-400' },
@@ -1970,10 +1820,30 @@ const AccountDashboard: React.FC = () => {
                         <Icon name={item.icon as Parameters<typeof Icon>[0]['name']} size={14} className={item.color} />
                       </div>
                       <span className="text-sm font-semibold text-muted-foreground flex-1">{item.label}</span>
-                      <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full whitespace-nowrap">Coming Soon</span>
+                      <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full whitespace-nowrap">قريباً</span>
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+
+            {/* Isolated Logout section — very bottom of Settings */}
+            <div className="lg:col-span-12 mt-2 pt-6 border-t border-border">
+              <div className="bg-card border border-red-200 rounded-2xl p-5">
+                <button
+                  onClick={async () => {
+                    const supabaseClient = createClient();
+                    await supabaseClient.auth.signOut();
+                    router.push('/login');
+                  }}
+                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-red-50 transition-colors text-left w-full"
+                >
+                  <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                    <Icon name="ArrowRightOnRectangleIcon" size={14} className="text-red-600" />
+                  </div>
+                  <span className="text-sm font-semibold text-red-600 flex-1">تسجيل الخروج</span>
+                  <Icon name={isRTL ? 'ChevronLeftIcon' : 'ChevronRightIcon'} size={14} className="text-red-400" />
+                </button>
               </div>
             </div>
           </div>

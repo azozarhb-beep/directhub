@@ -26,14 +26,17 @@ interface SupplierProfileData {
   company_name: string | null;
   country: string | null;
   city: string | null;
-  phone: string | null;
   avatar_url: string | null;
   cover_url: string | null;
   description?: string | null;
   seller_category?: string | null;
+  year_established?: number | null;
+  nearest_fob_port?: string | null;
+  annual_production_capacity?: string | null;
+  website_url?: string | null;
 }
 
-export default function SupplierProfilePage() {
+export default function SupplierProfilePage({ backPath = '/my-account' }: { backPath?: string } = {}) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const supabase = createClient();
@@ -51,7 +54,10 @@ export default function SupplierProfilePage() {
     seller_category: '',
     country: '',
     city: '',
-    phone: '',
+    year_established: '',
+    nearest_fob_port: '',
+    annual_production_capacity: '',
+    website_url: '',
   });
 
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -71,7 +77,7 @@ export default function SupplierProfilePage() {
       const { data, error } = await fetchUserProfileRow(
         supabase,
         user.id,
-        'id, full_name, company_name, country, city, phone, avatar_url, cover_url, cover_photo_url, description, seller_category'
+        'id, full_name, company_name, country, city, avatar_url, cover_url, cover_photo_url, description, seller_category, year_established, nearest_fob_port, annual_production_capacity, website_url'
       );
       if (error) {
         console.error('supplier profile fetch:', error.message);
@@ -84,11 +90,14 @@ export default function SupplierProfilePage() {
           company_name: data.company_name ?? null,
           country: data.country ?? null,
           city: data.city ?? null,
-          phone: data.phone ?? null,
           avatar_url: data.avatar_url ?? null,
           cover_url: cover,
           description: data.description ?? null,
           seller_category: data.seller_category ?? null,
+          year_established: data.year_established ?? null,
+          nearest_fob_port: data.nearest_fob_port ?? null,
+          annual_production_capacity: data.annual_production_capacity ?? null,
+          website_url: data.website_url ?? null,
         });
         setForm({
           company_name: data.company_name || '',
@@ -97,7 +106,10 @@ export default function SupplierProfilePage() {
           seller_category: data.seller_category || '',
           country: data.country || '',
           city: data.city || '',
-          phone: data.phone || '',
+          year_established: data.year_established ? String(data.year_established) : '',
+          nearest_fob_port: data.nearest_fob_port || '',
+          annual_production_capacity: data.annual_production_capacity || '',
+          website_url: data.website_url || '',
         });
         setLogoPreview(data.avatar_url || null);
         setCoverPreview(cover);
@@ -140,6 +152,11 @@ export default function SupplierProfilePage() {
       setError('اسم الشركة / المصنع مطلوب');
       return;
     }
+    const yearVal = form.year_established.trim();
+    if (yearVal && (!/^\d{4}$/.test(yearVal) || Number(yearVal) < 1800 || Number(yearVal) > new Date().getFullYear())) {
+      setError('سنة التأسيس غير صحيحة');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -162,7 +179,10 @@ export default function SupplierProfilePage() {
         company_name: form.company_name.trim() || null,
         country: form.country.trim() || null,
         city: form.city.trim() || null,
-        phone: form.phone.trim() || null,
+        year_established: yearVal ? Number(yearVal) : null,
+        nearest_fob_port: form.nearest_fob_port.trim() || null,
+        annual_production_capacity: form.annual_production_capacity.trim() || null,
+        website_url: form.website_url.trim() || null,
         seller_category: form.seller_category || null,
         avatar_url: newLogoUrl,
         cover_photo_url: newCoverUrl,
@@ -244,7 +264,7 @@ export default function SupplierProfilePage() {
           <div className="max-w-4xl mx-auto px-4 md:px-6 py-8 relative z-10">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => router.push('/my-account')}
+                onClick={() => router.push(backPath)}
                 className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 transition-colors"
                 aria-label="Back"
               >
@@ -340,21 +360,6 @@ export default function SupplierProfilePage() {
                   </div>
                 </div>
               </div>
-
-              {/* Quick link to manufacturer dashboard */}
-              <button
-                onClick={() => router.push('/manufacturer/dashboard')}
-                className="flex items-center gap-3 p-4 bg-orange-50 border border-orange-200 rounded-2xl hover:bg-orange-100 transition-colors text-left"
-              >
-                <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
-                  <Icon name="BuildingStorefrontIcon" size={18} className="text-orange-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-orange-700">لوحة تحكم المصنع</p>
-                  <p className="text-[11px] text-orange-500">إدارة المنتجات والطلبات</p>
-                </div>
-                <Icon name="ArrowLeftIcon" size={14} className="text-orange-400 shrink-0" />
-              </button>
             </div>
 
             {/* Right: Profile Form */}
@@ -460,17 +465,60 @@ export default function SupplierProfilePage() {
                     </div>
                   </div>
 
-                  {/* Phone */}
-                  <div>
-                    <label className="block text-xs font-bold text-muted-foreground mb-1.5">رقم الهاتف / واتساب</label>
-                    <input
-                      type="tel"
-                      value={form.phone}
-                      onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
-                      placeholder="+967 7XX XXX XXX"
-                      className="w-full px-4 py-3 border border-border rounded-xl bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors placeholder:text-muted-foreground/50"
-                      dir="ltr"
-                    />
+                  {/* B2B Fields */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-muted-foreground mb-1.5">سنة التأسيس / Year Established</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={4}
+                        value={form.year_established}
+                        onChange={(e) => setForm((p) => ({ ...p, year_established: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                        placeholder="مثال: 2005"
+                        className="w-full px-4 py-3 border border-border rounded-xl bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors placeholder:text-muted-foreground/50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-muted-foreground mb-1.5">أقرب ميناء تصدير / Nearest FOB Export Port</label>
+                      <input
+                        type="text"
+                        value={form.nearest_fob_port}
+                        onChange={(e) => setForm((p) => ({ ...p, nearest_fob_port: e.target.value }))}
+                        placeholder="مثال: Mersin, Aden, Ningbo"
+                        className="w-full px-4 py-3 border border-border rounded-xl bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors placeholder:text-muted-foreground/50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-muted-foreground mb-1.5">الطاقة الإنتاجية السنوية / Annual Production Capacity</label>
+                      <input
+                        type="text"
+                        value={form.annual_production_capacity}
+                        onChange={(e) => setForm((p) => ({ ...p, annual_production_capacity: e.target.value }))}
+                        placeholder="مثال: 5000 طن / سنة"
+                        className="w-full px-4 py-3 border border-border rounded-xl bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors placeholder:text-muted-foreground/50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-muted-foreground mb-1.5">
+                        الموقع الإلكتروني للمنشأة / Official Website URL <span className="text-muted-foreground/60 font-medium">(اختياري)</span>
+                      </label>
+                      <input
+                        type="url"
+                        dir="ltr"
+                        value={form.website_url}
+                        onChange={(e) => setForm((p) => ({ ...p, website_url: e.target.value }))}
+                        placeholder="https://www.example.com"
+                        className="w-full px-4 py-3 border border-border rounded-xl bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors placeholder:text-muted-foreground/50"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
+                    <Icon name="ShieldCheckIcon" size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] leading-relaxed text-amber-800 font-medium">
+                      لحماية الصفقات، لا تُعرض أرقام الهواتف ولا الروابط الخارجية للمشترين في المتجر العام. جميع الاستفسارات والمعاملات تتم حصرياً عبر المحادثة الآمنة داخل المنصة وطلبات عروض الأسعار الرسمية (RFQ).
+                    </p>
                   </div>
 
                 </div>
@@ -489,7 +537,7 @@ export default function SupplierProfilePage() {
                     )}
                   </button>
                   <button
-                    onClick={() => router.push('/my-account')}
+                    onClick={() => router.push(backPath)}
                     className="px-5 py-3.5 border border-border text-sm font-bold rounded-xl hover:bg-muted transition-colors text-foreground"
                   >
                     إلغاء

@@ -32,10 +32,11 @@ const throttle: ServerThrottle = {
   dayWindowStart: Date.now(),
 };
 
-// Free-tier limits (conservative — well below Gemini free quotas)
+// Free-tier limits — raised so the public Amal assistant keeps replying under
+// normal multi-user traffic (limits were previously 4/min and 200/day site-wide)
 // Gemini free tier = 5 RPM; we cap at 4 to leave headroom for other routes
-const MAX_RPM = 4;
-const MAX_RPD = 200;
+const MAX_RPM = 30;
+const MAX_RPD = 5000;
 
 // ── Dedicated translate throttle (separate from shared quota) ─────────────────
 // Translation now uses MyMemory free API (no Gemini quota) — set high limits

@@ -1135,6 +1135,7 @@ function LiveMessagingContent() {
   const [acceptingQuoteId, setAcceptingQuoteId] = useState<string | null>(null);
   const [quoteAcceptMsg, setQuoteAcceptMsg] = useState<{ success: boolean; text: string } | null>(null);
   const [dealStatusUpdating, setDealStatusUpdating] = useState(false);
+  const [dealToken, setDealToken] = useState<string | null>(null);
   const [newMessageAlert, setNewMessageAlert] = useState<{ convId: string; senderName: string } | null>(null);
 
   // ── Chat header extra state ────────────────────────────────────────────────
@@ -2265,10 +2266,7 @@ function LiveMessagingContent() {
                   <Icon name="ChatBubbleLeftRightIcon" size={28} className="text-gray-400" />
                 </div>
                 <p className="text-sm font-semibold text-gray-700 mb-1">{m.noConversations}</p>
-                <p className="text-xs text-gray-400 mb-5">{m.noConversationsHint}</p>
-                <Link href="/rfq-board" className="px-5 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:opacity-90 transition-opacity">
-                  {m.submitRfq}
-                </Link>
+                <p className="text-xs text-gray-400">{m.noConversationsSubtitle}</p>
               </div>
             ) : filteredConvs.map(conv => {
               const threadInfo = THREAD_LABELS[conv.thread_type || 'negotiation'];
@@ -2334,17 +2332,6 @@ function LiveMessagingContent() {
                 </button>
               );
             })}
-          </div>
-
-          {/* ── Bottom: New RFQ button ─────────────────────────────────────── */}
-          <div className="p-3 border-t border-gray-100 bg-white shrink-0 mb-16 md:mb-0">
-            <Link
-              href="/rfq-board"
-              className="flex items-center justify-center gap-2 w-full py-2.5 bg-primary text-white text-sm font-bold rounded-xl hover:opacity-90 transition-opacity"
-            >
-              <Icon name="PlusIcon" size={16} />
-              {m.newRfqRequest}
-            </Link>
           </div>
         </div>
 
@@ -2484,7 +2471,7 @@ function LiveMessagingContent() {
 
                     {/* Place Order */}
                     {activeConv.deal_status === 'agreed' && (
-                      <Link href="/checkout" className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 transition-colors">
+                      <Link href={dealToken ? `/pay/deal/${dealToken}` : '/checkout'} className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 transition-colors">
                         <Icon name="ShoppingBagIcon" size={12} />
                         {m.placeOrder}
                       </Link>

@@ -4,12 +4,28 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 
+const PHONE_PLACEHOLDER_DOMAIN = 'phone.directhub.local';
+
+function normalizeYemeniPhone(raw: string): string | null {
+  let digits = (raw || '').replace(/[\s\-()+]/g, '');
+  if (digits.startsWith('00967')) digits = digits.slice(5);
+  else if (digits.startsWith('967')) digits = digits.slice(3);
+  if (digits.startsWith('0')) digits = digits.slice(1);
+  if (!/^7\d{8}$/.test(digits)) return null;
+  return `+967${digits}`;
+}
+
+function isPlaceholderEmail(email: string | null | undefined): boolean {
+  return !!email && email.endsWith(`@${PHONE_PLACEHOLDER_DOMAIN}`);
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface TeamMember {
   id: string;
   full_name: string;
   email: string;
+  phone?: string;
   role: string;
   is_active: boolean;
   factory_id: string | null;
@@ -21,11 +37,28 @@ interface TeamMember {
   can_view_inventory?: boolean;
   sales_rep_id?: string | null;
   sales_rep_status?: string | null;
+  pending_invite?: boolean;
+  invite_phone?: string;
 }
 
 interface FactoryTeamManagementProps {
   factoryOwnerId: string;
   isRTL?: boolean;
+}
+
+function extractInvitePhone(invitedEmail: string | null | undefined, notes: string | null | undefined): string {
+  const fromNotes = (notes || '').match(/\+?\d{9,15}/);
+  if (fromNotes) return fromNotes[0].replace('+', '');
+  if (invitedEmail && invitedEmail.endsWith(`@${PHONE_PLACEHOLDER_DOMAIN}`)) {
+    return invitedEmail.split('@')[0].replace(/\D/g, '');
+  }
+  return '';
+}
+
+function buildWhatsAppInviteUrl(name: string, phone: string): string {
+  const clean = (phone || '').replace(/\D/g, '');
+  const text = `مرحباً ${name}، تم اعتمادك كممثل مبيعات لمصنعنا على منصة Direct Hub. اضغط هنا لإنشاء حسابك ومتابعة الطلبات مباشرة: https://direct-hub.net/register`;
+  return `https://wa.me/${clean}?text=${encodeURIComponent(text)}`;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -41,6 +74,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteForm, setInviteForm] = useState({
     email: '',
+    phone: '',
     full_name: '',
     can_manage_products: true,
     can_respond_rfq: true,
@@ -59,7 +93,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
       // Fetch user_profiles with manufacturer_agent role linked to this factory
       const { data: agentProfiles, error } = await supabase
         .from('user_profiles')
-        .select('id, full_name, email, role, is_active, factory_id, created_at')
+        .select('id, full_name, email, phone, role, is_active, factory_id, created_at')
         .eq('factory_id', factoryOwnerId)
         .eq('role', 'manufacturer_agent')
         .order('created_at', { ascending: false });
@@ -69,7 +103,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
       // Also fetch factory_sales_reps for permission details
       const { data: salesReps } = await supabase
         .from('factory_sales_reps')
-        .select('id, rep_user_id, status, can_manage_products, can_respond_rfq, can_view_orders, can_view_inventory')
+        .select('id, rep_user_id, status, full_name, invited_email, notes, created_at, can_manage_products, can_respond_rfq, can_view_orders, can_view_inventory')
         .eq('factory_owner_id', factoryOwnerId);
 
       const repMap = new Map<string, any>();
@@ -82,7 +116,8 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
         return {
           id: p.id,
           full_name: p.full_name || '',
-          email: p.email || '',
+          email: isPlaceholderEmail(p.email) ? '' : (p.email || ''),
+          phone: p.phone || '',
           role: p.role,
           is_active: p.is_active ?? true,
           factory_id: p.factory_id,
@@ -96,7 +131,28 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
         };
       });
 
-      setMembers(combined);
+      const pendingInvites: TeamMember[] = (salesReps || [])
+        .filter((r: any) => r.status === 'pending' && !r.rep_user_id)
+        .map((r: any) => ({
+          id: `pending_${r.id}`,
+          full_name: r.full_name || '',
+          email: isPlaceholderEmail(r.invited_email) ? '' : (r.invited_email || ''),
+          phone: '',
+          role: 'manufacturer_agent',
+          is_active: true,
+          factory_id: factoryOwnerId,
+          created_at: r.created_at || new Date(0).toISOString(),
+          can_manage_products: r.can_manage_products ?? true,
+          can_respond_rfq: r.can_respond_rfq ?? true,
+          can_view_orders: r.can_view_orders ?? true,
+          can_view_inventory: r.can_view_inventory ?? true,
+          sales_rep_id: r.id,
+          sales_rep_status: 'pending',
+          pending_invite: true,
+          invite_phone: extractInvitePhone(r.invited_email, r.notes),
+        }));
+
+      setMembers([...pendingInvites, ...combined]);
     } catch (err) {
       console.error('FactoryTeamManagement: fetchTeamMembers error', err);
     } finally {
@@ -172,21 +228,41 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
     setInviteError('');
     setInviteSuccess('');
 
-    if (!inviteForm.email.trim()) { setInviteError('البريد الإلكتروني مطلوب / Email is required'); return; }
-    if (!inviteForm.full_name.trim()) { setInviteError('الاسم الكامل مطلوب / Full name is required'); return; }
+    if (!inviteForm.full_name.trim()) { setInviteError('الاسم الكامل مطلوب'); return; }
+    const normalizedPhone = normalizeYemeniPhone(inviteForm.phone);
+    if (!normalizedPhone) { setInviteError('أدخل رقم هاتف يمني صحيح (مثال: 771234567)'); return; }
+    const emailValue = inviteForm.email.trim().toLowerCase();
+    if (emailValue && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) { setInviteError('صيغة البريد الإلكتروني غير صحيحة'); return; }
+    const invitedEmail = emailValue || `${normalizedPhone.replace('+', '')}@${PHONE_PLACEHOLDER_DOMAIN}`;
+    const localPhone = normalizedPhone.replace('+967', '');
+    const phoneNote = `هاتف/واتساب: ${normalizedPhone}`;
+    const combinedNotes = [phoneNote, inviteForm.notes.trim()].filter(Boolean).join(' | ');
 
     setInviteLoading(true);
     try {
-      // Check if user already exists in user_profiles
-      const { data: existingProfile } = await supabase
-        .from('user_profiles')
-        .select('id, role, factory_id')
-        .eq('email', inviteForm.email.trim().toLowerCase())
-        .maybeSingle();
+      // Look up existing user by email (if provided) or by phone
+      let existingProfile: { id: string; role: string; factory_id: string | null } | null = null;
+      if (emailValue) {
+        const { data } = await supabase
+          .from('user_profiles')
+          .select('id, role, factory_id')
+          .eq('email', emailValue)
+          .maybeSingle();
+        existingProfile = data;
+      }
+      if (!existingProfile) {
+        const { data } = await supabase
+          .from('user_profiles')
+          .select('id, role, factory_id')
+          .in('phone', [normalizedPhone, localPhone, `967${localPhone}`, `0${localPhone}`])
+          .limit(1)
+          .maybeSingle();
+        existingProfile = data;
+      }
 
       if (existingProfile) {
         if (existingProfile.factory_id && existingProfile.factory_id !== factoryOwnerId) {
-          setInviteError('هذا المستخدم مرتبط بمصنع آخر / This user is already linked to another factory');
+          setInviteError('هذا المستخدم مرتبط بمصنع آخر');
           setInviteLoading(false);
           return;
         }
@@ -207,7 +283,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
         await supabase.from('factory_sales_reps').upsert({
           factory_owner_id: factoryOwnerId,
           rep_user_id: existingProfile.id,
-          invited_email: inviteForm.email.trim().toLowerCase(),
+          invited_email: invitedEmail,
           full_name: inviteForm.full_name.trim(),
           role: 'sales_rep',
           status: 'active',
@@ -217,7 +293,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
           can_respond_rfq: inviteForm.can_respond_rfq,
           can_view_orders: inviteForm.can_view_orders,
           can_view_inventory: inviteForm.can_view_inventory,
-          notes: inviteForm.notes.trim() || null,
+          notes: combinedNotes,
         }, { onConflict: 'rep_user_id,factory_owner_id', ignoreDuplicates: false });
 
       } else {
@@ -226,7 +302,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
         const { error: insertError } = await supabase.from('factory_sales_reps').insert({
           factory_owner_id: factoryOwnerId,
           rep_user_id: null,
-          invited_email: inviteForm.email.trim().toLowerCase(),
+          invited_email: invitedEmail,
           full_name: inviteForm.full_name.trim(),
           role: 'sales_rep',
           status: 'pending',
@@ -235,17 +311,17 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
           can_respond_rfq: inviteForm.can_respond_rfq,
           can_view_orders: inviteForm.can_view_orders,
           can_view_inventory: inviteForm.can_view_inventory,
-          notes: inviteForm.notes.trim() || null,
+          notes: combinedNotes,
         });
         if (insertError) throw insertError;
       }
 
-      setInviteSuccess(`تم إضافة ${inviteForm.full_name} بنجاح / ${inviteForm.full_name} added successfully`);
-      setInviteForm({ email: '', full_name: '', can_manage_products: true, can_respond_rfq: true, can_view_orders: true, can_view_inventory: true, notes: '' });
+      setInviteSuccess(`تمت إضافة ${inviteForm.full_name} بنجاح`);
+      setInviteForm({ email: '', phone: '', full_name: '', can_manage_products: true, can_respond_rfq: true, can_view_orders: true, can_view_inventory: true, notes: '' });
       await fetchTeamMembers();
       setTimeout(() => { setShowInviteModal(false); setInviteSuccess(''); }, 2500);
     } catch (err: any) {
-      setInviteError(err.message || 'فشل في إضافة العضو / Failed to add member');
+      setInviteError(err.message || 'فشل في إضافة الممثل');
     } finally {
       setInviteLoading(false);
     }
@@ -262,11 +338,11 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
           </div>
           <div className="flex-1">
             <h2 className="text-lg font-bold">
-              {isRTL ? 'إدارة فريق المصنع — ممثلو المبيعات' : 'Factory Team Management — Sales Agents'}
+              {isRTL ? 'إدارة ممثلي المبيعات' : 'Sales Agents Management'}
             </h2>
             <p className="text-sm text-white/80">
               {isRTL
-                ? 'إدارة الحسابات الفرعية لموظفي المصنع بصلاحية manufacturer_agent' :'Manage sub-accounts for factory staff with manufacturer_agent permissions'}
+                ? 'أضف موظفي المبيعات في مصنعك وحدد صلاحياتهم للرد على عروض الأسعار والطلبات' :'Add your factory sales staff and set their permissions for quotes and orders'}
             </p>
           </div>
           <button
@@ -274,7 +350,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
             className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white text-sm font-semibold rounded-xl transition-colors shrink-0"
           >
             <Icon name="UserPlusIcon" size={16} />
-            {isRTL ? 'إضافة عضو' : 'Add Member'}
+            {isRTL ? '+ إضافة ممثل مبيعات جديد' : '+ Add New Sales Agent'}
           </button>
         </div>
       </div>
@@ -290,7 +366,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
           </div>
           <ul className="space-y-1.5 text-xs text-green-700">
             <li className="flex items-center gap-2"><Icon name="CheckIcon" size={12} /> {isRTL ? 'إدارة المنتجات والمخزون' : 'Manage products & inventory'}</li>
-            <li className="flex items-center gap-2"><Icon name="CheckIcon" size={12} /> {isRTL ? 'الرد على طلبات الأسعار (RFQ)' : 'Respond to RFQ requests'}</li>
+            <li className="flex items-center gap-2"><Icon name="CheckIcon" size={12} /> {isRTL ? 'الرد على طلبات عروض الأسعار' : 'Respond to quote requests'}</li>
             <li className="flex items-center gap-2"><Icon name="CheckIcon" size={12} /> {isRTL ? 'عرض الطلبات والمحادثات' : 'View orders & conversations'}</li>
             <li className="flex items-center gap-2"><Icon name="CheckIcon" size={12} /> {isRTL ? 'التواصل مع المشترين نيابة عن المصنع' : 'Chat with buyers on behalf of factory'}</li>
           </ul>
@@ -310,20 +386,6 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
         </div>
       </div>
 
-      {/* Info notice */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
-        <Icon name="InformationCircleIcon" size={18} className="text-blue-600 shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-bold text-blue-800">
-            {isRTL ? 'ربط الحساب عبر factory_id' : 'Account Linking via factory_id'}
-          </p>
-          <p className="text-xs text-blue-700 mt-1">
-            {isRTL
-              ? 'يتم ربط كل ممثل مبيعات بالمصنع عبر حقل factory_id في جدول user_profiles مع صلاحية manufacturer_agent. يمكنهم إدارة RFQs والمحادثات نيابةً عن المصنع.' :'Each agent is linked to the factory via factory_id in user_profiles with manufacturer_agent role. They can manage RFQs and conversations on behalf of the factory.'}
-          </p>
-        </div>
-      </div>
-
       {/* Members List */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
@@ -338,14 +400,14 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
             {isRTL ? 'لا يوجد أعضاء في الفريق بعد' : 'No team members yet'}
           </p>
           <p className="text-xs text-muted-foreground mb-4">
-            {isRTL ? 'أضف موظفي المصنع لإدارة RFQs والمحادثات نيابةً عنك' : 'Add factory staff to manage RFQs and conversations on your behalf'}
+            {isRTL ? 'أضف موظفي المبيعات للرد على عروض الأسعار والمحادثات نيابةً عنك' : 'Add sales staff to handle quotes and conversations on your behalf'}
           </p>
           <button
             onClick={() => { setShowInviteModal(true); setInviteError(''); setInviteSuccess(''); }}
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
           >
             <Icon name="UserPlusIcon" size={16} />
-            {isRTL ? 'إضافة عضو جديد' : 'Add New Member'}
+            {isRTL ? '+ إضافة ممثل مبيعات جديد' : '+ Add New Sales Agent'}
           </button>
         </div>
       ) : (
@@ -362,7 +424,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-bold text-foreground">{member.full_name || member.email}</p>
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                      manufacturer_agent
+                      {isRTL ? 'ممثل مبيعات' : 'Sales Agent'}
                     </span>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                       member.is_active
@@ -378,9 +440,14 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{member.email}</p>
+                  {member.phone && (
+                    <p className="text-xs text-muted-foreground mt-0.5" dir="ltr">{member.phone}</p>
+                  )}
+                  {member.email && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{member.email}</p>
+                  )}
                   <p className="text-[10px] text-muted-foreground mt-0.5">
-                    {isRTL ? 'مرتبط عبر factory_id' : 'Linked via factory_id'} · {new Date(member.created_at).toLocaleDateString()}
+                    {isRTL ? 'تاريخ الانضمام' : 'Joined'}: {new Date(member.created_at).toLocaleDateString()}
                   </p>
                 </div>
                 {/* Permission chips */}
@@ -391,7 +458,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
                     </span>
                   )}
                   {member.can_respond_rfq && (
-                    <span className="text-[9px] px-1.5 py-0.5 bg-green-50 text-green-700 rounded border border-green-200">RFQ</span>
+                    <span className="text-[9px] px-1.5 py-0.5 bg-green-50 text-green-700 rounded border border-green-200">{isRTL ? 'عروض الأسعار' : 'Quotes'}</span>
                   )}
                   {member.can_view_orders && (
                     <span className="text-[9px] px-1.5 py-0.5 bg-green-50 text-green-700 rounded border border-green-200">
@@ -409,6 +476,17 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
                 </div>
                 {/* Actions */}
                 <div className="flex items-center gap-1 shrink-0">
+                  {member.pending_invite && member.invite_phone && (
+                    <a
+                      href={buildWhatsAppInviteUrl(member.full_name || member.email, member.invite_phone)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors whitespace-nowrap"
+                    >
+                      [ إرسال الدعوة عبر واتساب 📲 ]
+                    </a>
+                  )}
+                  {!member.pending_invite && (
                   <button
                     onClick={() => handleToggleActive(member.id, member.is_active)}
                     disabled={actionLoading === member.id}
@@ -421,6 +499,8 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
                       <Icon name="ArrowPathIcon" size={12} className="animate-spin" />
                     ) : member.is_active ? (isRTL ? 'إيقاف' : 'Suspend') : (isRTL ? 'تفعيل' : 'Activate')}
                   </button>
+                  )}
+                  {!member.pending_invite && (
                   <button
                     onClick={() => handleRemoveMember(member.id)}
                     disabled={actionLoading === member.id}
@@ -429,6 +509,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
                   >
                     <Icon name="TrashIcon" size={14} className="text-red-500" />
                   </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -484,20 +565,35 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
 
             <div>
               <label className="block text-xs font-semibold text-foreground mb-1.5">
-                {isRTL ? 'البريد الإلكتروني *' : 'Email Address *'}
+                {isRTL ? 'رقم الهاتف / الواتساب (يمني) *' : 'Phone / WhatsApp (Yemeni) *'}
               </label>
               <input
-                type="email"
-                value={inviteForm.email}
-                onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))}
-                placeholder={isRTL ? 'البريد الإلكتروني للموظف' : 'Employee email'}
+                type="tel"
+                inputMode="tel"
+                dir="ltr"
+                value={inviteForm.phone}
+                onChange={e => setInviteForm(f => ({ ...f, phone: e.target.value }))}
+                placeholder="7XXXXXXXX  |  +967 7XX XXX XXX"
                 className="w-full px-3 py-2.5 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
                 required
               />
               <p className="text-[10px] text-muted-foreground mt-1">
                 {isRTL
-                  ? 'إذا كان الحساب موجوداً سيتم ربطه فوراً، وإلا سيُرسل دعوة للتسجيل' :'If account exists it will be linked immediately, otherwise an invitation will be sent'}
+                  ? 'إذا كان للممثل حساب بنفس الرقم سيتم ربطه فوراً، وإلا ستُحفظ الدعوة حتى يسجّل' :'If the agent already has an account with this number it is linked immediately, otherwise the invitation is saved until they register'}
               </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1.5">
+                {isRTL ? 'البريد الإلكتروني (اختياري)' : 'Email Address (optional)'}
+              </label>
+              <input
+                type="email"
+                value={inviteForm.email}
+                onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))}
+                placeholder={isRTL ? 'البريد الإلكتروني للموظف (اختياري)' : 'Employee email (optional)'}
+                className="w-full px-3 py-2.5 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
             </div>
 
             {/* Permissions */}
@@ -507,7 +603,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
               </p>
               {[
                 { key: 'can_manage_products', labelAr: 'إدارة المنتجات والمخزون', labelEn: 'Manage products & inventory' },
-                { key: 'can_respond_rfq', labelAr: 'الرد على طلبات الأسعار (RFQ)', labelEn: 'Respond to RFQ requests' },
+                { key: 'can_respond_rfq', labelAr: 'الرد على طلبات عروض الأسعار', labelEn: 'Respond to quote requests' },
                 { key: 'can_view_orders', labelAr: 'عرض الطلبات', labelEn: 'View orders' },
                 { key: 'can_view_inventory', labelAr: 'عرض المخزون', labelEn: 'View inventory' },
               ].map(perm => (

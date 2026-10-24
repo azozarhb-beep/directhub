@@ -75,6 +75,13 @@ export default function ProductApprovalTogglePanel() {
   const [supplierActionLoading, setSupplierActionLoading] = useState<string | null>(null);
   const [supplierActionMsg, setSupplierActionMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
+  // ── Field rep assignment ──────────────────────────────────────────────────
+  const [activeReps, setActiveReps] = useState<{ id: string; full_name: string; referral_code: string | null }[]>([]);
+  const [repMap, setRepMap] = useState<Record<string, string | null>>({});
+  const [repSelection, setRepSelection] = useState<Record<string, string>>({});
+  const [repSaving, setRepSaving] = useState<string | null>(null);
+  const [repMsg, setRepMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
   // ── Load all settings on mount ────────────────────────────────────────────
   useEffect(() => {
     const load = async () => {
@@ -120,6 +127,25 @@ export default function ProductApprovalTogglePanel() {
       }
     };
     loadSuppliers();
+  }, []);
+
+  const loadRepData = async () => {
+    try {
+      const [repsRes, mapRes] = await Promise.all([
+        supabase.rpc('admin_list_active_field_reps'),
+        supabase.rpc('admin_factory_rep_map'),
+      ]);
+      setActiveReps(((repsRes.data as any[]) || []).map((r) => ({ id: r.id, full_name: r.full_name, referral_code: r.referral_code })));
+      const map: Record<string, string | null> = {};
+      ((mapRes.data as any[]) || []).forEach((r) => { map[r.user_id] = r.agent_id ?? null; });
+      setRepMap(map);
+    } catch {
+      // non-critical
+    }
+  };
+
+  useEffect(() => {
+    loadRepData();
   }, []);
 
   // ── Load pending suppliers ────────────────────────────────────────────────
@@ -252,6 +278,28 @@ export default function ProductApprovalTogglePanel() {
       setSupplierActionMsg({ text: err.message || 'فشلت العملية', type: 'error' });
     } finally {
       setSupplierActionLoading(null);
+    }
+  };
+
+  const handleAssignRep = async (factoryUserId: string) => {
+    const agentId = repSelection[factoryUserId];
+    if (!agentId) return;
+    setRepSaving(factoryUserId);
+    setRepMsg(null);
+    try {
+      const { error } = await supabase.rpc('admin_assign_field_rep', {
+        p_factory_user_id: factoryUserId,
+        p_agent_id: agentId,
+      });
+      if (error) throw error;
+      setRepMap((prev) => ({ ...prev, [factoryUserId]: agentId }));
+      setRepSelection((prev) => ({ ...prev, [factoryUserId]: '' }));
+      setRepMsg({ text: '✅ تم إسناد المندوب الميداني للمصنع', type: 'success' });
+      setTimeout(() => setRepMsg(null), 3500);
+    } catch (err: any) {
+      setRepMsg({ text: err?.message ? `تعذر الإسناد: ${err.message}` : 'تعذر الإسناد', type: 'error' });
+    } finally {
+      setRepSaving(null);
     }
   };
 
@@ -588,27 +636,64 @@ export default function ProductApprovalTogglePanel() {
               {suppliers.map(s => {
                 const src = s.registration_source || 'direct';
                 const meta = SOURCE_LABELS[src] || SOURCE_LABELS.direct;
+                const assignedId = repMap[s.id] ?? null;
+                const assignedRep = activeReps.find((r) => r.id === assignedId);
                 return (
                   <div
                     key={s.id}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-border bg-background"
+                    className="flex flex-col gap-2 px-3 py-2.5 rounded-xl border border-border bg-background"
                   >
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${meta.color.split(' ').slice(0, 2).join(' ')}`}>
-                      <Icon name={meta.icon} size={14} />
+                    <div className="flex items-center gap-3">
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${meta.color.split(' ').slice(0, 2).join(' ')}`}>
+                        <Icon name={meta.icon} size={14} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-foreground truncate">
+                          {s.company_name || s.full_name || '—'}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground truncate">{s.email}</p>
+                      </div>
+                      <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${meta.color}`}>
+                        {meta.labelAr}
+                      </span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-foreground truncate">
-                        {s.company_name || s.full_name || '—'}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground truncate">{s.email}</p>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2" dir="rtl">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 w-fit ${
+                        assignedId ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}>
+                        {assignedId ? `المندوب: ${assignedRep?.full_name || 'معيّن'}` : 'بانتظار التعيين'}
+                      </span>
+                      <select
+                        value={repSelection[s.id] || ''}
+                        onChange={(e) => setRepSelection((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                        aria-label="إسناد / تعيين مندوب ميداني"
+                        className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-border bg-card text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        <option value="">إسناد / تعيين مندوب ميداني</option>
+                        {activeReps.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.full_name}{r.referral_code ? ` — ${r.referral_code}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleAssignRep(s.id)}
+                        disabled={!repSelection[s.id] || repSaving === s.id}
+                        className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold disabled:opacity-40 shrink-0"
+                      >
+                        {repSaving === s.id ? 'جارٍ الحفظ...' : 'تأكيد الإسناد'}
+                      </button>
                     </div>
-                    <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${meta.color}`}>
-                      {meta.labelAr}
-                    </span>
                   </div>
                 );
               })}
             </div>
+          )}
+          {repMsg && (
+            <p className={`text-xs font-semibold ${repMsg.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
+              {repMsg.text}
+            </p>
           )}
         </div>
       </div>

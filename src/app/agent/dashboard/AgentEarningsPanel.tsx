@@ -24,6 +24,7 @@ interface EarningsSummary {
     created_at: string;
     city: string;
     country: string;
+    source: 'field' | 'referral';
   }[];
 }
 
@@ -39,19 +40,15 @@ interface CommissionRecord {
 
 interface Props {
   userId: string;
+  embedded?: boolean;
 }
 
 // Commission rule: 20% of Direct Hub's platform fee on each completed order (not of order value)
 const COMMISSION_RATE = 0.20;
 
-// Currency conversion rates (YER base)
-const YER_TO_USD = 1 / 250;
-const YER_TO_SAR = 1 / 66.5;
-const YER_TO_AED = 1 / 68;
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function AgentEarningsPanel({ userId }: Props) {
+export default function AgentEarningsPanel({ userId, embedded = false }: Props) {
   const supabase = createClient();
   const [summary, setSummary] = useState<EarningsSummary | null>(null);
   const [commissions, setCommissions] = useState<CommissionRecord[]>([]);
@@ -63,17 +60,53 @@ export default function AgentEarningsPanel({ userId }: Props) {
     setLoading(true);
     setError('');
     try {
-      // 1. Fetch factories registered under this agent (via referral link / code)
+      // 1. Fetch ALL factories attributed to this agent:
+      //    a) referral-link signups (factory_registrations)
+      //    b) field registrations (agent_factory_registrations, registered by the agent)
       const agentReferralCode = `AGT-${userId.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
-      const { data: factoriesData, error: factoriesErr } = await supabase
-        .from('factory_registrations')
-        .select('id, user_id, company_name, registration_status, is_approved, is_active, approval_type, created_at, city, country')
-        .or(`referred_by_agent_id.eq.${userId},referred_by_agent_code.eq.${agentReferralCode}`)
-        .order('created_at', { ascending: false });
+      const [referralRes, fieldRes] = await Promise.all([
+        supabase
+          .from('factory_registrations')
+          .select('id, user_id, company_name, registration_status, is_approved, is_active, approval_type, created_at, city, country')
+          .or(`referred_by_agent_id.eq.${userId},referred_by_agent_code.eq.${agentReferralCode}`)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('agent_factory_registrations')
+          .select('id, company_name, registration_status, created_at, city, country')
+          .eq('agent_id', userId)
+          .order('created_at', { ascending: false }),
+      ]);
 
-      if (factoriesErr) throw factoriesErr;
+      if (referralRes.error) throw referralRes.error;
 
-      const factories = factoriesData || [];
+      const referralFactories = (referralRes.data || []).map((f: any) => ({
+        ...f,
+        source: 'referral' as const,
+      }));
+      const fieldFactories = (fieldRes.data || []).map((f: any) => ({
+        id: f.id as string,
+        user_id: null as string | null,
+        company_name: f.company_name as string,
+        registration_status: f.registration_status as string,
+        is_approved: f.registration_status === 'approved',
+        is_active: true,
+        approval_type: null as string | null,
+        created_at: f.created_at as string,
+        city: (f.city || '') as string,
+        country: (f.country || '') as string,
+        source: 'field' as const,
+      }));
+
+      // Dedupe by id, then sort newest first
+      const seenIds = new Set<string>();
+      const factories = [...fieldFactories, ...referralFactories]
+        .filter(f => {
+          if (seenIds.has(f.id)) return false;
+          seenIds.add(f.id);
+          return true;
+        })
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
       const approvedFactories = factories.filter(isApprovedOrActiveFacility);
       const pendingFactories = factories.filter(f =>
         f.registration_status === 'pending' || f.registration_status === 'under_review' || f.registration_status === 'pending_supplier_approval'
@@ -95,7 +128,10 @@ export default function AgentEarningsPanel({ userId }: Props) {
         totalPlatformFee += o.platform_commission || 0;
       };
 
-      const referralUserIds = approvedFactories.map(f => f.user_id).filter(Boolean) as string[];
+      const referralUserIds = referralFactories
+        .filter(isApprovedOrActiveFacility)
+        .map(f => f.user_id)
+        .filter(Boolean) as string[];
       if (referralUserIds.length > 0) {
         const { data: refOrders } = await supabase
           .from('orders')
@@ -135,7 +171,16 @@ export default function AgentEarningsPanel({ userId }: Props) {
         totalOrderValue: totalPlatformFee,
         estimatedCommission,
         currency: 'USD',
-        recentFactories: factories.slice(0, 5),
+        recentFactories: factories.slice(0, 5).map(f => ({
+          id: f.id,
+          company_name: f.company_name,
+          registration_status: f.registration_status,
+          approval_type: f.approval_type,
+          created_at: f.created_at,
+          city: f.city,
+          country: f.country,
+          source: f.source,
+        })),
       });
 
       // 3. Fetch commission records from platform_commissions
@@ -190,15 +235,9 @@ export default function AgentEarningsPanel({ userId }: Props) {
     maximumFractionDigits: 2,
   });
   const orderValueFormatted = summary.totalOrderValue.toLocaleString('ar-SA', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
-
-  // Multi-currency conversions (YER base)
-  const commYER = summary.estimatedCommission * 250; // if estimatedCommission is in USD
-  const commUSD = summary.estimatedCommission;
-  const commSAR = commYER * YER_TO_SAR;
-  const commAED = commYER * YER_TO_AED;
 
   const filteredCommissions = commissionFilter === 'all'
     ? commissions
@@ -212,6 +251,7 @@ export default function AgentEarningsPanel({ userId }: Props) {
   return (
     <div className="space-y-5">
       {/* Header */}
+      {!embedded && (
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-bold text-foreground flex items-center gap-2">
@@ -219,7 +259,7 @@ export default function AgentEarningsPanel({ userId }: Props) {
             مؤشر الأرباح والعمولات
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            إحصائيات المصانع المسجلة عبر رابط الدعوة والعمولات التقديرية
+            إحصائيات المصانع المسجلة (ميدانياً وعبر رابط الدعوة) والعمولات التقديرية
           </p>
         </div>
         <button
@@ -230,6 +270,7 @@ export default function AgentEarningsPanel({ userId }: Props) {
           تحديث
         </button>
       </div>
+      )}
 
       {/* KPI Cards Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -280,13 +321,13 @@ export default function AgentEarningsPanel({ userId }: Props) {
           </div>
           <div>
             <p className="text-xs font-medium mb-0.5" style={{ color: 'rgba(212,175,55,0.7)' }}>
-              العمولة التقديرية (20% من رسوم المنصة)
+              العمولة التقديرية (20% من رسوم المنصة) — بالدولار الأمريكي
             </p>
-            <p className="text-3xl font-bold" style={{ color: '#D4AF37' }}>
-              {commissionFormatted} <span className="text-lg">{summary.currency}</span>
+            <p className="text-3xl font-bold" style={{ color: '#D4AF37' }} dir="ltr">
+              {commissionFormatted} <span className="text-lg">USD</span>
             </p>
             <p className="text-xs mt-1" style={{ color: '#8899aa' }}>
-              بناءً على رسوم المنصة المحققة: {orderValueFormatted} {summary.currency}
+              بناءً على رسوم المنصة المحققة: {orderValueFormatted} USD
             </p>
           </div>
         </div>
@@ -309,36 +350,6 @@ export default function AgentEarningsPanel({ userId }: Props) {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Multi-Currency Cards */}
-      <div>
-        <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
-          <Icon name="CurrencyDollarIcon" size={15} className="text-primary" />
-          العمولة التقديرية بالعملات المختلفة
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { flag: '🇾🇪', code: 'YER', amount: commYER, approx: false },
-            { flag: '🇺🇸', code: 'USD', amount: commUSD, approx: true },
-            { flag: '🇸🇦', code: 'SAR', amount: commSAR, approx: true },
-            { flag: '🇦🇪', code: 'AED', amount: commAED, approx: true },
-          ].map(c => (
-            <div key={c.code} className="bg-card border border-border rounded-xl p-4 text-center">
-              <p className="text-2xl mb-1">{c.flag}</p>
-              <p className="text-xs font-bold text-muted-foreground mb-1">{c.code}</p>
-              <p className="text-lg font-bold text-foreground">
-                {c.amount.toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </p>
-              {c.approx && (
-                <p className="text-[10px] text-muted-foreground mt-0.5">* تقريبي</p>
-              )}
-            </div>
-          ))}
-        </div>
-        <p className="text-[10px] text-muted-foreground mt-2">
-          * أسعار التحويل التقريبية: 1 USD = 250 YER · 1 SAR = 66.5 YER · 1 AED = 68 YER
-        </p>
       </div>
 
       {/* Commission Breakdown Table */}
@@ -431,11 +442,11 @@ export default function AgentEarningsPanel({ userId }: Props) {
       </div>
 
       {/* Recent Factories List */}
-      {summary.recentFactories.length > 0 ? (
+      {!embedded && summary.recentFactories.length > 0 ? (
         <div>
           <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
             <Icon name="ClockIcon" size={15} className="text-muted-foreground" />
-            آخر المصانع المسجلة عبر رابطك
+            آخر المصانع المسجلة
           </h3>
           <div className="space-y-2">
             {summary.recentFactories.map(factory => (
@@ -452,7 +463,12 @@ export default function AgentEarningsPanel({ userId }: Props) {
                     <p className="text-xs text-muted-foreground">{factory.city}{factory.country ? `, ${factory.country}` : ''}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                    factory.source === 'field' ?'bg-sky-50 text-sky-700 border-sky-200' :'bg-violet-50 text-violet-700 border-violet-200'
+                  }`}>
+                    {factory.source === 'field' ? 'تسجيل ميداني' : 'رابط إحالة'}
+                  </span>
                   {factory.approval_type === 'fast_track_initial' && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
                       <Icon name="BoltIcon" size={9} />
@@ -471,12 +487,12 @@ export default function AgentEarningsPanel({ userId }: Props) {
             ))}
           </div>
         </div>
-      ) : (
+      ) : !embedded ? (
         <div className="bg-card border border-border rounded-xl p-10 text-center">
           <div className="w-14 h-14 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-3">
             <Icon name="LinkIcon" size={26} className="text-muted-foreground" />
           </div>
-          <p className="font-semibold text-foreground mb-1">لا توجد مصانع مسجلة عبر رابطك بعد</p>
+          <p className="font-semibold text-foreground mb-1">لا توجد مصانع مسجلة بعد</p>
           <p className="text-sm text-muted-foreground mb-4">
             شارك رابط الدعوة الخاص بك مع المصانع والموردين لبدء تتبع العمولات
           </p>
@@ -486,10 +502,10 @@ export default function AgentEarningsPanel({ userId }: Props) {
               : '/factory/register?agent_id=YOUR_ID'}
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Referral Link Copy */}
-      {summary.totalFactories > 0 && (
+      {!embedded && summary.totalFactories > 0 && (
         <div className="bg-muted/50 border border-border rounded-xl p-4">
           <p className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1.5">
             <Icon name="LinkIcon" size={13} className="text-primary" />

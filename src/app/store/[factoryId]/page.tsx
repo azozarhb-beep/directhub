@@ -46,6 +46,8 @@ interface Product {
   moq: number | null;
   /** Whether the product is ready to ship immediately */
   is_ready_to_ship: boolean | null;
+  /** Domestic delivery term: EX_FACTORY | DELIVERY_INCLUDED | CALCULATED_SHIPPING */
+  shipping_terms?: string | null;
 }
 
 type SalesMode = 'b2b' | 'b2c';
@@ -72,6 +74,7 @@ export default function FactoryStorePage() {
   const [rfqSubmitting, setRfqSubmitting] = useState(false);
   const [rfqSuccess, setRfqSuccess] = useState(false);
   const [addedToCart, setAddedToCart] = useState<string | null>(null);
+  const [hasVerifiedCert, setHasVerifiedCert] = useState(false);
 
   useEffect(() => {
     if (!factoryId) return;
@@ -124,13 +127,30 @@ export default function FactoryStorePage() {
       });
 
       const { data: productsData } = await supabase
-        .from('products')
-        .select('id, name, name_ar, category, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, is_active, price, moq, is_ready_to_ship')
-        .eq('supplier_id', regData.user_id)
+        .from('manufacturer_products')
+        .select('id, name, name_ar, category, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, is_active, shipping_terms')
+        .eq('manufacturer_id', regData.user_id)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
-      setProducts(productsData || []);
+      setProducts(
+        (productsData || []).map((p: any) => ({
+          ...p,
+          price: null,
+          moq: null,
+          is_ready_to_ship: null,
+        }))
+      );
+
+      try {
+        const { data: certOk } = await supabase.rpc('factory_has_verified_certificate', {
+          p_factory_ref: regData.id,
+          p_company_name: regData.company_name || null,
+        });
+        setHasVerifiedCert(certOk === true);
+      } catch {
+        setHasVerifiedCert(false);
+      }
     } catch {
       setNotFound(true);
     } finally {
@@ -244,6 +264,12 @@ export default function FactoryStorePage() {
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <h1 className="text-xl font-bold">{profile.company_name}</h1>
                 <TrustScoreBadge score={profile.trust_percentage} tier={profile.verified_tier} size="sm" />
+                {hasVerifiedCert && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[11px] font-bold">
+                    <Icon name="BadgeCheck" size={12} />
+                    شهادة جودة معتمدة ومفحوصة
+                  </span>
+                )}
               </div>
               <p className="text-slate-300 text-sm">{profile.country}{profile.city ? ` · ${profile.city}` : ''}{profile.established_year ? ` · تأسس ${profile.established_year}` : ''}</p>
               {profile.main_products && <p className="text-slate-400 text-xs mt-1">المنتجات الرئيسية: {profile.main_products}</p>}
@@ -380,6 +406,18 @@ export default function FactoryStorePage() {
                   <div className="p-3">
                     <p className="font-semibold text-slate-900 text-sm line-clamp-2">{language === 'ar' && product.name_ar ? product.name_ar : product.name}</p>
                     <p className="text-slate-500 text-xs mt-0.5">{product.category}</p>
+                    {product.shipping_terms === 'DELIVERY_INCLUDED' && (
+                      <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-semibold">
+                        <Icon name="Truck" size={11} />
+                        شامل التجهيز والتوصيل
+                      </span>
+                    )}
+                    {product.shipping_terms === 'EX_FACTORY' && (
+                      <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-semibold">
+                        <Icon name="Factory" size={11} />
+                        استلام من باب المصنع (سعر المصنع)
+                      </span>
+                    )}
                     <div className="flex items-center justify-between mt-2">
                       <div>
                         <p className={`font-bold text-lg ${salesMode === 'b2b' ? 'text-indigo-700' : 'text-rose-700'}`}>${displayPrice}</p>

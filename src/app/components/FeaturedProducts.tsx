@@ -18,6 +18,7 @@ interface Product {
   name_ar: string;
   image_url: string | null;
   unit_price: number;
+  tiered_pricing?: unknown;
   minimum_order_qty: number;
   unit: string;
   origin_country: string;
@@ -144,6 +145,7 @@ const ProductCard: React.FC<{product: Product;index: number;isInternational?: bo
           name_ar: product.name_ar,
           image_url: product.image_url,
           unit_price: product.unit_price,
+          tiered_pricing: product.tiered_pricing,
           minimum_order_qty: product.minimum_order_qty,
           unit: product.unit,
           origin_country: product.origin_country,
@@ -237,7 +239,7 @@ const FeaturedProducts: React.FC = () => {
 
   useEffect(() => {
     const PRODUCT_SELECT =
-    'id, name, name_ar, image_url, unit_price, minimum_order_qty, unit, origin_country, is_active, category, seller_badge, international_manufacturer_id, user_profiles!manufacturer_products_manufacturer_id_fkey(company_name, full_name, country, role, supplier_profiles(is_verified, tier))';
+    'id, name, name_ar, image_url, unit_price, tiered_pricing, minimum_order_qty, unit, origin_country, is_active, category, seller_badge, international_manufacturer_id, user_profiles!manufacturer_products_manufacturer_id_fkey(company_name, full_name, country, role, supplier_profiles(is_verified, tier))';
 
     const normalizeProducts = (rows: any[]): Product[] =>
     (rows || []).map((row) => {

@@ -15,12 +15,12 @@ import InfoExchangePanel from './InfoExchangePanel';
 import ReceivingAccountPanel from './ReceivingAccountPanel';
 import AgentComplaintsPanel from './AgentComplaintsPanel';
 import AgentSalesDashboard from './AgentSalesDashboard';
-import AgentCommissionAccountPanel from './AgentCommissionAccountPanel';
-import AgentEarningsPanel from './AgentEarningsPanel';
 import AgentDispatchRoomsTab from './AgentDispatchRoomsTab';
 import AgentInspectionTasksPanel from './AgentInspectionTasksPanel';
+import AgentOrderTrackingPanel from './AgentOrderTrackingPanel';
 import EnhancedAgentDashboard from '@/components/agent/EnhancedAgentDashboard';
 import ReferralTrackingPanel from './ReferralTrackingPanel';
+import AgentUnifiedEarningsCard from './AgentUnifiedEarningsCard';
 import { isApprovedOrActiveFacility } from '@/lib/referralStats';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { CHAT_LANGUAGES, ChatLanguage } from './AgentLanguageSelector';
@@ -541,13 +541,13 @@ export default function AgentDashboardPage() {
   const [previewProduct, setPreviewProduct] = useState<AgentProduct | null>(null);
   const [editProduct, setEditProduct] = useState<AgentProduct | null>(null);
   const [loading, setLoading] = useState(true);
-  type AgentTabId = 'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral' | 'dispatch_rooms';
-  const VALID_TABS: AgentTabId[] = ['factories', 'products', 'messaging', 'documents', 'exchange', 'complaints', 'sales', 'admin_msg', 'commission', 'enhanced', 'inspections', 'earnings', 'referral', 'dispatch_rooms'];
+  type AgentTabId = 'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral' | 'dispatch_rooms' | 'order_tracking';
+  const VALID_TABS: AgentTabId[] = ['factories', 'products', 'messaging', 'documents', 'exchange', 'complaints', 'sales', 'admin_msg', 'commission', 'enhanced', 'inspections', 'earnings', 'referral', 'dispatch_rooms', 'order_tracking'];
   const TAB_URL_KEYS: Record<AgentTabId, string> = {
     factories: 'factories', products: 'products', messaging: 'messaging', documents: 'documents',
     exchange: 'exchange', complaints: 'complaints', sales: 'sales',
     admin_msg: 'admin-msg', commission: 'commission', enhanced: 'register', inspections: 'inspections',
-    earnings: 'earnings', referral: 'referral', dispatch_rooms: 'dispatch',
+    earnings: 'earnings', referral: 'referral', dispatch_rooms: 'dispatch', order_tracking: 'orders',
   };
   const [activeTab, setActiveTabState] = useState<AgentTabId | null>(null);
 
@@ -583,7 +583,10 @@ export default function AgentDashboardPage() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
+  const [activeStatCard, setActiveStatCard] = useState<'total' | 'approved' | 'pending' | 'products' | null>(null);
+  const factoryListRef = useRef<HTMLDivElement | null>(null);
   const [agentUnreadCount, setAgentUnreadCount] = useState(0);
+  const [adminUnreadCount, setAdminUnreadCount] = useState(0);
   const [dashboardChatLang] = useState<ChatLanguage>(
     () => CHAT_LANGUAGES.find(l => l.code === 'ar') || CHAT_LANGUAGES[0]
   );
@@ -594,7 +597,7 @@ export default function AgentDashboardPage() {
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [milestoneModal, setMilestoneModal] = useState<{ taskId: string; currentStage: number } | null>(null);
   const [milestoneNote, setMilestoneNote] = useState('');
-  const [milestoneUpdating, setMilestoneUpdating] = useState(false);
+  const [milestoneUpdating] = useState(false);
   const hasLoadedOnceRef = React.useRef(false);
 
   // Auth guard — wrong roles redirect to their room (never 403)
@@ -744,6 +747,37 @@ export default function AgentDashboardPage() {
     return () => { supabase.removeChannel(channel); };
   }, [user, supabase]);
 
+  // Unread admin → agent messages (agent_admin_messages) for the "المراسلة مع الإدارة" card
+  useEffect(() => {
+    if (!user) return;
+    const fetchAdminUnread = async () => {
+      try {
+        const { count } = await supabase
+          .from('agent_admin_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('agent_id', user.id)
+          .eq('sender_role', 'admin')
+          .eq('is_read_by_agent', false);
+        setAdminUnreadCount(count || 0);
+      } catch {
+        setAdminUnreadCount(0);
+      }
+    };
+    fetchAdminUnread();
+
+    const channel = supabase
+      .channel(`agent-dashboard-admin-unread-${user.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'agent_admin_messages',
+        filter: `agent_id=eq.${user.id}`,
+      }, () => fetchAdminUnread())
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user, supabase]);
+
   const fetchInspectionTasks = useCallback(async () => {
     if (!user) return;
     setInspectionLoading(true);
@@ -878,6 +912,30 @@ export default function AgentDashboardPage() {
     ? factories.filter(f => f.registration_status === filterStatus)
     : factories;
 
+  const scrollToFactoryList = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    window.setTimeout(() => {
+      factoryListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+  }, []);
+
+  const handleStatCardClick = useCallback((card: 'total' | 'approved' | 'pending' | 'products') => {
+    setActiveStatCard(card);
+    if (card === 'products') {
+      setFilterStatus('');
+      openTab('products');
+      return;
+    }
+    setFilterStatus(card === 'approved' ? 'approved' : card === 'pending' ? 'pending' : '');
+    openTab('factories');
+    scrollToFactoryList();
+  }, [openTab, scrollToFactoryList]);
+
+  const resetStatFilter = useCallback(() => {
+    setFilterStatus('');
+    setActiveStatCard(null);
+  }, []);
+
   if ((authLoading || loading) && !hasLoadedOnceRef.current) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -951,21 +1009,45 @@ export default function AgentDashboardPage() {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          {[
-            { label: ad.statTotal, value: statTotalFactories, icon: 'BuildingOffice2Icon', color: 'text-blue-600', bg: 'bg-blue-50' },
-            { label: ad.statApproved, value: statApprovedFactories, icon: 'CheckBadgeIcon', color: 'text-emerald-600', bg: 'bg-emerald-50' },
-            { label: ad.statPendingReview, value: pendingReview, icon: 'ClockIcon', color: 'text-amber-600', bg: 'bg-amber-50' },
-            { label: ad.statProducts, value: totalProducts, icon: 'CubeIcon', color: 'text-purple-600', bg: 'bg-purple-50' },
-          ].map(stat => (
-            <div key={stat.label} className="bg-card border border-border rounded-xl p-4">
-              <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center mb-3`}>
-                <Icon name={stat.icon as any} size={18} className={stat.color} />
-              </div>
-              <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
-            </div>
-          ))}
+          {([
+            { id: 'total', label: ad.statTotal, value: statTotalFactories, icon: 'BuildingOffice2Icon', color: 'text-blue-600', bg: 'bg-blue-50', activeBorder: 'border-blue-500 ring-2 ring-blue-500/25' },
+            { id: 'approved', label: ad.statApproved, value: statApprovedFactories, icon: 'CheckBadgeIcon', color: 'text-emerald-600', bg: 'bg-emerald-50', activeBorder: 'border-emerald-500 ring-2 ring-emerald-500/25' },
+            { id: 'pending', label: ad.statPendingReview, value: pendingReview, icon: 'ClockIcon', color: 'text-amber-600', bg: 'bg-amber-50', activeBorder: 'border-amber-500 ring-2 ring-amber-500/25' },
+            { id: 'products', label: ad.statProducts, value: totalProducts, icon: 'CubeIcon', color: 'text-purple-600', bg: 'bg-purple-50', activeBorder: 'border-purple-500 ring-2 ring-purple-500/25' },
+          ] as const).map(stat => {
+            const isStatActive = activeStatCard === stat.id;
+            return (
+              <button
+                key={stat.label}
+                type="button"
+                onClick={() => handleStatCardClick(stat.id)}
+                aria-pressed={isStatActive}
+                className={`text-start cursor-pointer bg-card border rounded-xl p-4 min-h-[88px] transition-all hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] ${
+                  isStatActive ? `${stat.activeBorder} border-2 shadow-md` : 'border-border hover:border-primary/40'
+                }`}
+              >
+                <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center mb-3`}>
+                  <Icon name={stat.icon as any} size={18} className={stat.color} />
+                </div>
+                <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
+              </button>
+            );
+          })}
         </div>
+
+        {activeStatCard !== null && (
+          <div className="-mt-3 mb-5 flex justify-end">
+            <button
+              type="button"
+              onClick={resetStatFilter}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card text-xs font-semibold text-foreground hover:bg-muted active:scale-[0.98] transition-all"
+            >
+              <Icon name="ArrowPathIcon" size={14} />
+              عرض الكل / إعادة ضبط
+            </button>
+          </div>
+        )}
 
         {/* Tabs — 5 Grouped Sections as Grid Cards */}
         <div className="space-y-5 mb-5">
@@ -985,6 +1067,7 @@ export default function AgentDashboardPage() {
                 { id: 'factories', icon: 'BuildingOffice2Icon', label: ad.tabFactories.replace('{count}', String(totalFactories)), badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' },
                 { id: 'products', icon: 'CubeIcon', label: ad.tabProducts.replace('{count}', String(totalProducts)), badge: 0, badgeColor: '', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
                 { id: 'inspections', icon: 'ClipboardDocumentListIcon', label: 'مهام التفتيش', badge: inspectionTasks.filter(t => !t.id.startsWith('mock-')).length, badgeColor: 'bg-amber-500', iconColor: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' },
+                { id: 'order_tracking', icon: 'TruckIcon', label: 'متابعة الطلبات وتجهيز المنتجات', badge: 0, badgeColor: '', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
                 { id: 'enhanced', icon: 'BriefcaseIcon', label: 'المصانع والتوثيق (KYC)', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
               ],
             },
@@ -993,7 +1076,7 @@ export default function AgentDashboardPage() {
               title: 'المراسلات',
               items: [
                 { id: 'messaging', icon: 'ChatBubbleLeftRightIcon', label: ad.tabMessaging, badge: agentUnreadCount, badgeColor: 'bg-red-500', iconColor: 'bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400' },
-                { id: 'admin_msg', icon: 'ShieldCheckIcon', label: ad.tabAdminMsg, badge: 0, badgeColor: '', iconColor: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' },
+                { id: 'admin_msg', icon: 'ShieldCheckIcon', label: ad.tabAdminMsg, badge: adminUnreadCount, badgeColor: 'bg-red-500', iconColor: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' },
                 { id: 'complaints', icon: 'ExclamationTriangleIcon', label: ad.tabComplaints, badge: 0, badgeColor: '', iconColor: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' },
                 { id: 'dispatch_rooms', icon: 'TruckIcon', label: 'غرف التنسيق الميداني', badge: 0, badgeColor: '', iconColor: 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400' },
               ],
@@ -1002,7 +1085,6 @@ export default function AgentDashboardPage() {
               key: 'accounts',
               title: 'الحسابات والعمولات',
               items: [
-                { id: 'commission', icon: 'CurrencyDollarIcon', label: 'حساب العمولة', badge: 0, badgeColor: '', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
                 { id: 'exchange', icon: 'ArrowsRightLeftIcon', label: ad.tabInfoExchange, badge: 0, badgeColor: '', iconColor: 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-950/40 dark:text-fuchsia-400' },
               ],
             },
@@ -1066,7 +1148,8 @@ export default function AgentDashboardPage() {
             admin_msg: { icon: 'ShieldCheckIcon', title: ad.tabAdminMsg, iconColor: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' },
             complaints: { icon: 'ExclamationTriangleIcon', title: ad.tabComplaints, iconColor: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' },
             dispatch_rooms: { icon: 'TruckIcon', title: 'غرف التنسيق الميداني', iconColor: 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400' },
-            commission: { icon: 'CurrencyDollarIcon', title: 'حساب العمولة', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
+            order_tracking: { icon: 'TruckIcon', title: 'متابعة الطلبات وتجهيز المنتجات', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
+            commission: { icon: 'BanknotesIcon', title: 'الأرباح والعمولات', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
             exchange: { icon: 'ArrowsRightLeftIcon', title: ad.tabInfoExchange, iconColor: 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-950/40 dark:text-fuchsia-400' },
             documents: { icon: 'FolderOpenIcon', title: ad.tabDocuments, iconColor: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400' },
             referral: { icon: 'LinkIcon', title: 'الإحالات والتتبع', iconColor: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400' },
@@ -1502,19 +1585,19 @@ export default function AgentDashboardPage() {
           />
         )}
 
-        {/* Commission Account Tab */}
-        {activeTab === 'commission' && user && (
-          <AgentCommissionAccountPanel userId={user.id} />
-        )}
-
-        {/* Earnings & Commissions Tab */}
-        {activeTab === 'earnings' && user && (
-          <AgentEarningsPanel userId={user.id} />
+        {/* Unified Earnings, Referral & Payout Account Tab ('commission' kept as legacy alias) */}
+        {(activeTab === 'earnings' || activeTab === 'commission') && user && (
+          <AgentUnifiedEarningsCard userId={user.id} />
         )}
 
         {/* Enhanced Agent Dashboard Tab */}
         {activeTab === 'enhanced' && user && (
           <EnhancedAgentDashboard userId={user.id} />
+        )}
+
+        {/* Order Tracking Tab */}
+        {activeTab === 'order_tracking' && user && (
+          <AgentOrderTrackingPanel userId={user.id} />
         )}
 
         {/* Dispatch Rooms Tab */}
@@ -1525,9 +1608,10 @@ export default function AgentDashboardPage() {
         {/* Factories Tab */}
         {activeTab === 'factories' && (
           <>
+            <div ref={factoryListRef} className="scroll-mt-20" />
             {/* Filter Bar */}
             {factories.length > 0 && (
-              <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+              <div className="flex gap-2 mb-4 overflow-x-auto pb-1 items-center">
                 {[
                   { value: '', label: ad.filterAll },
                   { value: 'pending', label: ad.filterPending },
@@ -1537,7 +1621,10 @@ export default function AgentDashboardPage() {
                 ].map(f => (
                   <button
                     key={f.value}
-                    onClick={() => setFilterStatus(f.value)}
+                    onClick={() => {
+                      setFilterStatus(f.value);
+                      setActiveStatCard(f.value === 'approved' ? 'approved' : f.value === 'pending' ? 'pending' : f.value === '' ? null : null);
+                    }}
                     className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                       filterStatus === f.value
                         ? 'bg-primary text-white border-primary' :'bg-card border-border text-muted-foreground hover:bg-muted'
@@ -1551,6 +1638,16 @@ export default function AgentDashboardPage() {
                     )}
                   </button>
                 ))}
+                {(filterStatus !== '' || activeStatCard !== null) && (
+                  <button
+                    type="button"
+                    onClick={resetStatFilter}
+                    className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border border-primary/40 text-primary bg-primary/5 hover:bg-primary/10 transition-colors"
+                  >
+                    <Icon name="ArrowPathIcon" size={12} />
+                    عرض الكل / إعادة ضبط
+                  </button>
+                )}
               </div>
             )}
 

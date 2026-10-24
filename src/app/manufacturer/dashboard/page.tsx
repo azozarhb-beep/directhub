@@ -11,12 +11,14 @@ import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
 import Icon from '@/components/ui/AppIcon';
 import AppLogo from '@/components/ui/AppLogo';
 import AIProductAssistant from '@/components/AIProductAssistant';
+import ManufacturerMessagingHub from '@/components/manufacturer/ManufacturerMessagingHub';
 
 import { MultilingualProductFields, SupplierLanguageBadge } from '@/components/LocalizedProductDisplay';
 import { Toaster } from 'react-hot-toast';
 import { Area } from 'recharts';
 import { useLanguage } from '@/contexts/LanguageContext';
 import AllSalesMethodsPanel from '@/components/AllSalesMethodsPanel';
+import AIContractAssistant from '@/components/AIContractAssistant';
 import ManufacturerAdvancedModules from '@/components/manufacturer/ManufacturerAdvancedModules';
 import FactoryTeamManagement from '@/components/manufacturer/FactoryTeamManagement';
 import TieredPricingManager from '@/components/international-factory/TieredPricingManager';
@@ -24,11 +26,7 @@ import ChatImageAttachment, { uploadChatImage, isImageAttachment, type Attachmen
 
 
 
-import {
-  resolvePlatformRole,
-  getHomeRoomForRole,
-  canAccessLocalErp,
-} from '@/lib/roomIsolation';
+import { resolvePlatformRole, getHomeRoomForRole, canAccessLocalErp, resolveManufacturerRoomForUser, INTERNATIONAL_FACTORY_ROOM_PATH } from '@/lib/roomIsolation';
 
 import PaymentSettingsPanel from './PaymentSettingsPanel';
 import FinancePanel from './FinancePanel';
@@ -40,8 +38,14 @@ import EscrowOrdersPanel from './EscrowOrdersPanel';
 import AnalyticsPanel from './AnalyticsPanel';
 import DisputesPanel from './DisputesPanel';
 import FinancialHubPanel from './FinancialHubPanel';
+import FactoryPinPayoutPanel from './FactoryPinPayoutPanel';
+import FactorySettingsPanel from './FactorySettingsPanel';
+
 import SellerFulfillmentPanel from './SellerFulfillmentPanel';
 import ShipmentBidsPanel from '@/components/ShipmentBidsPanel';
+import DealLinkGeneratorModal from '@/components/manufacturer/DealLinkGeneratorModal';
+import FinancialSummaryHeader from '@/app/manufacturer/dashboard/FinancialSummaryHeader';
+
 
 // ── Sales Rep interfaces ─────────────────────────────────────────────────────
 interface SalesRep {
@@ -77,6 +81,10 @@ interface Product {
   origin_country: string;
   is_active: boolean;
   created_at: string;
+  created_by_role?: 'agent' | 'manufacturer' | null;
+  created_by_id?: string | null;
+  created_by_name?: string | null;
+  approval_status?: 'approved' | 'pending_factory_approval' | null;
 }
 
 interface ProductFormData {
@@ -222,10 +230,10 @@ const EMPTY_PAYMENT_SETTINGS: PaymentSettings = {
   iban: '',
   swift_code: '',
   account_number: '',
-  bank_country: 'Saudi Arabia',
+  bank_country: 'Yemen',
   bank_city: '',
   bank_branch: '',
-  bank_currency: 'SAR',
+  bank_currency: 'YER',
   usdt_trc20_address: '',
   usdt_erc20_address: '',
   bitcoin_address: '',
@@ -259,14 +267,48 @@ const EMPTY_PAYMENT_SETTINGS: PaymentSettings = {
   kuraimi_pos_name: '',
 };
 
-type DashboardTab = 'products' | 'financial_hub' | 'escrow_orders' | 'disputes' | 'analytics' | 'admin_messaging' | 'finance' | 'inventory' | 'archive' | 'sales_team' | 'factory_orders' | 'seller_fulfillment' | 'freight_bids';
+type DashboardTab = 'products' | 'financial_hub' | 'escrow_orders' | 'disputes' | 'analytics' | 'admin_messaging' | 'finance' | 'inventory' | 'archive' | 'sales_team' | 'factory_orders' | 'seller_fulfillment' | 'freight_bids' | 'contracts' | 'factory_settings' | 'invoicing' | 'production';
 
-export default function ManufacturerDashboard() {
+/** Dedicated full-screen routes for each dashboard card (card key → href + page title). */
+const MODULE_ROUTES: Partial<Record<DashboardTab, { href: string; title: string }>> = {
+  products: { href: '/manufacturer/products', title: 'المنتجات للبيع' },
+  finance: { href: '/manufacturer/finance?view=revenue', title: 'المالية والأرباح' },
+  escrow_orders: { href: '/manufacturer/escrow', title: 'طلبات الضمان' },
+  admin_messaging: { href: '/manufacturer/messages', title: 'مراسلات الإدارة' },
+  archive: { href: '/manufacturer/archive', title: 'الأرشيف' },
+  all_sales: { href: '/manufacturer/sales-channels', title: 'صفقات وقنوات البيع' },
+  contracts: { href: '/manufacturer/contracts', title: 'العقود والاتفاقيات' },
+  invoicing: { href: '/manufacturer/invoicing', title: 'فوترة التصدير الدولية' },
+  production: { href: '/manufacturer/production-lines', title: 'خطوط الإنتاج والجودة' },
+  factory_settings: { href: '/manufacturer/settings', title: 'إعدادات وتوثيق المصنع' },
+  analytics: { href: '/manufacturer/analytics', title: 'التحليلات' },
+  inventory: { href: '/manufacturer/materials', title: 'مواد الإنتاج والخامات' },
+  seller_fulfillment: { href: '/manufacturer/logistics', title: 'الشحن والخدمات اللوجستية' },
+  freight_bids: { href: '/manufacturer/logistics?view=bids', title: 'الشحن والخدمات اللوجستية' },
+  sales_team: { href: '/manufacturer/team', title: 'فريق المبيعات' },
+  disputes: { href: '/manufacturer/disputes', title: 'الشكاوى والنزاعات' },
+  financial_hub: { href: '/manufacturer/finance', title: 'المالية والأرباح' },
+  factory_orders: { href: '/manufacturer/orders', title: 'إدارة الطلبات' },
+};
+
+interface ManufacturerDashboardProps {
+  /** When set, renders only this module full-screen with a sticky back header. */
+  moduleTab?: DashboardTab;
+  /** Optional sub-view for modules that merge several tabs (e.g. logistics). */
+  moduleView?: string;
+}
+
+/**
+ * Route default export. Module pages (/manufacturer/analytics, /orders, …) render
+ * this same component through `ManufacturerModulePage`, passing `moduleTab`.
+ */
+export default function ManufacturerDashboard({ moduleTab, moduleView }: ManufacturerDashboardProps) {
   const router = useRouter();
   const { user, signOut, loading: authLoading } = useAuth();
   const supabase = createClient();
   const { t, dir, isRTL, language } = useLanguage();
   const md = t.manufacturerDashboard;
+  const isModuleMode = !!moduleTab;
 
   // ── Admin Impersonation State ─────────────────────────────────────────────
   const [impersonatedFactoryId, setImpersonatedFactoryId] = useState<string | null>(null);
@@ -289,7 +331,8 @@ export default function ManufacturerDashboard() {
     router.push('/admin/control-room');
   };
 
-  const [activeTab, setActiveTab] = useState<DashboardTab>('products');
+  const [activeTab, setActiveTab] = useState<DashboardTab>(moduleTab ?? 'products');
+  const [showDealLinkModal, setShowDealLinkModal] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [fetchLoading, setFetchLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -300,6 +343,7 @@ export default function ManufacturerDashboard() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [filterSource, setFilterSource] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
@@ -331,6 +375,7 @@ export default function ManufacturerDashboard() {
   // Payment settings state
   const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(EMPTY_PAYMENT_SETTINGS);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [factoryCurrency, setFactoryCurrency] = useState<string | null>(null);
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [paymentError, setPaymentError] = useState('');
 
@@ -508,25 +553,32 @@ export default function ManufacturerDashboard() {
   // ── Detect if current user is a sales rep (not factory owner) ────────────
   const detectSalesRepRole = useCallback(async () => {
     if (!user) { setSalesRepLoading(false); return; }
-    const role = user.user_metadata?.role;
-    // Only check if not a factory owner / admin
-    if (role === 'manufacturer' || role === 'admin') {
-      setIsSalesRep(false);
-      setSalesRepLoading(false);
-      return;
-    }
     try {
+      // Authoritative: an active factory_sales_reps row ALWAYS makes the user a sales rep,
+      // regardless of user_metadata.role.
       const { data } = await supabase
         .from('factory_sales_reps')
         .select('*')
         .eq('rep_user_id', user.id)
         .eq('status', 'active')
+        .limit(1)
         .maybeSingle();
       if (data) {
         setIsSalesRep(true);
         setSalesRepRecord(data);
       } else {
-        setIsSalesRep(false);
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('role, factory_id')
+          .eq('id', user.id)
+          .maybeSingle();
+        const p = profile as { role?: string | null; factory_id?: string | null } | null;
+        const metaRole = (user.user_metadata?.role as string | undefined) || '';
+        const subAccount =
+          ['sales_rep', 'manufacturer_agent'].includes(metaRole) ||
+          ['sales_rep', 'manufacturer_agent'].includes(p?.role ?? '') ||
+          (!!p?.factory_id && p.factory_id !== user.id && p?.role !== 'admin');
+        setIsSalesRep(subAccount);
       }
     } catch {
       setIsSalesRep(false);
@@ -600,6 +652,18 @@ export default function ManufacturerDashboard() {
         null;
       const platformRole = resolvePlatformRole({ metadataRole });
       if (platformRole === 'manufacturer' || platformRole === 'admin') {
+        // International factories are routed strictly to their own control room.
+        const accountRoleMeta = user.user_metadata?.account_role as string | undefined;
+        if (
+          platformRole === 'manufacturer' &&
+          accountRoleMeta !== 'commercial_supplier' &&
+          !(typeof window !== 'undefined' && localStorage.getItem('impersonated_factory_id'))
+        ) {
+          const targetRoom = await resolveManufacturerRoomForUser(supabase, user.id, user.email);
+          if (targetRoom === INTERNATIONAL_FACTORY_ROOM_PATH) {
+            router.replace(INTERNATIONAL_FACTORY_ROOM_PATH);
+          }
+        }
         return;
       }
       // Verify the user is an active sales rep linked to a factory
@@ -712,7 +776,7 @@ export default function ManufacturerDashboard() {
     try {
       const { data, error } = await supabase
         .from('manufacturer_products')
-        .select('id, name, name_ar, description, description_ar, category, sku, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, is_active, created_at')
+        .select('id, name, name_ar, description, description_ar, category, sku, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, is_active, created_at, created_by_role, created_by_id, created_by_name, approval_status, image_url, primary_image_url, images')
         .eq('manufacturer_id', user.id)
         .order('created_at', { ascending: false })
         .limit(500);
@@ -746,10 +810,10 @@ export default function ManufacturerDashboard() {
           iban: data.iban || '',
           swift_code: data.swift_code || '',
           account_number: data.account_number || '',
-          bank_country: data.bank_country || 'Saudi Arabia',
+          bank_country: data.bank_country || 'Yemen',
           bank_city: data.bank_city || '',
           bank_branch: data.bank_branch || '',
-          bank_currency: data.bank_currency || 'SAR',
+          bank_currency: data.bank_currency || 'YER',
           usdt_trc20_address: data.usdt_trc20_address || '',
           usdt_erc20_address: data.usdt_erc20_address || '',
           bitcoin_address: data.bitcoin_address || '',
@@ -835,6 +899,7 @@ export default function ManufacturerDashboard() {
 
   const fetchEscrowOrders = async () => {
     if (!user) return;
+    if (isSalesRep) { setEscrowOrders([]); return; }
     setEscrowOrdersLoading(true);
     try {
       const { data, error } = await supabase
@@ -856,6 +921,12 @@ export default function ManufacturerDashboard() {
     if (!user) return;
     setFactoryOrdersLoading(true);
     try {
+      if (isSalesRep) {
+        const { data: masked, error: maskedError } = await supabase.rpc('get_agent_factory_orders');
+        if (maskedError) throw maskedError;
+        setFactoryOrders((masked as any[]) || []);
+        return;
+      }
       const { data, error } = await supabase
         .from('orders')
         .select('*, user_profiles!orders_user_id_fkey(full_name, email, company_name, phone, country)')
@@ -1093,7 +1164,7 @@ export default function ManufacturerDashboard() {
           .gte('viewed_at', fromISO),
         supabase
           .from('orders')
-          .select('created_at, total, status')
+          .select('created_at, total, status, items')
           .eq('factory_id', user.id)
           .gte('created_at', fromISO),
         supabase
@@ -1118,25 +1189,59 @@ export default function ManufacturerDashboard() {
       const reviewsData = reviewsRes.data || [];
       const activeProductsCount = countRes.count || 0;
 
-      // Build daily chart data
-      const dailyMap: Record<string, { views: number; orders: number; revenue: number }> = {};
+      // Wholesale (B2B) vs retail (B2C) classification: an order is wholesale when any line
+      // reaches the product's B2B minimum quantity, otherwise it is a retail (consumer) sale.
+      const { data: moqRows } = await supabase
+        .from('manufacturer_products')
+        .select('id, b2b_min_quantity')
+        .eq('manufacturer_id', user.id);
+      const moqById: Record<string, number> = {};
+      (moqRows || []).forEach((p: any) => {
+        moqById[String(p.id)] = Number(p.b2b_min_quantity) || 10;
+      });
+      const isWholesaleOrder = (o: any): boolean => {
+        const lines = Array.isArray(o?.items) ? o.items : [];
+        if (lines.length === 0) return true;
+        return lines.some((li: any) => {
+          const qty = Number(li?.quantity) || 0;
+          const pid = String(li?.productId ?? li?.product_id ?? li?.id ?? '');
+          const moq = moqById[pid] ?? Number(li?.moqNumber) ?? 10;
+          return qty >= (Number.isFinite(moq) && moq > 0 ? moq : 10);
+        });
+      };
+
+      // Build daily chart data (key = YYYY-MM-DD; localized at render time)
+      const dayKey = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      type DayBucket = {
+        views: number; orders: number; revenue: number;
+        ordersB2B: number; revenueB2B: number; ordersB2C: number; revenueB2C: number;
+      };
+      const dailyMap: Record<string, DayBucket> = {};
       for (let i = days - 1; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const key = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        dailyMap[key] = { views: 0, orders: 0, revenue: 0 };
+        dailyMap[dayKey(d)] = { views: 0, orders: 0, revenue: 0, ordersB2B: 0, revenueB2B: 0, ordersB2C: 0, revenueB2C: 0 };
       }
 
       viewsData.forEach((v: any) => {
-        const key = new Date(v.viewed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const key = dayKey(new Date(v.viewed_at));
         if (dailyMap[key]) dailyMap[key].views++;
       });
 
       ordersData.forEach((o: any) => {
-        const key = new Date(o.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const key = dayKey(new Date(o.created_at));
         if (dailyMap[key]) {
+          const amt = Number(o.total) || 0;
           dailyMap[key].orders++;
-          dailyMap[key].revenue += Number(o.total) || 0;
+          dailyMap[key].revenue += amt;
+          if (isWholesaleOrder(o)) {
+            dailyMap[key].ordersB2B++;
+            dailyMap[key].revenueB2B += amt;
+          } else {
+            dailyMap[key].ordersB2C++;
+            dailyMap[key].revenueB2C += amt;
+          }
         }
       });
 
@@ -1328,7 +1433,6 @@ export default function ManufacturerDashboard() {
       const missing: string[] = [];
       if (!data?.trade_license_url) missing.push('trade_license');
       if (!data?.manufacturing_license_url) missing.push('manufacturing_license');
-      if (!data?.tax_id) missing.push('tax_id');
       setMissingDocuments(missing);
     } catch (err) {
       console.error('Failed to fetch factory registration:', err);
@@ -1446,7 +1550,7 @@ export default function ManufacturerDashboard() {
       setShowDocGate(true);
       return;
     }
-    openAddModal();
+    router.push('/seller/products?add=1');
   };
 
   const handleSavePaymentSettings = async (e: React.FormEvent) => {
@@ -1646,14 +1750,18 @@ export default function ManufacturerDashboard() {
       if (editingProduct) {
         const { error } = await supabase
           .from('manufacturer_products')
-          .update(payload)
+          .update(
+            editingProduct.approval_status === 'pending_factory_approval'
+              ? { ...payload, approval_status: 'approved', is_active: true, is_published: true }
+              : payload
+          )
           .eq('id', editingProduct.id)
           .eq('manufacturer_id', user!.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('manufacturer_products')
-          .insert(payload);
+          .insert({ ...payload, created_by_role: 'manufacturer', created_by_id: user!.id, approval_status: 'approved' });
         if (error) throw error;
       }
 
@@ -1678,6 +1786,20 @@ export default function ManufacturerDashboard() {
       await fetchProducts();
     } catch (err) {
       console.error('Delete failed:', err);
+    }
+  };
+
+  const handleApproveProduct = async (product: Product) => {
+    try {
+      const { error } = await supabase
+        .from('manufacturer_products')
+        .update({ approval_status: 'approved', is_active: true, is_published: true })
+        .eq('id', product.id)
+        .eq('manufacturer_id', user!.id);
+      if (error) throw error;
+      await fetchProducts();
+    } catch (err) {
+      console.error('Approve failed:', err);
     }
   };
 
@@ -1766,11 +1888,15 @@ export default function ManufacturerDashboard() {
     .filter(p => {
       const matchStatus = filterStatus === 'all' || p.inventory_status === filterStatus;
       const matchCategory = filterCategory === 'all' || p.category === filterCategory;
+      const matchSource =
+        filterSource === 'all' ||
+        (filterSource === 'mine' && p.created_by_role !== 'agent') ||
+        (filterSource === 'agent' && p.created_by_role === 'agent');
       const matchSearch = !searchQuery ||
         p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.name_ar?.includes(searchQuery) ||
         p.sku?.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchStatus && matchCategory && matchSearch;
+      return matchStatus && matchCategory && matchSource && matchSearch;
     });
 
   const sortedProducts = [...filteredProducts].sort((a: any, b: any) => {
@@ -1789,7 +1915,68 @@ export default function ManufacturerDashboard() {
     outOfStock: products.filter((p) => p.inventory_status === 'out_of_stock').length,
   };
 
-  if (authLoading) {
+  // ── Module (full-screen) mode: load only the data this module needs ──────────
+  useEffect(() => {
+    if (!moduleTab || !user) return;
+    switch (moduleTab) {
+      case 'financial_hub': fetchBankAccounts(); fetchPaymentSettings(); break;
+      case 'finance': fetchFinanceRecords(); break;
+      case 'escrow_orders': fetchEscrowOrders(); break;
+      case 'factory_orders': fetchFactoryOrders(); break;
+      case 'disputes': fetchFactoryDisputes(); break;
+            case 'analytics':
+        fetchAnalytics();
+        supabase
+          .from('manufacturer_payment_settings')
+          .select('bank_currency')
+          .eq('manufacturer_id', user.id)
+          .maybeSingle()
+          .then(({ data }: any) => setFactoryCurrency(data?.bank_currency || null));
+        break;
+      case 'admin_messaging': fetchAdminConversation(); break;
+      case 'inventory': fetchInventoryItems(); break;
+      case 'archive': fetchArchiveRecords(); break;
+      case 'sales_team': fetchSalesReps(); break;
+      default: break;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moduleTab, user?.id]);
+
+  // Logistics merges two cards: ?view=bids selects the shipment-bids sub-view
+  useEffect(() => {
+    if (moduleTab === 'seller_fulfillment' && moduleView === 'bids') setActiveTab('freight_bids');
+  }, [moduleTab, moduleView]);
+
+  // Finance merges two cards: ?view=revenue selects the revenue sub-view
+  useEffect(() => {
+    if (moduleTab === 'financial_hub' && moduleView === 'revenue') {
+      setActiveTab('finance');
+      fetchFinanceRecords();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moduleTab, moduleView]);
+
+  const moduleMeta = moduleTab ? MODULE_ROUTES[moduleTab] : undefined;
+
+  // ── Hard RBAC: sub-accounts can never reach restricted modules ───────────
+  const SALES_REP_RESTRICTED_TABS: string[] = [
+    'financial_hub', 'finance', 'escrow_orders', 'factory_settings', 'sales_team',
+    'contracts', 'analytics', 'all_sales', 'invoicing', 'production',
+  ];
+  useEffect(() => {
+    if (salesRepLoading || !isSalesRep) return;
+    if (moduleTab && SALES_REP_RESTRICTED_TABS.includes(moduleTab)) {
+      alert('غير مصرح لك بالوصول إلى هذه الصفحة.\nUnauthorized: this area is restricted to the factory owner.');
+      router.replace('/manufacturer');
+      return;
+    }
+    if (SALES_REP_RESTRICTED_TABS.includes(activeTab)) {
+      setActiveTab('products');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [salesRepLoading, isSalesRep, moduleTab, activeTab]);
+
+  if (authLoading || (user && salesRepLoading) || (isSalesRep && moduleTab && SALES_REP_RESTRICTED_TABS.includes(moduleTab))) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Icon name="ArrowPathIcon" size={24} className="animate-spin text-primary" />
@@ -1882,8 +2069,87 @@ export default function ManufacturerDashboard() {
         </div>
       </header>
 
+      {/* ── Module (full-screen) sticky header ── */}
+      {isModuleMode && (
+        <div className="sticky top-14 z-40 bg-card/95 backdrop-blur-md border-b border-border/60 shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 md:px-6 py-2 sm:py-0 sm:h-14 flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3">
+            <Link
+              href="/manufacturer/dashboard"
+              className={`order-1 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs sm:text-sm font-bold hover:bg-primary/20 active:scale-95 transition-all whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${moduleTab === 'seller_fulfillment' ? 'w-full sm:w-auto justify-start' : ''}`}
+            >
+              <span aria-hidden="true">{isRTL ? '→' : '←'}</span>
+              <span>رجوع إلى لوحة التحكم</span>
+            </Link>
+            <h1 className={`order-2 flex-1 min-w-0 text-sm sm:text-lg font-black text-foreground truncate ${moduleTab === 'seller_fulfillment' ? 'hidden sm:block' : ''}`}>
+              {moduleMeta?.title}
+            </h1>
+            <div className={`order-3 flex items-center gap-2 ${moduleTab === 'seller_fulfillment' ? 'w-full sm:w-auto sm:shrink-0' : 'shrink-0'}`}>
+              {moduleTab === 'financial_hub' && !isSalesRep && (
+                <div className="flex sm:inline-flex rounded-lg border border-border overflow-hidden text-xs sm:text-sm font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('financial_hub')}
+                    className={`px-3 py-2 transition-colors ${activeTab === 'financial_hub' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+                  >
+                    الحسابات وطرق الدفع
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTab('finance'); fetchFinanceRecords(); }}
+                    className={`px-3 py-2 transition-colors ${activeTab === 'finance' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+                  >
+                    الإيرادات
+                  </button>
+                </div>
+              )}
+              {moduleTab === 'factory_orders' && (
+                <button
+                  type="button"
+                  onClick={() => fetchFactoryOrders()}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs sm:text-sm font-semibold text-foreground hover:bg-muted transition-colors"
+                >
+                  <Icon name="ArrowPathIcon" size={14} />
+                  <span className="hidden sm:inline">تحديث</span>
+                </button>
+              )}
+              {moduleTab === 'seller_fulfillment' && (
+                <div className="flex w-full sm:w-auto sm:inline-flex rounded-lg border border-border overflow-hidden text-xs sm:text-sm font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('seller_fulfillment')}
+                    className={`flex-1 sm:flex-none px-3 py-2 transition-colors ${activeTab === 'seller_fulfillment' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+                  >
+                    الشحن الذاتي
+                  </button>
+                  {!isSalesRep && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('freight_bids')}
+                      className={`flex-1 sm:flex-none px-3 py-2 transition-colors ${activeTab === 'freight_bids' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+                    >
+                      عروض الشحن
+                    </button>
+                  )}
+                </div>
+              )}
+              {moduleTab === 'products' && !isSalesRep && (
+                <button
+                  type="button"
+                  onClick={() => handleOpenAddModal()}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs sm:text-sm font-semibold hover:opacity-90 transition-opacity"
+                >
+                  <Icon name="PlusIcon" size={14} />
+                  <span className="hidden sm:inline">إضافة منتج</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <main className="max-w-7xl mx-auto px-4 md:px-6 py-6">
         {/* Page title — Ultra-Luxurious */}
+        {!isModuleMode && (
         <div className="flex items-center justify-between mb-7">
           <div>
             <h1 className="text-2xl font-black text-foreground tracking-tight">{t.manufacturerDashboard.title}</h1>
@@ -1934,15 +2200,6 @@ export default function ManufacturerDashboard() {
                   <span className="lg:hidden">🌐</span>
                 </Link>
                 <Link
-                  href="/factory/local-dashboard"
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-orange-300 bg-orange-50 text-orange-700 rounded-lg text-sm font-semibold hover:bg-orange-100 transition-colors"
-                  title="Local Factory Control Room"
-                >
-                  <Icon name="BuildingOffice2Icon" size={15} />
-                  <span className="hidden lg:inline">المحلي</span>
-                  <span className="lg:hidden">🏭</span>
-                </Link>
-                <Link
                   href="/manufacturer/b2b"
                   className="hidden sm:flex items-center gap-2 px-3 py-2 border border-indigo-300 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-semibold hover:bg-indigo-100 transition-colors"
                   title="B2B Sales System"
@@ -1974,30 +2231,36 @@ export default function ManufacturerDashboard() {
                 )}
               </>
             )}
-            {activeTab === 'products' && (
+            {!isSalesRep && (
               <button
-                onClick={handleOpenAddModal}
-                className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground text-sm font-semibold rounded-lg active:opacity-80 transition-opacity"
+                type="button"
+                onClick={() => setShowDealLinkModal(true)}
+                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 border border-emerald-300 bg-emerald-50 text-emerald-700 rounded-lg text-xs sm:text-sm font-semibold hover:bg-emerald-100 transition-colors"
+                aria-label="إنشاء رابط صفقة"
               >
-                <Icon name="PlusIcon" size={16} />
-                <span className="hidden sm:inline">{t.manufacturerDashboard.addProduct}</span>
-                <span className="sm:hidden">{t.manufacturerDashboard.add}</span>
+                <Icon name="LinkIcon" size={15} />
+                <span className="sm:hidden">رابط صفقة</span>
+                <span className="hidden sm:inline">إنشاء رابط صفقة مخصصة</span>
               </button>
             )}
             {!isSalesRep && (
               <Link
                 href="/seller/products"
-                className="flex items-center gap-2 px-3 py-2 border border-primary/30 bg-primary/5 text-primary rounded-lg text-sm font-semibold hover:bg-primary/10 transition-colors"
+                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 border border-primary/30 bg-primary/5 text-primary rounded-lg text-xs sm:text-sm font-semibold hover:bg-primary/10 transition-colors"
+                aria-label="إدارة المنتجات"
               >
                 <Icon name="ArrowTopRightOnSquareIcon" size={15} />
+                <span className="sm:hidden">إدارة المنتجات</span>
                 <span className="hidden sm:inline">{t.manufacturerDashboard.productManager}</span>
               </Link>
             )}
           </div>
         </div>
+        )}
+        <DealLinkGeneratorModal open={showDealLinkModal} onClose={() => setShowDealLinkModal(false)} />
 
         {/* Sales Rep Permission Banner */}
-        {isSalesRep && (
+        {isSalesRep && !isModuleMode && (
           <div className="mb-5 flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
             <Icon name="ShieldCheckIcon" size={18} className="text-blue-600 shrink-0 mt-0.5" />
             <div>
@@ -2010,52 +2273,37 @@ export default function ManufacturerDashboard() {
         )}
 
         {/* Dashboard Tabs */}
+        {!isModuleMode && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
           {([
             { key: 'products', label: t.manufacturerDashboard.productsAndInventory, icon: 'CubeIcon', gradient: 'linear-gradient(135deg,#3B82F6,#2563EB)', shadow: 'shadow-blue-100', show: true },
-            { key: 'financial_hub', label: 'الحسابات المالية وطرق الدفع', icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#10B981,#059669)', shadow: 'shadow-emerald-100', show: !isSalesRep },
-            { key: 'finance', label: md.tabFinance, icon: 'ChartBarIcon', gradient: 'linear-gradient(135deg,#16A34A,#15803D)', shadow: 'shadow-green-100', show: !isSalesRep },
-            { key: 'escrow_orders', label: t.manufacturerDashboard.escrowOrders, icon: 'ShieldCheckIcon', gradient: 'linear-gradient(135deg,#6366F1,#4F46E5)', shadow: 'shadow-indigo-100', show: true, badge: escrowOrders.filter((o: any) => o.escrow_status === 'funds_secured').length || undefined },
-            { key: 'seller_fulfillment', label: 'الشحن الشامل', icon: 'TruckIcon', gradient: 'linear-gradient(135deg,#059669,#047857)', shadow: 'shadow-emerald-100', show: true },
-            { key: 'freight_bids', label: 'عروض الشحن', icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#2563EB,#1D4ED8)', shadow: 'shadow-blue-100', show: !isSalesRep },
-            { key: 'factory_orders', label: 'Order Queue', icon: 'ClipboardDocumentListIcon', gradient: 'linear-gradient(135deg,#0EA5E9,#0284C7)', shadow: 'shadow-sky-100', show: true, badge: factoryOrders.filter((o: any) => o.status === 'pending').length || undefined },
+            { key: 'financial_hub', label: 'المالية والأرباح', icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#10B981,#059669)', shadow: 'shadow-emerald-100', show: !isSalesRep },
+            { key: 'factory_settings', label: 'إعدادات وتوثيق المصنع', icon: 'IdentificationIcon', gradient: 'linear-gradient(135deg,#0D9488,#0F766E)', shadow: 'shadow-teal-100', show: !isSalesRep },
+            { key: 'escrow_orders', label: t.manufacturerDashboard.escrowOrders, icon: 'ShieldCheckIcon', gradient: 'linear-gradient(135deg,#6366F1,#4F46E5)', shadow: 'shadow-indigo-100', show: !isSalesRep, badge: escrowOrders.filter((o: any) => o.escrow_status === 'funds_secured').length || undefined },
+            { key: 'seller_fulfillment', label: 'الشحن والخدمات اللوجستية', icon: 'TruckIcon', gradient: 'linear-gradient(135deg,#059669,#047857)', shadow: 'shadow-emerald-100', show: true },
+            { key: 'factory_orders', label: 'إدارة الطلبات', icon: 'ClipboardDocumentListIcon', gradient: 'linear-gradient(135deg,#0EA5E9,#0284C7)', shadow: 'shadow-sky-100', show: true, badge: factoryOrders.filter((o: any) => o.status === 'pending').length || undefined },
             { key: 'disputes', label: t.manufacturerDashboard.disputesAndComplaints, icon: 'FlagIcon', gradient: 'linear-gradient(135deg,#EF4444,#DC2626)', shadow: 'shadow-red-100', show: true, badge: factoryDisputes.filter((o: any) => ['open', 'factory_reviewing'].includes(o.dispute_status)).length || undefined },
             { key: 'analytics', label: t.manufacturerDashboard.analytics, icon: 'PresentationChartLineIcon', gradient: 'linear-gradient(135deg,#F97316,#EA580C)', shadow: 'shadow-orange-100', show: true },
             { key: 'admin_messaging', label: t.manufacturerDashboard.adminMessaging, icon: 'ChatBubbleLeftRightIcon', gradient: 'linear-gradient(135deg,#8B5CF6,#7C3AED)', shadow: 'shadow-violet-100', show: true },
             { key: 'inventory', label: md.tabInventory, icon: 'ArchiveBoxIcon', gradient: 'linear-gradient(135deg,#F59E0B,#D97706)', shadow: 'shadow-amber-100', show: true },
             { key: 'archive', label: md.tabArchive, icon: 'FolderOpenIcon', gradient: 'linear-gradient(135deg,#64748B,#475569)', shadow: 'shadow-slate-100', show: true },
             { key: 'sales_team', label: md.tabSalesTeam, icon: 'UserGroupIcon', gradient: 'linear-gradient(135deg,#06B6D4,#0891B2)', shadow: 'shadow-cyan-100', show: !isSalesRep, badge: salesReps.filter(r => r.status === 'active').length || undefined },
-            { key: 'all_sales', label: md.tabAllSalesMethods, icon: 'CurrencyDollarIcon', gradient: 'linear-gradient(135deg,#059669,#047857)', shadow: 'shadow-emerald-100', show: !isSalesRep },
+            { key: 'all_sales', label: 'صفقات وقنوات البيع', icon: 'CurrencyDollarIcon', gradient: 'linear-gradient(135deg,#059669,#047857)', shadow: 'shadow-emerald-100', show: !isSalesRep },
+            { key: 'contracts', label: 'العقود والاتفاقيات', icon: 'DocumentCheckIcon', gradient: 'linear-gradient(135deg,#D97706,#EA580C)', shadow: 'shadow-amber-100', show: !isSalesRep },
+            { key: 'invoicing', label: 'فوترة التصدير الدولية', icon: 'DocumentTextIcon', gradient: 'linear-gradient(135deg,#0891B2,#0E7490)', shadow: 'shadow-cyan-100', show: !isSalesRep },
+            { key: 'production', label: 'خطوط الإنتاج والجودة', icon: 'Cog6ToothIcon', gradient: 'linear-gradient(135deg,#475569,#334155)', shadow: 'shadow-slate-100', show: !isSalesRep },
           ] as Array<{ key: string; label: string; icon: string; gradient: string; shadow: string; show: boolean; badge?: number | string }>)
             .filter(tab => tab.show)
             .map(tab => {
               const isActive = activeTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => {
-                    if (tab.key === 'products') setActiveTab('products');
-                    else if (tab.key === 'financial_hub') { setActiveTab('financial_hub'); fetchBankAccounts(); fetchPaymentSettings(); }
-                    else if (tab.key === 'finance') { setActiveTab('finance'); fetchFinanceRecords(); }
-                    else if (tab.key === 'escrow_orders') { setActiveTab('escrow_orders'); fetchEscrowOrders(); }
-                    else if (tab.key === 'seller_fulfillment') { setActiveTab('seller_fulfillment'); }
-                    else if (tab.key === 'freight_bids') { setActiveTab('freight_bids'); }
-                    else if (tab.key === 'factory_orders') { setActiveTab('factory_orders'); fetchFactoryOrders(); }
-                    else if (tab.key === 'disputes') { setActiveTab('disputes'); fetchFactoryDisputes(); }
-                    else if (tab.key === 'analytics') { setActiveTab('analytics'); fetchAnalytics(); }
-                    else if (tab.key === 'admin_messaging') { setActiveTab('admin_messaging'); fetchAdminConversation(); }
-                    else if (tab.key === 'inventory') { setActiveTab('inventory'); fetchInventoryItems(); }
-                    else if (tab.key === 'archive') { setActiveTab('archive'); fetchArchiveRecords(); }
-                    else if (tab.key === 'sales_team') { setActiveTab('sales_team'); fetchSalesReps(); }
-                    else if (tab.key === 'all_sales') { setActiveTab('all_sales'); }
-                  }}
-                  className={`relative flex flex-col items-center gap-2.5 p-4 rounded-2xl border transition-all duration-200 text-center overflow-hidden ${
-                    isActive
-                      ? 'border-transparent shadow-lg scale-[1.03]'
-                      : 'bg-card border-border/60 text-muted-foreground hover:shadow-md hover:-translate-y-0.5 hover:border-border'
-                  }`}
-                  style={isActive ? { background: tab.gradient, boxShadow: `0 8px 24px -4px rgba(0,0,0,0.18)` } : {}}
-                >
+              const routed = MODULE_ROUTES[tab.key as DashboardTab];
+              const cardClass = `relative flex flex-col items-center gap-2.5 p-4 rounded-2xl border transition-all duration-200 text-center overflow-hidden ${
+                isActive
+                  ? 'border-transparent shadow-lg scale-[1.03]'
+                  : 'bg-card border-border/60 text-muted-foreground hover:shadow-md hover:-translate-y-0.5 hover:border-border'
+              }`;
+              const cardInner = (
+                <>
                   {/* Subtle shimmer for active */}
                   {isActive && <div className="absolute inset-0 opacity-20" style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.3) 0%, transparent 60%)' }} />}
                   {/* Icon circle */}
@@ -2075,10 +2323,42 @@ export default function ManufacturerDashboard() {
                       {tab.badge}
                     </span>
                   )}
+                </>
+              );
+              if (routed) {
+                return (
+                  <Link
+                    key={tab.key}
+                    href={routed.href}
+                    prefetch
+                    className={cardClass}
+                    style={isActive ? { background: tab.gradient, boxShadow: `0 8px 24px -4px rgba(0,0,0,0.18)` } : {}}
+                  >
+                    {cardInner}
+                  </Link>
+                );
+              }
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => {
+                    if (tab.key === 'products') setActiveTab('products');
+                    else if (tab.key === 'finance') { setActiveTab('finance'); fetchFinanceRecords(); }
+                    else if (tab.key === 'escrow_orders') { setActiveTab('escrow_orders'); fetchEscrowOrders(); }
+                    else if (tab.key === 'admin_messaging') { setActiveTab('admin_messaging'); fetchAdminConversation(); }
+                    else if (tab.key === 'archive') { setActiveTab('archive'); fetchArchiveRecords(); }
+                    else if (tab.key === 'all_sales') { setActiveTab('all_sales'); }
+                    else if (tab.key === 'contracts') { setActiveTab('contracts'); }
+                  }}
+                  className={cardClass}
+                  style={isActive ? { background: tab.gradient, boxShadow: `0 8px 24px -4px rgba(0,0,0,0.18)` } : {}}
+                >
+                  {cardInner}
                 </button>
               );
             })}
         </div>
+        )}
 
         {/* ── FINANCIAL ACCESS GUARD — shown if sales rep tries to access financial tabs ── */}
         {isSalesRep && (activeTab === 'financial_hub' || activeTab === 'finance') && (
@@ -2105,316 +2385,16 @@ export default function ManufacturerDashboard() {
               factoryOwnerId={user!.id}
               isRTL={isRTL}
             />
-
-            {/* Divider */}
-            <div className="flex items-center gap-3 py-2">
-              <div className="flex-1 h-px bg-border" />
-              <span className="text-xs text-muted-foreground font-medium px-2">
-                {isRTL ? 'ممثلو المبيعات المدعوون (النظام القديم)' : 'Invited Sales Reps (Legacy System)'}
-              </span>
-              <div className="flex-1 h-px bg-border" />
-            </div>
-
-            {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-5 text-white">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
-                  <Icon name="UserGroupIcon" size={24} className="text-white" />
-                </div>
-                <div className="flex-1">
-                  <h2 className="text-lg font-bold">{md.salesTeamTitleFull}</h2>
-                  <p className="text-sm text-white/80">{md.addRepsHint2}</p>
-                </div>
-                <button
-                  onClick={() => { setShowInviteModal(true); setInviteError(''); setInviteSuccess(''); }}
-                  className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white text-sm font-semibold rounded-xl transition-colors shrink-0"
-                >
-                  <Icon name="UserPlusIcon" size={16} />
-                  {md.addRepAction}
-                </button>
-              </div>
-            </div>
-
-            {/* Permission Matrix Info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* What reps CAN do */}
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Icon name="CheckCircleIcon" size={18} className="text-green-600" />
-                  <p className="text-sm font-bold text-green-800">{md.salesRepPermissions}</p>
-                </div>
-                <ul className="space-y-1.5 text-xs text-green-700">
-                  <li className="flex items-center gap-2"><Icon name="CheckIcon" size={12} /> {md.permManageProducts}</li>
-                  <li className="flex items-center gap-2"><Icon name="CheckIcon" size={12} /> {md.permInventory}</li>
-                  <li className="flex items-center gap-2"><Icon name="CheckIcon" size={12} /> {md.permRespondRfq}</li>
-                  <li className="flex items-center gap-2"><Icon name="CheckIcon" size={12} /> {md.permViewOrders}</li>
-                  <li className="flex items-center gap-2"><Icon name="CheckIcon" size={12} /> {md.permContactCustomers}</li>
-                </ul>
-              </div>
-              {/* What reps CANNOT do */}
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Icon name="LockClosedIcon" size={18} className="text-red-600" />
-                  <p className="text-sm font-bold text-red-800">{md.redLineBlocked}</p>
-                </div>
-                <ul className="space-y-1.5 text-xs text-red-700">
-                  <li className="flex items-center gap-2"><Icon name="XMarkIcon" size={12} /> {md.blockFinance}</li>
-                  <li className="flex items-center gap-2"><Icon name="XMarkIcon" size={12} /> {md.blockBankAccounts}</li>
-                  <li className="flex items-center gap-2"><Icon name="XMarkIcon" size={12} /> {md.blockRevenue}</li>
-                  <li className="flex items-center gap-2"><Icon name="XMarkIcon" size={12} /> {md.blockWallets}</li>
-                  <li className="flex items-center gap-2"><Icon name="XMarkIcon" size={12} /> {md.blockTaxData}</li>
-                </ul>
-              </div>
-            </div>
-
-            {/* Verification Policy Notice */}
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-              <div className="flex items-start gap-3">
-                <Icon name="ShieldExclamationIcon" size={18} className="text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-bold text-amber-800">{md.strictVerifyPolicy}</p>
-                  <p className="text-xs text-amber-700 mt-1">
-                    {md.platformExclusivePolicy}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Reps List */}
-            {salesRepsLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <Icon name="ArrowPathIcon" size={24} className="animate-spin text-primary" />
-              </div>
-            ) : salesReps.length === 0 ? (
-              <div className="bg-card border border-border rounded-2xl p-12 text-center">
-                <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4">
-                  <Icon name="UserGroupIcon" size={28} className="text-muted-foreground" />
-                </div>
-                <p className="text-sm font-semibold text-foreground mb-1">{md.noSalesReps}</p>
-                <p className="text-xs text-muted-foreground mb-4">{md.addRepsHint}</p>
-                <button
-                  onClick={() => { setShowInviteModal(true); setInviteError(''); setInviteSuccess(''); }}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
-                >
-                  <Icon name="UserPlusIcon" size={16} />
-                  {md.addSalesRep}
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {salesReps.map((rep) => {
-                  const statusConfig = {
-                    pending: { label: md.statusWaiting, color: 'bg-amber-50 text-amber-700 border-amber-200', icon: 'ClockIcon' },
-                    active: { label: md.statusActive, color: 'bg-green-50 text-green-700 border-green-200', icon: 'CheckBadgeIcon' },
-                    suspended: { label: md.statusSuspended, color: 'bg-orange-50 text-orange-700 border-orange-200', icon: 'PauseCircleIcon' },
-                    revoked: { label: md.statusCancelled, color: 'bg-red-50 text-red-700 border-red-200', icon: 'XCircleIcon' },
-                  }[rep.status];
-                  const roleLabel = rep.role === 'senior_sales_rep' ? md.seniorSalesRep : md.salesRep;
-
-                  return (
-                    <div key={rep.id} className="bg-card border border-border rounded-xl overflow-hidden">
-                      <div className="flex items-center gap-4 p-4">
-                        {/* Avatar */}
-                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary font-bold text-sm">
-                          {rep.full_name.charAt(0).toUpperCase() || '?'}
-                        </div>
-                        {/* Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-sm font-bold text-foreground">{rep.full_name}</p>
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                              {roleLabel}
-                            </span>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusConfig.color}`}>
-                              {statusConfig.label}
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">{rep.invited_email}</p>
-                          {rep.accepted_at && (
-                            <p className="text-[10px] text-muted-foreground mt-0.5">
-                              {md.joinedOn} {new Date(rep.accepted_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : language === 'zh' ? 'zh-CN' : language === 'tr' ? 'tr-TR' : 'en-US')}
-                            </p>
-                          )}
-                        </div>
-                        {/* Permissions mini-badges */}
-                        <div className="hidden md:flex items-center gap-1 flex-wrap justify-end">
-                          {rep.can_manage_products && <span className="text-[9px] px-1.5 py-0.5 bg-green-50 text-green-700 rounded border border-green-200">{md.productsChip}</span>}
-                          {rep.can_view_inventory && <span className="text-[9px] px-1.5 py-0.5 bg-green-50 text-green-700 rounded border border-green-200">{md.inventoryChip}</span>}
-                          {rep.can_respond_rfq && <span className="text-[9px] px-1.5 py-0.5 bg-green-50 text-green-700 rounded border border-green-200">RFQ</span>}
-                          {rep.can_view_orders && <span className="text-[9px] px-1.5 py-0.5 bg-green-50 text-green-700 rounded border border-green-200">{md.ordersChip}</span>}
-                          <span className="text-[9px] px-1.5 py-0.5 bg-red-50 text-red-600 rounded border border-red-200">{md.financeLockedChip}</span>
-                        </div>
-                        {/* Actions */}
-                        <div className="flex items-center gap-1 shrink-0">
-                          {rep.status === 'pending' && (
-                            <button
-                              onClick={() => handleRepStatusChange(rep.id, 'active')}
-                              disabled={repActionLoading === rep.id}
-                              className="px-3 py-1.5 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                            >
-                              {repActionLoading === rep.id ? <Icon name="ArrowPathIcon" size={12} className="animate-spin" /> : md.activate}
-                            </button>
-                          )}
-                          {rep.status === 'active' && (
-                            <button
-                              onClick={() => handleRepStatusChange(rep.id, 'suspended')}
-                              disabled={repActionLoading === rep.id}
-                              className="px-3 py-1.5 text-xs font-semibold bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors disabled:opacity-50"
-                            >
-                              {repActionLoading === rep.id ? <Icon name="ArrowPathIcon" size={12} className="animate-spin" /> : md.suspendTemp}
-                            </button>
-                          )}
-                          {rep.status === 'suspended' && (
-                            <button
-                              onClick={() => handleRepStatusChange(rep.id, 'active')}
-                              disabled={repActionLoading === rep.id}
-                              className="px-3 py-1.5 text-xs font-semibold bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors disabled:opacity-50"
-                            >
-                              {repActionLoading === rep.id ? <Icon name="ArrowPathIcon" size={12} className="animate-spin" /> : md.reactivate}
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleDeleteRep(rep.id)}
-                            disabled={repActionLoading === rep.id}
-                            className="w-8 h-8 rounded-lg hover:bg-red-50 flex items-center justify-center transition-colors"
-                            title="{md.deleteRep}"
-                          >
-                            <Icon name="TrashIcon" size={14} className="text-red-500" />
-                          </button>
-                        </div>
-                      </div>
-                      {rep.notes && (
-                        <div className="px-4 pb-3">
-                          <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">{rep.notes}</p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Invite Modal */}
-            {showInviteModal && (
-              <div className="fixed inset-0 z-50 flex flex-col bg-background">
-                <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-card shrink-0">
-                  <div className="flex items-center gap-2">
-                    <Icon name="UserPlusIcon" size={18} className="text-primary" />
-                    <h3 className="font-bold text-foreground">{md.addSalesRep} {md.newSuffix}</h3>
-                  </div>
-                  <button onClick={() => setShowInviteModal(false)} className="w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center">
-                    <Icon name="XMarkIcon" size={16} className="text-muted-foreground" />
-                  </button>
-                </div>
-
-                <form onSubmit={handleInviteSalesRep} className="flex-1 overflow-y-auto p-5 space-y-4 mobile-safe-bottom md:pb-6">
-                  {inviteError && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
-                      <Icon name="ExclamationCircleIcon" size={16} />
-                      {inviteError}
-                    </div>
-                  )}
-                  {inviteSuccess && (
-                    <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
-                      <Icon name="CheckCircleIcon" size={16} />
-                      {inviteSuccess}
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1.5">{md.fullNameRequired}</label>
-                    <input
-                      type="text"
-                      value={inviteForm.full_name}
-                      onChange={e => setInviteForm(f => ({ ...f, full_name: e.target.value }))}
-                      placeholder="{md.repNamePlaceholder}"
-                      dir={dir}
-                      className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1.5">{md.emailRequired}</label>
-                    <input
-                      type="email"
-                      value={inviteForm.email}
-                      onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))}
-                      placeholder="sales@yourfactory.com"
-                      dir="ltr"
-                      className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1.5">{md.jobTitleLabel}</label>
-                    <select
-                      value={inviteForm.role}
-                      onChange={e => setInviteForm(f => ({ ...f, role: e.target.value as 'sales_rep' | 'senior_sales_rep' }))}
-                      className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
-                    >
-                      <option value="sales_rep">{md.salesRep}</option>
-                      <option value="senior_sales_rep">{md.seniorSalesRep}</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1.5">{md.notesOptionalLabel}</label>
-                    <textarea
-                      value={inviteForm.notes}
-                      onChange={e => setInviteForm(f => ({ ...f, notes: e.target.value }))}
-                      placeholder={md.territoryExample}
-                      dir={dir}
-                      rows={2}
-                      className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary resize-none"
-                    />
-                  </div>
-
-                  {/* Permissions summary */}
-                  <div className="bg-muted/50 rounded-xl p-3">
-                    <p className="text-xs font-semibold text-foreground mb-2">{md.autoGrantedPerms}</p>
-                    <div className="grid grid-cols-2 gap-1.5 text-xs">
-                      <span className="flex items-center gap-1 text-green-700"><Icon name="CheckIcon" size={11} /> {md.permManageProductsLabel}</span>
-                      <span className="flex items-center gap-1 text-green-700"><Icon name="CheckIcon" size={11} /> {md.permTrackInventoryLabel}</span>
-                      <span className="flex items-center gap-1 text-green-700"><Icon name="CheckIcon" size={11} /> {md.permRespondRfqLabel}</span>
-                      <span className="flex items-center gap-1 text-green-700"><Icon name="CheckIcon" size={11} /> {md.permViewOrdersLabel}</span>
-                      <span className="flex items-center gap-1 text-red-600 col-span-2"><Icon name="LockClosedIcon" size={11} /> {md.permFinanceBlocked}</span>
-                    </div>
-                  </div>
-
-                  {/* Verification policy reminder */}
-                  <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
-                    <Icon name="ShieldExclamationIcon" size={14} className="text-amber-600 shrink-0 mt-0.5" />
-                    <p className="text-[11px] text-amber-700">
-                      {md.repMustBeEmployee}
-                    </p>
-                  </div>
-
-                  <div className="flex gap-3 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setShowInviteModal(false)}
-                      className="flex-1 px-4 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors"
-                    >
-                      {md.cancelAction}
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={inviteLoading}
-                      className="flex-1 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      {inviteLoading ? <Icon name="ArrowPathIcon" size={16} className="animate-spin" /> : <Icon name="UserPlusIcon" size={16} />}
-                      {inviteLoading ? md.adding : md.addRep}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
           </div>
         )}
 
         {/* ── BANK ACCOUNTS TAB ── */}
+        {activeTab === 'financial_hub' && !isSalesRep && user?.id && (
+          <FinancialSummaryHeader userId={user.id} currency={bankAccounts?.[0]?.currency || 'YER'} />
+        )}
+        {activeTab === 'financial_hub' && !isSalesRep && user?.id && (
+          <FactoryPinPayoutPanel userId={user.id} />
+        )}
         {activeTab === 'financial_hub' && !isSalesRep && (
           <FinancialHubPanel
             bankAccounts={bankAccounts}
@@ -2440,6 +2420,9 @@ export default function ManufacturerDashboard() {
             md={md}
           />
         )}
+        {activeTab === 'factory_settings' && !isSalesRep && (
+          <FactorySettingsPanel userId={user?.id ?? null} />
+        )}
         {activeTab === 'products' && (
           <ProductsPanel
             products={products}
@@ -2459,6 +2442,9 @@ export default function ManufacturerDashboard() {
             setFilterStatus={setFilterStatus}
             filterCategory={filterCategory}
             setFilterCategory={setFilterCategory}
+            filterSource={filterSource}
+            setFilterSource={setFilterSource}
+            handleApproveProduct={handleApproveProduct}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             selectedProducts={selectedProducts}
@@ -2500,6 +2486,7 @@ export default function ManufacturerDashboard() {
             handleBulkToggleActive={handleBulkToggleActive}
             handleBulkDelete={handleBulkDelete}
             handleDocumentUpload={handleDocumentUpload}
+            onDocumentsChanged={fetchFactoryRegistration}
             handleAccreditationInquiry={handleAccreditationInquiry}
             openEditModal={openEditModal}
             stats={stats}
@@ -2560,7 +2547,7 @@ export default function ManufacturerDashboard() {
 
         {/* ── FREIGHT BIDS TAB ── */}
         {activeTab === 'freight_bids' && (
-          <ShipmentBidsPanel mode="shipper" />
+          <ShipmentBidsPanel mode="shipper" yemenLocal />
         )}
 
         {/* ── FACTORY ORDER QUEUE TAB ── */}
@@ -2583,12 +2570,14 @@ export default function ManufacturerDashboard() {
             fetchFactoryOrders={fetchFactoryOrders}
             md={md}
             currentUserId={user?.id}
+            localInbox
           />
         )}
 
         {/* ── DISPUTES TAB — Level 1: Factory Resolution Panel ── */}
         {activeTab === 'disputes' && (
           <DisputesPanel
+            localMode
             factoryDisputes={factoryDisputes}
             factoryDisputesLoading={factoryDisputesLoading}
             selectedFactoryDispute={selectedFactoryDispute}
@@ -2609,6 +2598,8 @@ export default function ManufacturerDashboard() {
         {/* ── ANALYTICS TAB ── */}
         {activeTab === 'analytics' && (
           <AnalyticsPanel
+            variant="local"
+            currency={factoryCurrency}
             analyticsLoading={analyticsLoading}
             analyticsData={analyticsData}
             analyticsStats={analyticsStats}
@@ -2623,25 +2614,8 @@ export default function ManufacturerDashboard() {
         )}
 
         {/* ── ADMIN MESSAGING TAB (factory side) ── */}
-        {activeTab === 'admin_messaging' && (
-          <FactoryAdminMessaging
-            user={user}
-            supabase={supabase}
-            adminConv={adminConv}
-            adminConvLoading={adminConvLoading}
-            adminMessages={adminMessages}
-            setAdminMessages={setAdminMessages}
-            adminMsgsLoading={adminMsgsLoading}
-            adminMsgInput={adminMsgInput}
-            setAdminMsgInput={setAdminMsgInput}
-            adminMsgSending={adminMsgSending}
-            sendAdminMessage={sendAdminMessage}
-            fetchAdminConversation={fetchAdminConversation}
-            adminMsgsEndRef={adminMsgsEndRef}
-            md={md}
-            adminMsgAttachment={adminMsgAttachment}
-            setAdminMsgAttachment={setAdminMsgAttachment}
-          />
+        {activeTab === 'admin_messaging' && user && (
+          <ManufacturerMessagingHub userId={user.id} />
         )}
       </main>
 
@@ -2831,236 +2805,7 @@ export default function ManufacturerDashboard() {
         </div>
       )}
 
-      {/* Document Gate Modal */}
-      {showDocGate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-          <div className="w-full max-w-md bg-card rounded-2xl border border-border shadow-xl overflow-hidden">
-            <div className="bg-amber-50 border-b border-amber-200 px-6 py-4 flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
-                <Icon name="LockClosedIcon" size={20} className="text-amber-600" />
-              </div>
-              <div>
-                <h3 className="font-bold text-amber-900 text-base">{md.completeDocsActivate}</h3>
-                <p className="text-xs text-amber-700 mt-0.5">Upload your legal documents to unlock product listings</p>
-              </div>
-              <button onClick={() => setShowDocGate(false)} className="ml-auto text-amber-600 hover:text-amber-800">
-                <Icon name="XMarkIcon" size={20} />
-              </button>
-            </div>
-
-            <div className="p-6">
-              {/* Account Type Toggle */}
-              <div className="mb-5">
-                <label className="block text-sm font-semibold text-foreground mb-2">
-                  {md.accountTypeBilingual}
-                </label>
-                <div className="flex rounded-xl border border-border overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => { setAccountType('factory'); setSecondDocFile(null); setMfgLicenseFile(null); }}
-                    className={`flex-1 py-2.5 text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${accountType === 'factory' ? 'bg-amber-600 text-white' : 'bg-card text-muted-foreground hover:bg-muted'}`}
-                  >
-                    <Icon name="BuildingOffice2Icon" size={16} />
-                    Factory
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setAccountType('supplier'); setMfgLicenseFile(null); setSecondDocFile(null); }}
-                    className={`flex-1 py-2.5 text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${accountType === 'supplier' ? 'bg-amber-600 text-white' : 'bg-card text-muted-foreground hover:bg-muted'}`}
-                  >
-                    <Icon name="TruckIcon" size={16} />
-                    {md.supplierAgentBilingual}
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5 mb-5 text-xs text-blue-700 flex items-start gap-2">
-                <Icon name="InformationCircleIcon" size={14} className="shrink-0 mt-0.5" />
-                <span>
-                  {accountType === 'factory' ?'Upload your Trade License and Manufacturing License. After submission, an admin will review and approve your account.' :'Upload your Trade License and {md.importLicenseBilingual}. After submission, an admin will review and approve your account.'}
-                </span>
-              </div>
-
-              {docUploadError && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2.5 text-sm mb-4 flex items-center gap-2">
-                  <Icon name="ExclamationCircleIcon" size={14} />
-                  {docUploadError}
-                </div>
-              )}
-
-              <form onSubmit={handleDocumentUpload} className="space-y-4">
-                {/* Trade License — always required */}
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1.5">
-                    {md.tradeLicenseBilingual}
-                  </label>
-                  <div className={`border-2 border-dashed rounded-xl p-4 text-center transition-colors ${tradeLicenseFile ? 'border-green-400 bg-green-50' : 'border-border hover:border-primary/50'}`}>
-                    {tradeLicenseFile ? (
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Icon name="DocumentCheckIcon" size={18} className="text-green-600" />
-                          <span className="text-sm text-green-700 font-medium truncate max-w-[200px]">{tradeLicenseFile.name}</span>
-                        </div>
-                        <button type="button" onClick={() => setTradeLicenseFile(null)} className="text-muted-foreground hover:text-red-600">
-                          <Icon name="XMarkIcon" size={16} />
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <Icon name="ArrowUpTrayIcon" size={24} className="text-muted-foreground mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground mb-1">Click to upload or drag & drop</p>
-                        <p className="text-xs text-muted-foreground">PDF, JPG, PNG (max 15MB)</p>
-                      </>
-                    )}
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0] || null;
-                        if (f && f.size > 15 * 1024 * 1024) { setDocUploadError('Trade License file exceeds the 15MB size limit.'); e.target.value = ''; return; }
-                        setDocUploadError(''); setTradeLicenseFile(f);
-                      }}
-                      className={tradeLicenseFile ? 'hidden' : 'absolute inset-0 opacity-0 cursor-pointer'}
-                      style={tradeLicenseFile ? {} : { position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
-                    />
-                  </div>
-                  <label className="block mt-1">
-                    <span className="sr-only">Upload Trade License</span>
-                    {!tradeLicenseFile && (
-                      <input
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png"
-                        onChange={(e) => {
-                            const f = e.target.files?.[0] || null;
-                            if (f && f.size > 15 * 1024 * 1024) { setDocUploadError('Trade License file exceeds the 15MB size limit.'); e.target.value = ''; return; }
-                            setDocUploadError(''); setTradeLicenseFile(f);
-                          }}
-                        className="block w-full text-xs text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer"
-                      />
-                    )}
-                  </label>
-                </div>
-
-                {/* Dynamic second document based on account type */}
-                {accountType === 'factory' ? (
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-1.5">
-                      {md.mfgLicenseBilingual}
-                    </label>
-                    <label className="block">
-                      {mfgLicenseFile ? (
-                        <div className="border-2 border-dashed border-green-400 bg-green-50 rounded-xl p-4 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Icon name="DocumentCheckIcon" size={18} className="text-green-600" />
-                            <span className="text-sm text-green-700 font-medium truncate max-w-[200px]">{mfgLicenseFile.name}</span>
-                          </div>
-                          <button type="button" onClick={() => setMfgLicenseFile(null)} className="text-muted-foreground hover:text-red-600">
-                            <Icon name="XMarkIcon" size={16} />
-                          </button>
-                        </div>
-                      ) : (
-                        <input
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0] || null;
-                            if (f && f.size > 15 * 1024 * 1024) { setDocUploadError('Manufacturing License file exceeds the 15MB size limit.'); e.target.value = ''; return; }
-                            setDocUploadError(''); setMfgLicenseFile(f);
-                          }}
-                          className="block w-full text-xs text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer"
-                        />
-                      )}
-                    </label>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-1.5">
-                      {md.importLicenseBilingual} *
-                    </label>
-                    <label className="block">
-                      {secondDocFile ? (
-                        <div className="border-2 border-dashed border-green-400 bg-green-50 rounded-xl p-4 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Icon name="DocumentCheckIcon" size={18} className="text-green-600" />
-                            <span className="text-sm text-green-700 font-medium truncate max-w-[200px]">{secondDocFile.name}</span>
-                          </div>
-                          <button type="button" onClick={() => setSecondDocFile(null)} className="text-muted-foreground hover:text-red-600">
-                            <Icon name="XMarkIcon" size={16} />
-                          </button>
-                        </div>
-                      ) : (
-                        <input
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0] || null;
-                            if (f && f.size > 15 * 1024 * 1024) { setDocUploadError('Document file exceeds the 15MB size limit.'); e.target.value = ''; return; }
-                            setDocUploadError(''); setSecondDocFile(f);
-                          }}
-                          className="block w-full text-xs text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer"
-                        />
-                      )}
-                    </label>
-                  </div>
-                )}
-
-                {/* Tax ID field */}
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1.5">
-                    {md.taxIdBilingual}
-                  </label>
-                  <input
-                    type="text"
-                    value={taxId}
-                    onChange={(e) => setTaxId(e.target.value)}
-                    placeholder="Enter your official Tax Identification Number"
-                    className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">Optional — provide your official Tax ID alongside your business licenses.</p>
-                </div>
-
-                {/* {md.establishedYearBilingual} field */}
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1.5">
-                    {md.establishedYearBilingual}
-                  </label>
-                  <input
-                    type="number"
-                    min="1900"
-                    max={new Date().getFullYear()}
-                    value={establishedYear}
-                    onChange={(e) => setEstablishedYear(e.target.value)}
-                    placeholder={`e.g. 2004`}
-                    className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">{md.experienceBadgeHint}</p>
-                </div>
-
-                <div className="flex gap-3 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowDocGate(false)}
-                    className="flex-1 h-10 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={uploadingDocs || !tradeLicenseFile || (accountType === 'factory' ? !mfgLicenseFile : !secondDocFile)}
-                    className="flex-1 h-10 bg-amber-600 text-white rounded-lg text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2 hover:bg-amber-700 transition-colors"
-                  >
-                    {uploadingDocs ? (
-                      <><Icon name="ArrowPathIcon" size={15} className="animate-spin" /> Uploading...</>
-                    ) : (
-                      <><Icon name="ArrowUpTrayIcon" size={15} /> Submit Documents</>
-                    )}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Document Gate Modal — handled inside ProductsPanel (FactoryDocumentUploadPanel) */}
 
       {/* ── FINANCE TAB ── */}
       {activeTab === 'finance' && !isSalesRep && (
@@ -3085,6 +2830,7 @@ export default function ManufacturerDashboard() {
           inventoryFormLoading={inventoryFormLoading}
           inventoryFormError={inventoryFormError}
           md={md}
+          onSaved={fetchInventoryItems}
         />
       )}
 
@@ -3106,15 +2852,33 @@ export default function ManufacturerDashboard() {
         </div>
       )}
 
-      {/* ── ADVANCED MODULES (always visible for local factories) ── */}
-      {!isSalesRep && user && (
-        <div className="p-4 md:p-6 border-t border-border mt-2">
-          <ManufacturerAdvancedModules userId={user.id} />
+      {/* ── CONTRACTS TAB ── */}
+      {activeTab === 'contracts' && !isSalesRep && (
+        <div className="p-4 md:p-6">
+          <AIContractAssistant
+            onPushedToInvoice={() => {
+              router.push('/manufacturer/invoicing');
+            }}
+          />
+        </div>
+      )}
+
+      {/* ── INVOICING MODULE (dedicated card / sub-route only) ── */}
+      {moduleTab === 'invoicing' && !isSalesRep && user && (
+        <div id="manufacturer-invoicing-anchor" className="p-4 md:p-6">
+          <ManufacturerAdvancedModules userId={user.id} mode="finance" />
+        </div>
+      )}
+
+      {/* ── PRODUCTION CAPACITY & QC MODULE (dedicated card / sub-route only) ── */}
+      {moduleTab === 'production' && !isSalesRep && user && (
+        <div className="p-4 md:p-6">
+          <ManufacturerAdvancedModules userId={user.id} mode="production" />
         </div>
       )}
 
       {/* ── TIERED PRICING MANAGER (International Factories only) ── */}
-      {!isSalesRep && user && factoryRegistration?.factory_type === 'international' && (
+      {!isSalesRep && user && !isModuleMode && factoryRegistration?.factory_type === 'international' && (
         <div className="p-4 md:p-6 border-t border-border mt-2">
           <div className="mb-3 flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">

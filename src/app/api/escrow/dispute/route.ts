@@ -4,6 +4,7 @@ import { sendTransactionalEmail } from '@/lib/email';
 import { withRequestSigning } from '@/lib/securitySigner';
 import { createNotification } from '@/lib/notificationEngine';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { DISPUTE_REASON_CODES, getDisputeReasonLabel } from '@/lib/disputeReasons';
 
 // ─── GET /api/escrow/dispute — Sandbox Health Check ───────────────────────────
 export async function GET() {
@@ -57,7 +58,7 @@ async function postHandler(req: NextRequest) {
         return NextResponse.json({ error: 'Not authorized to open dispute for this order' }, { status: 403 });
       }
 
-      const validReasons = ['late_delivery', 'product_mismatch'];
+      const validReasons = [...DISPUTE_REASON_CODES, 'late_delivery', 'product_mismatch'];
       if (!reason || !validReasons.includes(reason)) {
         return NextResponse.json({ error: 'Invalid dispute reason' }, { status: 400 });
       }
@@ -67,7 +68,7 @@ async function postHandler(req: NextRequest) {
       }
 
       const now = new Date().toISOString();
-      const reasonLabel = reason === 'late_delivery' ?'تأخر في التسليم عن الموعد المحدد' :'عدم مطابقة المنتج للمواصفات/الجودة';
+      const reasonLabel = getDisputeReasonLabel(reason, 'ar');
       const buyerName = order.user_profiles?.full_name || order.user_profiles?.company_name || 'المشتري';
 
       // 1. Update order — Level 1: escrow NOT frozen yet, just flagged
@@ -310,7 +311,7 @@ async function postHandler(req: NextRequest) {
 
       const now = new Date().toISOString();
       const buyerName = order.user_profiles?.full_name || order.user_profiles?.company_name || 'المشتري';
-      const reasonLabel = order.dispute_reason === 'late_delivery' ?'تأخر في التسليم' :'عدم مطابقة المواصفات';
+      const reasonLabel = getDisputeReasonLabel(order.dispute_reason, 'ar');
 
       // 1. Freeze escrow completely + escalate
       await supabase

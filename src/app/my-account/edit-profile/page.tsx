@@ -30,7 +30,7 @@ function getDashboardCard(accountRole: string): DashboardCardConfig | null {
     return {
       title: 'لوحة تحكم المصنع',
       description: 'إدارة خطوط الإنتاج والقدرة التشغيلية والمنتجات',
-      href: '/factory/local-dashboard',
+      href: '/manufacturer/dashboard',
       icon: 'BuildingOffice2Icon',
     };
   }

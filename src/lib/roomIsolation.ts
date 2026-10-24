@@ -46,6 +46,17 @@ export const EXCLUSIVE_ROOM_PREFIXES: { prefix: string; roles: PlatformRole[] }[
   { prefix: '/manufacturer/international-dashboard', roles: ['manufacturer'] },
   { prefix: '/manufacturer/b2b', roles: ['manufacturer'] },
   { prefix: '/manufacturer/b2c', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/products', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/inventory', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/rfq', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/orders', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/production', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/logistics', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/escrow', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/bank-accounts', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/analytics', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/documents', roles: ['manufacturer'] },
+  { prefix: '/manufacturer/messages', roles: ['manufacturer'] },
   // Strict isolation: supplier dashboard is ONLY for commercial_supplier
   { prefix: '/supplier/local-dashboard', roles: ['commercial_supplier'] },
   // Strict isolation: factory dashboard is ONLY for manufacturer (local/international factory)
@@ -186,6 +197,7 @@ export function resolveFieldOpsRedirect(
   if (
     p === FIELD_OPS_MANAGER_HOME ||
     p.startsWith(FIELD_OPS_MANAGER_HOME + '/') ||
+    p === '/admin/operations'|| p.startsWith('/admin/operations/') ||
     p.startsWith('/api/')
   ) {
     return null;
@@ -358,6 +370,154 @@ export function canAccessLocalErp(hints: {
 /** Fallback home when local ERP is denied for a manufacturer. */
 export const MANUFACTURER_DASHBOARD_PATH = ROLE_HOME_PATH.manufacturer;
 
+/** International Factory Control Room path (strict room for international manufacturers). */
+export const INTERNATIONAL_FACTORY_ROOM_PATH = '/manufacturer/international-dashboard';
+
+/** Local Factory Dashboard path (strict room for local Yemeni manufacturers). */
+export const LOCAL_FACTORY_ROOM_PATH = '/manufacturer/dashboard';
+
+/**
+ * True when the manufacturer is an international factory
+ * (factory_type = 'international' OR seller_category = 'international_factory').
+ */
+export function isInternationalFactory(hints: {
+  seller_category?: string | null;
+  factory_type?: string | null;
+}): boolean {
+  const seller = (hints.seller_category || '').toLowerCase().trim();
+  const factoryType = (hints.factory_type || '').toLowerCase().trim();
+  return INTERNATIONAL_MARKERS.has(seller) || INTERNATIONAL_MARKERS.has(factoryType);
+}
+
+/** True when the country value represents Yemen (Arabic / English / ISO). */
+export function isYemenCountry(country?: string | null): boolean {
+  const normalized = (country || '').trim().toLowerCase();
+  return (
+    normalized === 'ye' ||
+    normalized === 'yemen' ||
+    normalized === 'اليمن' ||
+    normalized === 'al-yaman' ||
+    normalized === 'al yaman'
+  );
+}
+
+/**
+ * Pure routing decision for a manufacturer account.
+ * Priority: explicit type (factory_type / seller_category) → country → local default.
+ * Arabic labels (محلي / دولي) are normalized as well.
+ */
+export function resolveManufacturerRoomPath(hints: {
+  seller_category?: string | null;
+  factory_type?: string | null;
+  country?: string | null;
+  account_role?: string | null;
+  dashboard_path?: string | null;
+}): string {
+  const seller = (hints.seller_category || '').toLowerCase().trim();
+  const factoryType = (hints.factory_type || '').toLowerCase().trim();
+  const accountRole = (hints.account_role || '').toLowerCase().trim();
+  const dashboardPath = (hints.dashboard_path || '').toLowerCase().trim();
+
+  if (
+    INTERNATIONAL_MARKERS.has(seller) ||
+    INTERNATIONAL_MARKERS.has(factoryType) ||
+    seller === 'دولي' ||
+    factoryType === 'دولي'|| seller.includes('international') ||
+    factoryType.includes('international')
+  ) {
+    return INTERNATIONAL_FACTORY_ROOM_PATH;
+  }
+  if (
+    LOCAL_SELLER_CATEGORIES.has(seller) ||
+    LOCAL_FACTORY_TYPES.has(factoryType) ||
+    seller === 'محلي' ||
+    factoryType === 'محلي'
+  ) {
+    return LOCAL_FACTORY_ROOM_PATH;
+  }
+
+  // Explicit account choice made at registration (account_role / dashboard_path)
+  if (
+    accountRole === 'international_manufacturer' ||
+    dashboardPath.startsWith(INTERNATIONAL_FACTORY_ROOM_PATH)
+  ) {
+    return INTERNATIONAL_FACTORY_ROOM_PATH;
+  }
+  if (accountRole === 'local_manufacturer') {
+    return LOCAL_FACTORY_ROOM_PATH;
+  }
+
+  const country = (hints.country || '').trim();
+  if (country) {
+    return isYemenCountry(country) ? LOCAL_FACTORY_ROOM_PATH : INTERNATIONAL_FACTORY_ROOM_PATH;
+  }
+  return LOCAL_FACTORY_ROOM_PATH;
+}
+
+/**
+ * Loads the manufacturer's profile + registration (incl. a representative-registered
+ * factory matched by contact email) and returns the correct room path.
+ * `supabase` is any Supabase client (browser).
+ */
+export async function resolveManufacturerRoomForUser(
+  supabase: any,
+  userId: string,
+  email?: string | null
+): Promise<string> {
+  try {
+    const [{ data: profile }, { data: reg }, authRes] = await Promise.all([
+      supabase
+        .from('user_profiles')
+        .select('country, seller_category, account_role, dashboard_path')
+        .eq('id', userId)
+        .maybeSingle(),
+      supabase
+        .from('factory_registrations')
+        .select('country, factory_type, seller_category')
+        .eq('user_id', userId)
+        .maybeSingle(),
+      supabase.auth?.getUser?.().catch?.(() => null) ?? Promise.resolve(null),
+    ]);
+
+    const authMeta = (authRes as any)?.data?.user?.user_metadata || {};
+    const authAppMeta = (authRes as any)?.data?.user?.app_metadata || {};
+    const accountRole: string | null =
+      profile?.account_role || authMeta.account_role || authAppMeta.account_role || null;
+    const dashboardPath: string | null =
+      profile?.dashboard_path || authMeta.dashboard_path || null;
+
+    let agentReg: { factory_type?: string | null; country?: string | null } | null = null;
+    const hasExplicitType = !!(
+      profile?.seller_category ||
+      reg?.factory_type ||
+      reg?.seller_category ||
+      accountRole === 'international_manufacturer' ||
+      accountRole === 'local_manufacturer'
+    );
+    if (!hasExplicitType && email) {
+      // Factory registered through the representative (agent) dashboard
+      const { data } = await supabase
+        .from('agent_factory_registrations')
+        .select('factory_type, country')
+        .eq('contact_email', email)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      agentReg = data || null;
+    }
+
+    return resolveManufacturerRoomPath({
+      seller_category: profile?.seller_category || reg?.seller_category || null,
+      factory_type: reg?.factory_type || agentReg?.factory_type || null,
+      country: profile?.country || reg?.country || agentReg?.country || null,
+      account_role: accountRole,
+      dashboard_path: dashboardPath,
+    });
+  } catch {
+    return LOCAL_FACTORY_ROOM_PATH;
+  }
+}
+
 // ─── Room Metadata ─────────────────────────────────────────────────────────────
 /**
  * Metadata for each isolated control room.
@@ -390,7 +550,7 @@ export const CONTROL_ROOMS: RoomMetadata[] = [
     market: 'الجمهورية اليمنية — المصانع والمنتجون المحليون',
     color: 'orange',
     icon: 'Factory',
-    path: '/factory/local-dashboard',
+    path: '/manufacturer/dashboard',
   },
   {
     id: 'international-factory-control-room',

@@ -1,8 +1,21 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
+
+const YEMENI_BANKS: string[] = [
+  'بنك الكريمي للتمويل الأصغر الإسلامي',
+  'بنك التضامن الإسلامي',
+  'بنك اليمن والكويت',
+  'بنك اليمن الدولي',
+  'بنك سبأ الإسلامي',
+  'بنك القطيبي الإسلامي',
+  'بنك اليمن والبحرين الشامل',
+];
+const OTHER_BANK_VALUE = '__other__';
+const BANK_COUNTRIES: string[] = ['Yemen', 'Saudi Arabia', 'UAE', 'Kuwait', 'Qatar', 'Bahrain', 'Oman', 'Egypt', 'Jordan', 'Turkey', 'Germany', 'USA', 'UK', 'Other'];
+const BANK_CURRENCIES: string[] = ['YER', 'SAR', 'USD'];
 
 interface PaymentSettings {
   id?: string;
@@ -74,6 +87,15 @@ export default function PaymentSettingsPanel({
   md,
 }: PaymentSettingsPanelProps) {
   const { language, dir } = useLanguage();
+  const [otherBankMode, setOtherBankMode] = React.useState(false);
+  const currentBankName = paymentSettings.bank_name || '';
+  const isKnownBank = YEMENI_BANKS.includes(currentBankName);
+  const showOtherBankInput = otherBankMode || (!!currentBankName && !isKnownBank);
+  const bankSelectValue = showOtherBankInput ? OTHER_BANK_VALUE : currentBankName;
+  const bankCurrencyOptions = BANK_CURRENCIES.includes(paymentSettings.bank_currency) || !paymentSettings.bank_currency
+    ? BANK_CURRENCIES
+    : [...BANK_CURRENCIES, paymentSettings.bank_currency];
+  const bankCountryLabels: Record<string, string> = { Yemen: 'الجمهورية اليمنية', ...((t.paymentSettings?.bankCountries as any) || {}) };
 
   return (
     <div className="max-w-3xl">
@@ -135,7 +157,29 @@ export default function PaymentSettingsPanel({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-foreground mb-1.5">{(t.paymentSettings?.bankName || 'Bank Name')}</label>
-                  <input type="text" value={paymentSettings.bank_name} onChange={(e) => setPaymentSettings({ ...paymentSettings, bank_name: e.target.value })} placeholder={(t.paymentSettings?.bankNamePlaceholder || 'e.g. Al Rajhi Bank')} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
+                  <select
+                    value={bankSelectValue}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === OTHER_BANK_VALUE) {
+                        setOtherBankMode(true);
+                        if (isKnownBank) setPaymentSettings({ ...paymentSettings, bank_name: '' });
+                      } else {
+                        setOtherBankMode(false);
+                        setPaymentSettings({ ...paymentSettings, bank_name: v });
+                      }
+                    }}
+                    className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
+                  >
+                    <option value="">اختر البنك</option>
+                    {YEMENI_BANKS.map((b) => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                    <option value={OTHER_BANK_VALUE}>بنك آخر (يدوي)</option>
+                  </select>
+                  {showOtherBankInput && (
+                    <input type="text" value={isKnownBank ? '' : currentBankName} onChange={(e) => setPaymentSettings({ ...paymentSettings, bank_name: e.target.value })} placeholder="اكتب اسم البنك" className="mt-2 w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-foreground mb-1.5">{(t.paymentSettings?.accountHolderName || 'Account Holder Name')}</label>
@@ -147,12 +191,12 @@ export default function PaymentSettingsPanel({
                   {(t.paymentSettings?.iban || 'IBAN')}
                   <span className="ml-1 text-muted-foreground font-normal">{(t.paymentSettings?.ibanNote || '(International Bank Account Number)')}</span>
                 </label>
-                <input type="text" value={paymentSettings.iban} onChange={(e) => setPaymentSettings({ ...paymentSettings, iban: e.target.value.toUpperCase() })} placeholder={(t.paymentSettings?.ibanPlaceholder || 'e.g. SA0380000000608010167519')} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm font-mono focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
+                <input type="text" value={paymentSettings.iban} onChange={(e) => setPaymentSettings({ ...paymentSettings, iban: e.target.value.toUpperCase() })} placeholder="رقم الحساب البنكي / الآيبان إن وجد" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm font-mono focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-foreground mb-1.5">{(t.paymentSettings?.swiftBic || 'SWIFT / BIC Code')}</label>
-                  <input type="text" value={paymentSettings.swift_code} onChange={(e) => setPaymentSettings({ ...paymentSettings, swift_code: e.target.value.toUpperCase() })} placeholder={(t.paymentSettings?.swiftPlaceholder || 'e.g. RJHISARI')} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm font-mono focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">رمز SWIFT / BIC (اختياري للتحويل الدولي)</label>
+                  <input type="text" value={paymentSettings.swift_code} onChange={(e) => setPaymentSettings({ ...paymentSettings, swift_code: e.target.value.toUpperCase() })} placeholder="اختياري" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm font-mono focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-foreground mb-1.5">{(t.paymentSettings?.accountNumber || 'Account Number')}</label>
@@ -163,20 +207,20 @@ export default function PaymentSettingsPanel({
                 <div>
                   <label className="block text-xs font-semibold text-foreground mb-1.5">{(t.paymentSettings?.bankCountry || 'Bank Country')}</label>
                   <select value={paymentSettings.bank_country} onChange={(e) => setPaymentSettings({ ...paymentSettings, bank_country: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
-                    {(['Saudi Arabia', 'UAE', 'Kuwait', 'Qatar', 'Bahrain', 'Oman', 'Egypt', 'Jordan', 'Turkey', 'Germany', 'USA', 'UK', 'Other'] as const).map((c) => (
-                      <option key={c} value={c}>{(t.paymentSettings?.bankCountries as any)?.[c] || c}</option>
+                    {BANK_COUNTRIES.map((c) => (
+                      <option key={c} value={c}>{bankCountryLabels[c] || c}</option>
                     ))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-foreground mb-1.5">{(t.paymentSettings?.bankCity || 'Bank City')}</label>
-                  <input type="text" value={paymentSettings.bank_city} onChange={(e) => setPaymentSettings({ ...paymentSettings, bank_city: e.target.value })} placeholder={(t.paymentSettings?.bankCityPlaceholder || 'e.g. Riyadh')} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
+                  <input type="text" value={paymentSettings.bank_city} onChange={(e) => setPaymentSettings({ ...paymentSettings, bank_city: e.target.value })} placeholder="مثال: صنعاء أو عدن" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-foreground mb-1.5">{(t.paymentSettings?.currency || 'Currency')}</label>
                   <select value={paymentSettings.bank_currency} onChange={(e) => setPaymentSettings({ ...paymentSettings, bank_currency: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
-                    {['SAR', 'USD', 'EUR', 'GBP', 'AED', 'KWD', 'QAR', 'BHD', 'OMR', 'EGP', md.yerCurrency].map((c) => (
-                      <option key={c} value={c}>{c}</option>
+                    {bankCurrencyOptions.map((c) => (
+                      <option key={c} value={c}>{c === 'YER' ? 'YER (ريال يمني)' : c}</option>
                     ))}
                   </select>
                 </div>
