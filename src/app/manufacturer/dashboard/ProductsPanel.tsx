@@ -222,6 +222,8 @@ export default function ProductsPanel({
 }: ProductsPanelProps) {
   const { language } = useLanguage();
   const { user: authUser } = useAuth();
+  const [showVerifiedDetails, setShowVerifiedDetails] = React.useState(false);
+  const isFullyVerified = verifiedTier === 'verified' && trustPercentage >= 100;
   const isAgentManaged = !!(
     factoryRegistration?.agent_id ||
     factoryRegistration?.referred_by_agent_id ||
@@ -295,7 +297,39 @@ export default function ProductsPanel({
       )}
 
       {/* Trust Score Card */}
-      {!docGateLoading && factoryRegistration && (
+      {!docGateLoading && factoryRegistration && isFullyVerified && (
+        <div className="mb-4">
+          <div className="flex items-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800">
+            <Icon name="CheckCircleIcon" size={18} className="text-emerald-600 shrink-0" />
+            <span className="flex-1 min-w-0 text-xs sm:text-sm font-bold leading-snug">
+              حساب المصنع موثق بالكامل بنسبة 100% (السجل التجاري والترخيص الصناعي)
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowVerifiedDetails((v) => !v)}
+              aria-expanded={showVerifiedDetails}
+              className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 hover:text-emerald-900 transition-colors"
+            >
+              <span className="hidden sm:inline">عرض التفاصيل</span>
+              <Icon name="ChevronDownIcon" size={14} className={`transition-transform ${showVerifiedDetails ? 'rotate-180' : ''}`} />
+            </button>
+          </div>
+          {showVerifiedDetails && (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {[
+                { key: 'trade_license', label: 'السجل التجاري' },
+                { key: 'manufacturing_license', label: 'الترخيص الصناعي' },
+              ].map((doc) => (
+                <div key={doc.key} className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-medium border bg-emerald-50 border-emerald-200 text-emerald-700">
+                  <Icon name="CheckCircleIcon" size={12} className="text-emerald-600 shrink-0" />
+                  <span className="truncate">{doc.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {!docGateLoading && factoryRegistration && !isFullyVerified && (
         <div className="relative mb-4 overflow-hidden rounded-2xl border shadow-md" style={{ background: verifiedTier === 'verified' ? 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)' : verifiedTier === 'partial' ? 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)' : 'linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%)', borderColor: verifiedTier === 'verified' ? '#6ee7b7' : verifiedTier === 'partial' ? '#fcd34d' : '#e5e7eb' }}>
           <div className="absolute top-0 left-0 right-0 h-0.5" style={{ background: verifiedTier === 'verified' ? 'linear-gradient(90deg, transparent, #10B981, transparent)' : verifiedTier === 'partial' ? 'linear-gradient(90deg, transparent, #F59E0B, transparent)' : 'linear-gradient(90deg, transparent, #9CA3AF, transparent)' }} />
           <div className="px-5 py-4">
