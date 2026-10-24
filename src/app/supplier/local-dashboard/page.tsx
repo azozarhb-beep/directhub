@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,7 +10,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
 import Header from '@/components/Header';
-import Icon from '@/components/ui/AppIcon';
+import * as HeroIcons from '@heroicons/react/24/outline';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import SupplierAdminMessaging from './SupplierAdminMessaging';
 import SupplierFinancialHubWrapper from './SupplierFinancialHubWrapper';
@@ -18,6 +18,46 @@ import SupplierEscrowOrdersWrapper from './SupplierEscrowOrdersWrapper';
 import SupplierBankAccountsWrapper from './SupplierBankAccountsWrapper';
 import SupplierDisputesWrapper from './SupplierDisputesWrapper';
 import SupplierArchiveWrapper from './SupplierArchiveWrapper';
+
+// ─── Local safe icon wrapper (never renders a "?" fallback) ───────────────────
+const ICON_MAP: Record<string, string> = {
+  LayoutDashboard: 'Squares2X2Icon',
+  Package: 'CubeIcon',
+  ShoppingCart: 'ShoppingCartIcon',
+  Boxes: 'ArchiveBoxIcon',
+  Store: 'BuildingStorefrontIcon',
+  FileText: 'DocumentTextIcon',
+  Wallet: 'WalletIcon',
+  ShieldCheck: 'ShieldCheckIcon',
+  Building2: 'BuildingOffice2Icon',
+  Flag: 'FlagIcon',
+  FolderOpen: 'FolderOpenIcon',
+  MessageSquare: 'ChatBubbleLeftRightIcon',
+  Settings: 'Cog6ToothIcon',
+  Banknote: 'BanknotesIcon',
+  Users: 'UsersIcon',
+  TrendingUp: 'ArrowTrendingUpIcon',
+  Plus: 'PlusIcon',
+  Receipt: 'ReceiptPercentIcon',
+  Tag: 'TagIcon',
+  CreditCard: 'CreditCardIcon',
+  ArrowLeft: 'ArrowLeftIcon',
+  ShoppingBag: 'ShoppingBagIcon',
+  Star: 'StarIcon',
+  Clock: 'ClockIcon',
+  CheckCircle: 'CheckCircleIcon',
+  Timer: 'ClockIcon',
+  ExternalLink: 'ArrowTopRightOnSquareIcon',
+  Info: 'InformationCircleIcon',
+  BadgeCheck: 'CheckBadgeIcon',
+};
+
+function Icon({ name, size = 20, className = '' }: { name: string; size?: number; className?: string }) {
+  const key = (ICON_MAP[name] || name) as keyof typeof HeroIcons;
+  const Cmp = HeroIcons[key] as React.ComponentType<any> | undefined;
+  if (!Cmp) return null;
+  return <Cmp titleId="" aria-hidden width={size} height={size} className={className} />;
+}
 
 // ─── Room Identity ─────────────────────────────────────────────────────────────
 const ROOM_ID = 'local-supplier-control-room';
@@ -69,6 +109,16 @@ interface LocalProduct {
 
 type ActiveTab = 'overview' | 'products' | 'orders' | 'rfq' | 'wholesale' | 'retail' | 'settings' | 'messaging' | 'financial_hub' | 'escrow_orders' | 'bank_accounts' | 'disputes' | 'archive';
 
+const SUPPORTED_UNITS = ['بالة', 'درزن', 'كرتون', 'قطعة', 'طن', 'كجم'];
+const SUPPORTED_CATEGORIES = ['ملابس', 'أقمشة', 'منتجات استهلاكية', 'تغليف', 'مواد خام'];
+const ARABIC_MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+
+interface SupplierCredentials {
+  commercialRegister: string;
+  tradeName: string;
+  taxNumber: string;
+}
+
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
   const d = new Date(dateStr);
@@ -86,16 +136,6 @@ const STATUS_BADGE: Record<string, string> = {
   processing: 'bg-purple-50 text-purple-700 border border-purple-200',
   shipped: 'bg-indigo-50 text-indigo-700 border border-indigo-200',
 };
-
-// ─── Mock chart data ───────────────────────────────────────────────────────────
-const MONTHLY_SALES = [
-  { month: 'يناير', wholesale: 42000, retail: 18000 },
-  { month: 'فبراير', wholesale: 55000, retail: 22000 },
-  { month: 'مارس', wholesale: 48000, retail: 25000 },
-  { month: 'أبريل', wholesale: 63000, retail: 30000 },
-  { month: 'مايو', wholesale: 71000, retail: 28000 },
-  { month: 'يونيو', wholesale: 58000, retail: 35000 },
-];
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 function KPICard({ label, value, sub, icon, color }: { label: string; value: string | number; sub?: string; icon: string; color: string }) {
@@ -133,6 +173,7 @@ export default function LocalSupplierControlRoom() {
   const [products, setProducts] = useState<LocalProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [profileData, setProfileData] = useState<{ company_name?: string; city?: string; full_name?: string } | null>(null);
+  const [credentials, setCredentials] = useState<SupplierCredentials>({ commercialRegister: '', tradeName: '', taxNumber: '' });
 
   // ─── Role Guard ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -155,10 +196,11 @@ export default function LocalSupplierControlRoom() {
     if (!user) return;
     setLoading(true);
     try {
-      const [profileRes, productsRes, ordersRes] = await Promise.all([
+      const [profileRes, productsRes, ordersRes, regRes] = await Promise.all([
         supabase.from('user_profiles').select('company_name, city, full_name, trust_score, verification_status, account_tier').eq('id', user.id).single(),
         supabase.from('products').select('id, name, name_ar, price, currency, status, stock_quantity, category').eq('manufacturer_id', user.id).limit(20),
-        supabase.from('orders').select('id, order_number, status, total, currency, created_at, shipping_address, order_category, factory_user_id, user_profiles!orders_user_id_fkey(full_name, company_name)').eq('factory_user_id', user.id).order('created_at', { ascending: false }).limit(20),
+        supabase.from('orders').select('id, order_number, status, total, currency, created_at, shipping_address, order_category, factory_user_id, user_profiles!orders_user_id_fkey(full_name, company_name)').eq('factory_user_id', user.id).order('created_at', { ascending: false }).limit(200),
+        supabase.from('factory_registrations').select('company_name, commercial_registration_number, tax_id').eq('user_id', user.id).limit(1).maybeSingle(),
       ]);
 
       if (profileRes.data) {
@@ -206,6 +248,14 @@ export default function LocalSupplierControlRoom() {
         retailOrders: mappedOrders.filter(o => o.order_type === 'retail').length,
         localBuyersServed: new Set(ords.map((o: any) => o.buyer_id)).size,
       }));
+
+      if (regRes?.data) {
+        setCredentials({
+          commercialRegister: regRes.data.commercial_registration_number || '',
+          tradeName: regRes.data.company_name || '',
+          taxNumber: regRes.data.tax_id || '',
+        });
+      }
     } catch (err) {
       console.error('LocalSupplierControlRoom load error:', err);
     } finally {
@@ -223,6 +273,31 @@ export default function LocalSupplierControlRoom() {
     onOrderChange: loadData,
     enabled: !!user,
   });
+
+  // Real sales chart data built from actual orders (last 6 months)
+  const salesChartData = React.useMemo(() => {
+    const now = new Date();
+    const buckets: { key: string; month: string; wholesale: number; retail: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      buckets.push({ key: `${d.getFullYear()}-${d.getMonth()}`, month: ARABIC_MONTHS[d.getMonth()], wholesale: 0, retail: 0 });
+    }
+    orders.forEach(o => {
+      if (o.status === 'cancelled' || o.status === 'rejected') return;
+      const d = new Date(o.created_at);
+      if (isNaN(d.getTime())) return;
+      const b = buckets.find(x => x.key === `${d.getFullYear()}-${d.getMonth()}`);
+      if (!b) return;
+      if (o.order_type === 'wholesale') b.wholesale += o.total_amount || 0;
+      else b.retail += o.total_amount || 0;
+    });
+    return buckets;
+  }, [orders]);
+
+  const wholesaleTotal = salesChartData.reduce((s, b) => s + b.wholesale, 0);
+  const retailTotal = salesChartData.reduce((s, b) => s + b.retail, 0);
+  const hasSales = wholesaleTotal + retailTotal > 0;
+  const isVerified = stats.verificationStatus === 'verified' || stats.verificationStatus === 'approved';
 
   const TABS: { id: ActiveTab; label: string; icon: string }[] = [
     { id: 'overview', label: 'نظرة عامة', icon: 'LayoutDashboard' },
@@ -285,6 +360,16 @@ export default function LocalSupplierControlRoom() {
           </div>
         </div>
       </div>
+
+      {/* ── Verification Banner ── */}
+      {isVerified && (
+        <div className="bg-blue-50 border-b border-blue-200 px-4 py-3">
+          <div className="max-w-7xl mx-auto flex items-center gap-2 text-blue-800 text-sm font-medium">
+            <Icon name="BadgeCheck" size={18} className="text-blue-600 flex-shrink-0" />
+            <span>حساب المورد موثق بالكامل بنسبة 100% (السجل التجاري والاسم التجاري المعتمد)</span>
+          </div>
+        </div>
+      )}
 
       {/* ── Tabs ── */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
@@ -384,16 +469,53 @@ export default function LocalSupplierControlRoom() {
                 <Icon name="TrendingUp" size={16} className="text-emerald-600" />
                 المبيعات الشهرية — السوق المحلي (YER)
               </h3>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={MONTHLY_SALES}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v: number) => `${v.toLocaleString()} YER`} />
-                  <Bar dataKey="wholesale" name="جملة" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="retail" name="تجزئة" fill="#10b981" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="bg-blue-50 rounded-lg p-3">
+                  <p className="text-xs text-blue-700">البيع بالجملة</p>
+                  <p className="text-base font-bold text-blue-800">{wholesaleTotal.toLocaleString('en-US')} YER</p>
+                </div>
+                <div className="bg-emerald-50 rounded-lg p-3">
+                  <p className="text-xs text-emerald-700">البيع بالتجزئة</p>
+                  <p className="text-base font-bold text-emerald-800">{retailTotal.toLocaleString('en-US')} YER</p>
+                </div>
+              </div>
+              {hasSales ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={salesChartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip formatter={(v: number) => `${v.toLocaleString('en-US')} YER`} />
+                    <Bar dataKey="wholesale" name="جملة" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="retail" name="تجزئة" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-[160px] flex flex-col items-center justify-center text-center border border-dashed border-gray-200 rounded-lg">
+                  <p className="text-2xl font-bold text-gray-400">0 YER</p>
+                  <p className="text-xs text-gray-400 mt-1">لا توجد مبيعات بعد — ستظهر البيانات عند اكتمال أول طلب</p>
+                </div>
+              )}
+            </div>
+
+            {/* Supported units & categories */}
+            <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm space-y-3">
+              <div>
+                <h3 className="font-semibold text-gray-800 text-sm mb-2">وحدات البيع المدعومة</h3>
+                <div className="flex flex-wrap gap-2">
+                  {SUPPORTED_UNITS.map(u => (
+                    <span key={u} className="text-xs px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">{u}</span>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-800 text-sm mb-2">الفئات التجارية</h3>
+                <div className="flex flex-wrap gap-2">
+                  {SUPPORTED_CATEGORIES.map(c => (
+                    <span key={c} className="text-xs px-3 py-1 rounded-full bg-gray-50 text-gray-700 border border-gray-200">{c}</span>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* Quick Actions */}
@@ -540,8 +662,8 @@ export default function LocalSupplierControlRoom() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[
                 { label: 'الحد الأدنى للطلب', value: 'قابل للتخصيص', icon: 'Package', color: 'text-blue-700' },
-                { label: 'خصم الجملة', value: 'حتى 25%', icon: 'Tag', color: 'text-emerald-700' },
-                { label: 'شروط الدفع', value: 'آجل / فوري', icon: 'CreditCard', color: 'text-amber-700' },
+                { label: 'وحدات الجملة', value: 'بالة / درزن / كرتون', icon: 'Boxes', color: 'text-emerald-700' },
+                { label: 'شروط الدفع', value: 'ضمان مالي / تحويل بنكي', icon: 'CreditCard', color: 'text-amber-700' },
               ].map(item => (
                 <div key={item.label} className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
                   <div className="flex items-center gap-2 mb-2">
@@ -578,9 +700,9 @@ export default function LocalSupplierControlRoom() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[
-                { label: 'متوسط قيمة الطلب', value: 'YER 15,000', icon: 'ShoppingBag', color: 'text-emerald-700' },
-                { label: 'معدل التحويل', value: '68%', icon: 'TrendingUp', color: 'text-blue-700' },
-                { label: 'تقييم المتجر', value: '4.7 ★', icon: 'Star', color: 'text-amber-700' },
+                { label: 'طلبات التجزئة', value: String(stats.retailOrders), icon: 'ShoppingBag', color: 'text-emerald-700' },
+                { label: 'مبيعات التجزئة (YER)', value: retailTotal.toLocaleString('en-US'), icon: 'TrendingUp', color: 'text-blue-700' },
+                { label: 'وحدات التجزئة', value: 'قطعة / كجم', icon: 'Package', color: 'text-amber-700' },
               ].map(item => (
                 <div key={item.label} className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
                   <div className="flex items-center gap-2 mb-2">
@@ -610,7 +732,7 @@ export default function LocalSupplierControlRoom() {
               <KPICard label="طلبات معلّقة" value={stats.pendingRFQs} icon="Clock" color="text-amber-700" />
               <KPICard label="تم الرد عليها" value={stats.respondedRFQs} icon="CheckCircle" color="text-emerald-700" />
               <KPICard label="معدل الاستجابة" value={`${stats.totalOrders ? Math.round((stats.respondedRFQs / (stats.pendingRFQs + stats.respondedRFQs || 1)) * 100) : 0}%`} icon="TrendingUp" color="text-blue-700" />
-              <KPICard label="متوسط وقت الرد" value="2.4 ساعة" icon="Timer" color="text-purple-700" />
+              <KPICard label="إجمالي الطلبات" value={stats.pendingRFQs + stats.respondedRFQs} icon="FileText" color="text-purple-700" />
             </div>
             <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm text-center py-12">
               <Icon name="FileText" size={40} className="text-gray-300 mx-auto mb-3" />
@@ -627,6 +749,21 @@ export default function LocalSupplierControlRoom() {
         {activeTab === 'settings' && (
           <div className="space-y-4">
             <h2 className="text-lg font-bold text-gray-800">إعدادات غرفة التحكم</h2>
+            <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+              <h3 className="font-semibold text-gray-800 text-sm mb-3">بيانات التوثيق</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {[
+                  { label: 'السجل التجاري', value: credentials.commercialRegister },
+                  { label: 'الاسم التجاري', value: credentials.tradeName || profileData?.company_name || '' },
+                  { label: 'الرقم الضريبي', value: credentials.taxNumber },
+                ].map(f => (
+                  <div key={f.label} className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500 mb-1">{f.label}</p>
+                    <p className="text-sm font-medium text-gray-800">{f.value || '—'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
             <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm space-y-4">
               <div className="flex items-center justify-between py-3 border-b border-gray-50">
                 <div>
