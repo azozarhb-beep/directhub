@@ -892,6 +892,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
 
   const fetchEscrowOrders = async () => {
     if (!user) return;
+    if (isSalesRep) { setEscrowOrders([]); return; }
     setEscrowOrdersLoading(true);
     try {
       const { data, error } = await supabase
@@ -913,6 +914,12 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     if (!user) return;
     setFactoryOrdersLoading(true);
     try {
+      if (isSalesRep) {
+        const { data: masked, error: maskedError } = await supabase.rpc('get_agent_factory_orders');
+        if (maskedError) throw maskedError;
+        setFactoryOrders((masked as any[]) || []);
+        return;
+      }
       const { data, error } = await supabase
         .from('orders')
         .select('*, user_profiles!orders_user_id_fkey(full_name, email, company_name, phone, country)')
@@ -2247,7 +2254,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
             { key: 'products', label: t.manufacturerDashboard.productsAndInventory, icon: 'CubeIcon', gradient: 'linear-gradient(135deg,#3B82F6,#2563EB)', shadow: 'shadow-blue-100', show: true },
             { key: 'financial_hub', label: 'المالية والأرباح', icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#10B981,#059669)', shadow: 'shadow-emerald-100', show: !isSalesRep },
             { key: 'factory_settings', label: 'إعدادات وتوثيق المصنع', icon: 'IdentificationIcon', gradient: 'linear-gradient(135deg,#0D9488,#0F766E)', shadow: 'shadow-teal-100', show: !isSalesRep },
-            { key: 'escrow_orders', label: t.manufacturerDashboard.escrowOrders, icon: 'ShieldCheckIcon', gradient: 'linear-gradient(135deg,#6366F1,#4F46E5)', shadow: 'shadow-indigo-100', show: true, badge: escrowOrders.filter((o: any) => o.escrow_status === 'funds_secured').length || undefined },
+            { key: 'escrow_orders', label: t.manufacturerDashboard.escrowOrders, icon: 'ShieldCheckIcon', gradient: 'linear-gradient(135deg,#6366F1,#4F46E5)', shadow: 'shadow-indigo-100', show: !isSalesRep, badge: escrowOrders.filter((o: any) => o.escrow_status === 'funds_secured').length || undefined },
             { key: 'seller_fulfillment', label: 'الشحن والخدمات اللوجستية', icon: 'TruckIcon', gradient: 'linear-gradient(135deg,#059669,#047857)', shadow: 'shadow-emerald-100', show: true },
             { key: 'factory_orders', label: 'إدارة الطلبات', icon: 'ClipboardDocumentListIcon', gradient: 'linear-gradient(135deg,#0EA5E9,#0284C7)', shadow: 'shadow-sky-100', show: true, badge: factoryOrders.filter((o: any) => o.status === 'pending').length || undefined },
             { key: 'disputes', label: t.manufacturerDashboard.disputesAndComplaints, icon: 'FlagIcon', gradient: 'linear-gradient(135deg,#EF4444,#DC2626)', shadow: 'shadow-red-100', show: true, badge: factoryDisputes.filter((o: any) => ['open', 'factory_reviewing'].includes(o.dispute_status)).length || undefined },

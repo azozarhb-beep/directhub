@@ -3,7 +3,12 @@
 export const dynamic = 'force-dynamic';
 
 import FactoryModuleView from '@/components/manufacturer/FactoryModuleView';
+import FinancialRouteGuard from '@/components/manufacturer/FinancialRouteGuard';
 
 export default function ManufacturerBankAccountsPage() {
-  return <FactoryModuleView moduleKey="bank-accounts" />;
+  return (
+    <FinancialRouteGuard>
+      <FactoryModuleView moduleKey="bank-accounts" />
+    </FinancialRouteGuard>
+  );
 }

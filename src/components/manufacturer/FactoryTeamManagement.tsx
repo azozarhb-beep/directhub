@@ -37,11 +37,28 @@ interface TeamMember {
   can_view_inventory?: boolean;
   sales_rep_id?: string | null;
   sales_rep_status?: string | null;
+  pending_invite?: boolean;
+  invite_phone?: string;
 }
 
 interface FactoryTeamManagementProps {
   factoryOwnerId: string;
   isRTL?: boolean;
+}
+
+function extractInvitePhone(invitedEmail: string | null | undefined, notes: string | null | undefined): string {
+  const fromNotes = (notes || '').match(/\+?\d{9,15}/);
+  if (fromNotes) return fromNotes[0].replace('+', '');
+  if (invitedEmail && invitedEmail.endsWith(`@${PHONE_PLACEHOLDER_DOMAIN}`)) {
+    return invitedEmail.split('@')[0].replace(/\D/g, '');
+  }
+  return '';
+}
+
+function buildWhatsAppInviteUrl(name: string, phone: string): string {
+  const clean = (phone || '').replace(/\D/g, '');
+  const text = `مرحباً ${name}، تم اعتمادك كممثل مبيعات لمصنعنا على منصة Direct Hub. اضغط هنا لإنشاء حسابك ومتابعة الطلبات مباشرة: https://direct-hub.net/register`;
+  return `https://wa.me/${clean}?text=${encodeURIComponent(text)}`;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -86,7 +103,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
       // Also fetch factory_sales_reps for permission details
       const { data: salesReps } = await supabase
         .from('factory_sales_reps')
-        .select('id, rep_user_id, status, can_manage_products, can_respond_rfq, can_view_orders, can_view_inventory')
+        .select('id, rep_user_id, status, full_name, invited_email, notes, created_at, can_manage_products, can_respond_rfq, can_view_orders, can_view_inventory')
         .eq('factory_owner_id', factoryOwnerId);
 
       const repMap = new Map<string, any>();
@@ -114,7 +131,28 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
         };
       });
 
-      setMembers(combined);
+      const pendingInvites: TeamMember[] = (salesReps || [])
+        .filter((r: any) => r.status === 'pending' && !r.rep_user_id)
+        .map((r: any) => ({
+          id: `pending_${r.id}`,
+          full_name: r.full_name || '',
+          email: isPlaceholderEmail(r.invited_email) ? '' : (r.invited_email || ''),
+          phone: '',
+          role: 'manufacturer_agent',
+          is_active: true,
+          factory_id: factoryOwnerId,
+          created_at: r.created_at || new Date(0).toISOString(),
+          can_manage_products: r.can_manage_products ?? true,
+          can_respond_rfq: r.can_respond_rfq ?? true,
+          can_view_orders: r.can_view_orders ?? true,
+          can_view_inventory: r.can_view_inventory ?? true,
+          sales_rep_id: r.id,
+          sales_rep_status: 'pending',
+          pending_invite: true,
+          invite_phone: extractInvitePhone(r.invited_email, r.notes),
+        }));
+
+      setMembers([...pendingInvites, ...combined]);
     } catch (err) {
       console.error('FactoryTeamManagement: fetchTeamMembers error', err);
     } finally {
@@ -438,6 +476,17 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
                 </div>
                 {/* Actions */}
                 <div className="flex items-center gap-1 shrink-0">
+                  {member.pending_invite && member.invite_phone && (
+                    <a
+                      href={buildWhatsAppInviteUrl(member.full_name || member.email, member.invite_phone)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors whitespace-nowrap"
+                    >
+                      [ إرسال الدعوة عبر واتساب 📲 ]
+                    </a>
+                  )}
+                  {!member.pending_invite && (
                   <button
                     onClick={() => handleToggleActive(member.id, member.is_active)}
                     disabled={actionLoading === member.id}
@@ -450,6 +499,8 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
                       <Icon name="ArrowPathIcon" size={12} className="animate-spin" />
                     ) : member.is_active ? (isRTL ? 'إيقاف' : 'Suspend') : (isRTL ? 'تفعيل' : 'Activate')}
                   </button>
+                  )}
+                  {!member.pending_invite && (
                   <button
                     onClick={() => handleRemoveMember(member.id)}
                     disabled={actionLoading === member.id}
@@ -458,6 +509,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
                   >
                     <Icon name="TrashIcon" size={14} className="text-red-500" />
                   </button>
+                  )}
                 </div>
               </div>
             </div>
