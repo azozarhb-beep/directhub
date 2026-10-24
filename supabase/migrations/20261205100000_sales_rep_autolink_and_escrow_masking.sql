@@ -2,6 +2,35 @@
 -- TASK 39: Sales Rep auto-linking trigger + escrow/settlement masking for sub-accounts
 -- ============================================================
 
+-- 0. Prerequisites (idempotent) - ensure columns/helpers used below exist
+ALTER TABLE public.user_profiles
+  ADD COLUMN IF NOT EXISTS factory_id UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL;
+
+ALTER TABLE public.user_profiles
+  ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+
+ALTER TABLE public.user_profiles
+  ADD COLUMN IF NOT EXISTS phone TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_user_profiles_factory_id ON public.user_profiles(factory_id);
+
+ALTER TABLE public.orders
+  ADD COLUMN IF NOT EXISTS factory_user_id UUID;
+
+CREATE OR REPLACE FUNCTION public.get_agent_factory_owner_id()
+RETURNS UUID
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $func$
+  SELECT factory_id FROM public.user_profiles
+  WHERE id = auth.uid()
+    AND role = 'manufacturer_agent'
+    AND is_active = true
+  LIMIT 1;
+$func$;
+
 -- 1. Phone normalizer (digits only, strip 00 / 967 / leading 0 -> 9 digit Yemeni local number)
 CREATE OR REPLACE FUNCTION public.normalize_sales_rep_phone(raw TEXT)
 RETURNS TEXT
@@ -101,14 +130,11 @@ AFTER INSERT ON public.user_profiles
 FOR EACH ROW
 EXECUTE FUNCTION public.link_pending_sales_rep_on_signup();
 
+-- The WHEN clause is dropped; the function itself exits early when factory_id is already set.
 DROP TRIGGER IF EXISTS trg_link_pending_sales_rep_update ON public.user_profiles;
 CREATE TRIGGER trg_link_pending_sales_rep_update
 AFTER UPDATE OF phone, email ON public.user_profiles
 FOR EACH ROW
-WHEN (
-  NEW.factory_id IS NULL
-  AND (OLD.phone IS DISTINCT FROM NEW.phone OR OLD.email IS DISTINCT FROM NEW.email)
-)
 EXECUTE FUNCTION public.link_pending_sales_rep_on_signup();
 
 -- 3. Strip escrow/settlement amounts for sub-account agents.
