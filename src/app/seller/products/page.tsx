@@ -185,6 +185,57 @@ export default function SellerProductManagerPage() {
   const [media, setMedia] = useState<ProductMediaValue>(EMPTY_PRODUCT_MEDIA);
   const returnToRef = useRef<string | null>(null);
 
+  const WIZARD_STEPS = ['basic', 'media', 'specs', 'logistics'] as const;
+  const WIZARD_LABELS: Record<(typeof WIZARD_STEPS)[number], string> = {
+    basic: 'المعلومات الأساسية',
+    media: 'الوسائط والصور',
+    specs: 'المواصفات الفنية',
+    logistics: 'الخدمات اللوجستية والتفاصيل',
+  };
+  const stepIndex = WIZARD_STEPS.indexOf(activeFormTab);
+  const isLastStep = stepIndex === WIZARD_STEPS.length - 1;
+
+  const validateStep = (step: (typeof WIZARD_STEPS)[number]): string | null => {
+    if (step === 'basic') {
+      if (!formData.name_ar.trim()) return 'اسم المنتج بالعربية مطلوب';
+      if (!formData.category) return 'فئة المنتج مطلوبة';
+      if (!formData.currency) return 'العملة مطلوبة';
+      const tierError = validateTierRows(formData.tiers);
+      if (tierError) return tierError;
+      const payload = formRowsToPayload(formData.tiers);
+      if (payload.length === 0 || !(payload[0].unit_price > 0)) return 'سعر الوحدة مطلوب';
+      if (!(payload[0].min_qty >= 1)) return 'الحد الأدنى للطلب (MOQ) مطلوب';
+      return null;
+    }
+    if (step === 'media') {
+      const hasMain = !!media.primaryFile || !!media.primaryImageUrl.trim() || !!formData.image_url.trim();
+      if (!hasMain) return 'صورة المنتج الرئيسية مطلوبة (صورة واحدة على الأقل)';
+      if (media.videoUrl.trim() && !media.videoFile && !media.videoUrl.includes('/product-videos/') && !isValidVideoUrl(media.videoUrl)) {
+        return 'رابط الفيديو غير مدعوم. استخدم YouTube أو Vimeo أو Cloudinary.';
+      }
+      return null;
+    }
+    if (step === 'logistics') {
+      if (!formData.shipping_terms) return 'شرط التسليم مطلوب';
+      const days = parseInt(formData.delivery_time_days, 10);
+      if (!Number.isFinite(days) || days < 1) return 'مدة التجهيز (بالأيام) مطلوبة';
+      return null;
+    }
+    return null;
+  };
+
+  const goNext = () => {
+    const err = validateStep(activeFormTab);
+    if (err) { setFormError(err); return; }
+    setFormError('');
+    if (stepIndex < WIZARD_STEPS.length - 1) setActiveFormTab(WIZARD_STEPS[stepIndex + 1]);
+  };
+
+  const goPrev = () => {
+    setFormError('');
+    if (stepIndex > 0) setActiveFormTab(WIZARD_STEPS[stepIndex - 1]);
+  };
+
   useEffect(() => {
     if (authLoading) return;
     if (!user) router.replace('/login?redirect=/seller/products');
@@ -309,8 +360,11 @@ export default function SellerProductManagerPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    if (!formData.name_ar.trim()) { setFormError('اسم المنتج بالعربية مطلوب'); return; }
-    if (!formData.description_ar.trim()) { setFormError('وصف المنتج بالعربية مطلوب'); return; }
+    if (!isLastStep) { goNext(); return; }
+    for (const step of WIZARD_STEPS) {
+      const stepErr = validateStep(step);
+      if (stepErr) { setActiveFormTab(step); setFormError(stepErr); return; }
+    }
     const tierError = validateTierRows(formData.tiers);
     if (tierError) { setFormError(tierError); return; }
     const tierPayload = formRowsToPayload(formData.tiers);
@@ -730,24 +784,48 @@ export default function SellerProductManagerPage() {
               </button>
             </div>
 
-            {/* Form Tabs */}
+            {/* Wizard Stepper */}
             <div className="flex border-b border-border shrink-0 bg-card">
-              {(['basic', 'media', 'specs', 'logistics'] as const).map((tab) => (
-                <button
+              {WIZARD_STEPS.map((tab, idx) => (
+                <div
                   key={tab}
-                  type="button"
-                  onClick={() => setActiveFormTab(tab)}
-                  className={`flex-1 py-3 text-xs font-bold capitalize transition-colors ${
+                  aria-current={activeFormTab === tab ? 'step' : undefined}
+                  className={`flex-1 py-3 flex items-center justify-center gap-1.5 text-xs font-bold transition-colors ${
                     activeFormTab === tab
-                      ? 'text-primary border-b-2 border-primary' :'text-muted-foreground hover:text-foreground'
+                      ? 'text-primary border-b-2 border-primary'
+                      : idx < stepIndex
+                        ? 'text-green-600' :'text-muted-foreground'
                   }`}
                 >
-                  {tab === 'basic' ? f.tabBasic : tab === 'media' ? 'الوسائط والصور' : tab === 'specs' ? f.tabSpecs : f.tabLogistics}
-                </button>
+                  <span
+                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
+                      activeFormTab === tab
+                        ? 'bg-primary text-primary-foreground'
+                        : idx < stepIndex
+                          ? 'bg-green-600 text-white' :'bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    {idx < stepIndex ? '✓' : idx + 1}
+                  </span>
+                  <span className="hidden sm:inline">{WIZARD_LABELS[tab]}</span>
+                </div>
               ))}
             </div>
+            <div className="sm:hidden px-5 py-2 text-xs font-bold text-primary bg-card border-b border-border">
+              الخطوة {stepIndex + 1} من 4: {WIZARD_LABELS[activeFormTab]}
+            </div>
 
-            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto pb-24 md:pb-6">
+            <form
+              onSubmit={handleSubmit}
+              noValidate
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !isLastStep && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+                  e.preventDefault();
+                  goNext();
+                }
+              }}
+              className="flex-1 overflow-y-auto pb-24 md:pb-6"
+            >
               <div className="p-5 space-y-4">
                 {/* Basic Info Tab */}
                 {activeFormTab === 'basic' && (
@@ -757,7 +835,6 @@ export default function SellerProductManagerPage() {
                         <label className="block text-xs font-bold text-foreground mb-1.5">اسم المنتج (بالعربية) *</label>
                         <input
                           type="text"
-                          required
                           value={formData.name_ar}
                           onChange={(e) => setFormData((p) => ({ ...p, name_ar: e.target.value }))}
                           placeholder={sp.nameArPlaceholder}
@@ -780,9 +857,8 @@ export default function SellerProductManagerPage() {
 
                     <div className="grid grid-cols-1 gap-4">
                       <div>
-                        <label className="block text-xs font-bold text-foreground mb-1.5">وصف المنتج (بالعربية) *</label>
+                        <label className="block text-xs font-bold text-foreground mb-1.5">وصف المنتج (بالعربية)</label>
                         <textarea
-                          required
                           value={formData.description_ar}
                           onChange={(e) => setFormData((p) => ({ ...p, description_ar: e.target.value }))}
                           rows={3}
@@ -1199,14 +1275,34 @@ export default function SellerProductManagerPage() {
                   >
                     {f.cancel}
                   </button>
-                  <button
-                    type="submit"
-                    disabled={formLoading}
-                    className="px-5 py-2 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {formLoading && <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />}
-                    {editingProduct ? f.saveChanges : f.addProduct}
-                  </button>
+                  {stepIndex > 0 && (
+                    <button
+                      type="button"
+                      onClick={goPrev}
+                      disabled={formLoading}
+                      className="px-4 py-2 border border-border text-sm font-bold rounded-xl hover:bg-muted transition-colors disabled:opacity-50"
+                    >
+                      ➡️ السابق
+                    </button>
+                  )}
+                  {!isLastStep ? (
+                    <button
+                      type="button"
+                      onClick={goNext}
+                      className="px-5 py-2 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity"
+                    >
+                      التالي ⬅️
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={formLoading}
+                      className="px-5 py-2 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {formLoading && <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />}
+                      {editingProduct ? f.saveChanges : 'حفظ ونشر المنتج 🚀'}
+                    </button>
+                  )}
                 </div>
               </div>
             </form>
