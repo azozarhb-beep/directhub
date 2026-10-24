@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 import AIProductAssistant from '@/components/AIProductAssistant';
-import FactoryOnboardingGuide from '@/components/FactoryOnboardingGuide';
 import { MultilingualProductFields, SupplierLanguageBadge } from '@/components/LocalizedProductDisplay';
 import { buildProductShareLinkNoPhone } from '@/lib/whatsappOrderLinks';
 import TrustScoreBadge from '@/components/TrustScoreBadge';
@@ -283,17 +282,6 @@ export default function ProductsPanel({
           <Icon name="CheckCircleIcon" size={18} className="text-green-600 shrink-0 mt-0.5" />
           <p className="text-sm text-green-700">{docUploadSuccess}</p>
         </div>
-      )}
-
-      {/* AI Onboarding Guide */}
-      {!docGateLoading && (
-        <FactoryOnboardingGuide
-          hasDocuments={hasDocuments}
-          canListProducts={canListProducts}
-          factoryRegistration={factoryRegistration}
-          onUploadDocs={isAgentManaged ? noopUploadDocs : () => setShowDocGate(true)}
-          onAddProduct={handleOpenAddModal}
-        />
       )}
 
       {/* Trust Score Card */}
