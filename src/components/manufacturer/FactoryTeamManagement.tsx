@@ -39,6 +39,7 @@ interface TeamMember {
   sales_rep_status?: string | null;
   pending_invite?: boolean;
   invite_phone?: string;
+  invitation_token?: string | null;
 }
 
 interface FactoryTeamManagementProps {
@@ -55,10 +56,19 @@ function extractInvitePhone(invitedEmail: string | null | undefined, notes: stri
   return '';
 }
 
-function buildWhatsAppInviteUrl(name: string, phone: string): string {
+function buildWhatsAppInviteUrl(name: string, phone: string, factoryName: string, token: string): string {
   const clean = (phone || '').replace(/\D/g, '');
-  const text = `مرحباً ${name}، تم اعتمادك كممثل مبيعات لمصنعنا على منصة Direct Hub. اضغط هنا لإنشاء حسابك ومتابعة الطلبات مباشرة: https://direct-hub.net/register`;
+  const text = `مرحباً ${name}، تمت إضافتك كممثل مبيعات معتمد لمصنع ${factoryName} على منصة Direct Hub. اضغط على الرابط التالي لتعيين كلمة المرور وتفعيل حسابك بنقرة واحدة:\nhttps://direct-hub.net/accept-invite?token=${token}`;
   return `https://wa.me/${clean}?text=${encodeURIComponent(text)}`;
+}
+
+function generateInvitationToken(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -69,6 +79,24 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [factoryName, setFactoryName] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadFactoryName = async () => {
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('company_name, full_name')
+        .eq('id', factoryOwnerId)
+        .maybeSingle();
+      const p = data as { company_name?: string | null; full_name?: string | null } | null;
+      if (!cancelled) setFactoryName(p?.company_name?.trim() || p?.full_name?.trim() || 'المصنع');
+    };
+    void loadFactoryName();
+    return () => {
+      cancelled = true;
+    };
+  }, [factoryOwnerId, supabase]);
 
   // Invite form state
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -103,7 +131,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
       // Also fetch factory_sales_reps for permission details
       const { data: salesReps } = await supabase
         .from('factory_sales_reps')
-        .select('id, rep_user_id, status, full_name, invited_email, notes, created_at, can_manage_products, can_respond_rfq, can_view_orders, can_view_inventory')
+        .select('id, rep_user_id, status, full_name, invited_email, notes, created_at, invitation_token, can_manage_products, can_respond_rfq, can_view_orders, can_view_inventory')
         .eq('factory_owner_id', factoryOwnerId);
 
       const repMap = new Map<string, any>();
@@ -150,6 +178,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
           sales_rep_status: 'pending',
           pending_invite: true,
           invite_phone: extractInvitePhone(r.invited_email, r.notes),
+          invitation_token: r.invitation_token ?? null,
         }));
 
       setMembers([...pendingInvites, ...combined]);
@@ -279,7 +308,7 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
         if (updateError) throw updateError;
 
         // Create or update factory_sales_reps record for permission tracking
-        const token = `mfg_agent_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+        const token = generateInvitationToken();
         await supabase.from('factory_sales_reps').upsert({
           factory_owner_id: factoryOwnerId,
           rep_user_id: existingProfile.id,
@@ -297,8 +326,8 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
         }, { onConflict: 'rep_user_id,factory_owner_id', ignoreDuplicates: false });
 
       } else {
-        // Create a pending invitation in factory_sales_reps (user will register later)
-        const token = `mfg_agent_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+        // Create a pending invitation in factory_sales_reps (rep sets password via /accept-invite)
+        const token = generateInvitationToken();
         const { error: insertError } = await supabase.from('factory_sales_reps').insert({
           factory_owner_id: factoryOwnerId,
           rep_user_id: null,
@@ -476,9 +505,9 @@ export default function FactoryTeamManagement({ factoryOwnerId, isRTL = false }:
                 </div>
                 {/* Actions */}
                 <div className="flex items-center gap-1 shrink-0">
-                  {member.pending_invite && member.invite_phone && (
+                  {member.pending_invite && member.invite_phone && member.invitation_token && (
                     <a
-                      href={buildWhatsAppInviteUrl(member.full_name || member.email, member.invite_phone)}
+                      href={buildWhatsAppInviteUrl(member.full_name || member.email, member.invite_phone, factoryName || 'المصنع', member.invitation_token)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors whitespace-nowrap"

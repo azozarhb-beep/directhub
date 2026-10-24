@@ -2,6 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 import { useSalesRepAccess, UNAUTHORIZED_ALERT } from '@/components/manufacturer/useSalesRepAccess';
 
 interface FinancialRouteGuardProps {
@@ -20,7 +21,7 @@ export default function FinancialRouteGuard({ children }: FinancialRouteGuardPro
   useEffect(() => {
     if (loading) return;
     if (isSalesRep) {
-      alert(UNAUTHORIZED_ALERT);
+      toast.error(UNAUTHORIZED_ALERT, { id: 'sales-rep-access-denied' });
       router.replace('/manufacturer');
     }
   }, [loading, isSalesRep, router]);

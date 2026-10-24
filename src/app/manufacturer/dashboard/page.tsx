@@ -14,7 +14,7 @@ import AIProductAssistant from '@/components/AIProductAssistant';
 import ManufacturerMessagingHub from '@/components/manufacturer/ManufacturerMessagingHub';
 
 import { MultilingualProductFields, SupplierLanguageBadge } from '@/components/LocalizedProductDisplay';
-import { Toaster } from 'react-hot-toast';
+import toast, { Toaster } from 'react-hot-toast';
 import { Area } from 'recharts';
 import { useLanguage } from '@/contexts/LanguageContext';
 import AllSalesMethodsPanel from '@/components/AllSalesMethodsPanel';
@@ -1966,7 +1966,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   useEffect(() => {
     if (salesRepLoading || !isSalesRep) return;
     if (moduleTab && SALES_REP_RESTRICTED_TABS.includes(moduleTab)) {
-      alert('غير مصرح لك بالوصول إلى هذه الصفحة.\nUnauthorized: this area is restricted to the factory owner.');
+      toast.error('غير مصرح لك بالوصول إلى هذه الصفحة.\nUnauthorized: this area is restricted to the factory owner.', { id: 'sales-rep-access-denied' });
       router.replace('/manufacturer');
       return;
     }
