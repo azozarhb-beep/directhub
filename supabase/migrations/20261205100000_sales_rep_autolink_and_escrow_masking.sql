@@ -3,7 +3,7 @@
 -- ============================================================
 
 -- 1. Phone normalizer (digits only, strip 00 / 967 / leading 0 -> 9 digit Yemeni local number)
-CREATE OR REPLACE FUNCTION public.normalize_phone_digits(raw TEXT)
+CREATE OR REPLACE FUNCTION public.normalize_sales_rep_phone(raw TEXT)
 RETURNS TEXT
 LANGUAGE plpgsql
 IMMUTABLE
@@ -42,7 +42,7 @@ DECLARE
   v_phone TEXT;
   v_email TEXT;
 BEGIN
-  v_phone := public.normalize_phone_digits(NEW.phone);
+  v_phone := public.normalize_sales_rep_phone(NEW.phone);
   v_email := lower(coalesce(NEW.email, ''));
 
   IF v_phone IS NULL AND v_email = '' THEN
@@ -67,8 +67,8 @@ BEGIN
          AND (
            lower(r.invited_email) = v_phone || '@' || 'phone.directhub.local'
            OR lower(r.invited_email) = '967' || v_phone || '@' || 'phone.directhub.local'
-           OR public.normalize_phone_digits(split_part(r.invited_email, '@', 1)) = v_phone
-           OR public.normalize_phone_digits(substring(coalesce(r.notes, '') FROM '\+?[0-9]{9,15}')) = v_phone
+           OR public.normalize_sales_rep_phone(split_part(r.invited_email, '@', 1)) = v_phone
+           OR public.normalize_sales_rep_phone(substring(coalesce(r.notes, '') FROM '\+?[0-9]{9,15}')) = v_phone
          )
        )
      )
