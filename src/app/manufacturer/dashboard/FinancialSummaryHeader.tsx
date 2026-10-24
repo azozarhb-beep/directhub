@@ -167,7 +167,7 @@ th,td{border:1px solid #ccc;padding:6px 8px;text-align:right}th{background:#f3f4
     }
   };
 
-  const filterLabels: Record<TxFilter, string> = { all: 'الكل', received: 'الوارد', sent: 'الصادر' };
+  const filterLabels: Record<TxFilter, string> = { all: 'الكل', received: 'الوارد', sent: 'المنصرف' };
 
   return (
     <div className="space-y-4 mb-6" dir="rtl">
@@ -197,13 +197,16 @@ th,td{border:1px solid #ccc;padding:6px 8px;text-align:right}th{background:#f3f4
         <div className="bg-card border border-border rounded-2xl p-5 flex flex-col gap-3">
           <div className="flex items-center gap-2 text-muted-foreground text-sm font-semibold">
             <Icon name="ChartBarIcon" size={18} className="text-green-600" />
-            إجمالي الأرباح
+            إجمالي الأرباح المستلمة
           </div>
           <p className="text-2xl font-bold text-foreground">{loading ? '—' : fmt(lifetime)}</p>
         </div>
       </div>
 
       {/* Transaction filters + export */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+        <h2 className="text-base font-bold text-foreground">سجل المعاملات المالية</h2>
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-2">
           {(['all', 'received', 'sent'] as const).map(f => (
@@ -227,7 +230,7 @@ th,td{border:1px solid #ccc;padding:6px 8px;text-align:right}th{background:#f3f4
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-card text-foreground text-sm font-semibold hover:border-green-400 transition-all"
           >
             <Icon name="ArrowDownTrayIcon" size={16} />
-            تصدير كشف حساب
+            [ تصدير كشف حساب ]
           </button>
           {showExportMenu && (
             <div className="absolute end-0 mt-2 w-44 bg-card border border-border rounded-xl shadow-lg z-20 overflow-hidden">
@@ -241,6 +244,43 @@ th,td{border:1px solid #ccc;padding:6px 8px;text-align:right}th{background:#f3f4
           )}
         </div>
       </div>
+
+      {/* Transactions list */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : filteredRecords.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-center bg-card border border-border rounded-2xl">
+          <div className="w-14 h-14 rounded-2xl bg-green-50 border-2 border-green-200 flex items-center justify-center mb-3">
+            <Icon name="ChartBarIcon" size={26} className="text-green-400" />
+          </div>
+          <p className="text-sm font-semibold text-foreground">لا توجد معاملات مالية</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filteredRecords.map(record => (
+            <div key={record.id} className="bg-card border border-border rounded-xl p-4 flex items-center gap-4">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${record.type === 'received' ? 'bg-green-100' : 'bg-red-100'}`}>
+                <Icon
+                  name={record.type === 'received' ? 'ArrowDownIcon' : 'ArrowUpIcon'}
+                  size={18}
+                  className={record.type === 'received' ? 'text-green-600' : 'text-red-500'}
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm text-foreground truncate">{record.description || 'معاملة مالية'}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {record.created_at ? new Date(record.created_at).toISOString().slice(0, 10) : '—'}
+                </p>
+              </div>
+              <div className={`text-sm font-bold shrink-0 ${record.type === 'received' ? 'text-green-600' : 'text-red-500'}`}>
+                {record.type === 'received' ? '+' : '-'}{Number(record.amount || 0).toLocaleString('en-US')} {record.currency || currency}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Payout modal */}
       {showPayoutModal && (

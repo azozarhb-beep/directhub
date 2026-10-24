@@ -1947,11 +1947,14 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     if (moduleTab === 'seller_fulfillment' && moduleView === 'bids') setActiveTab('freight_bids');
   }, [moduleTab, moduleView]);
 
-  // Finance merges two cards: ?view=revenue selects the revenue sub-view
+  // Finance module: two main tabs. Default = wallet (finance); ?view=bank selects bank accounts & security
   useEffect(() => {
-    if (moduleTab === 'financial_hub' && moduleView === 'revenue') {
-      setActiveTab('finance');
-      fetchFinanceRecords();
+    if (moduleTab === 'financial_hub') {
+      if (moduleView === 'bank') {
+        setActiveTab('financial_hub');
+      } else {
+        setActiveTab('finance');
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleTab, moduleView]);
@@ -2088,17 +2091,17 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
                 <div className="flex sm:inline-flex rounded-lg border border-border overflow-hidden text-xs sm:text-sm font-semibold">
                   <button
                     type="button"
-                    onClick={() => setActiveTab('financial_hub')}
-                    className={`px-3 py-2 transition-colors ${activeTab === 'financial_hub' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+                    onClick={() => setActiveTab('finance')}
+                    className={`px-3 py-2 transition-colors ${activeTab === 'finance' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
                   >
-                    الحسابات وطرق الدفع
+                    المحفظة والأرباح
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setActiveTab('finance'); fetchFinanceRecords(); }}
-                    className={`px-3 py-2 transition-colors ${activeTab === 'finance' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+                    onClick={() => setActiveTab('financial_hub')}
+                    className={`px-3 py-2 transition-colors ${activeTab === 'financial_hub' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
                   >
-                    الإيرادات
+                    الحسابات البنكية والأمان
                   </button>
                 </div>
               )}
@@ -2388,37 +2391,31 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
           </div>
         )}
 
-        {/* ── BANK ACCOUNTS TAB ── */}
-        {activeTab === 'financial_hub' && !isSalesRep && user?.id && (
+        {/* ── TAB 1: المحفظة والأرباح (wallet + transactions) ── */}
+        {moduleTab === 'financial_hub' && activeTab === 'finance' && !isSalesRep && user?.id && (
           <FinancialSummaryHeader userId={user.id} currency={bankAccounts?.[0]?.currency || 'YER'} />
         )}
-        {activeTab === 'financial_hub' && !isSalesRep && user?.id && (
-          <FactoryPinPayoutPanel userId={user.id} />
-        )}
+
+        {/* ── TAB 2: الحسابات البنكية والأمان (bank accounts + PIN) ── */}
         {activeTab === 'financial_hub' && !isSalesRep && (
-          <FinancialHubPanel
-            bankAccounts={bankAccounts}
-            bankAccountsLoading={bankAccountsLoading}
-            showAddBankModal={showAddBankModal}
-            setShowAddBankModal={setShowAddBankModal}
-            bankFormData={bankFormData}
-            setBankFormData={setBankFormData}
-            bankFormLoading={bankFormLoading}
-            bankFormError={bankFormError}
-            bankFormSuccess={bankFormSuccess}
-            deletingBankId={deletingBankId}
-            handleAddBankAccount={handleAddBankAccount}
-            handleDeleteBankAccount={handleDeleteBankAccount}
-            paymentSettings={paymentSettings}
-            setPaymentSettings={setPaymentSettings}
-            paymentLoading={paymentLoading}
-            paymentSaving={paymentSaving}
-            paymentError={paymentError}
-            paymentSuccess={paymentSuccess}
-            handleSavePaymentSettings={handleSavePaymentSettings}
-            t={t}
-            md={md}
-          />
+          <div className="space-y-6">
+            <FinancialHubPanel
+              bankAccounts={bankAccounts}
+              bankAccountsLoading={bankAccountsLoading}
+              showAddBankModal={showAddBankModal}
+              setShowAddBankModal={setShowAddBankModal}
+              bankFormData={bankFormData}
+              setBankFormData={setBankFormData}
+              bankFormLoading={bankFormLoading}
+              bankFormError={bankFormError}
+              bankFormSuccess={bankFormSuccess}
+              deletingBankId={deletingBankId}
+              handleAddBankAccount={handleAddBankAccount}
+              handleDeleteBankAccount={handleDeleteBankAccount}
+              md={md}
+            />
+            {user?.id && <FactoryPinPayoutPanel userId={user.id} />}
+          </div>
         )}
         {activeTab === 'factory_settings' && !isSalesRep && (
           <FactorySettingsPanel userId={user?.id ?? null} />
@@ -2808,7 +2805,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       {/* Document Gate Modal — handled inside ProductsPanel (FactoryDocumentUploadPanel) */}
 
       {/* ── FINANCE TAB ── */}
-      {activeTab === 'finance' && !isSalesRep && (
+      {activeTab === 'finance' && !isSalesRep && moduleTab !== 'financial_hub' && (
         <FinancePanel
           financeRecords={financeRecords}
           financeLoading={financeLoading}
