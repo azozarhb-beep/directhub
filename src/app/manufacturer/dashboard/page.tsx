@@ -11,6 +11,7 @@ import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
 import Icon from '@/components/ui/AppIcon';
 import AppLogo from '@/components/ui/AppLogo';
 import AIProductAssistant from '@/components/AIProductAssistant';
+import ManufacturerMessagingHub from '@/components/manufacturer/ManufacturerMessagingHub';
 
 import { MultilingualProductFields, SupplierLanguageBadge } from '@/components/LocalizedProductDisplay';
 import { Toaster } from 'react-hot-toast';
@@ -2577,25 +2578,8 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         )}
 
         {/* ── ADMIN MESSAGING TAB (factory side) ── */}
-        {activeTab === 'admin_messaging' && (
-          <FactoryAdminMessaging
-            user={user}
-            supabase={supabase}
-            adminConv={adminConv}
-            adminConvLoading={adminConvLoading}
-            adminMessages={adminMessages}
-            setAdminMessages={setAdminMessages}
-            adminMsgsLoading={adminMsgsLoading}
-            adminMsgInput={adminMsgInput}
-            setAdminMsgInput={setAdminMsgInput}
-            adminMsgSending={adminMsgSending}
-            sendAdminMessage={sendAdminMessage}
-            fetchAdminConversation={fetchAdminConversation}
-            adminMsgsEndRef={adminMsgsEndRef}
-            md={md}
-            adminMsgAttachment={adminMsgAttachment}
-            setAdminMsgAttachment={setAdminMsgAttachment}
-          />
+        {activeTab === 'admin_messaging' && user && (
+          <ManufacturerMessagingHub userId={user.id} />
         )}
       </main>
 
