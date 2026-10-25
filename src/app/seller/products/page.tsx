@@ -11,6 +11,8 @@ import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import Footer from '@/components/Footer';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { readActiveRole } from '@/lib/roleCookies';
+import { useSourcingFilter } from '@/contexts/SourcingFilterContext';
 import { buildProductShareLinkNoPhone } from '@/lib/whatsappOrderLinks';
 import { copyProductShareText, buildPublicProductUrl } from '@/lib/productCode';
 import ProductMediaUploader, {
@@ -167,6 +169,19 @@ export default function SellerProductManagerPage() {
   const { user, loading: authLoading } = useAuth();
   const supabase = createClient();
   const { t, dir, isRTL } = useLanguage();
+  const { setActiveTab: setSourcingTab } = useSourcingFilter();
+  const [isSupplierContext, setIsSupplierContext] = useState(false);
+  useEffect(() => {
+    const fromSupplier =
+      readActiveRole() === 'supplier' ||
+      (typeof document !== 'undefined' && /\/supplier(\/|$|\?)/.test(document.referrer || ''));
+    if (fromSupplier) {
+      setIsSupplierContext(true);
+      setSourcingTab('local_suppliers');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const backHref = isSupplierContext ? '/supplier' : '/manufacturer/dashboard';
   const sp = t.sellerProducts;
   const f = sp.form;
   const catLabel = (v: string) => (f.categories as Record<string, string>)[v] || v;
@@ -580,7 +595,7 @@ export default function SellerProductManagerPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <Link href="/manufacturer/dashboard" className="text-muted-foreground hover:text-foreground transition-colors">
+              <Link href={backHref} className="text-muted-foreground hover:text-foreground transition-colors">
                 <Icon name="ArrowLeftIcon" size={16} className={isRTL ? 'rotate-180' : ''} />
               </Link>
               <h1 className="text-xl font-extrabold text-foreground">{f.pageTitle}</h1>
