@@ -42,6 +42,18 @@ function rewriteLinks(root: HTMLElement) {
     const mapped = toSupplierHref(href);
     if (mapped) a.setAttribute('href', mapped);
   });
+  fixBackLinks(root);
+}
+
+const BACK_LABEL = 'رجوع إلى لوحة التحكم';
+
+/** Forces every "رجوع إلى لوحة التحكم" control inside /supplier/* to point at /supplier. */
+function fixBackLinks(root: HTMLElement) {
+  root.querySelectorAll<HTMLAnchorElement>('a').forEach((a) => {
+    if (a.textContent?.includes(BACK_LABEL) && a.getAttribute('href') !== '/supplier') {
+      a.setAttribute('href', '/supplier');
+    }
+  });
 }
 
 export default function SupplierModulePage() {
@@ -93,6 +105,13 @@ export default function SupplierModulePage() {
     if (!root) return;
     const onClickCapture = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
+      const backControl = target?.closest?.('a,button') as HTMLElement | null;
+      if (backControl && backControl.textContent?.includes(BACK_LABEL)) {
+        event.preventDefault();
+        event.stopPropagation();
+        router.push('/supplier');
+        return;
+      }
       const anchor = target?.closest?.('a') as HTMLAnchorElement | null;
       if (!anchor) return;
       const href = anchor.getAttribute('href') || '';
