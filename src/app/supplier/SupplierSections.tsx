@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
-import SupplierFinancialHubWrapper from './local-dashboard/SupplierFinancialHubWrapper';
+
+import SupplierFinanceLedger from './local-dashboard/SupplierFinanceLedger';
 import SupplierEscrowOrdersWrapper from './local-dashboard/SupplierEscrowOrdersWrapper';
 import SupplierBankAccountsWrapper from './local-dashboard/SupplierBankAccountsWrapper';
 import SupplierDisputes from './SupplierDisputes';
@@ -193,7 +194,7 @@ export default function SupplierSection({ moduleKey, userId, profileData }: Sect
     case 'finance':
       return (
         <SupplierScope>
-          <SupplierFinancialHubWrapper userId={userId} />
+          <SupplierFinanceLedger userId={userId} />
         </SupplierScope>
       );
     case 'bank-accounts':

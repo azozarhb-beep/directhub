@@ -104,7 +104,7 @@ export const SUPPLIER_MODULES: SupplierModuleDef[] = [
     section: 'financials',
     icon: '💵',
     title: 'المالية والأرباح',
-    hint: 'الأرباح وإعدادات الدفع بالريال اليمني',
+    hint: 'الرصيد المتاح والضمان وسجل المعاملات وطلب سحب الأرباح بالريال اليمني',
     accent: 'from-lime-600/30 to-lime-900/20 border-lime-500/30',
     staticBadges: ['YER'],
   },
