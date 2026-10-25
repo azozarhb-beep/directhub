@@ -6,7 +6,7 @@ import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
 import SupplierFinancialHubWrapper from './local-dashboard/SupplierFinancialHubWrapper';
 import SupplierEscrowOrdersWrapper from './local-dashboard/SupplierEscrowOrdersWrapper';
 import SupplierBankAccountsWrapper from './local-dashboard/SupplierBankAccountsWrapper';
-import SupplierDisputesWrapper from './local-dashboard/SupplierDisputesWrapper';
+import SupplierDisputes from './SupplierDisputes';
 import SupplierArchiveWrapper from './local-dashboard/SupplierArchiveWrapper';
 import SupplierMessagingHub from './SupplierMessagingHub';
 import SupplierInventory from './SupplierInventory';
@@ -207,7 +207,7 @@ export default function SupplierSection({ moduleKey, userId, profileData }: Sect
     case 'disputes':
       return (
         <SupplierScope>
-          <SupplierDisputesWrapper userId={userId} />
+          <SupplierDisputes userId={userId} />
         </SupplierScope>
       );
     case 'archive':
