@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { createClient } from '@/lib/supabase/client';
 import { supplierUnitLabel } from './supplierUnits';
+import { buildArabicCategoryOptions, categoryToArabic, SUPPLIER_PRODUCT_CATEGORIES } from './supplierCategories';
 import SupplierProductForm from './SupplierProductForm';
 import { DealLinkModal, QuickEditModal } from './SupplierProductModals';
 import {
@@ -81,14 +82,14 @@ export default function SupplierProducts({ userId }: SupplierProductsProps) {
   }, [load]);
 
   const categories = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.category).filter((c): c is string => !!c))).sort(),
+    () => buildArabicCategoryOptions(SUPPLIER_PRODUCT_CATEGORIES, rows.map((r) => r.category)),
     [rows]
   );
 
   const filtered = useMemo(() => {
     const q = normalizeDigits(search.trim().toLowerCase());
     return rows.filter((p) => {
-      if (catFilter !== 'all' && p.category !== catFilter) return false;
+      if (catFilter !== 'all' && categoryToArabic(p.category) !== catFilter) return false;
       if (currencyFilter !== 'all' && p.currency !== currencyFilter) return false;
       if (stockFilter !== 'all' && stockState(p) !== stockFilter) return false;
       if (!q) return true;

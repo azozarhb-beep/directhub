@@ -1,3 +1,5 @@
+export const PHARMA_LABEL = 'أدوية ومستلزمات طبية';
+
 const CATEGORY_AR_MAP: Record<string, string> = {
   'cleaning & hygiene': 'مواد تنظيف ومستلزمات صحية',
   'cleaning and hygiene': 'مواد تنظيف ومستلزمات صحية',
@@ -49,7 +51,37 @@ const CATEGORY_AR_MAP: Record<string, string> = {
   'automotive-vehicles': 'سيارات وقطع غيار',
   'قطع غيار': 'سيارات وقطع غيار',
   'سيارات وقطع غيار': 'سيارات وقطع غيار',
+
+  'pharmaceuticals': PHARMA_LABEL,
+  'pharmaceutical': PHARMA_LABEL,
+  'medicine': PHARMA_LABEL,
+  'medicines': PHARMA_LABEL,
+  'medical supplies': PHARMA_LABEL,
+  'medical-supplies': PHARMA_LABEL,
+  'medical_supplies': PHARMA_LABEL,
+  'pharmaceuticals & medical supplies': PHARMA_LABEL,
+  'pharmaceuticals and medical supplies': PHARMA_LABEL,
+  'pharmaceuticals-medical-supplies': PHARMA_LABEL,
+  'medical': PHARMA_LABEL,
+  'أدوية': PHARMA_LABEL,
+  'مستلزمات طبية': PHARMA_LABEL,
+  'أدوية ومستلزمات طبية': PHARMA_LABEL,
 };
+
+export const SUPPLIER_PRODUCT_CATEGORIES: string[] = [
+  'تغليف وبلاستيك',
+  'مواد غذائية ومشروبات',
+  'سيارات وقطع غيار',
+  'أدوات ومعدات',
+  'مواد بناء وتشييد',
+  'مواد تنظيف ومستلزمات صحية',
+  'منسوجات وملابس',
+  'أجهزة كهربائية وإلكترونيات',
+  'مواد كيميائية وخام',
+  PHARMA_LABEL,
+  'مستلزمات مكتبية وقرطاسية',
+  'أخرى',
+];
 
 const normalizeKey = (value: string): string => value.trim().replace(/\s+/g, ' ').toLowerCase();
 

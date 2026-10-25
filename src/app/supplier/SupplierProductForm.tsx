@@ -4,6 +4,7 @@ import React, { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { createClient } from '@/lib/supabase/client';
 import { SUPPLIER_UNIT_OPTIONS } from './supplierUnits';
+import { SUPPLIER_PRODUCT_CATEGORIES, categoryToArabic } from './supplierCategories';
 import SupplierImageUploader, {
   SUPPLIER_IMAGE_TYPES,
   SUPPLIER_MAX_GALLERY,
@@ -343,7 +344,16 @@ export default function SupplierProductForm({ userId, product, onClose, onSaved 
             </div>
             <div>
               <label htmlFor="sp-cat" className={LABEL}>التصنيف</label>
-              <input id="sp-cat" className={INPUT} value={form.category} onChange={(e) => set('category', e.target.value)} />
+              <select id="sp-cat" className={INPUT} value={form.category} onChange={(e) => set('category', e.target.value)}>
+                <option value="">اختر التصنيف</option>
+                {(() => {
+                  const current = form.category ? categoryToArabic(form.category) : '';
+                  const opts = current && !SUPPLIER_PRODUCT_CATEGORIES.includes(current)
+                    ? [...SUPPLIER_PRODUCT_CATEGORIES, current]
+                    : SUPPLIER_PRODUCT_CATEGORIES;
+                  return opts.map((c) => <option key={c} value={c}>{c}</option>);
+                })()}
+              </select>
             </div>
             <div>
               <label htmlFor="sp-status" className={LABEL}>الحالة</label>
