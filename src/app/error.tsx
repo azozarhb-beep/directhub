@@ -30,6 +30,7 @@ export default function Error({
 }) {
   useEffect(() => {
     console.error('[App Error Boundary]', error);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     if (isChunkLoadError(error)) {
       try {
         const now = Date.now();
@@ -39,12 +40,15 @@ export default function Error({
         if (now - last > 3000 && count < 3) {
           sessionStorage.setItem('dh_chunk_reload_at', String(now));
           sessionStorage.setItem('dh_chunk_reload_count', String(count + 1));
-          hardReload();
+          timer = setTimeout(() => hardReload(), 800 + count * 1500);
         }
       } catch {
-        hardReload();
+        timer = setTimeout(() => hardReload(), 1200);
       }
     }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [error]);
 
   const handleRetry = () => {
