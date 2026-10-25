@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { persistActiveRole, readActiveRole } from '@/lib/roleCookies';
 import ManufacturerDashboard from '@/app/manufacturer/dashboard/page';
 import { getSupplierRouteBySlug, toSupplierHref } from '../supplierRoutes';
+import { applySupplierInventoryAdapter } from '../supplierInventoryAdapter';
 
 const TEXT_REPLACEMENTS: Array<[string, string]> = [
   ['لوحة تحكم المصنع', 'لوحة تحكم المورد والوكيل التجاري'],
@@ -52,6 +53,7 @@ export default function SupplierModulePage() {
   const slug = params?.module;
   const route = getSupplierRouteBySlug(slug);
   const view = searchParams?.get('view') ?? undefined;
+  const ready = !loading && !!user && !!route;
 
   useEffect(() => {
     if (loading) return;
@@ -69,9 +71,11 @@ export default function SupplierModulePage() {
   useEffect(() => {
     const root = containerRef.current;
     if (!root) return;
+    const isInventory = route?.tab === 'inventory';
     const apply = () => {
       swapTexts(root);
       rewriteLinks(root);
+      applySupplierInventoryAdapter(root, isInventory);
     };
     apply();
     const observer = new MutationObserver(() => {
@@ -81,7 +85,7 @@ export default function SupplierModulePage() {
     });
     observer.observe(root, { childList: true, subtree: true, characterData: true });
     return () => observer.disconnect();
-  }, []);
+  }, [route?.tab, ready]);
 
   // Capture-phase guard: any click on a /manufacturer/... link stays inside /supplier.
   useEffect(() => {
@@ -102,7 +106,7 @@ export default function SupplierModulePage() {
     };
     root.addEventListener('click', onClickCapture, true);
     return () => root.removeEventListener('click', onClickCapture, true);
-  }, [router]);
+  }, [router, ready]);
 
   if (loading || !user || !route) {
     return (
