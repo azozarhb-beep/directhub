@@ -53,7 +53,7 @@ export default function SupplierModulePage() {
   }
 
   return (
-    <SupplierModuleShell title={mod.title} hideTitle={mod.key === 'logistics'}>
+    <SupplierModuleShell title={mod.title} hideTitle={mod.key === 'logistics' || mod.key === 'escrow'}>
       {body}
     </SupplierModuleShell>
   );
