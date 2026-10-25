@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
 import SupplierAdminMessaging from './local-dashboard/SupplierAdminMessaging';
@@ -13,6 +12,12 @@ import SupplierArchiveWrapper from './local-dashboard/SupplierArchiveWrapper';
 import SupplierInventory from './SupplierInventory';
 import SupplierProducts from './SupplierProducts';
 import SupplierSettingsPanel from './settings/SupplierSettingsPanel';
+import SupplierRfq from './SupplierRfq';
+import SupplierDealLinks from './SupplierDealLinks';
+import SupplierLogistics from './SupplierLogistics';
+import SupplierAnalytics from './SupplierAnalytics';
+import SupplierDistribution from './SupplierDistribution';
+import SupplierScope from './SupplierScope';
 import type { SupplierModuleKey } from './supplierModules';
 
 interface SectionProps {
@@ -161,49 +166,65 @@ function OrdersSection({ userId }: { userId: string }) {
   );
 }
 
-function RfqSection() {
-  return (
-    <div className="space-y-4">
-      <h2 className="text-base sm:text-lg font-bold text-white">طلبات عروض الأسعار الواردة</h2>
-      <div className={`${CARD} p-8 text-center`}>
-        <p className="text-slate-400 text-sm mb-4">استقبل وأدر طلبات التسعير من تجار الجملة والمشترين من لوحة RFQ المركزية</p>
-        <Link href="/rfq-management" className="inline-block bg-purple-600 hover:bg-purple-500 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors">
-          فتح لوحة طلبات الأسعار
-        </Link>
-      </div>
-    </div>
-  );
-}
-
 export default function SupplierSection({ moduleKey, userId, profileData }: SectionProps) {
   switch (moduleKey) {
     case 'inventory':
       return <SupplierInventory userId={userId} />;
     case 'products':
       return <SupplierProducts userId={userId} />;
+    case 'distribution':
+      return <SupplierDistribution userId={userId} />;
     case 'orders':
       return <OrdersSection userId={userId} />;
     case 'rfq':
-      return <RfqSection />;
+      return <SupplierRfq userId={userId} />;
+    case 'deal-links':
+      return <SupplierDealLinks userId={userId} />;
+    case 'logistics':
+      return <SupplierLogistics userId={userId} />;
+    case 'analytics':
+      return <SupplierAnalytics userId={userId} />;
     case 'escrow':
-      return <SupplierEscrowOrdersWrapper userId={userId} />;
+      return (
+        <SupplierScope>
+          <SupplierEscrowOrdersWrapper userId={userId} />
+        </SupplierScope>
+      );
     case 'finance':
-      return <SupplierFinancialHubWrapper userId={userId} />;
+      return (
+        <SupplierScope>
+          <SupplierFinancialHubWrapper userId={userId} />
+        </SupplierScope>
+      );
     case 'bank-accounts':
-      return <SupplierBankAccountsWrapper userId={userId} />;
+      return (
+        <SupplierScope>
+          <SupplierBankAccountsWrapper userId={userId} />
+        </SupplierScope>
+      );
     case 'settings':
       return <SupplierSettingsPanel userId={userId} />;
     case 'disputes':
-      return <SupplierDisputesWrapper userId={userId} />;
+      return (
+        <SupplierScope>
+          <SupplierDisputesWrapper userId={userId} />
+        </SupplierScope>
+      );
     case 'archive':
-      return <SupplierArchiveWrapper userId={userId} />;
+      return (
+        <SupplierScope>
+          <SupplierArchiveWrapper userId={userId} />
+        </SupplierScope>
+      );
     case 'messages':
       return (
-        <SupplierAdminMessaging
-          userId={userId}
-          companyName={profileData?.company_name}
-          fullName={profileData?.full_name}
-        />
+        <SupplierScope>
+          <SupplierAdminMessaging
+            userId={userId}
+            companyName={profileData?.company_name}
+            fullName={profileData?.full_name}
+          />
+        </SupplierScope>
       );
     default:
       return null;

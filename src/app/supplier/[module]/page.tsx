@@ -9,8 +9,6 @@ import { persistActiveRole, readActiveRole } from '@/lib/roleCookies';
 import { getSupplierModule } from '../supplierModules';
 import SupplierModuleShell from '../SupplierModuleShell';
 import SupplierSection from '../SupplierSections';
-import SupplierInventory from '../SupplierInventory';
-import SupplierProducts from '../SupplierProducts';
 import SupplierSettingsPanel from '../settings/SupplierSettingsPanel';
 
 export default function SupplierModulePage() {
@@ -42,11 +40,7 @@ export default function SupplierModulePage() {
   }
 
   let body: React.ReactNode;
-  if (mod.key === 'inventory') {
-    body = <SupplierInventory userId={user.id} />;
-  } else if (mod.key === 'products') {
-    body = <SupplierProducts userId={user.id} />;
-  } else if (mod.key === 'settings') {
+  if (mod.key === 'settings') {
     body = <SupplierSettingsPanel userId={user.id} />;
   } else {
     body = (

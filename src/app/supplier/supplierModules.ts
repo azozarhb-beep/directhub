@@ -1,5 +1,5 @@
 export type SupplierModuleKey =
-  | 'inventory' |'products' |'rfq' |'orders' |'escrow' |'finance' |'bank-accounts' |'settings' |'disputes' |'archive' |'messages';
+  | 'inventory' |'products' |'distribution' |'rfq' |'deal-links' |'orders' |'logistics' |'escrow' |'finance' |'bank-accounts' |'analytics' |'settings' |'disputes' |'archive' |'messages';
 
 export type SupplierSectionKey = 'catalog' | 'operations' | 'financials' | 'account';
 
@@ -23,7 +23,7 @@ export const SUPPLIER_SECTIONS: SupplierSectionDef[] = [
   { key: 'catalog', title: 'المنتجات والتوريدات', subtitle: 'Products & Supply' },
   { key: 'operations', title: 'الطلبات والعمليات', subtitle: 'Orders & Operations' },
   { key: 'financials', title: 'المالية والضمان والحسابات', subtitle: 'Financials & Escrow' },
-  { key: 'account', title: 'الحساب والتوثيق والمراسلات', subtitle: 'Account & Compliance' },
+  { key: 'account', title: 'التحليلات والتوثيق والمراسلات', subtitle: 'Analytics & Compliance' },
 ];
 
 export const SUPPLIER_MODULES: SupplierModuleDef[] = [
@@ -46,13 +46,31 @@ export const SUPPLIER_MODULES: SupplierModuleDef[] = [
     staticBadges: ['جملة', 'تجزئة'],
   },
   {
+    key: 'distribution',
+    section: 'catalog',
+    icon: '🚚',
+    title: 'القدرة التوريدية وقنوات التوزيع',
+    hint: 'القدرة التوريدية الشهرية وقنوات التوزيع وسلاسل التوريد',
+    accent: 'from-amber-600/30 to-amber-900/20 border-amber-500/30',
+    staticBadges: ['توريد'],
+  },
+  {
     key: 'rfq',
     section: 'catalog',
     icon: '📋',
-    title: 'طلبات عروض الأسعار',
+    title: 'عروض الأسعار والتوريد',
     hint: 'الاستفسارات الواردة وتقديم عروض الأسعار',
     accent: 'from-purple-600/30 to-purple-900/20 border-purple-500/30',
     staticBadges: ['RFQ'],
+  },
+  {
+    key: 'deal-links',
+    section: 'catalog',
+    icon: '🔗',
+    title: 'رابط صفقة مخصص للعملاء',
+    hint: 'أنشئ رابط صفقة بشروط مقفلة وأرسله للعميل',
+    accent: 'from-pink-600/30 to-pink-900/20 border-pink-500/30',
+    staticBadges: ['Deal Link'],
   },
   {
     key: 'orders',
@@ -64,10 +82,19 @@ export const SUPPLIER_MODULES: SupplierModuleDef[] = [
     staticBadges: [],
   },
   {
+    key: 'logistics',
+    section: 'operations',
+    icon: '🚛',
+    title: 'الشحن وتوصيل البضائع',
+    hint: 'بيانات الناقل ورقم التتبع وتتبع التوصيل',
+    accent: 'from-indigo-600/30 to-indigo-900/20 border-indigo-500/30',
+    staticBadges: ['تتبع'],
+  },
+  {
     key: 'escrow',
     section: 'financials',
     icon: '🔒',
-    title: 'طلبات الضمان',
+    title: 'الضمان المالي',
     hint: 'حالة الضمان المالي ورمز التسليم لكل طلب',
     accent: 'from-blue-600/30 to-blue-900/20 border-blue-500/30',
     staticBadges: ['Escrow'],
@@ -85,10 +112,19 @@ export const SUPPLIER_MODULES: SupplierModuleDef[] = [
     key: 'bank-accounts',
     section: 'financials',
     icon: '🏦',
-    title: 'الحسابات البنكية',
-    hint: 'حسابات استلام المدفوعات',
+    title: 'حسابات البنوك اليمنية',
+    hint: 'حسابات استلام المدفوعات بالريال اليمني',
     accent: 'from-emerald-600/30 to-emerald-900/20 border-emerald-500/30',
-    staticBadges: [],
+    staticBadges: ['YER'],
+  },
+  {
+    key: 'analytics',
+    section: 'account',
+    icon: '📊',
+    title: 'تحليلات المبيعات ودوران المخزون',
+    hint: 'مؤشرات المبيعات ومعدل دوران المخزون والأصناف الأكثر مبيعاً',
+    accent: 'from-violet-600/30 to-violet-900/20 border-violet-500/30',
+    staticBadges: ['KPIs'],
   },
   {
     key: 'settings',
@@ -103,8 +139,8 @@ export const SUPPLIER_MODULES: SupplierModuleDef[] = [
     key: 'disputes',
     section: 'account',
     icon: '⚖️',
-    title: 'النزاعات',
-    hint: 'متابعة النزاعات المفتوحة على الطلبات',
+    title: 'فض النزاعات التجارية',
+    hint: 'متابعة النزاعات المفتوحة على الطلبات والوساطة',
     accent: 'from-red-600/30 to-red-900/20 border-red-500/30',
     staticBadges: [],
   },

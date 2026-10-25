@@ -62,6 +62,7 @@ export default function SupplierDashboard() {
     if (key === 'inventory') return `${counts.inventory} صنف`;
     if (key === 'products') return `${counts.products} منتج`;
     if (key === 'orders') return `${counts.orders} طلب`;
+    if (key === 'logistics') return `${counts.orders} شحنة`;
     return null;
   };
 
