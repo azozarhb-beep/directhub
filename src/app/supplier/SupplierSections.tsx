@@ -3,12 +3,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
-import SupplierAdminMessaging from './local-dashboard/SupplierAdminMessaging';
 import SupplierFinancialHubWrapper from './local-dashboard/SupplierFinancialHubWrapper';
 import SupplierEscrowOrdersWrapper from './local-dashboard/SupplierEscrowOrdersWrapper';
 import SupplierBankAccountsWrapper from './local-dashboard/SupplierBankAccountsWrapper';
 import SupplierDisputesWrapper from './local-dashboard/SupplierDisputesWrapper';
 import SupplierArchiveWrapper from './local-dashboard/SupplierArchiveWrapper';
+import SupplierMessagingHub from './SupplierMessagingHub';
 import SupplierInventory from './SupplierInventory';
 import SupplierProducts from './SupplierProducts';
 import SupplierSettingsPanel from './settings/SupplierSettingsPanel';
@@ -219,11 +219,7 @@ export default function SupplierSection({ moduleKey, userId, profileData }: Sect
     case 'messages':
       return (
         <SupplierScope>
-          <SupplierAdminMessaging
-            userId={userId}
-            companyName={profileData?.company_name}
-            fullName={profileData?.full_name}
-          />
+          <SupplierMessagingHub userId={userId} />
         </SupplierScope>
       );
     default:

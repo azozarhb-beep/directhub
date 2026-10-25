@@ -157,10 +157,10 @@ export const SUPPLIER_MODULES: SupplierModuleDef[] = [
     key: 'messages',
     section: 'account',
     icon: '💬',
-    title: 'التواصل مع الإدارة',
-    hint: 'محادثة مباشرة مع إدارة المنصة',
+    title: 'التواصل مع الإدارة والمندوب والشحن',
+    hint: 'مراسلة إدارة المنصة والمندوب الميداني المشرف وجهة الشحن واللوجستيات',
     accent: 'from-rose-600/30 to-rose-900/20 border-rose-500/30',
-    staticBadges: ['Admin'],
+    staticBadges: ['Admin', 'المندوب', 'الشحن'],
   },
 ];
 
