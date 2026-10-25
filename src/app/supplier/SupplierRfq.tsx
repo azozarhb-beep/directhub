@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { categoryToArabic, buildArabicCategoryOptions } from './supplierCategories';
 
 interface SupplierRfqProps {
   userId: string;
@@ -191,20 +192,19 @@ export default function SupplierRfq({ userId }: SupplierRfqProps) {
 
   const respondedIds = useMemo(() => new Set(mine.map((m) => m.rfq_id)), [mine]);
 
-  const categories = useMemo(() => {
-    const set = new Set<string>(CATEGORY_OPTIONS);
-    rfqs.forEach((r) => r.category && set.add(r.category));
-    return Array.from(set);
-  }, [rfqs]);
+  const categories = useMemo(
+    () => buildArabicCategoryOptions(CATEGORY_OPTIONS, rfqs.map((r) => r.category)),
+    [rfqs],
+  );
 
   const baseMatch = useCallback(
     (r: RfqRow | null): boolean => {
       if (!r) return false;
-      if (categoryFilter && (r.category || '') !== categoryFilter) return false;
+      if (categoryFilter && categoryToArabic(r.category) !== categoryFilter) return false;
       if (!matchesProvince(r, provinceFilter)) return false;
       const q = search.trim().toLowerCase();
       if (!q) return true;
-      return [r.product_name, r.custom_product_description, r.specifications, r.destination_country, r.category]
+      return [r.product_name, r.custom_product_description, r.specifications, r.destination_country, r.category, categoryToArabic(r.category)]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q));
     },
@@ -403,7 +403,7 @@ export default function SupplierRfq({ userId }: SupplierRfqProps) {
         </div>
         <p className="text-xs text-slate-300 line-clamp-3 whitespace-pre-line">{rfq.specifications || 'لا توجد مواصفات مضافة'}</p>
         <div className="text-[11px] text-slate-400 flex gap-3 flex-wrap">
-          {rfq.category && <span>{rfq.category}</span>}
+          {rfq.category && <span>{categoryToArabic(rfq.category)}</span>}
           {rfq.destination_country && <span>{rfq.destination_country}</span>}
           {rfq.created_at && <span>{rfq.created_at.slice(0, 10)}</span>}
         </div>
