@@ -101,3 +101,6 @@ export function applySupplierInventoryAdapter(root: HTMLElement, isInventory: bo
   swapInventoryTexts(root, isInventory);
   swapUnitSelects(root);
 }
+
+/** Deprecated: the supplier warehouse is now the native SupplierInventory panel (local_inventory). */
+export {};

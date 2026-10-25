@@ -1,5 +1,5 @@
 export type SupplierModuleKey =
-  | 'products' |'rfq' |'orders' |'escrow' |'finance' |'bank-accounts' |'settings' |'disputes' |'archive' |'messages';
+  | 'inventory' |'products' |'rfq' |'orders' |'escrow' |'finance' |'bank-accounts' |'settings' |'disputes' |'archive' |'messages';
 
 export type SupplierSectionKey = 'catalog' | 'operations' | 'financials' | 'account';
 
@@ -27,6 +27,15 @@ export const SUPPLIER_SECTIONS: SupplierSectionDef[] = [
 ];
 
 export const SUPPLIER_MODULES: SupplierModuleDef[] = [
+  {
+    key: 'inventory',
+    section: 'catalog',
+    icon: '📦',
+    title: 'المخزون والمستودع',
+    hint: 'أصناف المستودع بالكرتون والبالة والبندل والدرزن والكيس والرول',
+    accent: 'from-cyan-600/30 to-cyan-900/20 border-cyan-500/30',
+    staticBadges: ['مستودع'],
+  },
   {
     key: 'products',
     section: 'catalog',

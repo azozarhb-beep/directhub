@@ -51,3 +51,6 @@ export function toSupplierHref(href: string): string | null {
   if (!route) return null;
   return `/supplier/${route.slug}${query ? `?${query}` : ''}`;
 }
+
+/** Deprecated: /supplier no longer renders ManufacturerDashboard, so no href remapping is needed. */
+export {};
