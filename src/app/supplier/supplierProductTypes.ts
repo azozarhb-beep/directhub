@@ -48,10 +48,13 @@ export interface ProductRow {
   low_stock_threshold: number | null;
   shelf_location: string | null;
   delivery_terms: string | null;
+  view_count?: number | null;
 }
 
 export const PRODUCT_SELECT =
   'id, name, name_ar, sku, category, description, unit, wholesale_price, retail_price, currency, min_order_qty, stock_quantity, status, image_url, gallery_urls, price_tiers, units_per_pack, gross_weight_kg, dimensions, variants, low_stock_threshold, shelf_location, delivery_terms';
+
+export const PRODUCT_SELECT_WITH_VIEWS = `${PRODUCT_SELECT}, view_count`;
 
 export type StockState = 'in' | 'low' | 'out';
 

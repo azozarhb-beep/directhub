@@ -17,6 +17,7 @@ import SupplierRfq from './SupplierRfq';
 import SupplierDealLinks from './SupplierDealLinks';
 import SupplierLogistics from './SupplierLogistics';
 import SupplierAnalytics from './SupplierAnalytics';
+import SupplierProductInsights from './SupplierProductInsights';
 import SupplierDistribution from './SupplierDistribution';
 import SupplierScope from './SupplierScope';
 import type { SupplierModuleKey } from './supplierModules';
@@ -392,7 +393,14 @@ export default function SupplierSection({ moduleKey, userId, profileData }: Sect
     case 'logistics':
       return <SupplierLogistics userId={userId} />;
     case 'analytics':
-      return <SupplierAnalytics userId={userId} />;
+      return (
+        <div className="space-y-10">
+          <SupplierProductInsights userId={userId} />
+          <div className="border-t border-slate-800 pt-8">
+            <SupplierAnalytics userId={userId} />
+          </div>
+        </div>
+      );
     case 'escrow':
       return (
         <SupplierScope>

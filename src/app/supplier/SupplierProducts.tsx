@@ -9,6 +9,7 @@ import SupplierProductForm from './SupplierProductForm';
 import { DealLinkModal, QuickEditModal } from './SupplierProductModals';
 import {
   PRODUCT_SELECT,
+  PRODUCT_SELECT_WITH_VIEWS,
   STOCK_CLS,
   STOCK_LABEL,
   deliveryTermsLabel,
@@ -17,6 +18,13 @@ import {
   type ProductRow,
   type StockState,
 } from './supplierProductTypes';
+import {
+  PERF_BADGE_CLS,
+  PERF_BADGE_LABEL,
+  buildProductPerformance,
+  formatCompact,
+  revenueEntries,
+} from './supplierPerformance';
 
 const STATUS_LABEL: Record<string, string> = { active: 'نشط', draft: 'مسودة', archived: 'غير نشط' };
 const STATUS_CLS: Record<string, string> = {
@@ -60,20 +68,39 @@ export default function SupplierProducts({ userId }: SupplierProductsProps) {
   const [currencyFilter, setCurrencyFilter] = useState('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [perfOrders, setPerfOrders] = useState<
+    Array<{ status: string | null; escrow_status: string | null; created_at: string; items: unknown }>
+  >([]);
 
   const load = useCallback(async () => {
     setError('');
-    const { data, error: err } = await supabase
+    let { data, error: err } = await supabase
       .from('supplier_products')
-      .select(PRODUCT_SELECT)
+      .select(PRODUCT_SELECT_WITH_VIEWS)
       .eq('supplier_id', userId)
       .order('created_at', { ascending: false });
+    if (err) {
+      const retry = await supabase
+        .from('supplier_products')
+        .select(PRODUCT_SELECT)
+        .eq('supplier_id', userId)
+        .order('created_at', { ascending: false });
+      data = retry.data as typeof data;
+      err = retry.error;
+    }
     if (err) {
       setError(err.message);
       setRows([]);
     } else {
       setRows((data as unknown as ProductRow[]) ?? []);
     }
+    const { data: ord } = await supabase
+      .from('orders')
+      .select('status, escrow_status, created_at, items')
+      .eq('factory_user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(2000);
+    setPerfOrders((ord as typeof perfOrders) ?? []);
     setLoading(false);
   }, [supabase, userId]);
 
@@ -213,6 +240,8 @@ export default function SupplierProducts({ userId }: SupplierProductsProps) {
     return `https://wa.me/?text=${encodeURIComponent(lines.join('\n'))}`;
   };
 
+  const perfMap = useMemo(() => buildProductPerformance(rows, perfOrders), [rows, perfOrders]);
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-end gap-2 flex-wrap">
@@ -291,6 +320,8 @@ export default function SupplierProducts({ userId }: SupplierProductsProps) {
           {filtered.map((p) => {
             const st = stockState(p);
             const thr = Number(p.low_stock_threshold ?? 0);
+            const perf = perfMap.get(p.id);
+            const revs = perf ? revenueEntries(perf.revenue) : [];
             return (
               <div key={p.id} className={`${CARD} p-3 sm:p-4 flex flex-col lg:flex-row lg:items-center gap-3`}>
                 <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -349,6 +380,40 @@ export default function SupplierProducts({ userId }: SupplierProductsProps) {
                     </p>
                   </div>
                 </div>
+
+                {perf && (
+                  <div className="flex items-center gap-4 flex-wrap lg:justify-center border-t border-slate-800 pt-3 lg:border-t-0 lg:pt-0 lg:border-r lg:pr-4 lg:border-slate-800">
+                    <div>
+                      <p className="text-[10px] text-slate-500">👁️ المشاهدات</p>
+                      <p className="text-sm font-black text-white">{formatCompact(perf.views)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-500">📦 إجمالي المباع</p>
+                      <p className="text-sm font-black text-white">
+                        {formatCompact(perf.unitsSold)}{' '}
+                        <span className="text-[10px] font-bold text-slate-400">{supplierUnitLabel(p.unit)}</span>
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-500">💰 الإيرادات</p>
+                      {revs.length === 0 ? (
+                        <p className="text-sm font-black text-white">0 <span className="text-[10px] text-slate-400">{p.currency}</span></p>
+                      ) : (
+                        <div className="text-sm font-black text-white space-y-0.5">
+                          {revs.map(([cur, val]) => (
+                            <p key={cur}>
+                              {formatCompact(val)}{' '}
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">{cur}</span>
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <span className={`text-[10px] px-2 py-1 rounded-full font-bold whitespace-nowrap ${PERF_BADGE_CLS[perf.badge]}`}>
+                      {PERF_BADGE_LABEL[perf.badge]}
+                    </span>
+                  </div>
+                )}
 
                 <div className="flex items-center gap-1.5 flex-wrap lg:justify-end">
                   <button type="button" onClick={() => setQuickEdit(p)} className="h-8 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[11px] font-bold">

@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client';
 import { persistActiveRole, readActiveRole } from '@/lib/roleCookies';
 import { SUPPLIER_MODULES, SUPPLIER_SECTIONS } from './supplierModules';
 import SupplierTopBar from './SupplierTopBar';
+import { buildProductPerformance, formatCompact, type PerfProductInput } from './supplierPerformance';
 
 interface Counts {
   inventory: number;
@@ -15,11 +16,18 @@ interface Counts {
   orders: number;
 }
 
+interface PerfCounters {
+  views: number;
+  sold: number;
+  conversion: number;
+}
+
 export default function SupplierDashboard() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [counts, setCounts] = useState<Counts>({ inventory: 0, products: 0, orders: 0 });
+  const [perf, setPerf] = useState<PerfCounters>({ views: 0, sold: 0, conversion: 0 });
   const [companyName, setCompanyName] = useState('');
 
   useEffect(() => {
@@ -45,6 +53,45 @@ export default function SupplierDashboard() {
       setCounts({ inventory: inv.count ?? 0, products: prod.count ?? 0, orders: ord.count ?? 0 });
       const p = prof.data as { company_name?: string; full_name?: string } | null;
       setCompanyName(p?.company_name || p?.full_name || '');
+
+      let prodRows: Array<PerfProductInput> = [];
+      const withViews = await supabase
+        .from('supplier_products')
+        .select('id, name, name_ar, sku, unit, currency, wholesale_price, stock_quantity, image_url, view_count')
+        .eq('supplier_id', user.id);
+      if (withViews.error) {
+        const base = await supabase
+          .from('supplier_products')
+          .select('id, name, name_ar, sku, unit, currency, wholesale_price, stock_quantity, image_url')
+          .eq('supplier_id', user.id);
+        prodRows = (base.data as PerfProductInput[]) ?? [];
+      } else {
+        prodRows = (withViews.data as PerfProductInput[]) ?? [];
+      }
+      const [ordRes, quoteRes] = await Promise.all([
+        supabase
+          .from('orders')
+          .select('status, escrow_status, created_at, items')
+          .eq('factory_user_id', user.id)
+          .limit(2000),
+        supabase
+          .from('custom_quotes')
+          .select('id, status, checkout_order_id')
+          .eq('factory_user_id', user.id)
+          .is('conversation_id', null)
+          .limit(500),
+      ]);
+      if (cancelled) return;
+      const map = buildProductPerformance(prodRows, (ordRes.data as any[]) ?? []);
+      let views = 0;
+      let sold = 0;
+      map.forEach((v) => {
+        views += v.views;
+        sold += v.unitsSold;
+      });
+      const quotes = (quoteRes.data as Array<{ status: string | null; checkout_order_id: string | null }>) ?? [];
+      const converted = quotes.filter((q) => q.status === 'accepted' || !!q.checkout_order_id).length;
+      setPerf({ views, sold, conversion: quotes.length > 0 ? (converted / quotes.length) * 100 : 0 });
     })();
     return () => {
       cancelled = true;
@@ -78,7 +125,7 @@ export default function SupplierDashboard() {
         </div>
 
         {SUPPLIER_SECTIONS.map((section) => {
-          const modules = SUPPLIER_MODULES.filter((m) => m.section === section.key);
+          const modules = SUPPLIER_MODULES.filter((m) => m.section === section.key && m.key !== 'analytics');
           return (
             <section key={section.key} className="mb-8">
               <div className="flex items-baseline gap-2 mb-3">
@@ -108,6 +155,35 @@ export default function SupplierDashboard() {
                     </Link>
                   );
                 })}
+                {section.key === 'catalog' && (
+                  <Link
+                    href="/supplier/analytics"
+                    className="group rounded-2xl border bg-gradient-to-br from-violet-600/30 to-violet-900/20 border-violet-500/30 p-4 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 transition-all"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-2xl" aria-hidden="true">📊</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-slate-200">Analytics</span>
+                    </div>
+                    <h3 className="text-sm font-black text-white mt-3">أداء وتحليلات المنتجات والمبيعات</h3>
+                    <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                      معدل المشاهدات، الأصناف الأكثر مبيعاً، وتحليل حركة المستودع
+                    </p>
+                    <div className="grid grid-cols-3 gap-2 mt-3">
+                      <div className="rounded-lg bg-black/20 px-2 py-1.5 text-center">
+                        <p className="text-sm font-black text-white">{formatCompact(perf.views)}</p>
+                        <p className="text-[9px] text-slate-400 leading-tight">إجمالي المشاهدات</p>
+                      </div>
+                      <div className="rounded-lg bg-black/20 px-2 py-1.5 text-center">
+                        <p className="text-sm font-black text-white">{formatCompact(perf.sold)}</p>
+                        <p className="text-[9px] text-slate-400 leading-tight">إجمالي القطع المباعة</p>
+                      </div>
+                      <div className="rounded-lg bg-black/20 px-2 py-1.5 text-center">
+                        <p className="text-sm font-black text-white">{perf.conversion.toFixed(0)}%</p>
+                        <p className="text-[9px] text-slate-400 leading-tight">معدل تحويل الصفقات</p>
+                      </div>
+                    </div>
+                  </Link>
+                )}
               </div>
             </section>
           );
