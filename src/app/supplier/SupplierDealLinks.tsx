@@ -7,6 +7,12 @@ import { SUPPLIER_UNIT_OPTIONS } from './supplierUnits';
 
 interface SupplierDealLinksProps {
   userId: string;
+  prefill?: {
+    product_title?: string;
+    quoted_price?: string;
+    currency?: string;
+    unit?: string;
+  };
 }
 
 interface QuoteRow {
@@ -98,9 +104,9 @@ function formatNumber(n: number): string {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(n);
 }
 
-export default function SupplierDealLinks({ userId }: SupplierDealLinksProps) {
+export default function SupplierDealLinks({ userId, prefill }: SupplierDealLinksProps) {
   const supabase = useMemo(() => createClient(), []);
-  const [form, setForm] = useState<FormState>(INITIAL);
+  const [form, setForm] = useState<FormState>(() => ({ ...INITIAL, ...(prefill ?? {}) }));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [link, setLink] = useState('');

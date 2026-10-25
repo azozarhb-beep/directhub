@@ -484,6 +484,32 @@ export default function ProductDetailPage() {
     const p = productDatabase[id];
     return !!(p && p.priceTiers && p.priceTiers.length > 0);
   });
+  // Supplier-listed product (supplier_products) → chat button reads "مراسلة المورد / الوكيل"
+  const [isSupplierSeller, setIsSupplierSeller] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const ref = decodeURIComponent(id || '').trim();
+    if (!ref || productDatabase[ref]) {
+      setIsSupplierSeller(false);
+      return;
+    }
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase.rpc('get_supplier_product_for_inquiry', { p_ref: ref });
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!cancelled) setIsSupplierSeller(!!row?.id);
+      } catch {
+        if (!cancelled) setIsSupplierSeller(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+  const chatSellerLabel = isSupplierSeller && isArabic ? 'مراسلة المورد / الوكيل' : isSupplierSeller ? 'Message Supplier / Agent' : null;
+  const chatHref = isSupplierSeller ? `/chat/${id}` : `/chat/${product.id}`;
 
   useEffect(() => {
     setActiveImage(0);
@@ -1399,10 +1425,10 @@ export default function ProductDetailPage() {
                       </Link>
 
                       <Link
-                      href={`/chat/${product.id}`}
+                      href={chatHref}
                       className="w-full flex items-center justify-center gap-2.5 py-3 px-5 bg-card text-foreground text-sm font-extrabold rounded-xl border-2 border-primary/35 hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all">
                         <Icon name="ChatBubbleLeftRightIcon" size={18} variant="solid" className="text-primary" />
-                        <span>{isArabic ? 'تواصل مع المصنع' : 'Chat with Factory'}</span>
+                        <span>{chatSellerLabel ?? (isArabic ? 'تواصل مع المصنع' : 'Chat with Factory')}</span>
                       </Link>
 
                       {product.sampleAvailable &&
@@ -1425,10 +1451,10 @@ export default function ProductDetailPage() {
                       </button>
 
                       <Link
-                      href={`/chat/${product.id}`}
+                      href={chatHref}
                       className="w-full flex items-center justify-center gap-2.5 py-3 px-5 bg-card text-foreground text-sm font-extrabold rounded-xl border-2 border-primary/35 hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all">
                         <Icon name="ChatBubbleLeftRightIcon" size={18} variant="solid" className="text-primary" />
-                        <span>{isArabic ? 'تواصل مع المصنع' : 'Chat with Factory'}</span>
+                        <span>{chatSellerLabel ?? (isArabic ? 'تواصل مع المصنع' : 'Chat with Factory')}</span>
                       </Link>
 
                       <button
@@ -1901,7 +1927,8 @@ export default function ProductDetailPage() {
                   <span>{isArabic ? 'طلب تسعير كميات' : 'Request Custom RFQ'}</span>
                 </Link>
                 <Link
-                href={`/chat/${product.id}`}
+                href={chatHref}
+                aria-label={chatSellerLabel ?? undefined}
                 className="flex items-center justify-center gap-2 py-3.5 px-4 bg-card text-foreground text-sm font-extrabold rounded-2xl border-2 border-primary/40 active:opacity-80 transition-all">
                   <Icon name="ChatBubbleLeftRightIcon" size={20} variant="solid" className="text-primary" />
                 </Link>
@@ -1918,10 +1945,10 @@ export default function ProductDetailPage() {
                     <span>{pp.orderNow}</span>
                   </button>
                   <Link
-                  href={`/messaging?productId=${product.id}`}
+                  href={isSupplierSeller ? chatHref : `/messaging?productId=${product.id}`}
                   className="flex-1 flex items-center justify-center gap-2 py-3.5 bg-card text-foreground text-sm font-extrabold rounded-2xl border-2 border-primary/40 active:opacity-80 transition-all">
                     <Icon name="ChatBubbleLeftRightIcon" size={20} variant="solid" className="text-primary" />
-                    <span>{pp.chatFactory}</span>
+                    <span>{chatSellerLabel ?? pp.chatFactory}</span>
                   </Link>
                 </div>
                 <div className="flex gap-2">

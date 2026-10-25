@@ -20,6 +20,7 @@ export default function SupplierTopBar() {
   const { language, setLanguage } = useLanguage();
   const [mounted, setMounted] = useState(false);
   const [unread, setUnread] = useState(0);
+  const [chatUnread, setChatUnread] = useState(0);
   const [langOpen, setLangOpen] = useState(false);
   const langRef = useRef<HTMLDivElement>(null);
 
@@ -48,6 +49,46 @@ export default function SupplierTopBar() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
         () => fetchCount()
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
+
+  // Unread buyer messages on the supplier's chats (chat widget badge)
+  useEffect(() => {
+    if (!user?.id) {
+      setChatUnread(0);
+      return;
+    }
+    const supabase = createClient();
+    const fetchChatUnread = async () => {
+      const { data: convs } = await supabase
+        .from('chat_conversations')
+        .select('id')
+        .eq('manufacturer_id', user.id);
+      const ids = ((convs || []) as { id: string }[]).map((c) => c.id);
+      if (ids.length === 0) {
+        setChatUnread(0);
+        return;
+      }
+      const { count } = await supabase
+        .from('chat_messages')
+        .select('*', { count: 'exact', head: true })
+        .in('conversation_id', ids)
+        .neq('sender_id', user.id)
+        .eq('is_read', false);
+      setChatUnread(count || 0);
+    };
+    fetchChatUnread();
+    const channel = supabase
+      .channel(`supplier-topbar-chat-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages' }, () => fetchChatUnread())
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'chat_conversations', filter: `manufacturer_id=eq.${user.id}` },
+        () => fetchChatUnread()
       )
       .subscribe();
     return () => {
@@ -134,6 +175,15 @@ export default function SupplierTopBar() {
             {mounted && unread > 0 && (
               <span className="absolute top-1 right-1 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-1">
                 {unread > 9 ? '9+' : unread}
+              </span>
+            )}
+          </Link>
+
+          <Link href="/supplier/messages" prefetch={true} className={ICON_BTN} aria-label="الرسائل" title="الرسائل">
+            <Icon name="ChatBubbleLeftRightIcon" size={20} />
+            {mounted && chatUnread > 0 && (
+              <span className="absolute top-1 right-1 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-1">
+                {chatUnread > 9 ? '9+' : chatUnread}
               </span>
             )}
           </Link>

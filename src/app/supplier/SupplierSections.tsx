@@ -10,6 +10,7 @@ import SupplierBankAccountsWrapper from './local-dashboard/SupplierBankAccountsW
 import SupplierDisputes from './SupplierDisputes';
 import SupplierArchiveWrapper from './local-dashboard/SupplierArchiveWrapper';
 import SupplierMessagingHub from './SupplierMessagingHub';
+import SupplierBuyerInquiries from './SupplierBuyerInquiries';
 import SupplierInventory from './SupplierInventory';
 import SupplierProducts from './SupplierProducts';
 import SupplierSettingsPanel from './settings/SupplierSettingsPanel';
@@ -436,7 +437,10 @@ export default function SupplierSection({ moduleKey, userId, profileData }: Sect
     case 'messages':
       return (
         <SupplierScope>
-          <SupplierMessagingHub userId={userId} />
+          <div className="space-y-6">
+            <SupplierBuyerInquiries userId={userId} />
+            <SupplierMessagingHub userId={userId} />
+          </div>
         </SupplierScope>
       );
     default:

@@ -36,6 +36,24 @@ interface Conversation {
   supplier_avatar: string;
 }
 
+interface SupplierInquiryProduct {
+  id: string;
+  supplier_id: string;
+  name: string;
+  name_ar: string | null;
+  sku: string | null;
+  unit: string;
+  wholesale_price: number;
+  currency: string;
+  image_url: string | null;
+  supplier_name: string;
+}
+
+const SUPPLIER_UNIT_AR: Record<string, string> = {
+  carton: 'كرتون', bale: 'بالة', bundle: 'بندل', dozen: 'درزن', bag: 'كيس / شوال',
+  roll: 'رول', piece: 'قطعة', kg: 'كجم', ton: 'طن',
+};
+
 // ─── Translation Types ────────────────────────────────────────────────────────
 type SupportedLang = 'ar' | 'en' | 'zh';
 
@@ -165,6 +183,7 @@ export default function ChatPage() {
   const [counterpartSellerCategory, setCounterpartSellerCategory] = useState<string | null>(null);
   const [counterpartFactoryType, setCounterpartFactoryType] = useState<string | null>(null);
   const [counterpartCountry, setCounterpartCountry] = useState<string | null>(supplier.country);
+  const [inquiryProduct, setInquiryProduct] = useState<SupplierInquiryProduct | null>(null);
 
   const needsTranslation = needsChatTranslation({
     sellerCategory: counterpartSellerCategory,
@@ -216,8 +235,25 @@ export default function ChatPage() {
         let resolvedCountry = supplier.country;
         let resolvedProductName = supplier.product;
         let resolvedSupplierName = supplier.name;
+        let conversationProductId = productId;
+        let supplierListing: SupplierInquiryProduct | null = null;
         try {
-          const { data: productData } = await supabase
+          const { data: spData } = await supabase.rpc('get_supplier_product_for_inquiry', { p_ref: productId });
+          const spRow = (Array.isArray(spData) ? spData[0] : spData) as SupplierInquiryProduct | undefined;
+          if (spRow?.id) {
+            supplierListing = spRow;
+            manufacturerId = spRow.supplier_id;
+            conversationProductId = spRow.id;
+            resolvedProductName = spRow.name_ar || spRow.name || resolvedProductName;
+            resolvedSupplierName = spRow.supplier_name || resolvedSupplierName;
+            resolvedCountry = 'اليمن';
+          }
+        } catch {
+          // Not a supplier-listed product — continue with default resolution
+        }
+        setInquiryProduct(supplierListing);
+        try {
+          const { data: productData } = supplierListing ? { data: null } : await supabase
             .from('products')
             .select('id, name, manufacturer_id, manufacturer_name, country_of_origin, origin_country')
             .eq('id', productId)
@@ -270,8 +306,8 @@ export default function ChatPage() {
         from('chat_conversations').
         select('*').
         eq('buyer_id', user.id).
-        eq('product_id', productId).
-        single();
+        eq('product_id', conversationProductId).
+        maybeSingle();
 
         if (!existing) {
           const { data: created, error } = await supabase.
@@ -279,11 +315,11 @@ export default function ChatPage() {
           insert({
             buyer_id: user.id,
             manufacturer_id: manufacturerId,
-            product_id: productId,
+            product_id: conversationProductId,
             product_name: resolvedProductName,
             supplier_name: resolvedSupplierName,
             supplier_country: resolvedCountry,
-            supplier_flag: supplier.flag,
+            supplier_flag: supplierListing ? '🏪' : supplier.flag,
             supplier_avatar: supplier.avatar,
             last_message: ''
           }).
@@ -293,7 +329,17 @@ export default function ChatPage() {
           if (error) throw error;
           existing = created;
 
-          if (created) {
+          if (created && supplierListing) {
+            const inquiryText = `استفسار عن المنتج: ${resolvedProductName}${supplierListing.sku ? ` (SKU: ${supplierListing.sku})` : ''}`;
+            await supabase.from('chat_messages').insert({
+              conversation_id: created.id,
+              sender_id: user.id,
+              sender_role: 'buyer',
+              message: inquiryText,
+              is_read: false
+            });
+            await supabase.rpc('notify_supplier_product_inquiry', { p_conversation_id: created.id });
+          } else if (created) {
             await supabase.from('chat_messages').insert({
               conversation_id: created.id,
               sender_id: user.id,
@@ -617,8 +663,8 @@ export default function ChatPage() {
         if (!error && inserted) {
           setMessages((prev) => prev.map((m) => m.id === optimisticId ? inserted : m));
 
-          // Auto-reply
-          setTimeout(async () => {
+          // Auto-reply (demo only — never for real supplier inquiries)
+          if (!inquiryProduct) setTimeout(async () => {
             const reply = autoReplies[Math.floor(Math.random() * autoReplies.length)];
             await supabase.from('chat_messages').insert({
               conversation_id: conversation.id,
@@ -773,6 +819,29 @@ export default function ChatPage() {
 
       {/* Messages */}
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-4 pb-48 md:pb-36 overflow-y-auto">
+        {inquiryProduct && (
+          <div className="mb-3 rounded-2xl border border-cyan-500/40 bg-cyan-500/5 p-3 flex items-center gap-3" dir="rtl">
+            <div className="w-16 h-16 rounded-xl overflow-hidden bg-muted border border-border shrink-0">
+              <AppImage
+                src={inquiryProduct.image_url || '/assets/images/no_image.png'}
+                alt={inquiryProduct.name_ar || inquiryProduct.name}
+                width={64}
+                height={64}
+                className="object-cover w-full h-full" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold text-cyan-600">📌 استفسار عن منتج</p>
+              <p className="text-sm font-extrabold text-foreground truncate">{inquiryProduct.name_ar || inquiryProduct.name}</p>
+              <p className="text-xs text-muted-foreground" dir="ltr" style={{ textAlign: 'right' }}>
+                SKU: {inquiryProduct.sku || '—'}
+              </p>
+              <p className="text-xs font-bold text-foreground">
+                {Number(inquiryProduct.wholesale_price).toLocaleString('en-US')} {inquiryProduct.currency} / {SUPPLIER_UNIT_AR[inquiryProduct.unit] || inquiryProduct.unit}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Security Banner — Direct Hub Protection */}
         <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-3">
           <div className="w-8 h-8 rounded-full bg-green-100 border border-green-300 flex items-center justify-center shrink-0">
