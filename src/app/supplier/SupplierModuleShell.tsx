@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import SupplierTopBar from './SupplierTopBar';
 
 interface SupplierModuleShellProps {
   title: string;
@@ -9,11 +10,12 @@ interface SupplierModuleShellProps {
   children: React.ReactNode;
 }
 
-/** Sticky header for /supplier sub-pages. The back link always returns to /supplier. */
+/** Top bar + sticky sub-header for /supplier sub-pages. The back link always returns to /supplier. */
 export default function SupplierModuleShell({ title, actions, children }: SupplierModuleShellProps) {
   return (
     <div className="min-h-screen bg-slate-950" dir="rtl">
-      <div className="sticky top-14 md:top-16 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800">
+      <SupplierTopBar />
+      <div className="sticky top-14 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800">
         <div className="max-w-6xl mx-auto px-4 md:px-6 py-2 sm:py-0 sm:h-14 flex items-center gap-2 sm:gap-3 flex-wrap">
           <div className="flex items-center gap-2 shrink-0">
             <Link

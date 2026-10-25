@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import { persistActiveRole, readActiveRole } from '@/lib/roleCookies';
 import { SUPPLIER_MODULES, SUPPLIER_SECTIONS } from './supplierModules';
+import SupplierTopBar from './SupplierTopBar';
 
 interface Counts {
   inventory: number;
@@ -68,6 +69,7 @@ export default function SupplierDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 pb-16" dir="rtl">
+      <SupplierTopBar />
       <div className="max-w-6xl mx-auto px-4 md:px-6 pt-8">
         <div className="rounded-3xl bg-gradient-to-l from-cyan-900/40 via-slate-900 to-slate-900 border border-cyan-500/20 p-6 mb-8">
           <p className="text-xs text-cyan-300 font-bold mb-1">Supplier Room</p>
