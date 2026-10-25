@@ -10,7 +10,7 @@ export default function LegacySupplierDashboardRedirect() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace('/supplier');
+    router?.replace('/supplier');
   }, [router]);
 
   return (
