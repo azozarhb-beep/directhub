@@ -13,6 +13,7 @@ import { OrdersSection, PaymentsSection, SmartServicesSection, ManufacturerBanne
 
 
 
+
 // Below-the-fold sections are code-split into their own chunks so the initial
 // app/page chunk stays small and compiles/loads quickly.
 const FeaturedProducts = dynamic(() => import('@/app/components/FeaturedProducts'));
