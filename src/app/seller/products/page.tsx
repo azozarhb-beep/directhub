@@ -41,6 +41,8 @@ interface Product {
   id: string;
   name: string;
   name_ar: string;
+  short_id?: string | null;
+  slug?: string | null;
   description: string;
   category: string;
   sku: string;
@@ -787,7 +789,7 @@ export default function SellerProductManagerPage() {
                     <button
                       type="button"
                       onClick={async () => {
-                        const ok = await copyProductShareText({ id: product.id, name: product.name, name_ar: product.name_ar, sku: product.sku, currency: product.currency });
+                        const ok = await copyProductShareText({ id: product.id, name: product.name, name_ar: product.name_ar, sku: product.sku, short_id: product.short_id, slug: product.slug, currency: product.currency });
                         if (ok) { setCopiedProductId(product.id); setTimeout(() => setCopiedProductId(null), 2500); }
                       }}
                       className="px-2 py-1.5 rounded-lg hover:bg-muted text-xs font-semibold text-foreground whitespace-nowrap transition-colors"
@@ -798,7 +800,7 @@ export default function SellerProductManagerPage() {
                     {/* WhatsApp Share */}
                     <a
                       href={buildProductShareLinkNoPhone(
-                        buildPublicProductUrl(product.id),
+                        buildPublicProductUrl(product),
                         false
                       )}
                       target="_blank"

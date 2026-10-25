@@ -76,6 +76,8 @@ function findTierForQty(tiers: TierRow[], qty: number): TierRow | null {
 
 interface ProductDetail {
   id: string;
+  shortId?: string;
+  slug?: string;
   name: string;
   nameAr: string;
   images: {src: string;alt: string;}[];
@@ -530,13 +532,34 @@ export default function ProductDetailPage() {
     const fetchFromSupabase = async () => {
       try {
         const supabase = createClient();
-        const { data } = await supabase.
-        from('manufacturer_products').
-        select('*, user_profiles!manufacturer_products_manufacturer_id_fkey(full_name, company_name, country, is_verified, supplier_profiles(id, rating, review_count, response_rate, avg_response_time, tier, is_verified))').
-        or(`id.eq.${id},slug.eq.${id},sku.eq.${id}`).
-        eq('is_active', true).
-        limit(1).
-        maybeSingle();
+        const rawRef = decodeURIComponent(id || '').trim();
+        const isUuidRef = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawRef);
+        // Only allow safe characters inside the PostgREST filter (prevents filter injection / parse errors).
+        const safeRef = rawRef.replace(/[^A-Za-z0-9_-]/g, '');
+        const selectCols = '*, user_profiles!manufacturer_products_manufacturer_id_fkey(full_name, company_name, country, is_verified, supplier_profiles(id, rating, review_count, response_rate, avg_response_time, tier, is_verified))';
+
+        let data: any = null;
+        if (isUuidRef) {
+          const res = await supabase.
+          from('manufacturer_products').
+          select(selectCols).
+          eq('id', rawRef).
+          eq('is_active', true).
+          limit(1).
+          maybeSingle();
+          data = res.data;
+        } else if (safeRef) {
+          // short_id is case-sensitive; slug/sku are matched case-insensitively (e.g. /p/ya35 or /p/DH-YE-1000).
+          const lowered = safeRef.toLowerCase();
+          const bySlugOrSku = await supabase.
+          from('manufacturer_products').
+          select(selectCols).
+          or(`short_id.eq.${safeRef},slug.ilike.${lowered},sku.ilike.${safeRef}`).
+          eq('is_active', true).
+          limit(1).
+          maybeSingle();
+          data = bySlugOrSku.data;
+        }
 
         if (data) {
           const images =
@@ -645,6 +668,8 @@ export default function ProductDetailPage() {
             sellerBadge: data.seller_badge || null,
             videoUrl: data.video_url || undefined,
             productCode: data.sku || undefined,
+            shortId: data.short_id || undefined,
+            slug: data.slug || undefined,
             incoterms: Array.isArray(data.supported_incoterms) ? data.supported_incoterms.filter(Boolean) : [],
             portOfLoading: data.port_of_loading || undefined
           });
@@ -746,6 +771,8 @@ export default function ProductDetailPage() {
       name: product.name,
       name_ar: product.nameAr,
       sku: product.productCode,
+      short_id: product.shortId,
+      slug: product.slug,
       currency: product.currency
     });
     if (ok) {
