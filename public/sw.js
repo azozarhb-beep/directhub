@@ -1,4 +1,4 @@
-const CACHE_NAME = 'directhub-v6';
+const CACHE_NAME = 'directhub-v7';
 const STATIC_ASSETS = [
   '/offline.html',
   '/manifest.json',
@@ -115,13 +115,27 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Everything else: network-first, cache fallback
+  // RSC / Next data requests must never be cached: stale payloads reference
+  // chunk ids that no longer exist and trigger
+  // "__webpack_modules__[moduleId] is not a function".
+  const isRscRequest =
+    url.searchParams.has('_rsc') ||
+    event.request.headers.get('RSC') === '1' ||
+    event.request.headers.get('Next-Router-State-Tree') !== null ||
+    event.request.headers.get('Accept') === 'text/x-component';
+  if (isRscRequest) {
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
         if (response && response.status === 200) {
-          caches.open(CACHE_NAME).then((cache) =>
-            cache.put(event.request, response.clone())
-          );
+          const ct = response.headers.get('Content-Type') || '';
+          if (!ct.includes('text/html') && !ct.includes('text/x-component')) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
         }
         return response;
       })
