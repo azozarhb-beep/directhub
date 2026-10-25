@@ -1,24 +1,36 @@
 import React, { Suspense } from 'react';
+import dynamic from 'next/dynamic';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import HeroSection from '@/app/components/HeroSection';
 import ShelfSlider from '@/app/components/ShelfSlider';
 import HorizontalCategoryBar from '@/app/components/HorizontalCategoryBar';
-import FeaturedProducts from '@/app/components/FeaturedProducts';
-import CategoriesSection from '@/app/components/CategoriesSection';
-import MasterCategoriesGrid from '@/app/components/MasterCategoriesGrid';
-import WhyDirectHub from '@/app/components/WhyDirectHub';
-import TestimonialsSection from '@/app/components/TestimonialsSection';
-import RecommendationsSection from '@/app/components/RecommendationsSection';
 import WelcomeTicker from '@/app/components/WelcomeTicker';
-import {
-  OrdersSection,
-  PaymentsSection,
-  SmartServicesSection,
-  ManufacturerBanner,
-} from '@/app/components/DashboardSections';
 import Link from 'next/link';
 import { Metadata } from 'next';
+import { OrdersSection, PaymentsSection, SmartServicesSection, ManufacturerBanner } from '@/app/components/DashboardSections';
+
+
+// Below-the-fold sections are code-split into their own chunks so the initial
+// app/page chunk stays small and compiles/loads quickly.
+const FeaturedProducts = dynamic(() => import('@/app/components/FeaturedProducts'));
+const CategoriesSection = dynamic(() => import('@/app/components/CategoriesSection'));
+const MasterCategoriesGrid = dynamic(() => import('@/app/components/MasterCategoriesGrid'));
+const WhyDirectHub = dynamic(() => import('@/app/components/WhyDirectHub'));
+const TestimonialsSection = dynamic(() => import('@/app/components/TestimonialsSection'));
+const RecommendationsSection = dynamic(() => import('@/app/components/RecommendationsSection'));
+const OrdersSection = dynamic(() =>
+  import('@/app/components/DashboardSections').then((m) => m.OrdersSection)
+);
+const PaymentsSection = dynamic(() =>
+  import('@/app/components/DashboardSections').then((m) => m.PaymentsSection)
+);
+const SmartServicesSection = dynamic(() =>
+  import('@/app/components/DashboardSections').then((m) => m.SmartServicesSection)
+);
+const ManufacturerBanner = dynamic(() =>
+  import('@/app/components/DashboardSections').then((m) => m.ManufacturerBanner)
+);
 
 export const metadata: Metadata = {
   title: 'DirectHub — B2B Marketplace for Manufacturers & Buyers',
