@@ -10,7 +10,10 @@ export const ROLE_COOKIE_NAMES = {
   accountType: 'dh_account_type',
   sellerCategory: 'dh_seller_category',
   accountRole: 'dh_account_role',
+  activeRole: 'dh_active_role',
 } as const;
+
+export const ACTIVE_ROLE_STORAGE_KEY = 'activeRole';
 
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
@@ -53,4 +56,51 @@ export function clearRoleCookies(): void {
   clearCookie(ROLE_COOKIE_NAMES.accountType);
   clearCookie(ROLE_COOKIE_NAMES.sellerCategory);
   clearCookie(ROLE_COOKIE_NAMES.accountRole);
+  clearActiveRole();
+}
+
+/** Persist the active role (e.g. 'supplier') in both a cookie (for middleware) and localStorage (for client guards). */
+export function persistActiveRole(activeRole: string | null | undefined): void {
+  if (typeof document === 'undefined') return;
+  if (!activeRole) {
+    clearActiveRole();
+    return;
+  }
+  const value = activeRole.trim();
+  document.cookie = `${ROLE_COOKIE_NAMES.activeRole}=${encodeURIComponent(value)}; Path=/; Max-Age=${60 * 60 * 24 * 30}; SameSite=Lax`;
+  try {
+    window.localStorage.setItem(ACTIVE_ROLE_STORAGE_KEY, value);
+  } catch {
+    // storage unavailable — cookie still holds the role
+  }
+}
+
+/** Read the persisted active role (localStorage first, then cookie). */
+export function readActiveRole(): string | null {
+  if (typeof document === 'undefined') return null;
+  try {
+    const stored = window.localStorage.getItem(ACTIVE_ROLE_STORAGE_KEY);
+    if (stored) return stored;
+  } catch {
+    // ignore
+  }
+  const match = document.cookie
+    .split('; ')
+    .find((c) => c.startsWith(`${ROLE_COOKIE_NAMES.activeRole}=`));
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match.split('=')[1] || '') || null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearActiveRole(): void {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${ROLE_COOKIE_NAMES.activeRole}=; Path=/; Max-Age=0; SameSite=Lax`;
+  try {
+    window.localStorage.removeItem(ACTIVE_ROLE_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
 }

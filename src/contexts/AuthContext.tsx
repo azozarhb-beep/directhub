@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import LoginModal from '@/components/LoginModal';
-import { clearRoleCookies, syncRoleCookies } from '@/lib/roleCookies';
+import { clearRoleCookies, syncRoleCookies, persistActiveRole, clearActiveRole } from '@/lib/roleCookies';
 
 const AuthContext = createContext<any>({});
 
@@ -79,6 +79,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       seller_category: sellerCategory,
       account_role: accountRole,
     });
+
+    // Persist the active role so reloads keep suppliers inside /supplier.
+    const isSupplier =
+      (role || '').toLowerCase() !== 'admin' &&
+      ['commercial_supplier', 'local_supplier'].some(
+        (v) => (accountRole || '').toLowerCase() === v || (sellerCategory || '').toLowerCase() === v
+      );
+    if (isSupplier) persistActiveRole('supplier');
+    else clearActiveRole();
   }, [supabase]);
 
   useEffect(() => {

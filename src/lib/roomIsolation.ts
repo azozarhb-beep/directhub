@@ -20,13 +20,15 @@ export interface RoleProfileHints {
   seller_category?: string | null;
   /** Auth user_metadata / app_metadata role fallback */
   metadataRole?: string | null;
+  /** Persisted active role (cookie `dh_active_role` / localStorage `activeRole`) */
+  activeRole?: string | null;
 }
 
 /** Home path for each platform role after login / wrong-room redirect. */
 export const ROLE_HOME_PATH: Record<Exclude<PlatformRole, 'unknown'>, string> = {
   buyer: '/buyer-dashboard',
   manufacturer: '/manufacturer/dashboard',
-  commercial_supplier: '/supplier/local-dashboard',
+  commercial_supplier: '/supplier',
   agent: '/agent/dashboard',
   logistics: '/logistics/dashboard',
   admin: '/admin/control-room',
@@ -58,7 +60,7 @@ export const EXCLUSIVE_ROOM_PREFIXES: { prefix: string; roles: PlatformRole[] }[
   { prefix: '/manufacturer/documents', roles: ['manufacturer'] },
   { prefix: '/manufacturer/messages', roles: ['manufacturer'] },
   // Strict isolation: supplier dashboard is ONLY for commercial_supplier
-  { prefix: '/supplier/local-dashboard', roles: ['commercial_supplier'] },
+  { prefix: '/supplier', roles: ['commercial_supplier'] },
   // Strict isolation: factory dashboard is ONLY for manufacturer (local/international factory)
   { prefix: '/factory/local-dashboard', roles: ['manufacturer'] },
   { prefix: '/agent/dashboard', roles: ['agent'] },
@@ -114,6 +116,31 @@ export function isAlwaysOpenPath(pathname: string): boolean {
 }
 
 export function resolvePlatformRole(hints: RoleProfileHints): PlatformRole {
+  // A persisted active role of "supplier" must survive reloads: suppliers are
+  // stored with role='manufacturer', which would otherwise win below and send
+  // them to the manufacturer room.
+  const active = (hints.activeRole || '').toLowerCase().trim();
+  const roleLc = (hints.role || '').toLowerCase().trim();
+  const typeLc = (hints.account_type || '').toLowerCase().trim();
+  if (
+    roleLc !== 'admin' &&
+    typeLc !== 'admin' &&
+    (active === 'supplier' || active === 'commercial_supplier' || active === 'local_supplier')
+  ) {
+    return 'commercial_supplier';
+  }
+  const metaLc = (hints.metadataRole || '').toLowerCase().trim();
+  const sellerLc = (hints.seller_category || '').toLowerCase().trim();
+  if (
+    roleLc !== 'admin' &&
+    (metaLc === 'commercial_supplier' ||
+      metaLc === 'local_supplier' ||
+      sellerLc === 'commercial_supplier' ||
+      sellerLc === 'local_supplier')
+  ) {
+    return 'commercial_supplier';
+  }
+
   const candidates = [
     hints.role,
     hints.metadataRole,
@@ -541,7 +568,7 @@ export const CONTROL_ROOMS: RoomMetadata[] = [
     market: 'السوق اليمني المحلي — Yemen Domestic Market',
     color: 'emerald',
     icon: 'Store',
-    path: '/supplier/local-dashboard',
+    path: '/supplier',
   },
   {
     id: 'local-factory-control-room',
@@ -584,3 +611,5 @@ export const CONTROL_ROOMS: RoomMetadata[] = [
 export function getRoomMetadata(path: string): RoomMetadata | null {
   return CONTROL_ROOMS.find(r => path.startsWith(r.path)) || null;
 }
+
+export const SUPPLIER_ROOM_PATH = '/supplier';

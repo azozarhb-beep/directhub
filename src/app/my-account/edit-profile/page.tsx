@@ -22,7 +22,7 @@ function getDashboardCard(accountRole: string): DashboardCardConfig | null {
     return {
       title: 'غرفة تحكم المورد التجاري',
       description: 'إدارة منتجاتك ومخزونك وطلبات الجملة والتجزئة',
-      href: '/supplier/local-dashboard',
+      href: '/supplier',
       icon: 'BuildingStorefrontIcon',
     };
   }

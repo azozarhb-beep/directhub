@@ -35,7 +35,7 @@ const SANDBOX_ACCOUNTS: Record<string, SandboxAccount> = {
   supplier: {
     email: 'sandbox.supplier@directhub.net',
     password: 'SandboxSupplier2026!',
-    redirect: '/supplier/local-dashboard',
+    redirect: '/supplier',
     full_name: 'Khalid Al-Yamani — Sandbox Supplier',
     role: 'manufacturer',
     company_name: 'Al-Yamani General Trading',
@@ -107,7 +107,7 @@ const SANDBOX_ACCOUNTS: Record<string, SandboxAccount> = {
   commercial_supplier: {
     email: 'sandbox.commercialsupplier@directhub.net',
     password: 'SandboxCommercialSupplier2026!',
-    redirect: '/supplier/local-dashboard',
+    redirect: '/supplier',
     full_name: 'Layla Al-Harbi — Sandbox Commercial Supplier',
     role: 'manufacturer',
     company_name: 'Al-Harbi Commercial Supply',

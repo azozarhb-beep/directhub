@@ -177,7 +177,7 @@ const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnTyp
   if (accountRole === 'commercial_supplier') {
     title = 'غرفة تحكم المورّد التجاري';
     description = 'إدارة منتجاتك ومخزونك وطلبات الجملة والتجزئة';
-    destination = '/supplier/local-dashboard';
+    destination = '/supplier';
   } else if (accountRole === 'local_manufacturer') {
     title = 'غرفة تحكم المصنع المحلي';
     description = 'إدارة خطوط الإنتاج والقدرة التشغيلية والمنتجات';

@@ -108,6 +108,7 @@ const PROTECTED_PAGE_ROUTES = [
   '/factory/upload',
   '/factory/products',
   '/factory/local-dashboard',
+  '/supplier',
   '/supplier/local-dashboard',
   '/agent/dashboard',
   '/agent/upload-license',
@@ -266,8 +267,10 @@ export async function middleware(request: NextRequest) {
       decodeCookie(request.cookies.get('dh_account_role')?.value) ||
       decodeCookie(request.cookies.get('account_role')?.value) ||
       null;
+    const cookieActiveRole = decodeCookie(request.cookies.get('dh_active_role')?.value) || null;
 
     const platformRole = resolvePlatformRole({
+      activeRole: cookieActiveRole,
       role:
         (meta.role as string | undefined) ||
         (app.role as string | undefined) ||
