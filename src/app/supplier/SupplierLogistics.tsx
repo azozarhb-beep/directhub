@@ -2,12 +2,30 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { uploadLogisticsFile, LOGISTICS_FILE_ACCEPT } from '@/lib/logisticsUpload';
 
 interface SupplierLogisticsProps {
   userId: string;
 }
 
 type DispatchType = 'heavy_commercial' | 'transport_office' | 'self_pickup';
+type DispatchMode = 'platform' | 'direct';
+type DeliveryMethod = 'carrier_office' | 'supplier_fleet' | 'warehouse_pickup';
+type FreightPayment = 'freight_collect' | 'prepaid_by_supplier';
+type HandoverMode = 'pin' | 'pod';
+
+const DELIVERY_METHOD_LABEL: Record<DeliveryMethod, string> = {
+  carrier_office: 'مكتب / شركة نقل',
+  supplier_fleet: 'سيارات توزيع المورد',
+  warehouse_pickup: 'استلام ذاتي من المستودع (EXW)',
+};
+
+const CARRIER_OPTIONS = ['راحة', 'البراق', 'النجم', 'الرويشان', 'أخرى'];
+
+const FREIGHT_LABEL: Record<FreightPayment, string> = {
+  freight_collect: 'مستحقة على المشتري عند الاستلام',
+  prepaid_by_supplier: 'مدفوعة مسبقاً من المورد',
+};
 
 interface DispatchMeta {
   type?: DispatchType;
@@ -15,6 +33,33 @@ interface DispatchMeta {
   receipt_number?: string;
   units?: number;
   unit_label?: string;
+  delivery_method?: DeliveryMethod;
+  freight_payment?: FreightPayment;
+  waybill_image_url?: string;
+  handover_mode?: HandoverMode;
+  recipient_name?: string;
+  recipient_phone?: string;
+  destination_province?: string;
+  destination_city?: string;
+}
+
+interface DirectShipment {
+  id: string;
+  recipient_name: string;
+  recipient_phone: string;
+  destination_province: string;
+  destination_city: string | null;
+  delivery_method: DeliveryMethod;
+  carrier_name: string | null;
+  waybill_number: string | null;
+  freight_payment: FreightPayment | null;
+  waybill_image_url: string | null;
+  handover_mode: HandoverMode;
+  units: number | null;
+  unit_label: string | null;
+  estimated_delivery: string | null;
+  status: string;
+  created_at: string;
 }
 
 interface ShipmentOrder {
@@ -42,7 +87,8 @@ interface BuyerInfo {
 
 const CARD = 'bg-slate-900 border border-slate-800 rounded-2xl';
 const INPUT =
-  'w-full h-11 px-3 rounded-xl border border-slate-700 bg-slate-950 text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-500';
+  'w-full h-11 px-3 rounded-xl border border-slate-700 bg-slate-950 text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:opacity-60';
+const LABEL = 'block text-xs text-slate-400 mb-1';
 
 const STATUS_LABEL: Record<string, string> = {
   pending: 'قيد المعالجة',
@@ -61,15 +107,9 @@ const STATUS_UPDATE_OPTIONS: { value: string; label: string }[] = [
 ];
 
 const DISPATCH_LABEL: Record<DispatchType, string> = {
-  heavy_commercial: 'شحن تجاري ثقيل',
-  transport_office: 'مكاتب وشركات النقل الداخلي',
-  self_pickup: 'استلام مباشر من المستودع',
-};
-
-const DISPATCH_HINT: Record<DispatchType, string> = {
-  heavy_commercial: 'دينات / نقل بضائع بين المحافظات',
-  transport_office: 'مع اسم مكتب النقل ورقم السند',
-  self_pickup: 'تحقق من رمز التسليم (PIN)',
+  heavy_commercial: 'سيارات توزيع المورد',
+  transport_office: 'مكتب / شركة نقل',
+  self_pickup: 'استلام ذاتي من المستودع',
 };
 
 const PROVINCES = ['صنعاء', 'عدن', 'تعز', 'حضرموت', 'مأرب', 'الحديدة', 'إب', 'ذمار', 'حجة', 'صعدة', 'لحج', 'أبين', 'شبوة', 'المهرة'];
@@ -108,17 +148,26 @@ function escapeHtml(s: string): string {
 export default function SupplierLogistics({ userId }: SupplierLogisticsProps) {
   const supabase = useMemo(() => createClient(), []);
   const [orders, setOrders] = useState<ShipmentOrder[]>([]);
+  const [directShipments, setDirectShipments] = useState<DirectShipment[]>([]);
   const [buyers, setBuyers] = useState<Record<string, BuyerInfo>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState<ShipmentOrder | null>(null);
-  const [showPicker, setShowPicker] = useState(false);
-  const [dispatchType, setDispatchType] = useState<DispatchType>('heavy_commercial');
-  const [carrier, setCarrier] = useState('');
-  const [tracking, setTracking] = useState('');
+  const [showDispatch, setShowDispatch] = useState(false);
+  const [mode, setMode] = useState<DispatchMode>('platform');
+  const [recipientName, setRecipientName] = useState('');
+  const [recipientPhone, setRecipientPhone] = useState('');
+  const [destProvince, setDestProvince] = useState('');
+  const [destCity, setDestCity] = useState('');
+  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('carrier_office');
+  const [carrierChoice, setCarrierChoice] = useState('');
+  const [carrierOther, setCarrierOther] = useState('');
+  const [waybill, setWaybill] = useState('');
+  const [freight, setFreight] = useState<FreightPayment>('freight_collect');
+  const [waybillUrl, setWaybillUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [handoverMode, setHandoverMode] = useState<HandoverMode>('pin');
   const [eta, setEta] = useState('');
-  const [office, setOffice] = useState('');
-  const [receipt, setReceipt] = useState('');
   const [units, setUnits] = useState('');
   const [unitLabel, setUnitLabel] = useState('كرتون');
   const [pinInput, setPinInput] = useState('');
@@ -145,6 +194,14 @@ export default function SupplierLogistics({ userId }: SupplierLogisticsProps) {
     }
     const rows = (data as ShipmentOrder[]) ?? [];
     setOrders(rows);
+
+    const { data: directRows } = await supabase
+      .from('supplier_direct_shipments')
+      .select('id, recipient_name, recipient_phone, destination_province, destination_city, delivery_method, carrier_name, waybill_number, freight_payment, waybill_image_url, handover_mode, units, unit_label, estimated_delivery, status, created_at')
+      .eq('supplier_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(100);
+    setDirectShipments((directRows as DirectShipment[] | null) ?? []);
 
     const ids = Array.from(new Set(rows.map((r) => r.user_id).filter(Boolean))) as string[];
     if (ids.length) {
@@ -177,82 +234,220 @@ export default function SupplierLogistics({ userId }: SupplierLogisticsProps) {
     [buyers],
   );
 
-  const openEdit = (o: ShipmentOrder) => {
+  const resetForm = () => {
+    setRecipientName('');
+    setRecipientPhone('');
+    setDestProvince('');
+    setDestCity('');
+    setDeliveryMethod('carrier_office');
+    setCarrierChoice('');
+    setCarrierOther('');
+    setWaybill('');
+    setFreight('freight_collect');
+    setWaybillUrl('');
+    setHandoverMode('pin');
+    setEta('');
+    setUnits('');
+    setUnitLabel('كرتون');
+    setPinInput('');
+    setFormError('');
+  };
+
+  const fillFromOrder = (o: ShipmentOrder) => {
     const meta = getMeta(o.shipping_address);
+    const b = buyerOf(o);
+    const a = o.shipping_address || {};
     const u = unitsOf(o);
-    setShowPicker(false);
-    setEditing(o);
-    setDispatchType(meta.type || 'heavy_commercial');
-    setCarrier(o.seller_carrier_name ?? '');
-    setTracking(o.seller_tracking_number ?? o.tracking_code ?? '');
+    setRecipientName(meta.recipient_name || (b.name === '—' ? '' : b.name));
+    setRecipientPhone(meta.recipient_phone || (b.phone === '—' ? '' : b.phone));
+    setDestProvince(meta.destination_province || String(a.governorate || a.province || ''));
+    setDestCity(meta.destination_city || String(a.city || ''));
+    setDeliveryMethod(meta.delivery_method || (meta.type === 'self_pickup' ? 'warehouse_pickup' : 'carrier_office'));
+    const savedCarrier = meta.transport_office || '';
+    if (savedCarrier && CARRIER_OPTIONS.includes(savedCarrier)) {
+      setCarrierChoice(savedCarrier);
+      setCarrierOther('');
+    } else if (savedCarrier) {
+      setCarrierChoice('أخرى');
+      setCarrierOther(savedCarrier);
+    } else {
+      setCarrierChoice('');
+      setCarrierOther('');
+    }
+    setWaybill(meta.receipt_number || '');
+    setFreight(meta.freight_payment || 'freight_collect');
+    setWaybillUrl(meta.waybill_image_url || '');
+    setHandoverMode(meta.handover_mode || 'pin');
     setEta(o.estimated_delivery_date ?? '');
-    setOffice(meta.transport_office ?? '');
-    setReceipt(meta.receipt_number ?? '');
     setUnits(u.count > 0 ? String(u.count) : '');
     setUnitLabel(meta.unit_label || (u.label === 'وحدة' ? 'كرتون' : u.label));
     setPinInput('');
     setFormError('');
   };
 
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editing) return;
-    setFormError('');
+  const openDispatch = () => {
+    resetForm();
+    setEditing(null);
+    setMode('platform');
+    setShowDispatch(true);
+  };
 
-    if (dispatchType === 'transport_office' && (!office.trim() || !receipt.trim())) {
-      setFormError('اسم مكتب النقل ورقم السند مطلوبان');
+  const openEdit = (o: ShipmentOrder) => {
+    resetForm();
+    fillFromOrder(o);
+    setEditing(o);
+    setMode('platform');
+    setShowDispatch(true);
+  };
+
+  const closeDispatch = () => {
+    if (saving) return;
+    setShowDispatch(false);
+    setEditing(null);
+  };
+
+  const processingOrders = useMemo(() => orders.filter((o) => o.status === 'processing'), [orders]);
+
+  const switchMode = (m: DispatchMode) => {
+    if (m === mode) return;
+    resetForm();
+    setEditing(null);
+    setMode(m);
+  };
+
+  const pickOrder = (id: string) => {
+    const o = processingOrders.find((x) => x.id === id) || orders.find((x) => x.id === id);
+    if (!o) {
+      resetForm();
+      setEditing(null);
       return;
     }
-    if (dispatchType === 'self_pickup') {
-      if (!editing.delivery_pin) {
-        setFormError('لا يوجد رمز تسليم (PIN) لهذا الطلب بعد');
-        return;
-      }
-      if (pinInput.trim() !== String(editing.delivery_pin)) {
-        setFormError('رمز التسليم غير صحيح');
-        return;
-      }
-    } else if (!carrier.trim() || !tracking.trim()) {
-      setFormError('اسم الناقل ورقم التتبع مطلوبان');
+    fillFromOrder(o);
+    setEditing(o);
+  };
+
+  const uploadWaybill = async (file: File | undefined) => {
+    if (!file) return;
+    setFormError('');
+    setUploading(true);
+    try {
+      const res = await uploadLogisticsFile(file, userId, 'supplier-waybills');
+      setWaybillUrl(res.publicUrl);
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : 'فشل رفع الملف');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const resolvedCarrier = carrierChoice === 'أخرى' ? carrierOther.trim() : carrierChoice;
+  const isCarrier = deliveryMethod === 'carrier_office';
+  const isPickup = deliveryMethod === 'warehouse_pickup';
+  const isPlatform = mode === 'platform';
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
+
+    if (isPlatform && !editing) {
+      setFormError('اختر الطلب المراد شحنه');
+      return;
+    }
+    if (!recipientName.trim() || !recipientPhone.trim() || !destProvince.trim()) {
+      setFormError('اسم المستلم ورقم الهاتف والمحافظة مطلوبة');
+      return;
+    }
+    if (isCarrier && (!resolvedCarrier || !waybill.trim())) {
+      setFormError('اسم مكتب / شركة النقل ورقم بوليصة الشحن مطلوبان');
       return;
     }
 
     const unitsNum = Number(units);
-    const meta: DispatchMeta = {
-      type: dispatchType,
-      transport_office: dispatchType === 'transport_office' ? office.trim() : undefined,
-      receipt_number: dispatchType === 'transport_office' ? receipt.trim() : undefined,
-      units: Number.isFinite(unitsNum) && unitsNum > 0 ? unitsNum : undefined,
-      unit_label: unitLabel.trim() || 'كرتون',
-    };
-    const nextAddress = { ...(editing.shipping_address || {}), dispatch: meta };
+    const unitsVal = Number.isFinite(unitsNum) && unitsNum > 0 ? unitsNum : null;
 
-    const isPickup = dispatchType === 'self_pickup';
-    const carrierName = isPickup ? 'استلام مباشر من المستودع' : dispatchType === 'transport_office' ? office.trim() : carrier.trim();
-    const trackNo = isPickup ? `PICKUP-${editing.order_number || editing.id.slice(0, 8)}` : dispatchType === 'transport_office' ? receipt.trim() : tracking.trim();
+    if (isPlatform && editing) {
+      if (handoverMode === 'pin' && isPickup) {
+        if (!editing.delivery_pin) {
+          setFormError('لا يوجد رمز تسليم (PIN) لهذا الطلب بعد');
+          return;
+        }
+        if (pinInput.trim() !== String(editing.delivery_pin)) {
+          setFormError('رمز التسليم غير صحيح');
+          return;
+        }
+      }
 
-    setSaving(true);
-    const payload: Record<string, any> = {
-      fulfillment_type: 'seller_fulfilled',
-      seller_carrier_name: carrierName,
-      seller_tracking_number: tracking.trim() && !isPickup && dispatchType !== 'transport_office' ? tracking.trim() : trackNo,
-      tracking_code: trackNo,
-      estimated_delivery_date: eta || null,
-      shipping_address: nextAddress,
-      seller_shipping_submitted_at: new Date().toISOString(),
-      seller_shipping_submitted_by: userId,
-    };
-    if (isPickup) {
-      payload.status = 'delivered';
-      payload.delivery_pin_verified_at = new Date().toISOString();
-      payload.delivery_pin_verified_by = userId;
+      const dispatchType: DispatchType = isPickup ? 'self_pickup' : isCarrier ? 'transport_office' : 'heavy_commercial';
+      const meta: DispatchMeta = {
+        type: dispatchType,
+        transport_office: isCarrier ? resolvedCarrier : undefined,
+        receipt_number: isCarrier ? waybill.trim() : undefined,
+        units: unitsVal ?? undefined,
+        unit_label: unitLabel.trim() || 'كرتون',
+        delivery_method: deliveryMethod,
+        freight_payment: isCarrier ? freight : undefined,
+        waybill_image_url: isCarrier && waybillUrl ? waybillUrl : undefined,
+        handover_mode: handoverMode,
+        recipient_name: recipientName.trim(),
+        recipient_phone: recipientPhone.trim(),
+        destination_province: destProvince.trim(),
+        destination_city: destCity.trim() || undefined,
+      };
+      const nextAddress = { ...(editing.shipping_address || {}), dispatch: meta };
+      const carrierName = isPickup ? 'استلام مباشر من المستودع' : isCarrier ? resolvedCarrier : 'سيارات توزيع المورد';
+      const ref = editing.order_number || editing.id.slice(0, 8);
+      const trackNo = isPickup ? `PICKUP-${ref}` : isCarrier ? waybill.trim() : `FLEET-${ref}`;
+
+      setSaving(true);
+      const payload: Record<string, any> = {
+        fulfillment_type: 'seller_fulfilled',
+        seller_carrier_name: carrierName,
+        seller_tracking_number: trackNo,
+        tracking_code: trackNo,
+        estimated_delivery_date: eta || null,
+        shipping_address: nextAddress,
+        seller_shipping_submitted_at: new Date().toISOString(),
+        seller_shipping_submitted_by: userId,
+      };
+      if (isPickup && handoverMode === 'pin') {
+        payload.status = 'delivered';
+        payload.delivery_pin_verified_at = new Date().toISOString();
+        payload.delivery_pin_verified_by = userId;
+      }
+      const { error: err } = await supabase.from('orders').update(payload).eq('id', editing.id).eq('factory_user_id', userId);
+      setSaving(false);
+      if (err) {
+        setFormError(err.message);
+        return;
+      }
+    } else {
+      setSaving(true);
+      const { error: err } = await supabase.from('supplier_direct_shipments').insert({
+        supplier_id: userId,
+        recipient_name: recipientName.trim(),
+        recipient_phone: recipientPhone.trim(),
+        destination_province: destProvince.trim(),
+        destination_city: destCity.trim() || null,
+        delivery_method: deliveryMethod,
+        carrier_name: isCarrier ? resolvedCarrier : null,
+        waybill_number: isCarrier ? waybill.trim() : null,
+        freight_payment: isCarrier ? freight : null,
+        waybill_image_url: isCarrier && waybillUrl ? waybillUrl : null,
+        handover_mode: handoverMode,
+        delivery_pin: handoverMode === 'pin' && pinInput.trim() ? pinInput.trim() : null,
+        units: unitsVal,
+        unit_label: unitLabel.trim() || 'كرتون',
+        estimated_delivery: eta || null,
+        status: isPickup ? 'delivered' : 'shipped',
+      });
+      setSaving(false);
+      if (err) {
+        setFormError(err.message);
+        return;
+      }
     }
-    const { error: err } = await supabase.from('orders').update(payload).eq('id', editing.id).eq('factory_user_id', userId);
-    setSaving(false);
-    if (err) {
-      setFormError(err.message);
-      return;
-    }
+
+    setShowDispatch(false);
     setEditing(null);
     await load();
   };
@@ -286,23 +481,36 @@ export default function SupplierLogistics({ userId }: SupplierLogisticsProps) {
     return true;
   });
 
+  const visibleDirect = directShipments.filter((d) => {
+    if (filter === 'pending') return false;
+    if (filter === 'shipped' && d.status !== 'shipped') return false;
+    if (filter === 'delivered' && d.status !== 'delivered') return false;
+    if (province !== 'all' && !d.destination_province.includes(province)) return false;
+    if (q) {
+      const hay = [d.recipient_name, d.recipient_phone, d.waybill_number, d.carrier_name].filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
   const counts = {
     pending: orders.filter((o) => ['pending', 'confirmed', 'processing'].includes(o.status)).length,
-    shipped: orders.filter((o) => o.status === 'shipped').length,
-    delivered: orders.filter((o) => o.status === 'delivered' || o.status === 'completed').length,
+    shipped: orders.filter((o) => o.status === 'shipped').length + directShipments.filter((d) => d.status === 'shipped').length,
+    delivered:
+      orders.filter((o) => o.status === 'delivered' || o.status === 'completed').length +
+      directShipments.filter((d) => d.status === 'delivered').length,
   };
 
   const printManifest = () => {
     const rows = visible.filter((o) => o.status !== 'cancelled');
     const today = new Date().toISOString().slice(0, 10);
-    const body = rows
-      .map((o, i) => {
+    const orderRows = rows
+      .map((o) => {
         const b = buyerOf(o);
         const u = unitsOf(o);
         const meta = getMeta(o.shipping_address);
         const track = o.seller_tracking_number || o.tracking_code || '—';
         return `<tr>
-          <td>${i + 1}</td>
           <td>${escapeHtml(o.order_number || o.id.slice(0, 8))}</td>
           <td>${escapeHtml(b.name)}<br/><span dir="ltr">${escapeHtml(b.phone)}</span></td>
           <td>${escapeHtml(addressText(o.shipping_address))}</td>
@@ -313,6 +521,20 @@ export default function SupplierLogistics({ userId }: SupplierLogisticsProps) {
         </tr>`;
       })
       .join('');
+    const directRows = visibleDirect
+      .map(
+        (d) => `<tr>
+          <td>مباشرة</td>
+          <td>${escapeHtml(d.recipient_name)}<br/><span dir="ltr">${escapeHtml(d.recipient_phone)}</span></td>
+          <td>${escapeHtml([d.destination_city, d.destination_province].filter(Boolean).join('، '))}</td>
+          <td>${escapeHtml(d.carrier_name || DELIVERY_METHOD_LABEL[d.delivery_method])}</td>
+          <td dir="ltr">${escapeHtml(d.waybill_number || '—')}</td>
+          <td>${d.units ?? '—'} ${escapeHtml(d.unit_label || '')}</td>
+          <td style="width:90px"></td>
+        </tr>`,
+      )
+      .join('');
+    const total = rows.length + visibleDirect.length;
     const w = window.open('', '_blank', 'width=1000,height=700');
     if (!w) {
       setError('تعذّر فتح نافذة الطباعة، يرجى السماح بالنوافذ المنبثقة');
@@ -329,24 +551,25 @@ export default function SupplierLogistics({ userId }: SupplierLogisticsProps) {
         .sign div{width:30%;border-top:1px solid #333;padding-top:6px;text-align:center}
       </style></head><body>
       <h1>كشف تسليم بضائع (Manifest / POD)</h1>
-      <p>التاريخ: ${today} · عدد الشحنات: ${rows.length}</p>
+      <p>التاريخ: ${today} · عدد الشحنات: ${total}</p>
       <table><thead><tr>
-        <th>#</th><th>رقم الطلب</th><th>المشتري</th><th>الوجهة</th><th>الناقل / النمط</th><th>رقم التتبع / السند</th><th>الكمية</th><th>توقيع المستلم</th>
-      </tr></thead><tbody>${body}</tbody></table>
+        <th>رقم الطلب</th><th>المستلم</th><th>الوجهة</th><th>الناقل / النمط</th><th>رقم التتبع / السند</th><th>الكمية</th><th>توقيع المستلم</th>
+      </tr></thead><tbody>${orderRows}${directRows}</tbody></table>
       <div class="sign"><div>أمين المستودع</div><div>الناقل / المستلم</div><div>ختم المورد</div></div>
       <script>window.onload=function(){window.print()}</script>
       </body></html>`);
     w.document.close();
   };
 
-  const pickable = orders.filter((o) => o.status !== 'cancelled' && o.status !== 'delivered' && o.status !== 'completed');
+  const selectedOrderId = editing?.id ?? '';
+  const nothingToShow = visible.length === 0 && visibleDirect.length === 0;
 
   return (
     <div className="space-y-4" dir="rtl">
       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
         <button
           type="button"
-          onClick={() => setShowPicker(true)}
+          onClick={openDispatch}
           className="h-11 px-5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-black shadow-lg shadow-cyan-900/30"
         >
           + تسجيل شحنة / تسليم للناقل
@@ -354,7 +577,7 @@ export default function SupplierLogistics({ userId }: SupplierLogisticsProps) {
         <button
           type="button"
           onClick={printManifest}
-          disabled={visible.length === 0}
+          disabled={visible.length === 0 && visibleDirect.length === 0}
           className="h-11 px-5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 border border-slate-700 text-slate-100 text-sm font-bold"
         >
           🖨️ طباعة كشف تسليم (Manifest / POD)
@@ -402,7 +625,7 @@ export default function SupplierLogistics({ userId }: SupplierLogisticsProps) {
         <div className="flex justify-center py-12">
           <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : visible.length === 0 ? (
+      ) : nothingToShow ? (
         <div className={`${CARD} p-10 text-center text-sm text-slate-400`}>لا توجد شحنات مطابقة</div>
       ) : (
         <div className="space-y-3">
@@ -442,10 +665,17 @@ export default function SupplierLogistics({ userId }: SupplierLogisticsProps) {
                   <p className="text-slate-400">
                     بوليصة / تتبع: {track ? <span dir="ltr" className="text-cyan-300 font-mono">{track}</span> : <span className="text-amber-300">لم تُسجَّل بعد</span>}
                   </p>
-                  {meta.type === 'transport_office' && (
+                  {meta.freight_payment && (
                     <p className="text-slate-400 sm:col-span-2">
-                      مكتب النقل: <span className="text-slate-100">{meta.transport_office || '—'}</span> · رقم السند:{' '}
-                      <span dir="ltr" className="text-slate-100 font-mono">{meta.receipt_number || '—'}</span>
+                      رسوم الشحن: <span className="text-slate-100">{FREIGHT_LABEL[meta.freight_payment]}</span>
+                    </p>
+                  )}
+                  {meta.waybill_image_url && (
+                    <p className="text-slate-400 sm:col-span-2">
+                      سند الشحن:{' '}
+                      <a href={meta.waybill_image_url} target="_blank" rel="noopener noreferrer" className="text-cyan-300 underline">
+                        عرض الملف
+                      </a>
                     </p>
                   )}
                   {o.estimated_delivery_date && (
@@ -482,139 +712,320 @@ export default function SupplierLogistics({ userId }: SupplierLogisticsProps) {
               </div>
             );
           })}
+
+          {visibleDirect.map((d) => (
+            <div key={d.id} className={`${CARD} p-4 space-y-3`}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30">شحنة مباشرة</span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-200">{STATUS_LABEL[d.status] || d.status}</span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                  {DELIVERY_METHOD_LABEL[d.delivery_method]}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                <p className="text-slate-400">
+                  المستلم: <span className="text-slate-100 font-bold">{d.recipient_name}</span>
+                </p>
+                <p className="text-slate-400">
+                  الهاتف: <span dir="ltr" className="text-slate-100 font-mono">{d.recipient_phone}</span>
+                </p>
+                <p className="text-slate-400">
+                  الوجهة: <span className="text-slate-100">{[d.destination_city, d.destination_province].filter(Boolean).join('، ')}</span>
+                </p>
+                <p className="text-slate-400">
+                  الكمية التجارية: <span className="text-slate-100 font-bold">{d.units ? `${d.units} ${d.unit_label || ''}` : '—'}</span>
+                </p>
+                {d.carrier_name && (
+                  <p className="text-slate-400">
+                    الناقل: <span className="text-slate-100">{d.carrier_name}</span>
+                  </p>
+                )}
+                {d.waybill_number && (
+                  <p className="text-slate-400">
+                    رقم البوليصة: <span dir="ltr" className="text-cyan-300 font-mono">{d.waybill_number}</span>
+                  </p>
+                )}
+                {d.freight_payment && (
+                  <p className="text-slate-400 sm:col-span-2">
+                    رسوم الشحن: <span className="text-slate-100">{FREIGHT_LABEL[d.freight_payment]}</span>
+                  </p>
+                )}
+                {d.waybill_image_url && (
+                  <p className="text-slate-400 sm:col-span-2">
+                    سند الشحن:{' '}
+                    <a href={d.waybill_image_url} target="_blank" rel="noopener noreferrer" className="text-cyan-300 underline">
+                      عرض الملف
+                    </a>
+                  </p>
+                )}
+                {d.estimated_delivery && (
+                  <p className="text-slate-400 sm:col-span-2">
+                    التسليم المتوقع: <span className="text-slate-100">{d.estimated_delivery}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {showPicker && (
-        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowPicker(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 space-y-3 max-h-[80vh] overflow-y-auto">
-            <h4 className="text-base font-bold text-white">اختر الطلب المراد شحنه</h4>
-            {pickable.length === 0 ? (
-              <p className="text-sm text-slate-400 py-6 text-center">لا توجد طلبات جاهزة للشحن</p>
-            ) : (
-              <ul className="space-y-2">
-                {pickable.map((o) => (
-                  <li key={o.id}>
-                    <button
-                      type="button"
-                      onClick={() => openEdit(o)}
-                      className="w-full text-right p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500/50"
-                    >
-                      <span className="block font-mono text-xs text-slate-200">#{o.order_number || o.id.slice(0, 8)}</span>
-                      <span className="block text-[11px] text-slate-400">
-                        {buyerOf(o).name} · {addressText(o.shipping_address)}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <button type="button" onClick={() => setShowPicker(false)} className="w-full h-10 rounded-xl bg-slate-800 text-slate-300 text-sm border border-slate-700">
-              إغلاق
-            </button>
-          </div>
-        </div>
-      )}
-
-      {editing && (
-        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" onClick={() => !saving && setEditing(null)}>
+      {showDispatch && (
+        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" onClick={closeDispatch}>
           <form
             onSubmit={save}
             onClick={(e) => e.stopPropagation()}
-            className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto"
+            className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-5 space-y-4 max-h-[90vh] overflow-y-auto"
           >
-            <h4 className="text-base font-bold text-white">بيانات الشحن — {editing.order_number || editing.id.slice(0, 8)}</h4>
+            <h4 className="text-base font-bold text-white">تسجيل شحنة / تسليم للناقل</h4>
 
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">نمط الشحن والتسليم *</label>
-              <div className="space-y-2">
-                {(Object.keys(DISPATCH_LABEL) as DispatchType[]).map((t) => (
-                  <label
-                    key={t}
-                    className={`flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer ${
-                      dispatchType === t ? 'border-cyan-500 bg-cyan-500/10' : 'border-slate-700 bg-slate-950'
-                    }`}
+            <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-950 border border-slate-800">
+              {([
+                ['platform', 'شحن طلب من المنصة'],
+                ['direct', 'تسجيل شحنة مباشرة / مستقلة'],
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => switchMode(key)}
+                  className={`h-10 rounded-lg text-xs sm:text-sm font-bold transition-colors ${
+                    mode === key ? 'bg-cyan-600 text-white' : 'text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {isPlatform && (
+              <div>
+                <label className={LABEL}>الطلب (قيد التجهيز) *</label>
+                {processingOrders.length === 0 && !editing ? (
+                  <div className="text-xs text-amber-200 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2.5">
+                    لا توجد طلبات «قيد التجهيز» حالياً. يمكنك استخدام تبويب «تسجيل شحنة مباشرة / مستقلة».
+                  </div>
+                ) : (
+                  <select
+                    className={INPUT}
+                    value={selectedOrderId}
+                    onChange={(e) => pickOrder(e.target.value)}
+                    disabled={!!editing && !processingOrders.some((o) => o.id === editing.id)}
                   >
-                    <input type="radio" name="dispatch-type" checked={dispatchType === t} onChange={() => setDispatchType(t)} className="mt-1" />
-                    <span>
-                      <span className="block text-sm text-white font-bold">{DISPATCH_LABEL[t]}</span>
-                      <span className="block text-[11px] text-slate-400">{DISPATCH_HINT[t]}</span>
-                    </span>
-                  </label>
-                ))}
+                    <option value="">اختر الطلب...</option>
+                    {editing && !processingOrders.some((o) => o.id === editing.id) && (
+                      <option value={editing.id}>
+                        #{editing.order_number || editing.id.slice(0, 8)} — {buyerOf(editing).name}
+                      </option>
+                    )}
+                    {processingOrders.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        #{o.order_number || o.id.slice(0, 8)} — {buyerOf(o).name} · {addressText(o.shipping_address)}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
-            </div>
+            )}
 
-            {dispatchType === 'heavy_commercial' && (
+            {(!isPlatform || editing) && (
               <>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">اسم الناقل / شركة الشحن *</label>
-                  <input className={INPUT} value={carrier} onChange={(e) => setCarrier(e.target.value)} />
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-cyan-300">بيانات المستلم</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className={LABEL}>اسم المستلم *</label>
+                      <input className={INPUT} value={recipientName} onChange={(e) => setRecipientName(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={LABEL}>رقم الهاتف *</label>
+                      <input className={INPUT} dir="ltr" inputMode="tel" value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={LABEL}>المحافظة *</label>
+                      <select className={INPUT} value={destProvince} onChange={(e) => setDestProvince(e.target.value)}>
+                        <option value="">اختر المحافظة</option>
+                        {destProvince && !PROVINCES.includes(destProvince) && <option value={destProvince}>{destProvince}</option>}
+                        {PROVINCES.map((p) => (
+                          <option key={p} value={p}>
+                            {p}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={LABEL}>المدينة</label>
+                      <input className={INPUT} value={destCity} onChange={(e) => setDestCity(e.target.value)} />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">رقم التتبع / بوليصة الشحن *</label>
-                  <input className={INPUT} dir="ltr" value={tracking} onChange={(e) => setTracking(e.target.value)} />
+
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-cyan-300">طريقة التسليم *</p>
+                  <div className="space-y-2">
+                    {(Object.keys(DELIVERY_METHOD_LABEL) as DeliveryMethod[]).map((m) => (
+                      <label
+                        key={m}
+                        className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer ${
+                          deliveryMethod === m ? 'border-cyan-500 bg-cyan-500/10' : 'border-slate-700 bg-slate-950'
+                        }`}
+                      >
+                        <input type="radio" name="delivery-method" checked={deliveryMethod === m} onChange={() => setDeliveryMethod(m)} />
+                        <span className="text-sm text-white font-bold">{DELIVERY_METHOD_LABEL[m]}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {isCarrier && (
+                  <div className="space-y-3">
+                    <p className="text-xs font-bold text-cyan-300">بيانات الناقل</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className={LABEL}>اسم مكتب / شركة النقل *</label>
+                        <select className={INPUT} value={carrierChoice} onChange={(e) => setCarrierChoice(e.target.value)}>
+                          <option value="">اختر الناقل</option>
+                          {CARRIER_OPTIONS.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {carrierChoice === 'أخرى' && (
+                        <div>
+                          <label className={LABEL}>اسم الناقل *</label>
+                          <input className={INPUT} value={carrierOther} onChange={(e) => setCarrierOther(e.target.value)} />
+                        </div>
+                      )}
+                      <div>
+                        <label className={LABEL}>رقم بوليصة الشحن *</label>
+                        <input className={INPUT} dir="ltr" value={waybill} onChange={(e) => setWaybill(e.target.value)} />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className={LABEL}>رسوم الشحن</label>
+                      <div className="space-y-2">
+                        {(Object.keys(FREIGHT_LABEL) as FreightPayment[]).map((f) => (
+                          <label
+                            key={f}
+                            className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer ${
+                              freight === f ? 'border-cyan-500 bg-cyan-500/10' : 'border-slate-700 bg-slate-950'
+                            }`}
+                          >
+                            <input type="radio" name="freight-payment" checked={freight === f} onChange={() => setFreight(f)} />
+                            <span className="text-sm text-white">{FREIGHT_LABEL[f]}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className={LABEL}>صورة سند / بوليصة الشحن</label>
+                      <input
+                        type="file"
+                        accept={LOGISTICS_FILE_ACCEPT}
+                        onChange={(e) => {
+                          uploadWaybill(e.target.files?.[0]);
+                          e.target.value = '';
+                        }}
+                        disabled={uploading}
+                        className="block w-full text-xs text-slate-300 file:ml-3 file:h-10 file:px-4 file:rounded-xl file:border-0 file:bg-slate-800 file:text-slate-100 file:text-xs file:font-bold"
+                      />
+                      {uploading && <p className="text-[11px] text-cyan-300 mt-1">جاري رفع الملف...</p>}
+                      {waybillUrl && !uploading && (
+                        <p className="text-[11px] text-emerald-300 mt-1">
+                          تم رفع السند ·{' '}
+                          <a href={waybillUrl} target="_blank" rel="noopener noreferrer" className="underline">
+                            عرض
+                          </a>{' '}
+                          ·{' '}
+                          <button type="button" onClick={() => setWaybillUrl('')} className="underline text-red-300">
+                            إزالة
+                          </button>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-cyan-300">التحقق من التسليم</p>
+                  <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-950 border border-slate-800">
+                    {([
+                      ['pin', 'رمز التسليم (PIN)'],
+                      ['pod', 'إيصال إثبات التسليم (POD)'],
+                    ] as const).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setHandoverMode(key)}
+                        className={`h-10 rounded-lg text-xs font-bold transition-colors ${
+                          handoverMode === key ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {handoverMode === 'pin' ? (
+                    <div>
+                      <label className={LABEL}>
+                        {isPlatform && isPickup ? 'رمز التسليم (PIN) من المشتري *' : 'رمز التسليم (PIN)'}
+                      </label>
+                      <input
+                        className={INPUT}
+                        dir="ltr"
+                        inputMode="numeric"
+                        value={pinInput}
+                        onChange={(e) => setPinInput(e.target.value)}
+                        placeholder={isPlatform && isPickup ? 'أدخل الرمز للتحقق' : 'اختياري — يُسلَّم للمستلم'}
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2">
+                      سيتم اعتماد إيصال إثبات التسليم (POD) الموقّع من المستلم عبر كشف التسليم المطبوع.
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className={LABEL}>الكمية التجارية</label>
+                    <input type="number" min={1} className={INPUT} value={units} onChange={(e) => setUnits(e.target.value)} placeholder="50" />
+                  </div>
+                  <div>
+                    <label className={LABEL}>الوحدة</label>
+                    <select className={INPUT} value={unitLabel} onChange={(e) => setUnitLabel(e.target.value)}>
+                      {['كرتون', 'كيس', 'طرد', 'باليت', 'قطعة'].map((l) => (
+                        <option key={l} value={l}>
+                          {l}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={LABEL}>التسليم المتوقع</label>
+                    <input type="date" className={INPUT} value={eta} onChange={(e) => setEta(e.target.value)} />
+                  </div>
                 </div>
               </>
-            )}
-
-            {dispatchType === 'transport_office' && (
-              <>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">اسم مكتب النقل *</label>
-                  <input className={INPUT} value={office} onChange={(e) => setOffice(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">رقم السند *</label>
-                  <input className={INPUT} dir="ltr" value={receipt} onChange={(e) => setReceipt(e.target.value)} />
-                </div>
-              </>
-            )}
-
-            {dispatchType === 'self_pickup' && (
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">رمز التسليم (PIN) من المشتري *</label>
-                <input
-                  className={INPUT}
-                  dir="ltr"
-                  inputMode="numeric"
-                  value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value)}
-                  placeholder="أدخل الرمز للتحقق"
-                />
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">الكمية التجارية</label>
-                <input type="number" min={1} className={INPUT} value={units} onChange={(e) => setUnits(e.target.value)} placeholder="50" />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">الوحدة</label>
-                <select className={INPUT} value={unitLabel} onChange={(e) => setUnitLabel(e.target.value)}>
-                  {['كرتون', 'كيس', 'طرد', 'باليت', 'قطعة'].map((l) => (
-                    <option key={l} value={l}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {dispatchType !== 'self_pickup' && (
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">تاريخ التسليم المتوقع</label>
-                <input type="date" className={INPUT} value={eta} onChange={(e) => setEta(e.target.value)} />
-              </div>
             )}
 
             {formError && <div className="text-red-300 text-xs bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{formError}</div>}
             <div className="flex gap-2">
-              <button type="submit" disabled={saving} className="flex-1 h-11 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-sm font-bold">
-                {saving ? 'جاري الحفظ...' : dispatchType === 'self_pickup' ? 'تحقق وتأكيد التسليم' : 'حفظ'}
+              <button
+                type="submit"
+                disabled={saving || uploading || (isPlatform && !editing)}
+                className="flex-1 h-11 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-sm font-bold"
+              >
+                {saving ? 'جاري الحفظ...' : isPickup && handoverMode === 'pin' && isPlatform ? 'تحقق وتأكيد التسليم' : 'حفظ الشحنة'}
               </button>
-              <button type="button" onClick={() => setEditing(null)} disabled={saving} className="px-4 h-11 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm border border-slate-700">
+              <button
+                type="button"
+                onClick={closeDispatch}
+                disabled={saving}
+                className="px-4 h-11 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm border border-slate-700"
+              >
                 إلغاء
               </button>
             </div>

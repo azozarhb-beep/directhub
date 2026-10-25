@@ -52,5 +52,9 @@ export default function SupplierModulePage() {
     );
   }
 
-  return <SupplierModuleShell title={mod.title}>{body}</SupplierModuleShell>;
+  return (
+    <SupplierModuleShell title={mod.title} hideTitle={mod.key === 'logistics'}>
+      {body}
+    </SupplierModuleShell>
+  );
 }

@@ -7,11 +7,12 @@ import SupplierTopBar from './SupplierTopBar';
 interface SupplierModuleShellProps {
   title: string;
   actions?: React.ReactNode;
+  hideTitle?: boolean;
   children: React.ReactNode;
 }
 
 /** Top bar + sticky sub-header for /supplier sub-pages. The back link always returns to /supplier. */
-export default function SupplierModuleShell({ title, actions, children }: SupplierModuleShellProps) {
+export default function SupplierModuleShell({ title, actions, hideTitle = false, children }: SupplierModuleShellProps) {
   return (
     <div className="min-h-screen bg-slate-950" dir="rtl">
       <SupplierTopBar />
@@ -33,7 +34,11 @@ export default function SupplierModuleShell({ title, actions, children }: Suppli
               <span>العودة للمتجر</span>
             </Link>
           </div>
-          <h1 className="flex-1 min-w-[8rem] text-sm sm:text-lg font-black text-white truncate">{title}</h1>
+          {hideTitle ? (
+            <div className="flex-1" aria-hidden="true" />
+          ) : (
+            <h1 className="flex-1 min-w-[8rem] text-sm sm:text-lg font-black text-white truncate">{title}</h1>
+          )}
           {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
         </div>
       </div>
