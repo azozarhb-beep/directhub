@@ -6254,9 +6254,14 @@ function LogisticsDashboardView({ module: moduleProp }: LogisticsDashboardViewPr
             <PaymentsTab partnerId={partner.id} partnerCountry={partner.country} />
           )}
           {activeModule === 'international_orders' && <InternationalShipmentsTab partnerId={partner.id} />}
-          {(activeModule === 'customs_docs' || activeModule === 'documents') && (
+          {activeModule === 'customs_docs' && (
             <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-              <LogisticsDocumentsPanel userId={user?.id} />
+              <LogisticsDocumentsPanel userId={user?.id} mode="customs" />
+            </div>
+          )}
+          {activeModule === 'documents' && (
+            <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
+              <LogisticsDocumentsPanel userId={user?.id} mode="licensing" />
             </div>
           )}
           {activeModule === 'dispatch_rooms' && (
