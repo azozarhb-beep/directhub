@@ -2145,6 +2145,97 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
   const [oceanForm, setOceanForm] = useState<OceanCarrierFormValue>(() => oceanFormFromPartner(partner));
   const showOcean = partner.partner_type === 'international_shipping_office' || !!partner.carrier_type;
 
+  const [credModalOpen, setCredModalOpen] = useState(false);
+  const [credSaving, setCredSaving] = useState(false);
+  const [credError, setCredError] = useState('');
+  const [credForm, setCredForm] = useState({
+    scac_code: partner.scac_code || '',
+    imo_company_number: partner.imo_company_number || '',
+    corridors: [] as string[],
+    incoterms_supported: partner.incoterms_supported || [],
+  });
+
+  const CORRIDOR_OPTIONS: { value: string; label: string }[] = [
+    { value: 'China', label: 'الصين 🇨🇳' },
+    { value: 'Yemen', label: 'اليمن 🇾🇪' },
+    { value: 'United Arab Emirates', label: 'الإمارات 🇦🇪' },
+    { value: 'Saudi Arabia', label: 'السعودية 🇸🇦' },
+  ];
+
+  const openCredModal = () => {
+    const existing = Array.from(new Set([...(partner.origin_countries || []), ...(partner.destination_countries || [])]));
+    setCredForm({
+      scac_code: partner.scac_code || '',
+      imo_company_number: partner.imo_company_number || '',
+      corridors: existing.filter(c => CORRIDOR_OPTIONS.some(o => o.value === c)),
+      incoterms_supported: partner.incoterms_supported || [],
+    });
+    setCredError('');
+    setCredModalOpen(true);
+  };
+
+  const handleCredSave = async () => {
+    setCredSaving(true);
+    setCredError('');
+    try {
+      const scac = credForm.scac_code.trim().toUpperCase();
+      const imo = credForm.imo_company_number.trim();
+      if (scac && !/^[A-Z]{2,4}$/.test(scac)) throw new Error('رمز SCAC يجب أن يتكون من 2 إلى 4 أحرف إنجليزية.');
+      if (imo && !/^\d{7}$/.test(imo)) throw new Error('رقم IMO للشركة يجب أن يتكون من 7 أرقام.');
+      const corridorValues = CORRIDOR_OPTIONS.map(o => o.value);
+      const keepOrigin = (partner.origin_countries || []).filter(c => !corridorValues.includes(c));
+      const keepDest = (partner.destination_countries || []).filter(c => !corridorValues.includes(c));
+      const { data, error } = await supabase
+        .from('logistics_partners')
+        .update({
+          scac_code: scac || null,
+          imo_company_number: imo || null,
+          origin_countries: [...keepOrigin, ...credForm.corridors],
+          destination_countries: [...keepDest, ...credForm.corridors],
+          incoterms_supported: credForm.incoterms_supported,
+        })
+        .eq('id', partner.id)
+        .select()
+        .single();
+      if (error) throw error;
+      onSaved(data as LogisticsPartner);
+      setForm(prev => ({
+        ...prev,
+        origin_countries: (data as LogisticsPartner).origin_countries || [],
+        destination_countries: (data as LogisticsPartner).destination_countries || [],
+        incoterms_supported: (data as LogisticsPartner).incoterms_supported || [],
+      }));
+      setOceanForm(oceanFormFromPartner(data));
+      setCredModalOpen(false);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: any) {
+      setCredError(err.message || 'فشل حفظ بيانات الاعتماد.');
+    } finally {
+      setCredSaving(false);
+    }
+  };
+
+  const formatPhoneWithDial = (phone: string | null | undefined, country: string | null | undefined) => {
+    const raw = (phone || '').trim();
+    if (!raw) return null;
+    if (raw.startsWith('+')) return raw;
+    const dialMap: Record<string, string> = {
+      Yemen: '+967', 'Saudi Arabia': '+966', 'United Arab Emirates': '+971', China: '+86',
+      Egypt: '+20', Turkey: '+90', Oman: '+968', Kuwait: '+965', Qatar: '+974', Bahrain: '+973',
+      Jordan: '+962', India: '+91', 'United States': '+1',
+    };
+    const dial = dialMap[country || ''] || '+967';
+    const digits = raw.replace(/\D/g, '');
+    const dialDigits = dial.replace('+', '');
+    const local = digits.startsWith('00' + dialDigits)
+      ? digits.slice(2 + dialDigits.length)
+      : digits.startsWith(dialDigits) && digits.length > 9
+        ? digits.slice(dialDigits.length)
+        : digits.replace(/^0+/, '');
+    return `${dial} ${local}`;
+  };
+
   const toggleArrayItem = (field: keyof typeof form, value: string) => {
     const arr = form[field] as string[];
     setForm(prev => ({
@@ -2267,7 +2358,13 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
             <Field label="اسم المنشأة / الشركة" value={partner.company_name} />
             <Field label="مسؤول التواصل" value={partner.contact_name} />
             <Field label="البريد الإلكتروني" value={partner.contact_email} />
-            <Field label="رقم الهاتف" value={partner.contact_phone} />
+            <div>
+              <p className="text-xs text-muted-foreground mb-0.5">رقم الهاتف</p>
+              <p className="text-sm font-medium text-foreground" dir="ltr" style={{ textAlign: 'right' }}>
+                {formatPhoneWithDial(partner.contact_phone, partner.country) || '—'}
+              </p>
+            </div>
+          
             <Field label="دولة المقر" value={partner.country ? (COUNTRIES_AR[partner.country] || partner.country) : null} />
             <Field label="المدينة" value={partner.city} />
             <Field label="العنوان" value={partner.address} />
@@ -2285,10 +2382,10 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
             </div>
           )}
 
-          {showOcean && (
+          {(showOcean || partner.scac_code || partner.imo_company_number) && (
             <div className="p-4 bg-blue-50/40 rounded-xl border border-blue-200 space-y-4" dir="rtl">
               <p className="text-xs font-semibold text-blue-800 flex items-center gap-1.5">
-                <Icon name="GlobeAltIcon" size={14} /> ملف الناقل البحري الدولي (International Ocean Carrier)
+                <Icon name="GlobeAltIcon" size={14} /> بيانات الاعتماد والترخيص الدولي (Carrier &amp; Freight Forwarder Profile)
               </p>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <Field label="الاسم القانوني للناقل" value={partner.legal_company_name} />
@@ -2304,6 +2401,20 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
                     <Field label="رسوم أخرى" value={partner.other_surcharges != null ? String(partner.other_surcharges) : null} />
                   </>
                 )}
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">الخدمات المتاحة</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(partner.services_offered || []).length > 0 ? (
+                    (partner.services_offered || []).map(s => (
+                      <span key={s} className="px-2.5 py-1 bg-primary/10 text-primary rounded-lg text-xs font-medium">
+                        {SERVICES_AR[s] || s}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-sm text-muted-foreground">—</span>
+                  )}
+                </div>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {(partner.cargo_capabilities || []).map(c => (
@@ -2342,18 +2453,6 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {partner.services_offered?.length > 0 && (
-              <div className="p-4 bg-muted/30 rounded-xl border border-border">
-                <p className="text-xs text-muted-foreground mb-2">الخدمات المتاحة</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {partner.services_offered.map(s => (
-                    <span key={s} className="px-2.5 py-1 bg-primary/10 text-primary rounded-lg text-xs font-medium">
-                      {SERVICES_AR[s] || s}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
             {partner.incoterms_supported?.length > 0 && (
               <div className="p-4 bg-muted/30 rounded-xl border border-border">
                 <p className="text-xs text-muted-foreground mb-2">شروط التجارة الدولية المدعومة</p>
@@ -2391,6 +2490,15 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
               </div>
             )}
           </div>
+
+          <button
+            type="button"
+            onClick={openCredModal}
+            className="w-full flex items-center justify-center gap-2 px-5 py-3.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold shadow-sm hover:opacity-90 transition-opacity"
+          >
+            <span aria-hidden="true">✏️</span>
+            تعديل وتحديث بيانات المنشأة والاعتماد
+          </button>
         </div>
       ) : (
         <div className="space-y-5">
@@ -2520,6 +2628,144 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {credModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          dir="rtl"
+          onClick={() => !credSaving && setCredModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-background rounded-2xl border border-border shadow-xl p-5 space-y-5"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-foreground text-base">تعديل بيانات المنشأة والاعتماد</h4>
+              <button
+                type="button"
+                onClick={() => setCredModalOpen(false)}
+                disabled={credSaving}
+                className="p-1.5 rounded-lg hover:bg-muted/50"
+                aria-label="إغلاق"
+              >
+                <Icon name="XMarkIcon" size={18} />
+              </button>
+            </div>
+
+            {credError && (
+              <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-3 py-2 text-sm">
+                <Icon name="ExclamationCircleIcon" size={16} />
+                {credError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">رمز SCAC القانوني</label>
+                <input
+                  type="text"
+                  dir="ltr"
+                  maxLength={4}
+                  value={credForm.scac_code}
+                  onChange={e => setCredForm(prev => ({ ...prev, scac_code: e.target.value.toUpperCase() }))}
+                  placeholder="مثال: MAEU"
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">رقم IMO للشركة</label>
+                <input
+                  type="text"
+                  dir="ltr"
+                  inputMode="numeric"
+                  maxLength={7}
+                  value={credForm.imo_company_number}
+                  onChange={e => setCredForm(prev => ({ ...prev, imo_company_number: e.target.value.replace(/\D/g, '') }))}
+                  placeholder="7 أرقام"
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2">الممرات التجارية التشغيلية</p>
+              <div className="flex flex-wrap gap-2">
+                {CORRIDOR_OPTIONS.map(o => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() =>
+                      setCredForm(prev => ({
+                        ...prev,
+                        corridors: prev.corridors.includes(o.value)
+                          ? prev.corridors.filter(v => v !== o.value)
+                          : [...prev.corridors, o.value],
+                      }))
+                    }
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                      credForm.corridors.includes(o.value)
+                        ? 'bg-emerald-600 text-white border-emerald-600' :'bg-background text-foreground border-border hover:border-emerald-300'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2">شروط التجارة الدولية المدعومة (Incoterms)</p>
+              <div className="flex flex-wrap gap-2">
+                {INCOTERMS.map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() =>
+                      setCredForm(prev => ({
+                        ...prev,
+                        incoterms_supported: prev.incoterms_supported.includes(t)
+                          ? prev.incoterms_supported.filter(v => v !== t)
+                          : [...prev.incoterms_supported, t],
+                      }))
+                    }
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                      credForm.incoterms_supported.includes(t)
+                        ? 'bg-violet-600 text-white border-violet-600'
+                        : 'bg-background text-foreground border-border hover:border-violet-300'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setCredModalOpen(false)}
+                disabled={credSaving}
+                className="flex-1 px-4 py-2.5 border border-border rounded-xl text-sm font-semibold hover:bg-muted/50 transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleCredSave}
+                disabled={credSaving}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold disabled:opacity-60 hover:opacity-90 transition-opacity"
+              >
+                {credSaving ? (
+                  <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Icon name="CheckIcon" size={15} />
+                )}
+                حفظ البيانات
+              </button>
+            </div>
           </div>
         </div>
       )}
