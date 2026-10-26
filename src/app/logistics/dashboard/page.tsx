@@ -5873,7 +5873,7 @@ function DisputesAndDelaysTab({ partnerId, userId }: { partnerId: string; userId
               <Icon name="ClockIcon" size={16} className="text-amber-400" />
               الإبلاغ عن تأخير طارئ
             </h3>
-            <p className="text-xs text-slate-400 mb-4">
+            <p className="text-xs text-slate-200 mb-4">
               اختر الشحنة المتأثرة وسجّل سبب التأخير مع تحديث وقت الوصول المتوقع (ETA). سيتم إشعار العميل فوراً.
             </p>
 
@@ -5935,17 +5935,25 @@ function DisputesAndDelaysTab({ partnerId, userId }: { partnerId: string; userId
                   </div>
                 )}
 
-                <button
-                  onClick={() => {
-                    if (!selectedShipment) { toast.error('يرجى اختيار شحنة أولاً'); return; }
-                    setShowDelayModal(true);
-                  }}
-                  disabled={!selectedShipment}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold disabled:opacity-40 transition-colors"
-                >
-                  <Icon name="ExclamationTriangleIcon" size={16} />
-                  تحديث ETA وملاحظة التأخير
-                </button>
+                {selectedShipment ? (
+                  <LogisticsDelayReportModal
+                    key={selectedShipment.id}
+                    shipment={selectedShipment}
+                    partnerId={partnerId}
+                    userId={userId}
+                    onClose={() => setShowDelayModal(false)}
+                    onSubmitted={() => { setSelectedShipment(null); fetchDelays(); fetchShipments(); }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-700 text-slate-400 rounded-xl text-sm font-bold opacity-70 cursor-not-allowed"
+                  >
+                    <Icon name="ExclamationTriangleIcon" size={16} />
+                    تحديث ETA وإشعار العميل بالتأخير
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -5992,17 +6000,6 @@ function DisputesAndDelaysTab({ partnerId, userId }: { partnerId: string; userId
           partnerId={partnerId}
           userId={userId}
           openedBy="logistics_partner"
-        />
-      )}
-
-      {/* Delay Report Modal */}
-      {showDelayModal && selectedShipment && (
-        <LogisticsDelayReportModal
-          shipment={selectedShipment}
-          partnerId={partnerId}
-          userId={userId}
-          onClose={() => setShowDelayModal(false)}
-          onSubmitted={() => { setSelectedShipment(null); fetchDelays(); fetchShipments(); }}
         />
       )}
     </div>
