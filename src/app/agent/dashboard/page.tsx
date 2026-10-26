@@ -1156,20 +1156,22 @@ export default function AgentDashboardPage() {
           };
           const meta = TAB_META[activeTab];
           return (
-            <div className="sticky top-0 z-30 -mx-4 px-4 py-3 mb-4 bg-background/95 backdrop-blur border-b border-border flex items-center gap-3">
+            <div className="sticky top-0 z-30 -mx-4 px-4 py-3 mb-4 bg-background/95 backdrop-blur border-b border-border flex items-center gap-2 sm:gap-3">
               <button
                 type="button"
                 onClick={closeTab}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 text-sm font-semibold hover:shadow-sm active:scale-[0.98] transition-all shrink-0"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 text-xs sm:text-sm font-semibold hover:shadow-sm active:scale-[0.98] transition-all shrink-0"
+                aria-label="العودة للوحة التحكم"
               >
                 <Icon name={dir === 'rtl' ? 'ArrowRightIcon' : 'ArrowLeftIcon'} size={16} />
-                <span>العودة للوحة التحكم</span>
+                <span className="hidden sm:inline">العودة للوحة التحكم</span>
+                <span className="sm:hidden">رجوع</span>
               </button>
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
                 <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${meta.iconColor}`}>
                   <Icon name={meta.icon as any} size={18} />
                 </span>
-                <h2 className="text-sm font-bold text-slate-800 dark:text-zinc-100 truncate">{meta.title}</h2>
+                <h2 className="text-sm font-bold text-slate-800 dark:text-zinc-100 leading-snug break-words min-w-0">{meta.title}</h2>
               </div>
             </div>
           );
@@ -1532,6 +1534,10 @@ export default function AgentDashboardPage() {
               id: f.id,
               company_name: f.company_name,
               factory_type: f.factory_type,
+              city: f.city,
+              contact_person: f.contact_person,
+              contact_phone: f.contact_phone,
+              registration_status: f.registration_status,
             }))}
           />
         )}

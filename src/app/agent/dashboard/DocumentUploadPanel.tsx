@@ -10,6 +10,10 @@ interface AgentFactory {
   id: string;
   company_name: string;
   factory_type: string;
+  city?: string;
+  contact_person?: string;
+  contact_phone?: string;
+  registration_status?: string;
 }
 
 interface FactoryDocument {
@@ -30,11 +34,14 @@ interface FactoryDocument {
   verification_status?: string | null;
 }
 
-const DOC_TYPE_CONFIG: Record<string, { labelKey: string; icon: string; color: string }> = {
+const DOC_TYPE_CONFIG: Record<string, { labelKey: string; icon: string; color: string; label?: string }> = {
   product_catalog: { labelKey: 'typeCatalog', icon: 'BookOpenIcon', color: 'text-purple-600' },
   company_profile: { labelKey: 'typeCompanyProfile', icon: 'BuildingOffice2Icon', color: 'text-indigo-600' },
   certificate: { labelKey: 'typeCertificate', icon: 'AcademicCapIcon', color: 'text-amber-600' },
   price_sheet: { labelKey: 'typePriceSheet', icon: 'CurrencyDollarIcon', color: 'text-emerald-600' },
+  commercial_license: { labelKey: 'typeCommercialLicense', icon: 'DocumentCheckIcon', color: 'text-emerald-600', label: 'السجل التجاري والترخيص الصناعي' },
+  tax_certificate: { labelKey: 'typeTaxCertificate', icon: 'ReceiptPercentIcon', color: 'text-blue-600', label: 'البطاقة والرقم الضريبي' },
+  inspection_report: { labelKey: 'typeInspectionReport', icon: 'ClipboardDocumentCheckIcon', color: 'text-orange-600', label: 'تقرير وصور المعاينة الميدانية' },
   // Legacy types: kept only to render previously uploaded files
   license: { labelKey: 'typeLicense', icon: 'DocumentCheckIcon', color: 'text-emerald-600' },
   registration: { labelKey: 'typeRegistry', icon: 'ClipboardDocumentListIcon', color: 'text-blue-600' },
@@ -42,7 +49,27 @@ const DOC_TYPE_CONFIG: Record<string, { labelKey: string; icon: string; color: s
   other: { labelKey: 'typeOther', icon: 'DocumentIcon', color: 'text-gray-600' },
 };
 
-const UPLOAD_DOC_TYPES = ['product_catalog', 'company_profile', 'certificate', 'price_sheet'] as const;
+const UPLOAD_DOC_TYPES = [
+  'commercial_license',
+  'tax_certificate',
+  'inspection_report',
+  'product_catalog',
+  'company_profile',
+  'certificate',
+  'price_sheet',
+] as const;
+
+const EXPIRY_DOC_TYPES: string[] = ['certificate', 'commercial_license', 'tax_certificate'];
+
+const MANDATORY_DOC_TYPES: string[] = ['commercial_license', 'tax_certificate', 'inspection_report'];
+
+const docTypeLabel = (ui: any, key: string): string => {
+  const cfg = DOC_TYPE_CONFIG[key];
+  if (!cfg) return key;
+  return cfg.label || ui?.[cfg.labelKey] || key;
+};
+
+const VERIFIED_STATUSES = ['approved', 'active'];
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
@@ -99,6 +126,7 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
   const [certNumber, setCertNumber] = useState('');
   const [certExpiry, setCertExpiry] = useState('');
   const [issuingBody, setIssuingBody] = useState('');
+  const [docExpiry, setDocExpiry] = useState('');
 
   const fetchDocuments = useCallback(async () => {
     setLoading(true);
@@ -141,6 +169,7 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
     }
 
     const isCert = docType === 'certificate';
+    const supportsExpiry = EXPIRY_DOC_TYPES.includes(docType);
     if (isCert && certSubType === 'other' && !certCustomType.trim()) {
       setError('يرجى تحديد نوع الشهادة يدوياً');
       return;
@@ -178,6 +207,7 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
         mime_type: selectedFile.type,
         description: description.trim(),
         uploaded_by: userId,
+        ...(supportsExpiry && !isCert && docExpiry ? { cert_expiry: docExpiry } : {}),
         ...(isCert
           ? {
               cert_sub_type: certSubType === 'other' ? certCustomType.trim() : certSubType,
@@ -197,6 +227,7 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
       setDescription('');
       setCertNumber('');
       setCertExpiry('');
+      setDocExpiry('');
       setIssuingBody('');
       setCertCustomType('');
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -225,6 +256,82 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
     if (filterType && d.doc_type !== filterType) return false;
     return true;
   });
+
+  const summaryFactory =
+    factories.find(f => f.id === (selectedFactory || filterFactory)) || null;
+  const summaryDocs = summaryFactory
+    ? documents.filter(d => d.factory_reg_id === summaryFactory.id)
+    : [];
+  const checklist = MANDATORY_DOC_TYPES.map(key => ({
+    key,
+    label: docTypeLabel(ui, key),
+    uploaded: summaryDocs.some(d => d.doc_type === key),
+  }));
+  const uploadedCount = checklist.filter(c => c.uploaded).length;
+  const isVerified = !!summaryFactory && VERIFIED_STATUSES.includes(summaryFactory.registration_status || '');
+
+  const summaryBlock = summaryFactory ? (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/40 p-3">
+        <span className="inline-flex items-center gap-1 text-xs font-bold text-foreground">
+          <Icon name="BuildingOffice2Icon" size={14} className="text-primary" />
+          {summaryFactory.company_name}
+        </span>
+        <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-background border border-border text-foreground">
+          <Icon name="MapPinIcon" size={12} className="text-muted-foreground" />
+          {summaryFactory.city || '—'}
+        </span>
+        <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-background border border-border text-foreground">
+          <Icon name="UserIcon" size={12} className="text-muted-foreground" />
+          {summaryFactory.contact_person || '—'}
+        </span>
+        <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-background border border-border text-foreground" dir="ltr">
+          <Icon name="PhoneIcon" size={12} className="text-muted-foreground" />
+          {summaryFactory.contact_phone || '—'}
+        </span>
+        <span
+          className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-full border ${
+            isVerified
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :'bg-amber-50 text-amber-700 border-amber-200'
+          }`}
+        >
+          <Icon name={isVerified ? 'CheckBadgeIcon' : 'ClockIcon'} size={12} />
+          {isVerified ? 'موثّق' : 'غير موثّق بعد'}
+        </span>
+      </div>
+
+      <div className="rounded-xl border border-border p-3">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-bold text-foreground">قائمة المستندات الإلزامية</p>
+          <span className="text-[11px] font-semibold text-muted-foreground">
+            {uploadedCount}/{checklist.length} مرفوعة
+          </span>
+        </div>
+        <ul className="space-y-1.5">
+          {checklist.map(item => (
+            <li key={item.key} className="flex items-center justify-between gap-2 text-xs">
+              <span className="flex items-center gap-1.5 text-foreground min-w-0">
+                <Icon
+                  name={item.uploaded ? 'CheckCircleIcon' : 'ExclamationCircleIcon'}
+                  size={14}
+                  className={item.uploaded ? 'text-emerald-600' : 'text-red-500'}
+                />
+                <span className="break-words">{item.label}</span>
+              </span>
+              <span
+                className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                  item.uploaded
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :'bg-red-50 text-red-700 border-red-200'
+                }`}
+              >
+                {item.uploaded ? 'مرفوع' : 'ناقص'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  ) : null;
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -286,10 +393,23 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
               className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
             >
               {UPLOAD_DOC_TYPES.map(key => (
-                <option key={key} value={key}>{(ui as any)[DOC_TYPE_CONFIG[key].labelKey]}</option>
+                <option key={key} value={key}>{docTypeLabel(ui, key)}</option>
               ))}
             </select>
           </div>
+
+          {/* Optional expiry date for licenses / tax certificates */}
+          {EXPIRY_DOC_TYPES.includes(docType) && docType !== 'certificate' && (
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1.5">تاريخ انتهاء الصلاحية (اختياري)</label>
+              <input
+                type="date"
+                value={docExpiry}
+                onChange={e => setDocExpiry(e.target.value)}
+                className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
+              />
+            </div>
+          )}
 
           {/* Description */}
           <div>
@@ -364,6 +484,11 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
                 </div>
               </div>
             </div>
+          )}
+
+          {/* Selected factory summary chip + mandatory documents checklist */}
+          {selectedFactory && summaryBlock && (
+            <div className="md:col-span-2">{summaryBlock}</div>
           )}
 
           {/* File Input */}
@@ -447,12 +572,17 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
               onChange={e => setFilterType(e.target.value)}
               className="w-full sm:w-auto sm:min-w-[160px] max-w-full px-2.5 py-1.5 bg-background border border-border rounded-lg text-xs text-foreground focus:outline-none focus:border-primary"
             >
+              <option value="">{ui.allTypes}</option>
               {UPLOAD_DOC_TYPES.map(key => (
-                <option key={key} value={key}>{(ui as any)[DOC_TYPE_CONFIG[key].labelKey]}</option>
+                <option key={key} value={key}>{docTypeLabel(ui, key)}</option>
               ))}
             </select>
           </div>
         </div>
+
+        {!selectedFactory && filterFactory && summaryBlock && (
+          <div className="mb-4">{summaryBlock}</div>
+        )}
 
         {loading ? (
           <div className="flex items-center justify-center py-8">
@@ -477,35 +607,14 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold text-foreground text-xs truncate">{doc.file_name}</p>
                       <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-muted border border-border ${cfg.color}`}>
-                        {(ui as any)[cfg.labelKey]}
+                        {docTypeLabel(ui, doc.doc_type)}
                       </span>
                     </div>
                     {factory && (
                       <p className="text-[11px] text-muted-foreground mt-0.5">{factory.company_name}</p>
                     )}
-                    {doc.doc_type === 'certificate' && (
-                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                        {doc.cert_sub_type && (
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                            {certSubTypeLabel(doc)}
-                          </span>
-                        )}
-                        {doc.cert_number && (
-                          <span className="text-[10px] text-muted-foreground" dir="ltr">#{doc.cert_number}</span>
-                        )}
-                        {doc.cert_expiry && (
-                          <span className="text-[10px] text-muted-foreground">ينتهي: {doc.cert_expiry}</span>
-                        )}
-                        {doc.issuing_body && (
-                          <span className="text-[10px] text-muted-foreground">{doc.issuing_body}</span>
-                        )}
-                        {(() => {
-                          const m = CERT_STATUS_META[doc.verification_status || 'pending'] || CERT_STATUS_META.pending;
-                          return (
-                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${m.cls}`}>{m.label}</span>
-                          );
-                        })()}
-                      </div>
+                    {doc.doc_type !== 'certificate' && doc.cert_expiry && (
+                      <p className="text-[10px] text-muted-foreground">ينتهي: {doc.cert_expiry}</p>
                     )}
                     {doc.description && (
                       <p className="text-[11px] text-muted-foreground italic">{doc.description}</p>

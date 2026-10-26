@@ -390,6 +390,11 @@ const BottomNav: React.FC = () => {
     return null;
   }
 
+  // The field agent workspace has its own navigation: never show the consumer bottom bar.
+  if (pathname === '/agent' || pathname?.startsWith('/agent/')) {
+    return null;
+  }
+
   // z-[45] sits above in-page content and the `bottom-16 z-40` action bars, but
   // below `z-50` modal overlays — otherwise the nav paints over modal footers
   // and hides their Save / Publish buttons.

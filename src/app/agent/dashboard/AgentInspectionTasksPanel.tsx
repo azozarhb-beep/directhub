@@ -13,8 +13,10 @@ interface InspectionRow {
   title: string;
   status: string;
   factoryName: string;
+  city: string;
   orderId: string | null;
   orderNumber: string;
+  poNumber: string;
   product: string;
   quantity: string;
   notes: string;
@@ -22,6 +24,15 @@ interface InspectionRow {
   reportNotes: string;
   result: string;
   createdAt: string;
+  checkQuantity: boolean;
+  checkPackaging: boolean;
+  checkDates: boolean;
+}
+
+interface Checklist {
+  quantity: boolean;
+  packaging: boolean;
+  dates: boolean;
 }
 
 type TabKey = 'pending' | 'in_progress' | 'completed';
@@ -38,6 +49,14 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'in_progress', label: 'المهام الجارية' },
   { key: 'completed', label: 'المكتملة' },
 ];
+
+const CHECK_ITEMS: { key: keyof Checklist; label: string }[] = [
+  { key: 'quantity', label: 'مطابقة الكميات مع الفاتورة' },
+  { key: 'packaging', label: 'سلامة التغليف والطبليات' },
+  { key: 'dates', label: 'سلامة تواريخ الإنتاج والصلاحية' },
+];
+
+const EMPTY_CHECKLIST: Checklist = { quantity: false, packaging: false, dates: false };
 
 function normStatus(s: string): string {
   return (s || '').toLowerCase();
@@ -72,8 +91,18 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notesById, setNotesById] = useState<Record<string, string>>({});
   const [photosById, setPhotosById] = useState<Record<string, string[]>>({});
+  const [checkById, setCheckById] = useState<Record<string, Checklist>>({});
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const [search, setSearch] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
+
+  const [showWalkIn, setShowWalkIn] = useState(false);
+  const [walkInFactory, setWalkInFactory] = useState('');
+  const [walkInCity, setWalkInCity] = useState('');
+  const [walkInPo, setWalkInPo] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const showToast = (type: 'success' | 'error', text: string) => {
     setToast({ type, text });
@@ -107,13 +136,17 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
       const mapped: InspectionRow[] = rows.map((r: any) => {
         const order = r.order_id ? orderMap.get(r.order_id) : null;
         const { product, quantity } = summarizeItems(order?.items);
+        const orderNumber =
+          order?.order_number || (r.order_id ? String(r.order_id).slice(0, 8).toUpperCase() : '—');
         return {
           id: r.id,
           title: r.title || '',
           status: normStatus(r.status),
           factoryName: r.factory_name || 'مصنع غير محدد',
+          city: r.city || '',
           orderId: r.order_id || null,
-          orderNumber: order?.order_number || (r.order_id ? String(r.order_id).slice(0, 8).toUpperCase() : '—'),
+          orderNumber,
+          poNumber: r.po_number || (orderNumber !== '—' ? orderNumber : ''),
           product: product !== '—' ? product : r.title || '—',
           quantity,
           notes: r.notes || '',
@@ -121,6 +154,9 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
           reportNotes: r.report_notes || '',
           result: r.result || '',
           createdAt: r.created_at,
+          checkQuantity: !!r.check_quantity_match,
+          checkPackaging: !!r.check_packaging_ok,
+          checkDates: !!r.check_dates_ok,
         };
       });
       setTasks(mapped);
@@ -137,13 +173,44 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
     load();
   }, [load]);
 
-  const counts = useMemo(() => ({
-    pending: tasks.filter((t) => tabOf(t.status) === 'pending').length,
-    in_progress: tasks.filter((t) => tabOf(t.status) === 'in_progress').length,
-    completed: tasks.filter((t) => tabOf(t.status) === 'completed').length,
-  }), [tasks]);
+  const cities = useMemo(
+    () => Array.from(new Set(tasks.map((t) => t.city).filter(Boolean))),
+    [tasks]
+  );
 
-  const visible = tasks.filter((t) => tabOf(t.status) === activeTab);
+  const matchesFilters = useCallback(
+    (t: InspectionRow) => {
+      if (cityFilter && t.city !== cityFilter) return false;
+      const q = search.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        t.factoryName.toLowerCase().includes(q) ||
+        t.city.toLowerCase().includes(q) ||
+        t.poNumber.toLowerCase().includes(q) ||
+        t.orderNumber.toLowerCase().includes(q)
+      );
+    },
+    [search, cityFilter]
+  );
+
+  const filteredTasks = useMemo(() => tasks.filter(matchesFilters), [tasks, matchesFilters]);
+
+  const counts = useMemo(() => ({
+    pending: filteredTasks.filter((t) => tabOf(t.status) === 'pending').length,
+    in_progress: filteredTasks.filter((t) => tabOf(t.status) === 'in_progress').length,
+    completed: filteredTasks.filter((t) => tabOf(t.status) === 'completed').length,
+  }), [filteredTasks]);
+
+  const visible = filteredTasks.filter((t) => tabOf(t.status) === activeTab);
+
+  const getChecklist = (id: string): Checklist => checkById[id] || EMPTY_CHECKLIST;
+
+  const toggleCheck = (id: string, key: keyof Checklist) => {
+    setCheckById((prev) => {
+      const cur = prev[id] || EMPTY_CHECKLIST;
+      return { ...prev, [id]: { ...cur, [key]: !cur[key] } };
+    });
+  };
 
   const startInspection = async (task: InspectionRow) => {
     setBusyId(task.id);
@@ -160,6 +227,46 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
     setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: 'in_progress' } : t)));
     setActiveTab('in_progress');
     showToast('success', 'تم بدء التفتيش الميداني');
+  };
+
+  const createWalkIn = async () => {
+    const name = walkInFactory.trim();
+    if (!name) {
+      showToast('error', 'يرجى إدخال اسم المصنع / الموقع');
+      return;
+    }
+    setCreating(true);
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('field_inspection_tasks')
+      .insert({
+        factory_name: name,
+        city: walkInCity.trim() || null,
+        po_number: walkInPo.trim() || null,
+        assigned_agent_id: userId,
+        created_by: userId,
+        title: `معاينة فورية - ${name}`,
+        status: 'in_progress',
+        is_walk_in: true,
+        created_at: now,
+        updated_at: now,
+      })
+      .select('id')
+      .single();
+    setCreating(false);
+    if (error || !data) {
+      showToast('error', `فشل بدء المعاينة الفورية: ${error?.message || 'خطأ غير معروف'}`);
+      return;
+    }
+    setShowWalkIn(false);
+    setWalkInFactory('');
+    setWalkInCity('');
+    setWalkInPo('');
+    setSearch('');
+    setCityFilter('');
+    setActiveTab('in_progress');
+    showToast('success', 'تم بدء المعاينة الفورية، أكمل نموذج الفحص أدناه');
+    load();
   };
 
   const handlePhotoUpload = async (task: InspectionRow, files: FileList | null) => {
@@ -193,8 +300,13 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
   const submitReport = async (task: InspectionRow, result: 'passed' | 'failed') => {
     const photos = photosById[task.id] || [];
     const note = (notesById[task.id] || '').trim();
+    const checks = getChecklist(task.id);
     if (photos.length < MIN_PHOTOS) {
       showToast('error', `يجب رفع ${MIN_PHOTOS} صور على الأقل قبل إرسال تقرير التفتيش`);
+      return;
+    }
+    if (result === 'passed' && !(checks.quantity && checks.packaging && checks.dates)) {
+      showToast('error', 'يجب تأكيد جميع بنود قائمة الفحص قبل اعتماد الفحص');
       return;
     }
     if (result === 'failed' && !note) {
@@ -210,6 +322,9 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
         result,
         photo_urls: photos,
         report_notes: note || null,
+        check_quantity_match: checks.quantity,
+        check_packaging_ok: checks.packaging,
+        check_dates_ok: checks.dates,
         signed_off_at: now,
         updated_at: now,
       })
@@ -222,13 +337,24 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
     }
     setTasks((prev) =>
       prev.map((t) =>
-        t.id === task.id ? { ...t, status: result, result, photoUrls: photos, reportNotes: note } : t
+        t.id === task.id
+          ? {
+              ...t,
+              status: result,
+              result,
+              photoUrls: photos,
+              reportNotes: note,
+              checkQuantity: checks.quantity,
+              checkPackaging: checks.packaging,
+              checkDates: checks.dates,
+            }
+          : t
       )
     );
     setActiveTab('completed');
     showToast(
       'success',
-      result === 'passed' ?'🟢 تم إرسال تقرير التفتيش واعتماد الإفراج المالي' :'🚩 تم الإبلاغ عن المخالفة وحجز الدفعة'
+      result === 'passed' ?'🟢 تم اعتماد الفحص ومنح الضوء الأخضر لتحرير دفعة Escrow' :'🚩 تم الإبلاغ عن المخالفة وحجز الدفعة'
     );
   };
 
@@ -242,11 +368,11 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <h2 className="text-base font-bold text-foreground flex items-center gap-2">
-            <Icon name="ClipboardDocumentListIcon" size={18} className="text-amber-600" />
-            مهام التفتيش الميداني
+            <Icon name="ClipboardDocumentListIcon" size={18} className="text-amber-600 shrink-0" />
+            <span className="break-words">مهام التفتيش الميداني</span>
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             المهام المسندة إليك للتفتيش وإعطاء الضوء الأخضر لتحرير الدفعات
@@ -255,11 +381,103 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
         <button
           onClick={load}
           disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-muted border border-border rounded-lg text-xs font-semibold text-muted-foreground hover:bg-muted/80 transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-muted border border-border rounded-lg text-xs font-semibold text-muted-foreground hover:bg-muted/80 transition-colors disabled:opacity-50 shrink-0"
         >
           <Icon name="ArrowPathIcon" size={13} className={loading ? 'animate-spin' : ''} />
           تحديث
         </button>
+      </div>
+
+      {/* Primary CTA: on-site inspection without prior assignment */}
+      <button
+        type="button"
+        onClick={() => setShowWalkIn((v) => !v)}
+        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-white bg-primary hover:bg-primary/90 active:scale-[0.99] transition-all"
+      >
+        <Icon name="PlusIcon" size={16} />
+        [ + بدء تفتيش أو معاينة فورية ]
+      </button>
+
+      {showWalkIn && (
+        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+          <p className="text-xs font-bold text-foreground">بيانات المعاينة الفورية</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1.5">اسم المصنع / الموقع *</label>
+              <input
+                type="text"
+                value={walkInFactory}
+                onChange={(e) => setWalkInFactory(e.target.value)}
+                className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1.5">المدينة</label>
+              <input
+                type="text"
+                value={walkInCity}
+                onChange={(e) => setWalkInCity(e.target.value)}
+                className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1.5">رقم أمر الشراء (PO)</label>
+              <input
+                type="text"
+                value={walkInPo}
+                onChange={(e) => setWalkInPo(e.target.value)}
+                dir="ltr"
+                className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={createWalkIn}
+              disabled={creating}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-60"
+            >
+              <Icon name="MagnifyingGlassIcon" size={15} />
+              {creating ? 'جارٍ البدء...' : 'بدء المعاينة الآن'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowWalkIn(false)}
+              className="px-4 py-2.5 bg-muted border border-border rounded-xl text-sm font-semibold text-muted-foreground"
+            >
+              إلغاء
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Search & filter bar */}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1">
+          <Icon
+            name="MagnifyingGlassIcon"
+            size={15}
+            className="absolute top-1/2 -translate-y-1/2 right-3 text-muted-foreground pointer-events-none"
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ابحث باسم المصنع أو المدينة أو رقم أمر الشراء (PO)"
+            className="w-full pr-9 pl-3 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+          />
+        </div>
+        <select
+          value={cityFilter}
+          onChange={(e) => setCityFilter(e.target.value)}
+          className="sm:w-48 px-3 py-2.5 bg-background border border-border rounded-xl text-xs text-foreground focus:outline-none focus:border-primary"
+        >
+          <option value="">كل المدن</option>
+          {cities.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
       </div>
 
       {toast && (
@@ -278,13 +496,13 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`rounded-xl border p-3 text-center transition-colors ${
+            className={`rounded-xl border p-2.5 sm:p-3 text-center transition-colors ${
               activeTab === tab.key
                 ? 'bg-primary text-white border-primary' :'bg-card border-border text-foreground hover:bg-muted'
             }`}
           >
             <p className="text-xl font-bold">{counts[tab.key]}</p>
-            <p className="text-[11px] font-semibold mt-0.5">{tab.label}</p>
+            <p className="text-[11px] font-semibold mt-0.5 leading-tight break-words">{tab.label}</p>
           </button>
         ))}
       </div>
@@ -310,6 +528,8 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
             const badge = statusBadge(task.status);
             const tab = tabOf(task.status);
             const photos = photosById[task.id] || [];
+            const checks = getChecklist(task.id);
+            const allChecked = checks.quantity && checks.packaging && checks.dates;
             const isBusy = busyId === task.id;
             const isUploading = uploadingId === task.id;
             return (
@@ -333,12 +553,14 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
 
                 <div className="grid grid-cols-2 gap-3 bg-muted/40 rounded-xl p-3">
                   <div>
-                    <p className="text-[10px] text-muted-foreground font-medium">رقم الطلب</p>
-                    <p className="text-xs font-semibold text-foreground">#{task.orderNumber}</p>
+                    <p className="text-[10px] text-muted-foreground font-medium">رقم الطلب / PO</p>
+                    <p className="text-xs font-semibold text-foreground">#{task.poNumber || task.orderNumber}</p>
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground font-medium">المنشأة</p>
-                    <p className="text-xs font-semibold text-foreground">{task.factoryName}</p>
+                    <p className="text-xs font-semibold text-foreground">
+                      {task.factoryName}{task.city ? ` — ${task.city}` : ''}
+                    </p>
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground font-medium">المنتج</p>
@@ -369,9 +591,45 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
 
                 {tab === 'in_progress' && (
                   <div className="space-y-3 border-t border-border pt-3">
+                    {/* Checklist toggles */}
+                    <div>
+                      <p className="text-xs font-semibold text-foreground mb-2">قائمة الفحص الميداني</p>
+                      <div className="space-y-2">
+                        {CHECK_ITEMS.map((item) => {
+                          const on = checks[item.key];
+                          return (
+                            <button
+                              key={item.key}
+                              type="button"
+                              role="switch"
+                              aria-checked={on}
+                              onClick={() => toggleCheck(task.id, item.key)}
+                              className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border text-xs font-semibold transition-colors ${
+                                on
+                                  ? 'bg-emerald-50 border-emerald-300 text-emerald-800' :'bg-background border-border text-foreground'
+                              }`}
+                            >
+                              <span className="text-right break-words">{item.label}</span>
+                              <span
+                                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${
+                                  on ? 'bg-emerald-500' : 'bg-gray-300'
+                                }`}
+                              >
+                                <span
+                                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${
+                                    on ? 'right-0.5' : 'right-[18px]'
+                                  }`}
+                                />
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                     <div>
                       <label className="block text-xs font-semibold text-foreground mb-1.5">
-                        صور التفتيش (حد أدنى {MIN_PHOTOS} صور) — {photos.length} مرفوعة
+                        صور التفتيش الحية (كراتين، طبليات، خطوط إنتاج) — حد أدنى {MIN_PHOTOS} — {photos.length} مرفوعة
                       </label>
                       <label
                         className={`flex items-center justify-center gap-2 px-3 py-3 border-2 border-dashed border-border rounded-xl text-xs font-semibold text-muted-foreground cursor-pointer hover:bg-muted/50 transition-colors ${
@@ -379,12 +637,29 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
                         }`}
                       >
                         <Icon name="CameraIcon" size={16} />
-                        {isUploading ? 'جارٍ رفع الصور...' : 'اختر أو التقط صور التفتيش'}
+                        {isUploading ? 'جارٍ رفع الصور...' : 'التقاط صورة بالكاميرا'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={(e) => {
+                            handlePhotoUpload(task, e.target.files);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                      <label
+                        className={`mt-2 flex items-center justify-center gap-2 px-3 py-2 border border-border rounded-xl text-xs font-semibold text-muted-foreground cursor-pointer hover:bg-muted/50 transition-colors ${
+                          isUploading ? 'opacity-60 pointer-events-none' : ''
+                        }`}
+                      >
+                        <Icon name="PhotoIcon" size={15} />
+                        اختيار صور من المعرض
                         <input
                           type="file"
                           accept="image/*"
                           multiple
-                          capture="environment"
                           className="hidden"
                           onChange={(e) => {
                             handlePhotoUpload(task, e.target.files);
@@ -423,28 +698,32 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
                       />
                     </div>
 
-                    <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex flex-col gap-2">
                       <button
                         onClick={() => submitReport(task, 'passed')}
-                        disabled={isBusy || isUploading || photos.length < MIN_PHOTOS}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={isBusy || isUploading || photos.length < MIN_PHOTOS || !allChecked}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed"
                         style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)' }}
                       >
                         <span>🟢</span>
-                        إعطاء الضوء الأخضر واعتماد الإفراج المالي
+                        <span className="break-words">[ اعتماد الفحص ومنح الضوء الأخضر لتحرير دفعة Escrow ]</span>
                       </button>
                       <button
                         onClick={() => submitReport(task, 'failed')}
                         disabled={isBusy || isUploading || photos.length < MIN_PHOTOS}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-red-50 border border-red-300 text-red-700 hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-red-50 border border-red-300 text-red-700 hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <span>🚩</span>
                         إبلاغ عن مخالفة / حجز الدفعة
                       </button>
                     </div>
-                    {photos.length < MIN_PHOTOS && (
+                    {(photos.length < MIN_PHOTOS || !allChecked) && (
                       <p className="text-[11px] text-amber-700">
-                        ارفع {MIN_PHOTOS - photos.length} صورة إضافية لتفعيل أزرار الاعتماد.
+                        {photos.length < MIN_PHOTOS
+                          ? `ارفع ${MIN_PHOTOS - photos.length} صورة إضافية، `
+                          : ''}
+                        {!allChecked ? 'وأكّد جميع بنود قائمة الفحص ' : ''}
+                        لتفعيل زر الاعتماد.
                       </p>
                     )}
                   </div>
@@ -452,6 +731,27 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
 
                 {tab === 'completed' && (
                   <div className="border-t border-border pt-3 space-y-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      {CHECK_ITEMS.map((item) => {
+                        const ok =
+                          item.key === 'quantity'
+                            ? task.checkQuantity
+                            : item.key === 'packaging'
+                              ? task.checkPackaging
+                              : task.checkDates;
+                        return (
+                          <span
+                            key={item.key}
+                            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                              ok
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :'bg-gray-50 text-gray-600 border-gray-200'
+                            }`}
+                          >
+                            {ok ? '✓' : '—'} {item.label}
+                          </span>
+                        );
+                      })}
+                    </div>
                     {task.reportNotes && (
                       <p className="text-xs text-foreground">
                         <span className="font-semibold">ملاحظات المفتش: </span>
