@@ -6608,13 +6608,6 @@ function LogisticsDashboardView({ module: moduleProp }: LogisticsDashboardViewPr
     }
   ];
 
-  const QUICK_ACTIONS: { label: string; icon: string; href: string }[] = [
-    { label: 'سوق الطلبات', icon: 'ShoppingBagIcon', href: MODULE_ROUTES.load_board },
-    { label: 'شحناتي', icon: 'ClipboardDocumentListIcon', href: MODULE_ROUTES.orders },
-    { label: 'الحاسبة', icon: 'CalculatorIcon', href: MODULE_ROUTES.calculator },
-    { label: 'مراسلة الإدارة', icon: 'ChatBubbleLeftRightIcon', href: MODULE_ROUTES.admin_messaging },
-  ];
-
   if ((authLoading || checkLoading) && !partner) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center" dir={dir}>
@@ -6784,20 +6777,6 @@ function LogisticsDashboardView({ module: moduleProp }: LogisticsDashboardViewPr
               </div>
               <p className={`text-3xl font-bold ${kpi.color}`}>{kpi.count}</p>
             </div>
-          ))}
-        </div>
-
-        {/* Quick action bar */}
-        <div className="flex gap-2 overflow-x-auto pb-1 mb-6" aria-label="إجراءات سريعة">
-          {QUICK_ACTIONS.map(action => (
-            <Link
-              key={action.label}
-              href={action.href}
-              className="shrink-0 inline-flex items-center gap-1.5 px-4 h-10 rounded-xl border border-slate-800 bg-slate-900 text-slate-100 text-xs font-semibold hover:bg-slate-800 transition-colors"
-            >
-              <Icon name={action.icon as any} size={14} className="text-cyan-400" />
-              {action.label}
-            </Link>
           ))}
         </div>
 
