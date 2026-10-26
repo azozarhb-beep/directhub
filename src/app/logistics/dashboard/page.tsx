@@ -36,6 +36,7 @@ import AirportSearchModal from './AirportSearchModal';
 import { AIR_ORIGIN_AIRPORTS, AIR_DEST_AIRPORTS } from './airportData';
 import toast from 'react-hot-toast';
 import { uploadLogisticsFile, LOGISTICS_FILE_ACCEPT } from '@/lib/logisticsUpload';
+import { isMissingTableError } from '@/lib/hooks/useLogisticsData';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -974,7 +975,28 @@ function ShippingCalculatorTab({ partner, onRequestSpecialQuote }: { partner?: L
     const { error } = await supabase
       .from('partner_shipping_rates')
       .upsert({ partner_id: partner.id, ...editRates }, { onConflict: 'partner_id' });
-    if (!error) {
+    // Mirror the rate card into logistics_rates (best-effort; table may not be migrated yet)
+    try {
+      await supabase.from('logistics_rates').upsert(
+        [
+          { partner_id: partner.id, service_type: 'domestic_land', rate_unit: 'per_kg', base_rate: editRates.land_medium_rate_per_kg, min_charge: 0, handling_fee: 0, currency: 'USD', is_active: true },
+          { partner_id: partner.id, service_type: 'cross_border', rate_unit: 'per_km', base_rate: editRates.intl_land_rate_per_km, min_charge: editRates.intl_land_base_charge, handling_fee: 0, currency: 'USD', is_active: true },
+          { partner_id: partner.id, service_type: 'air', rate_unit: 'per_kg', base_rate: editRates.air_rate_per_kg, min_charge: editRates.air_min_charge, handling_fee: editRates.air_handling_fee, currency: 'USD', is_active: true },
+          { partner_id: partner.id, service_type: 'ocean', rate_unit: 'per_cbm', base_rate: editRates.sea_rate_per_cbm_ton, min_charge: editRates.sea_min_bl_charge, handling_fee: editRates.sea_base_docs_fee, currency: 'USD', is_active: true },
+        ],
+        { onConflict: 'partner_id,service_type' }
+      );
+    } catch {
+      // ignore - logistics_rates not available yet
+    }
+    if (!error || isMissingTableError(error)) {
+      if (error) {
+        try {
+          window.localStorage.setItem(`dh_logistics_partner_rates_${partner.id}`, JSON.stringify(editRates));
+        } catch {
+          // storage unavailable
+        }
+      }
       setRates(editRates);
       setShowRatesEditor(false);
       toast.success('تم حفظ التسعيرة المخصصة بنجاح');

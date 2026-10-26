@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import toast from 'react-hot-toast';
 import { createClient } from '@/lib/supabase/client';
+import { isMissingTableError, useFreightQuotes } from '@/lib/hooks/useLogisticsData';
 
 export interface OpenLoad {
   id: string;
@@ -67,6 +68,7 @@ function initialVehicle(containerType: string | null): string {
 }
 
 export default function SubmitQuoteModal({ load, partnerId, onClose, onSubmitted }: SubmitQuoteModalProps) {
+  const { submitQuote } = useFreightQuotes(partnerId);
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState<QuoteCurrency>(
     CURRENCY_OPTIONS.includes(load.budget_currency as QuoteCurrency) ? (load.budget_currency as QuoteCurrency) : 'USD'
@@ -126,7 +128,7 @@ export default function SubmitQuoteModal({ load, partnerId, onClose, onSubmitted
         service_notes: composedNotes,
         status: 'pending',
       });
-      if (insertError) {
+      if (insertError && !isMissingTableError(insertError)) {
         if (insertError.code === '23505') {
           setError('لقد قدّمت عرضاً على هذه الشحنة مسبقاً.');
         } else {
@@ -134,6 +136,20 @@ export default function SubmitQuoteModal({ load, partnerId, onClose, onSubmitted
         }
         return;
       }
+      // Mirror into freight_quotes (falls back to local storage if the table is not applied yet)
+      await submitQuote({
+        shipment_id: load.id,
+        partner_id: partnerId,
+        quoted_price: amountNum,
+        currency,
+        transit_days: transitNum,
+        transit_unit: transitUnit,
+        scope: scope as 'freight_only' | 'handling_included' | 'clearance_haulage',
+        vehicle_type: vehicle,
+        validity_hours: validityHours,
+        expires_at: expiresAt,
+        notes: composedNotes,
+      });
       toast.success('تم إرسال عرض السعر بنجاح');
       onSubmitted(load.id);
     } catch (err: any) {

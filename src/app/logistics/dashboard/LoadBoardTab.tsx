@@ -95,13 +95,13 @@ export default function LoadBoardTab({ partnerId }: LoadBoardTabProps) {
       .order('created_at', { ascending: false });
     setLoads((data as OpenLoad[]) || []);
 
-    const { data: bids } = await supabase
+    const { data: bids, error: bidsError } = await supabase
       .from('logistics_bids')
       .select('id, shipment_id, bid_amount, currency, status')
       .eq('partner_id', partnerId)
       .order('created_at', { ascending: false });
     const map: Record<string, MyBid> = {};
-    ((bids as MyBid[]) || []).forEach(b => {
+    (bidsError ? [] : ((bids as MyBid[]) || [])).forEach(b => {
       if (!map[b.shipment_id]) map[b.shipment_id] = b;
     });
     setMyBids(map);
