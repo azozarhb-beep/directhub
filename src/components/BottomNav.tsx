@@ -385,6 +385,11 @@ const BottomNav: React.FC = () => {
     return navTranslations[labelKey] || labelKey;
   };
 
+  // The logistics partner back-office is a B2B workspace: no public buyer bottom bar.
+  if (pathname === '/logistics' || pathname?.startsWith('/logistics/')) {
+    return null;
+  }
+
   // z-[45] sits above in-page content and the `bottom-16 z-40` action bars, but
   // below `z-50` modal overlays — otherwise the nav paints over modal footers
   // and hides their Save / Publish buttons.

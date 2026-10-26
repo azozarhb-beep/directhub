@@ -7,7 +7,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
 import Header from '@/components/Header';
-import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import DispatchTruckModal from './DispatchTruckModal';
 import MaritimeBookingModal from './MaritimeBookingModal';
@@ -3512,14 +3511,6 @@ function OrdersTab({ partnerId, userId }: { partnerId: string; userId: string })
     return matchStatus && matchSearch;
   });
 
-  // KPI counts
-  const kpis = [
-    { label: 'إجمالي الشحنات المسندة', count: orders.length, icon: 'ClipboardDocumentListIcon', color: 'text-gray-600', bg: 'bg-gray-50 border-gray-200' },
-    { label: 'شحنات قيد النقل', count: orders.filter(o => o.status === 'in_transit' || o.status === 'shipped').length, icon: 'TruckIcon', color: 'text-sky-600', bg: 'bg-sky-50 border-sky-200' },
-    { label: 'بانتظار كود التسليم (PIN)', count: orders.filter(o => o.status === 'out_for_delivery' && !o.shipping_fees_released).length, icon: 'KeyIcon', color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200' },
-    { label: 'تم التسليم', count: orders.filter(o => o.status === 'delivered').length, icon: 'CheckBadgeIcon', color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200' },
-  ];
-
   return (
     <div className="space-y-5">
       {dispatchOrder && (
@@ -3557,18 +3548,6 @@ function OrdersTab({ partnerId, userId }: { partnerId: string; userId: string })
           }}
         />
       )}
-            {/* KPI row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {kpis.map(kpi => (
-          <div key={kpi.label} className={`rounded-xl border p-4 ${kpi.bg}`}>
-            <div className="flex items-center gap-2 mb-1">
-              <Icon name={kpi.icon as any} size={16} className={kpi.color} />
-              <span className="text-xs text-muted-foreground">{kpi.label}</span>
-            </div>
-            <p className={`text-2xl font-bold ${kpi.color}`}>{kpi.count}</p>
-          </div>
-        ))}
-      </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
@@ -5904,60 +5883,67 @@ export default function LogisticsDashboardPage() {
     setCheckLoading(false);
   };
 
+  const [kpiOrders, setKpiOrders] = useState<{ status: string; shipping_fees_released: boolean | null }[]>([]);
+
+  const fetchKpiOrders = useCallback(async () => {
+    if (!partner?.id) return;
+    const { data } = await supabase
+      .from('orders')
+      .select('status, shipping_fees_released')
+      .eq('logistics_partner_id', partner.id);
+    setKpiOrders((data as { status: string; shipping_fees_released: boolean | null }[]) || []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partner?.id]);
+
+  useEffect(() => { fetchKpiOrders(); }, [fetchKpiOrders]);
+
+  useRealtimeOrders({
+    channelName: 'logistics-dashboard-kpi-rt',
+    filterColumn: 'logistics_partner_id',
+    userId: partner?.id || '',
+    onOrderChange: fetchKpiOrders,
+    enabled: !!partner?.id,
+  });
+
+  const KPI_CARDS = [
+    { label: 'إجمالي الشحنات المسندة', count: kpiOrders.length, icon: 'ClipboardDocumentListIcon', color: 'text-slate-200', iconBg: 'bg-slate-700/60' },
+    { label: 'شحنات قيد النقل', count: kpiOrders.filter(o => o.status === 'in_transit' || o.status === 'shipped').length, icon: 'TruckIcon', color: 'text-sky-400', iconBg: 'bg-sky-500/15' },
+    { label: 'بانتظار كود التسليم (PIN)', count: kpiOrders.filter(o => o.status === 'out_for_delivery' && !o.shipping_fees_released).length, icon: 'KeyIcon', color: 'text-amber-400', iconBg: 'bg-amber-500/15' },
+    { label: 'تم التسليم بنجاح', count: kpiOrders.filter(o => o.status === 'delivered').length, icon: 'CheckBadgeIcon', color: 'text-emerald-400', iconBg: 'bg-emerald-500/15' },
+  ];
+
   const SECTIONS = [
     {
       key: 'local',
-      label: hs.secLocal,
+      label: 'الشحن المحلي والتوزيع',
+      icon: 'TruckIcon',
       tabs: [
-        { key: 'load_board', label: hs.tabLoadBoard, icon: 'ShoppingBagIcon' },
-        { key: 'orders', label: hs.tabOrders, icon: 'TruckIcon' },
-        { key: 'stats', label: hs.tabStats, icon: 'ChartBarIcon' },
-        { key: 'calculator', label: hs.tabCalculator, icon: 'CalculatorIcon' },
+        { key: 'load_board', label: 'سوق الطلبات المتاحة (Load Board)', icon: 'ShoppingBagIcon' },
+        { key: 'orders', label: 'الطلبات والشحنات المسندة', icon: 'ClipboardDocumentListIcon' },
+        { key: 'calculator', label: 'حاسبة تكاليف الشحن والتعرفة', icon: 'CalculatorIcon' },
+        { key: 'stats', label: 'الأداء والإحصائيات الميدانية', icon: 'ChartBarIcon' },
       ]
     },
     {
       key: 'international',
-      label: hs.secInternational,
+      label: 'الشحن الدولي والتخليص الجمركي',
+      icon: 'GlobeAltIcon',
       tabs: [
-        { key: 'international_orders', label: hs.tabIntlShipments, icon: 'GlobeAltIcon' },
+        { key: 'international_orders', label: 'إدارة الشحنات الدولية (بحري وجوي)', icon: 'GlobeAltIcon' },
+        { key: 'customs_docs', label: 'وثائق وبيانات التخليص الجمركي', icon: 'DocumentTextIcon' },
+        { key: 'documents', label: 'رفع المستندات والتراخيص', icon: 'FolderOpenIcon' },
       ]
     },
     {
-      key: 'customs',
-      label: hs.secCustoms,
+      key: 'ops_finance',
+      label: 'العمليات والمالية والدعم',
+      icon: 'Cog6ToothIcon',
       tabs: [
-        { key: 'customs_docs', label: hs.tabCustomsDocs, icon: 'DocumentTextIcon' },
-        { key: 'documents', label: hs.tabUploadDocs, icon: 'FolderOpenIcon' },
-      ]
-    },
-    {
-      key: 'dispatch',
-      label: hs.secDispatch,
-      tabs: [
-        { key: 'dispatch_rooms', label: hs.tabDispatchRooms, icon: 'ChatBubbleLeftRightIcon' },
-      ]
-    },
-    {
-      key: 'disputes_ops',
-      label: hs.secDisputes,
-      tabs: [
-        { key: 'disputes_delays', label: hs.tabDisputesDelays, icon: 'ExclamationTriangleIcon' },
-      ]
-    },
-    {
-      key: 'fulfillment',
-      label: hs.secFulfillment,
-      tabs: [
-        { key: 'conversations', label: hs.tabConversations, icon: 'ChatBubbleLeftRightIcon' },
-        { key: 'payments', label: hs.tabPayments, icon: 'BanknotesIcon' },
-        { key: 'profile', label: hs.tabProfile, icon: 'UserCircleIcon' },
-      ]
-    },
-    {
-      key: 'admin_support',
-      label: hs.secAdminSupport,
-      tabs: [
-        { key: 'admin_messaging', label: hs.tabAdminMessaging, icon: 'ChatBubbleLeftRightIcon' },
+        { key: 'dispatch_rooms', label: 'غرف التنسيق الميداني', icon: 'ChatBubbleLeftRightIcon' },
+        { key: 'disputes_delays', label: 'النزاعات والتأخير التشغيلي', icon: 'ExclamationTriangleIcon' },
+        { key: 'payments', label: 'المستحقات والمدفوعات', icon: 'BanknotesIcon' },
+        { key: 'profile', label: 'الملف التعريفي والاعتماد', icon: 'UserCircleIcon' },
+        { key: 'admin_messaging', label: 'مراسلة الإدارة والدعم التشغيلي', icon: 'ChatBubbleLeftRightIcon' },
       ]
     }
   ];
@@ -5987,34 +5973,34 @@ export default function LogisticsDashboardPage() {
             </div>
             <div>
               <h2 className="text-sm font-bold text-white leading-tight">{hs.logisticsRoomTitle}</h2>
-              <p className="text-cyan-200 text-xs">{hs.logisticsRoomSubtitle}</p>
+              <p className="text-cyan-200 text-xs">لوحة تحكم شريك النقل والخدمات اللوجستية · إدارة الشحنات والتوصيل</p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/70 border border-white/30 text-white text-xs font-medium hover:bg-slate-800 transition-colors"
+            >
+              <span aria-hidden="true">🏪</span>
+              العودة للمتجر / الرئيسية
+            </Link>
             <span className="bg-white/20 text-white text-xs px-3 py-1 rounded-full border border-white/30">
               {hs.logisticsPartnerBadge}
-            </span>
-            <span className="bg-white/10 text-cyan-200 text-xs px-3 py-1 rounded-full border border-white/20">
-              ID: logistics-office-dashboard
             </span>
           </div>
         </div>
       </div>
-      <div className="max-w-5xl mx-auto px-4 py-8 mobile-safe-bottom">
+      <div className="max-w-5xl mx-auto px-4 py-6 mobile-safe-bottom">
 
         {/* Page header */}
-        <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
+        <div className="flex items-start justify-between gap-4 mb-4 flex-wrap">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Link href="/my-account" className="text-muted-foreground hover:text-foreground transition-colors">
-                <Icon name="ArrowRightIcon" size={16} />
-              </Link>
-              <h1 className="text-2xl font-bold text-foreground">{hs.logisticsPortalTitle}</h1>
-            </div>
+            <h1 className="text-2xl font-bold text-foreground mb-1">{hs.logisticsPortalTitle}</h1>
             <p className="text-sm text-muted-foreground">
               {partner.company_name}
               <span className="mx-2 text-border">·</span>
-              {PARTNER_TYPE_LABELS[partner.partner_type] || partner.partner_type}
+              {partner.partner_type === 'international_shipping_office' ?'مكتب شحن وخدمات لوجستية معتمد'
+                : (PARTNER_TYPE_LABELS[partner.partner_type] || partner.partner_type)}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -6035,26 +6021,50 @@ export default function LogisticsDashboardPage() {
         {/* Status banner for non-approved partners */}
         <StatusBanner status={partner.status} adminNote={partner.admin_note} />
 
-        {/* Tabs */}
+        {/* Top KPI summary (2x2) */}
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          {KPI_CARDS.map(kpi => (
+            <div key={kpi.label} className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${kpi.iconBg}`}>
+                  <Icon name={kpi.icon as any} size={16} className={kpi.color} />
+                </span>
+                <span className="text-xs text-slate-400 leading-tight">{kpi.label}</span>
+              </div>
+              <p className={`text-3xl font-bold ${kpi.color}`}>{kpi.count}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Structured action cards */}
         <div className="space-y-6 mb-6">
           {SECTIONS.map(section => (
-            <div key={section.key}>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3 px-1">
-                {section.label}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {section.tabs.map(tab => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveTab(tab.key as typeof activeTab)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeTab === tab.key
-                        ? 'bg-blue-600 text-white' :'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+            <div key={section.key} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+              <div className="flex items-center gap-2 mb-3 px-1">
+                <Icon name={section.icon as any} size={16} className="text-cyan-400" />
+                <p className="text-sm font-bold text-slate-100">{section.label}</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {section.tabs.map(tab => {
+                  const isActive = activeTab === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setActiveTab(tab.key as typeof activeTab)}
+                      aria-pressed={isActive}
+                      className={`flex items-center gap-3 min-h-[64px] px-4 py-3 rounded-xl border text-start transition-colors ${
+                        isActive
+                          ? 'bg-cyan-600/20 border-cyan-500 text-white' :'bg-slate-900 border-slate-800 text-slate-200 hover:bg-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <span className={`w-9 h-9 shrink-0 rounded-lg flex items-center justify-center ${isActive ? 'bg-cyan-500/30' : 'bg-slate-800'}`}>
+                        <Icon name={tab.icon as any} size={18} className={isActive ? 'text-cyan-300' : 'text-slate-300'} />
+                      </span>
+                      <span className="text-sm font-semibold leading-snug">{tab.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -6109,7 +6119,6 @@ export default function LogisticsDashboardPage() {
           )}
         </div>
       </div>
-      <BottomNav />
     </div>
   );
 }
