@@ -8,6 +8,8 @@ import Icon from '@/components/ui/AppIcon';
 
 interface AgentOrderTrackingPanelProps {
   userId: string;
+  embedded?: boolean;
+  lockedFilter?: FilterId;
 }
 
 interface TrackedOrder {
@@ -110,7 +112,7 @@ const DEMO_ORDER: TrackedOrder = {
   delayDays: null,
 };
 
-const AgentOrderTrackingPanel: React.FC<AgentOrderTrackingPanelProps> = ({ userId }) => {
+const AgentOrderTrackingPanel: React.FC<AgentOrderTrackingPanelProps> = ({ userId, embedded = false, lockedFilter }) => {
   const supabase = useMemo(() => createClient(), []);
   const [orders, setOrders] = useState<TrackedOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -340,11 +342,13 @@ const AgentOrderTrackingPanel: React.FC<AgentOrderTrackingPanelProps> = ({ userI
   const visibleOrders = useMemo(() => {
     const q = query.trim().toLowerCase();
     return orders.filter((o) => {
-      if (filter !== 'all' && filterOf(o) !== filter) return false;
+      if (lockedFilter) {
+        if (filterOf(o) !== lockedFilter) return false;
+      } else if (filter !== 'all' && filterOf(o) !== filter) return false;
       if (!q) return true;
       return [o.orderNumber, o.factoryName, o.productName].some((v) => (v || '').toLowerCase().includes(q));
     });
-  }, [orders, filter, query]);
+  }, [orders, filter, query, lockedFilter]);
 
   const renderCard = (order: TrackedOrder, isDemo = false) => {
     const stage = stageOf(order);
@@ -656,16 +660,18 @@ const AgentOrderTrackingPanel: React.FC<AgentOrderTrackingPanelProps> = ({ userI
 
   return (
     <div className="space-y-4" dir="rtl">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-base font-bold text-foreground flex items-center gap-2">
-            <Icon name="TruckIcon" size={18} className="text-purple-500" />
-            متابعة الطلبات وتجهيز المنتجات
-          </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            الطلبات النشطة لمصانعك: قيد التجهيز، الفحص، والشحن
-          </p>
-        </div>
+      <div className={`flex items-start gap-3 ${embedded ? 'justify-end' : 'justify-between'}`}>
+        {!embedded && (
+          <div className="min-w-0">
+            <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+              <Icon name="TruckIcon" size={18} className="text-purple-500" />
+              متابعة الطلبات وتجهيز المنتجات
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              الطلبات النشطة لمصانعك: قيد التجهيز، الفحص، والشحن
+            </p>
+          </div>
+        )}
         <button
           type="button"
           onClick={() => load()}
@@ -696,7 +702,7 @@ const AgentOrderTrackingPanel: React.FC<AgentOrderTrackingPanelProps> = ({ userI
 
       {/* Lifecycle filter pills */}
       <div
-        className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className={`flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${lockedFilter ? 'hidden' : ''}`}
         role="tablist"
         aria-label="تصفية الطلبات حسب المرحلة"
       >

@@ -18,7 +18,8 @@ import AgentComplaintsPanel from './AgentComplaintsPanel';
 import AgentSalesDashboard from './AgentSalesDashboard';
 import AgentDispatchRoomsTab from './AgentDispatchRoomsTab';
 import AgentInspectionTasksPanel from './AgentInspectionTasksPanel';
-import AgentOrderTrackingPanel from './AgentOrderTrackingPanel';
+
+import AgentOperationsHub from './AgentOperationsHub';
 import EnhancedAgentDashboard from '@/components/agent/EnhancedAgentDashboard';
 import ReferralTrackingPanel from './ReferralTrackingPanel';
 import AgentUnifiedEarningsCard from './AgentUnifiedEarningsCard';
@@ -1142,13 +1143,11 @@ export default function AgentDashboardPage() {
             },
             {
               key: 'factories',
-              title: 'المصانع والتحقق',
+              title: 'المصانع والعمليات والكتالوج',
               items: [
-                { id: 'factories', icon: 'BuildingOffice2Icon', label: ad.tabFactories.replace('{count}', String(totalFactories)), badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' },
-                { id: 'products', icon: 'CubeIcon', label: ad.tabProducts.replace('{count}', String(totalProducts)), badge: 0, badgeColor: '', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
-                { id: 'inspections', icon: 'ClipboardDocumentListIcon', label: 'مهام التفتيش', badge: inspectionTasks.filter(t => !t.id.startsWith('mock-')).length, badgeColor: 'bg-amber-500', iconColor: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' },
-                { id: 'order_tracking', icon: 'TruckIcon', label: 'متابعة الطلبات وتجهيز المنتجات', badge: 0, badgeColor: '', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
-                { id: 'enhanced', icon: 'BriefcaseIcon', label: 'المصانع والتوثيق (KYC)', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
+                { id: 'factories', icon: 'BuildingOffice2Icon', label: '🏭 شبكة المصانع والتوثيق (KYC)', sub: 'إدارة المصانع، إضافة مصنع جديد، وتوثيق السجلات الجغرافية', pills: `${statApprovedFactories} معتمد | ${pendingReview} قيد التوثيق`, badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' },
+                { id: 'order_tracking', icon: 'TruckIcon', label: '📦 العمليات والتفتيش الميداني', sub: 'متابعة خطوط الإنتاج، طلبات الشحن، ومعاينة البليتات', pills: '', badge: inspectionTasks.filter(t => !t.id.startsWith('mock-')).length, badgeColor: 'bg-amber-500', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
+                { id: 'products', icon: 'CubeIcon', label: '🏷️ كتالوج المنتجات', sub: ad.tabProducts.replace('{count}', String(totalProducts)), pills: '', badge: 0, badgeColor: '', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
               ],
             },
             {
@@ -1179,16 +1178,16 @@ export default function AgentDashboardPage() {
           ]).map(section => (
             <div key={section.key}>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2 px-1">{section.title}</p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {section.items.map(item => {
-                  const isActive = activeTab === item.id;
+              <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${section.key === 'factories' ? 'lg:grid-cols-3' : 'lg:grid-cols-4'}`}>
+                {section.items.map((item: any) => {
+                  const isActive = activeTab === item.id || (item.id === 'factories' && activeTab === 'enhanced') || (item.id === 'order_tracking' && activeTab === 'inspections');
                   return (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => openTab(item.id as AgentTabId)}
                       aria-pressed={isActive}
-                      className={`relative flex flex-col items-center justify-center p-3 min-h-[96px] rounded-xl border text-center transition-all active:scale-[0.98] ${
+                      className={`relative flex flex-col items-center justify-center p-3 min-h-[96px] rounded-xl border text-center transition-all active:scale-[0.98] ${section.key === 'factories' ? 'col-span-2 sm:col-span-1' : ''} ${
                         isActive
                           ? 'bg-[#D4AF37]/10 border-[#D4AF37] border-2 ring-2 ring-[#D4AF37]/25 shadow-md'
                           : 'bg-white dark:bg-zinc-900 border-slate-100 dark:border-zinc-800 shadow-sm hover:shadow-md hover:border-[#D4AF37]/50'
@@ -1198,6 +1197,14 @@ export default function AgentDashboardPage() {
                         <Icon name={item.icon as any} size={22} />
                       </span>
                       <span className="leading-tight text-slate-800 dark:text-zinc-100 font-semibold text-sm">{item.label}</span>
+                      {item.sub && (
+                        <span className="mt-1 text-[11px] leading-snug text-muted-foreground">{item.sub}</span>
+                      )}
+                      {item.pills && (
+                        <span className="mt-2 inline-flex items-center rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900 px-2.5 py-0.5 text-[11px] font-bold">
+                          {item.pills}
+                        </span>
+                      )}
                       {item.badge > 0 && (
                         <span className={`absolute top-2 end-2 min-w-[18px] h-[18px] ${item.badgeColor} text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1`}>
                           {item.badge > 99 ? '99+' : item.badge}
@@ -1220,15 +1227,15 @@ export default function AgentDashboardPage() {
           const TAB_META: Record<AgentTabId, { icon: string; title: string; iconColor: string }> = {
             sales: { icon: 'ChartBarIcon', title: ad.tabSales, iconColor: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' },
             earnings: { icon: 'BanknotesIcon', title: 'الأرباح والعمولات', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
-            factories: { icon: 'BuildingOffice2Icon', title: ad.tabFactories.replace('{count}', String(totalFactories)), iconColor: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' },
-            products: { icon: 'CubeIcon', title: ad.tabProducts.replace('{count}', String(totalProducts)), iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
-            inspections: { icon: 'ClipboardDocumentListIcon', title: 'مهام التفتيش', iconColor: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' },
-            enhanced: { icon: 'BriefcaseIcon', title: 'المصانع والتوثيق (KYC)', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
+            factories: { icon: 'BuildingOffice2Icon', title: '🏭 شبكة المصانع والتوثيق (KYC)', iconColor: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' },
+            products: { icon: 'CubeIcon', title: '🏷️ كتالوج المنتجات', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
+            inspections: { icon: 'ClipboardDocumentListIcon', title: '📦 العمليات والتفتيش الميداني', iconColor: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' },
+            enhanced: { icon: 'BriefcaseIcon', title: '🏭 شبكة المصانع والتوثيق (KYC)', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
             messaging: { icon: 'ChatBubbleLeftRightIcon', title: ad.tabMessaging, iconColor: 'bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400' },
             admin_msg: { icon: 'ShieldCheckIcon', title: ad.tabAdminMsg, iconColor: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' },
             complaints: { icon: 'ExclamationTriangleIcon', title: ad.tabComplaints, iconColor: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' },
             dispatch_rooms: { icon: 'TruckIcon', title: 'غرف التنسيق الميداني', iconColor: 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400' },
-            order_tracking: { icon: 'TruckIcon', title: 'متابعة الطلبات وتجهيز المنتجات', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
+            order_tracking: { icon: 'TruckIcon', title: '📦 العمليات والتفتيش الميداني', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
             commission: { icon: 'BanknotesIcon', title: 'الأرباح والعمولات', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
             exchange: { icon: 'ArrowsRightLeftIcon', title: ad.tabInfoExchange, iconColor: 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-950/40 dark:text-fuchsia-400' },
             documents: { icon: 'FolderOpenIcon', title: ad.tabDocuments, iconColor: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400' },
@@ -1257,8 +1264,8 @@ export default function AgentDashboardPage() {
           );
         })()}
 
-        {/* Inspection Tasks Tab — field_inspection_tasks based panel */}
-        {activeTab === 'inspections' && user && (
+        {/* Inspection Tasks Tab — now rendered inside the Operations Hub */}
+        {false && activeTab === 'inspections' && user && (
           <AgentInspectionTasksPanel userId={user.id} />
         )}
 
@@ -1663,14 +1670,46 @@ export default function AgentDashboardPage() {
           <AgentUnifiedEarningsCard userId={user.id} />
         )}
 
+        {/* Operations Hub — unified order preparation, PSI inspections, freight-ready shipments */}
+        {(activeTab === 'order_tracking' || activeTab === 'inspections') && user && (
+          <AgentOperationsHub
+            userId={user.id}
+            initialTab={activeTab === 'inspections' ? 'inspection' : 'preparation'}
+          />
+        )}
+
+        {/* Factories & KYC switch (merged card) */}
+        {(activeTab === 'factories' || activeTab === 'enhanced') && (
+          <div
+            className="flex gap-1.5 p-1 mb-4 bg-muted rounded-xl"
+            role="tablist"
+            aria-label="المصانع والتوثيق"
+          >
+            {([
+              { id: 'factories', label: '🏭 المصانع والموردون' },
+              { id: 'enhanced', label: '🛡️ التوثيق (KYC)' },
+            ] as const).map(t => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === t.id}
+                onClick={() => { if (activeTab !== t.id) openTab(t.id); }}
+                className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === t.id
+                    ? 'bg-card text-foreground shadow-sm border border-border'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Enhanced Agent Dashboard Tab */}
         {activeTab === 'enhanced' && user && (
           <EnhancedAgentDashboard userId={user.id} />
-        )}
-
-        {/* Order Tracking Tab */}
-        {activeTab === 'order_tracking' && user && (
-          <AgentOrderTrackingPanel userId={user.id} />
         )}
 
         {/* Dispatch Rooms Tab */}

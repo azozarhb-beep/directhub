@@ -7,6 +7,7 @@ import { enforceAgentGeofence } from '@/lib/agentGeofence';
 
 interface AgentInspectionTasksPanelProps {
   userId: string;
+  embedded?: boolean;
 }
 
 interface InspectionRow {
@@ -84,7 +85,7 @@ function summarizeItems(items: unknown): { product: string; quantity: string } {
   };
 }
 
-const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ userId }) => {
+const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ userId, embedded = false }) => {
   const supabase = useMemo(() => createClient(), []);
   const [tasks, setTasks] = useState<InspectionRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -381,16 +382,18 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-base font-bold text-foreground flex items-center gap-2">
-            <Icon name="ClipboardDocumentListIcon" size={18} className="text-amber-600 shrink-0" />
-            <span className="break-words">مهام التفتيش الميداني</span>
-          </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            المهام المسندة إليك للتفتيش وإعطاء الضوء الأخضر لتحرير الدفعات
-          </p>
-        </div>
+      <div className={`flex items-start gap-3 ${embedded ? 'justify-end' : 'justify-between'}`}>
+        {!embedded && (
+          <div className="min-w-0">
+            <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+              <Icon name="ClipboardDocumentListIcon" size={18} className="text-amber-600 shrink-0" />
+              <span className="break-words">مهام التفتيش الميداني</span>
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              المهام المسندة إليك للتفتيش وإعطاء الضوء الأخضر لتحرير الدفعات
+            </p>
+          </div>
+        )}
         <button
           onClick={load}
           disabled={loading}

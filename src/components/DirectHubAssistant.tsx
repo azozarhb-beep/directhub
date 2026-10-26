@@ -526,7 +526,7 @@ PERSONALITY: Warm, confident, knowledgeable. Never robotic. Always feel like a r
   return (
     <>
       {/* Floating Button — mid-screen side edge so it never covers bottom action bars / bottom nav */}
-      {mounted && !isOpen && (
+      {mounted && !isOpen && !(pathname || '').startsWith('/agent/dashboard') && (
         <button
           onClick={handleOpen}
           className={`fixed top-1/2 mt-28 sm:mt-16 -translate-y-1/2 z-40 flex items-center gap-2 p-2.5 sm:px-4 sm:py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 opacity-90 hover:opacity-100 ${isRTL ? 'left-4' : 'right-4'}`}
