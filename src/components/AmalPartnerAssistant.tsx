@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -989,6 +990,8 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
   }, []);
 
   const [isMounted, setIsMounted] = useState(false);
+  const pathname = usePathname();
+  const isAgentDashboard = (pathname || '').startsWith('/agent/dashboard');
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -996,6 +999,9 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
   // Use CSS classes for positioning to avoid hydration mismatch
   // Server always renders right-4, client switches based on RTL after mount
   const positionClass = isMounted && isRTL ? 'left-4' : 'right-4';
+  const floatingButtonPosition = isAgentDashboard
+    ? 'fixed bottom-5 left-4 z-50'
+    : `fixed top-1/2 -translate-y-1/2 z-40 ${positionClass}`;
 
   const assistantTitle = ui.title;
   const assistantSubtitle = ui.subtitle;
@@ -1013,7 +1019,7 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
       {!isOpen && (
         <button
           onClick={handleOpen}
-          className={`fixed top-1/2 -translate-y-1/2 z-40 flex items-center gap-2 p-2.5 sm:px-4 sm:py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-full shadow-xl hover:shadow-2xl transition-all duration-200 opacity-90 hover:opacity-100 ${positionClass}`}
+          className={`${floatingButtonPosition} flex items-center gap-2 p-2.5 sm:px-4 sm:py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-full shadow-xl hover:shadow-2xl transition-all duration-200 opacity-90 hover:opacity-100`}
           aria-label={assistantTitle}
           suppressHydrationWarning
         >
