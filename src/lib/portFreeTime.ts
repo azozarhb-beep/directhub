@@ -3,14 +3,14 @@ export type DemurrageCurrency = 'USD' | 'YER' | 'SAR' | 'EGP';
 export const DEMURRAGE_CURRENCIES: DemurrageCurrency[] = ['USD', 'YER', 'SAR', 'EGP'];
 
 export const CONTAINER_TYPES = [
-  { value: '20ft', label: '20ft' },
-  { value: '40ft', label: '40ft' },
-  { value: '40ft_hc', label: '40ft HC' },
-  { value: 'reefer', label: 'Reefer' },
-  { value: 'open_top', label: 'Open Top' },
-  { value: 'tank', label: 'Tank' },
-  { value: 'flatbed', label: 'Flatbed' },
-  { value: 'dry_box', label: 'Dry Box' },
+  { value: '20ft', label: 'حاوية 20 قدم قياسية (20ft Standard)' },
+  { value: '40ft', label: 'حاوية 40 قدم قياسية (40ft Standard)' },
+  { value: '40ft_hc', label: 'حاوية 40 قدم مرتفعة (40ft High Cube - HQ)' },
+  { value: 'reefer', label: 'حاوية مبردة (Reefer)' },
+  { value: 'open_top', label: 'حاوية مفتوحة السقف (Open Top)' },
+  { value: 'tank', label: 'حاوية صهريج (Tank)' },
+  { value: 'flatbed', label: 'حاوية مسطحة (Flatbed)' },
+  { value: 'dry_box', label: 'صندوق جاف (Dry Box)' },
 ];
 
 export const SHIPPING_LINES = [

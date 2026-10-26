@@ -4261,9 +4261,10 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
     estimated_delivery: '',
     notes: '',
   });
-  const [addPortFT, setAddPortFT] = useState<PortFreeTimeFormValues>(EMPTY_PORT_FREE_TIME);
+  const [addPortFT, setAddPortFT] = useState<PortFreeTimeFormValues>({ ...EMPTY_PORT_FREE_TIME, seal_number: '' });
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState('');
+  const isAirAdd = addForm.transport_type === 'air' || addForm.transport_type === 'express';
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchShipments = useCallback(async () => {
@@ -4572,7 +4573,18 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
         setAddError('يجب تسجيل الدخول لإضافة شحنة');
         return;
       }
-      const ft = portFreeTimePayload(addPortFT);
+      const ft = portFreeTimePayload({
+        ...addPortFT,
+        shipping_line: addForm.carrier_name,
+        port_name: addForm.route_destination_port,
+        container_number: isAirAdd ? '' : addPortFT.container_number,
+        container_type: isAirAdd ? '' : addPortFT.container_type,
+      });
+      const sealNo = isAirAdd ? '' : (addPortFT.seal_number || '').trim();
+      const noteParts = [
+        addForm.notes.trim(),
+        sealNo ? `رقم الرصاص / الختم (Seal No): ${sealNo}` : '',
+      ].filter(Boolean);
       const { data, error } = await supabase
         .from('international_shipments')
         .insert({
@@ -4595,7 +4607,7 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
           free_time_days: ft.free_days_limit ?? 14,
           daily_demurrage_fee: ft.daily_demurrage_rate ?? 0,
           currency: ft.demurrage_currency,
-          notes: addForm.notes.trim() || null,
+          notes: noteParts.length ? noteParts.join('\n') : null,
           status: 'Pending',
         })
         .select()
@@ -4609,7 +4621,7 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
       setShipments(prev => sortByFreeTimeUrgency([mapped, ...prev]));
       setShowAddModal(false);
       setAddForm({ tracking_number: '', bl_number: '', transport_type: 'sea_fcl', route_origin_port: '', route_destination_port: '', carrier_name: '', etd: '', estimated_delivery: '', notes: '' });
-      setAddPortFT(EMPTY_PORT_FREE_TIME);
+      setAddPortFT({ ...EMPTY_PORT_FREE_TIME, seal_number: '' });
     } catch (err: any) {
       setAddError(err?.message || 'حدث خطأ أثناء إضافة الشحنة');
     } finally {
@@ -5086,7 +5098,7 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
                     type="text"
                     value={addForm.tracking_number}
                     onChange={e => setAddForm(prev => ({ ...prev, tracking_number: e.target.value }))}
-                    placeholder="TRK-2024-XXXX"
+                    placeholder="TRK-2026-XXXX"
                     className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 font-mono"
                   />
                 </div>
@@ -5161,7 +5173,13 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
               </div>
 
               {/* Notes */}
-              <PortFreeTimeFields values={addPortFT} onChange={setAddPortFT} />
+              <PortFreeTimeFields
+                values={addPortFT}
+                onChange={setAddPortFT}
+                mode={isAirAdd ? 'air' : 'ocean'}
+                syncedCarrier={addForm.carrier_name.trim()}
+                syncedPort={addForm.route_destination_port.trim()}
+              />
 
               <div>
                 <label className="block text-xs font-semibold text-muted-foreground mb-1.5">ملاحظات</label>
