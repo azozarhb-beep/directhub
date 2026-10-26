@@ -3,6 +3,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import OperationsShell from '../OperationsShell';
 import { AgentStatus, OpsAgent, cleanPhone, inputCls, useOperationsData } from '../useOperationsData';
+import { TERRITORY_DATA, formatCoverageLabel, getCityByName, getCountryByName, getDistrictByName } from '@/lib/territoryData';
+
+interface AgentTerritoryRow {
+  country: string;
+  city: string;
+  district: string;
+}
 
 const CITIES = ['صنعاء', 'عدن', 'الحديدة', 'حضرموت', 'تعز', 'إب', 'ذمار', 'المكلا', 'مأرب'];
 
@@ -26,6 +33,79 @@ export default function OperationsAgentsPage() {
   const [city, setCity] = useState('');
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [toast, setToast] = useState('');
+  const [territories, setTerritories] = useState<Record<string, AgentTerritoryRow>>({});
+  const [terrAgent, setTerrAgent] = useState<OpsAgent | null>(null);
+  const [terrCountry, setTerrCountry] = useState('');
+  const [terrCity, setTerrCity] = useState('');
+  const [terrDistrict, setTerrDistrict] = useState('');
+
+  const loadTerritories = async () => {
+    const { data } = await supabase.rpc('admin_list_agent_territories');
+    const map: Record<string, AgentTerritoryRow> = {};
+    (data ?? []).forEach((r: any) => {
+      map[r.agent_id] = {
+        country: r.territory_country || '',
+        city: r.territory_city || '',
+        district: r.territory_district || '',
+      };
+    });
+    setTerritories(map);
+  };
+
+  useEffect(() => { loadTerritories(); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const openTerritory = (a: OpsAgent) => {
+    const t = territories[a.id];
+    setTerrAgent(a);
+    setTerrCountry(t?.country || '');
+    setTerrCity(t?.city || '');
+    setTerrDistrict(t?.district || '');
+  };
+
+  const saveTerritory = async () => {
+    if (!terrAgent) return;
+    const dist = getDistrictByName(terrCountry, terrCity, terrDistrict);
+    if (!terrCountry || !terrCity || !dist) { showToast('اختر الدولة والمدينة والمديرية'); return; }
+    setBusyKey(`terr-${terrAgent.id}`);
+    const { error: err } = await supabase.rpc('admin_set_agent_territory', {
+      p_agent_id: terrAgent.id,
+      p_country: terrCountry,
+      p_city: terrCity,
+      p_zone_id: null,
+      p_center_lat: dist.lat,
+      p_center_lng: dist.lng,
+      p_radius_km: dist.radiusKm,
+      p_polygon: null,
+      p_district: dist.name,
+    });
+    setBusyKey(null);
+    if (err) { showToast(`فشل الحفظ: ${err.message}`); return; }
+    showToast('تم تعيين نطاق التغطية الميداني');
+    setTerrAgent(null);
+    loadTerritories();
+  };
+
+  const clearTerritory = async () => {
+    if (!terrAgent) return;
+    setBusyKey(`terr-${terrAgent.id}`);
+    const { error: err } = await supabase.rpc('admin_set_agent_territory', {
+      p_agent_id: terrAgent.id,
+      p_country: '',
+      p_city: '',
+      p_zone_id: null,
+      p_center_lat: null,
+      p_center_lng: null,
+      p_radius_km: null,
+      p_polygon: null,
+      p_district: '',
+    });
+    setBusyKey(null);
+    if (err) { showToast(`فشل الإزالة: ${err.message}`); return; }
+    showToast('تمت إزالة نطاق التغطية');
+    setTerrAgent(null);
+    loadTerritories();
+  };
 
   useEffect(() => {
     const s = new URLSearchParams(window.location.search).get('status');
@@ -79,6 +159,7 @@ export default function OperationsAgentsPage() {
             <tr>
               <th className="p-3 font-bold">المندوب</th>
               <th className="p-3 font-bold">المحافظة</th>
+              <th className="p-3 font-bold">نطاق التغطية الميداني</th>
               <th className="p-3 font-bold text-center">الإحالات (مصانع)</th>
               <th className="p-3 font-bold text-center">منتجات مدرجة</th>
               <th className="p-3 font-bold text-center">مهام نشطة</th>
@@ -89,7 +170,7 @@ export default function OperationsAgentsPage() {
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={8} className="p-10 text-center text-slate-500">لا يوجد مناديب مطابقون</td></tr>
+              <tr><td colSpan={9} className="p-10 text-center text-slate-500">لا يوجد مناديب مطابقون</td></tr>
             )}
             {filtered.map((a) => (
               <tr key={a.id} className="border-t border-slate-800 hover:bg-slate-800/40">
@@ -98,6 +179,13 @@ export default function OperationsAgentsPage() {
                   <div className="text-[11px] text-slate-500" dir="ltr">{a.phone || a.email || '—'}</div>
                 </td>
                 <td className="p-3 text-xs">{a.city || 'غير محدد'}</td>
+                <td className="p-3 text-xs">
+                  {territories[a.id]?.city ? (
+                    <span className="text-emerald-300 font-bold">📍 {territories[a.id].country} · {formatCoverageLabel(territories[a.id].city, territories[a.id].district)}</span>
+                  ) : (
+                    <span className="text-slate-500">غير محدد</span>
+                  )}
+                </td>
                 <td className="p-3 text-center font-black tabular-nums">{a.referrals}</td>
                 <td className="p-3 text-center font-black tabular-nums">{a.products}</td>
                 <td className="p-3 text-center font-black tabular-nums text-purple-300">{a.activeTasks}</td>
@@ -106,6 +194,7 @@ export default function OperationsAgentsPage() {
                 <td className="p-3">
                   <div className="flex items-center gap-1.5">
                     {a.phone && <a href={`https://wa.me/${cleanPhone(a.phone)}`} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-[11px] font-bold">واتساب</a>}
+                    <button onClick={() => openTerritory(a)} className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-[11px] font-bold">📍 النطاق</button>
                     <select value={a.status} disabled={busyKey === `ag-${a.id}`} onChange={(e) => setAgentStatus(a, e.target.value as AgentStatus)} className="px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs disabled:opacity-50">
                       <option value="approved">معتمد</option>
                       <option value="pending">قيد المراجعة</option>
@@ -120,6 +209,44 @@ export default function OperationsAgentsPage() {
       </div>
 
       {toast && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] bg-emerald-600 text-white text-sm font-bold px-4 py-2 rounded-xl shadow-xl">{toast}</div>}
+
+      {terrAgent && (
+        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" onClick={() => setTerrAgent(null)}>
+          <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-5 space-y-3" dir="rtl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold">إعدادات النطاق الجغرافي — {terrAgent.name}</h3>
+            <p className="text-[11px] text-slate-400">لن يتمكن المندوب من الفحص أو بدء تسجيل مصنع إلا إذا كان موقعه الفعلي (GPS) داخل المديرية المحددة.</p>
+            <div>
+              <label className="text-xs text-slate-400">الدولة</label>
+              <select value={terrCountry} onChange={(e) => { setTerrCountry(e.target.value); setTerrCity(''); setTerrDistrict(''); }} className={inputCls}>
+                <option value="">اختر الدولة</option>
+                {TERRITORY_DATA.map((c) => <option key={c.code} value={c.name}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-slate-400">المدينة</label>
+              <select value={terrCity} disabled={!terrCountry} onChange={(e) => { setTerrCity(e.target.value); setTerrDistrict(''); }} className={`${inputCls} disabled:opacity-50`}>
+                <option value="">اختر المدينة</option>
+                {(getCountryByName(terrCountry)?.cities ?? []).map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-slate-400">المديرية / المنطقة الفرعية</label>
+              <select value={terrDistrict} disabled={!terrCity} onChange={(e) => setTerrDistrict(e.target.value)} className={`${inputCls} disabled:opacity-50`}>
+                <option value="">اختر المديرية</option>
+                {(getCityByName(terrCountry, terrCity)?.districts ?? []).map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+              </select>
+            </div>
+            {terrCity && terrDistrict && (
+              <p className="text-xs text-emerald-300 font-bold">📍 نطاق التغطية الميداني: {formatCoverageLabel(terrCity, terrDistrict)}</p>
+            )}
+            <div className="flex items-center gap-2 pt-1">
+              <button onClick={saveTerritory} disabled={busyKey === `terr-${terrAgent.id}`} className="flex-1 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm font-bold disabled:opacity-50">حفظ النطاق</button>
+              <button onClick={clearTerritory} disabled={busyKey === `terr-${terrAgent.id}`} className="px-3 py-2 rounded-xl bg-red-600/80 hover:bg-red-500 text-sm font-bold disabled:opacity-50">إزالة</button>
+              <button onClick={() => setTerrAgent(null)} className="px-3 py-2 rounded-xl bg-slate-800 text-sm font-bold">إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
     </OperationsShell>
   );
 }

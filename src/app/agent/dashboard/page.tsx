@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
+import { formatCoverageLabel } from '@/lib/territoryData';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
@@ -593,6 +594,21 @@ export default function AgentDashboardPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const supabase = createClient();
+  const [coverageLabel, setCoverageLabel] = useState('');
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.rpc('get_my_territory');
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!cancelled && row?.territory_city) {
+        setCoverageLabel(formatCoverageLabel(row.territory_city, row.territory_district));
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const [factories, setFactories] = useState<AgentFactory[]>([]);
   const [products, setProducts] = useState<AgentProduct[]>([]);
@@ -1028,6 +1044,11 @@ export default function AgentDashboardPage() {
             <span className="bg-white/10 text-violet-200 text-xs px-3 py-1 rounded-full border border-white/20">
               ID: field-agent-dashboard
             </span>
+            {coverageLabel && (
+              <span className="bg-emerald-500/30 text-white text-xs px-3 py-1 rounded-full border border-emerald-300/50 font-bold">
+                📍 نطاق التغطية الميداني: {coverageLabel}
+              </span>
+            )}
           </div>
         </div>
       </div>
