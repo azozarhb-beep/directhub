@@ -116,6 +116,7 @@ const PROTECTED_PAGE_ROUTES = [
   '/agent/register-facility',
   '/agent/add-product',
   '/buyer-dashboard',
+  '/driver',
   '/logistics/dashboard',
   '/logistics/load-board',
   '/logistics/shipments',
