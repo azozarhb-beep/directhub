@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
@@ -37,6 +37,7 @@ import { AIR_ORIGIN_AIRPORTS, AIR_DEST_AIRPORTS } from './airportData';
 import toast from 'react-hot-toast';
 import { uploadLogisticsFile, LOGISTICS_FILE_ACCEPT } from '@/lib/logisticsUpload';
 import { isMissingTableError } from '@/lib/hooks/useLogisticsData';
+import { useSearchParams } from 'next/navigation';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -5873,16 +5874,61 @@ function DisputesAndDelaysTab({ partnerId, userId }: { partnerId: string; userId
 
 // ─── Main Dashboard Page ──────────────────────────────────────────────────────
 
-export default function LogisticsDashboardPage() {
+type LogisticsModuleKey =
+  | 'load_board' |'orders' |'conversations' |'stats' |'calculator' |'profile' |'payments' |'international_orders' |'customs_docs' |'documents' |'dispatch_rooms' |'admin_messaging' |'disputes_delays';
+
+const MODULE_ROUTES: Record<LogisticsModuleKey, string> = {
+  load_board: '/logistics/load-board',
+  orders: '/logistics/shipments',
+  calculator: '/logistics/calculator',
+  stats: '/logistics/analytics',
+  international_orders: '/logistics/international',
+  customs_docs: '/logistics/customs',
+  conversations: '/logistics/dashboard',
+  documents: '/logistics/dashboard?module=documents',
+  dispatch_rooms: '/logistics/dashboard?module=dispatch_rooms',
+  disputes_delays: '/logistics/dashboard?module=disputes_delays',
+  payments: '/logistics/dashboard?module=payments',
+  profile: '/logistics/dashboard?module=profile',
+  admin_messaging: '/logistics/dashboard?module=admin_messaging',
+};
+
+const MODULE_TITLES: Record<LogisticsModuleKey, string> = {
+  load_board: 'سوق الطلبات المتاحة (Load Board)',
+  orders: 'الطلبات والشحنات المسندة',
+  calculator: 'حاسبة تكاليف الشحن والتعرفة',
+  stats: 'الأداء والإحصائيات الميدانية',
+  international_orders: 'إدارة الشحنات الدولية (بحري وجوي)',
+  customs_docs: 'وثائق وبيانات التخليص الجمركي',
+  documents: 'رفع المستندات والتراخيص',
+  dispatch_rooms: 'غرف التنسيق الميداني',
+  disputes_delays: 'النزاعات والتأخير التشغيلي',
+  payments: 'المستحقات والمدفوعات',
+  profile: 'الملف التعريفي والاعتماد',
+  admin_messaging: 'مراسلة الإدارة والدعم التشغيلي',
+  conversations: 'المحادثات',
+};
+
+const VALID_MODULES = Object.keys(MODULE_TITLES) as LogisticsModuleKey[];
+
+export interface LogisticsDashboardViewProps {
+  module?: LogisticsModuleKey;
+}
+
+function LogisticsDashboardView({ module: moduleProp }: LogisticsDashboardViewProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const { language, dir } = useLanguage();
   const hs = getHubShellStrings(language);
   const supabase = createClient();
 
+  const queryModule = searchParams?.get('module') as LogisticsModuleKey | null;
+  const activeModule: LogisticsModuleKey | null =
+    moduleProp || (queryModule && VALID_MODULES.includes(queryModule) ? queryModule : null);
+
   const [partner, setPartner] = useState<LogisticsPartner | null>(null);
   const [checkLoading, setCheckLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'load_board' | 'orders' | 'conversations' | 'stats' | 'calculator' | 'profile' | 'payments' | 'international_orders' | 'customs_docs' | 'documents' | 'dispatch_rooms' | 'admin_messaging' | 'disputes_delays'>('orders');
 
   useEffect(() => {
     if (authLoading) return;
@@ -5935,14 +5981,18 @@ export default function LogisticsDashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partner?.id]);
 
-  useEffect(() => { fetchKpiOrders(); }, [fetchKpiOrders]);
+  useEffect(() => {
+    if (activeModule) return;
+    fetchKpiOrders();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchKpiOrders, activeModule]);
 
   useRealtimeOrders({
     channelName: 'logistics-dashboard-kpi-rt',
     filterColumn: 'logistics_partner_id',
     userId: partner?.id || '',
     onOrderChange: fetchKpiOrders,
-    enabled: !!partner?.id,
+    enabled: !!partner?.id && !activeModule,
   });
 
   const KPI_CARDS = [
@@ -5952,7 +6002,7 @@ export default function LogisticsDashboardPage() {
     { label: 'تم التسليم بنجاح', count: kpiOrders.filter(o => o.status === 'delivered').length, icon: 'CheckBadgeIcon', color: 'text-emerald-400', iconBg: 'bg-emerald-500/15' },
   ];
 
-  const SECTIONS = [
+  const SECTIONS: { key: string; label: string; icon: string; tabs: { key: LogisticsModuleKey; label: string; icon: string }[] }[] = [
     {
       key: 'local',
       label: 'الشحن المحلي والتوزيع',
@@ -5988,6 +6038,13 @@ export default function LogisticsDashboardPage() {
     }
   ];
 
+  const QUICK_ACTIONS: { label: string; icon: string; href: string }[] = [
+    { label: 'سوق الطلبات', icon: 'ShoppingBagIcon', href: MODULE_ROUTES.load_board },
+    { label: 'شحناتي', icon: 'ClipboardDocumentListIcon', href: MODULE_ROUTES.orders },
+    { label: 'الحاسبة', icon: 'CalculatorIcon', href: MODULE_ROUTES.calculator },
+    { label: 'مراسلة الإدارة', icon: 'ChatBubbleLeftRightIcon', href: MODULE_ROUTES.admin_messaging },
+  ];
+
   if ((authLoading || checkLoading) && !partner) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center" dir={dir}>
@@ -6001,6 +6058,85 @@ export default function LogisticsDashboardPage() {
 
   if (!partner) return null;
 
+  // ── Full-page sub-view (dedicated route) ────────────────────────────────────
+  if (activeModule) {
+    return (
+      <div className="min-h-screen bg-background" dir={dir}>
+        <header className="sticky top-0 z-30 bg-card border-b border-border">
+          <div className="max-w-5xl mx-auto px-4 min-h-14 py-2 flex items-center justify-between gap-3 flex-wrap">
+            <Link
+              href="/logistics/dashboard"
+              className="inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:opacity-80 transition-opacity"
+            >
+              <span aria-hidden="true">←</span>
+              رجوع إلى لوحة العمليات اللوجستية
+            </Link>
+            <h1 className="text-sm sm:text-base font-bold text-foreground">{MODULE_TITLES[activeModule]}</h1>
+            <div className="flex items-center gap-2">
+              {activeModule !== 'admin_messaging' && (
+                <Link
+                  href={MODULE_ROUTES.admin_messaging}
+                  className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:bg-muted transition-colors"
+                >
+                  <Icon name="ChatBubbleLeftRightIcon" size={14} />
+                  الدعم
+                </Link>
+              )}
+              <button
+                type="button"
+                onClick={() => router.refresh()}
+                className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:bg-muted transition-colors"
+              >
+                <Icon name="ArrowPathIcon" size={14} />
+                تحديث
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="max-w-5xl mx-auto px-4 py-5 pb-10">
+          <StatusBanner status={partner.status} adminNote={partner.admin_note} />
+          {activeModule === 'stats' && <PerformanceStatsTab partnerId={partner.id} />}
+          {activeModule === 'load_board' && <LoadBoardTab partnerId={partner.id} />}
+          {activeModule === 'orders' && (
+            <div className="space-y-4">
+              <OrdersTab partnerId={partner.id} userId={user?.id || ''} />
+            </div>
+          )}
+          {activeModule === 'conversations' && <ConversationsTab partnerId={partner.id} userId={user!.id} />}
+          {activeModule === 'calculator' && (
+            <ShippingCalculatorTab
+              partner={partner}
+              onRequestSpecialQuote={() => router.push(MODULE_ROUTES.admin_messaging)}
+            />
+          )}
+          {activeModule === 'profile' && (
+            <ProfileTab partner={partner} onSaved={updated => setPartner(updated)} />
+          )}
+          {activeModule === 'payments' && (
+            <PaymentsTab partnerId={partner.id} partnerCountry={partner.country} />
+          )}
+          {activeModule === 'international_orders' && <InternationalShipmentsTab partnerId={partner.id} />}
+          {(activeModule === 'customs_docs' || activeModule === 'documents') && (
+            <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
+              <LogisticsDocumentsPanel userId={user?.id} />
+            </div>
+          )}
+          {activeModule === 'dispatch_rooms' && (
+            <LogisticsDispatchRoomsTab userId={user!.id} partnerId={partner.id} />
+          )}
+          {activeModule === 'admin_messaging' && (
+            <AdminDirectMessagingTab partnerId={partner.id} userId={user!.id} />
+          )}
+          {activeModule === 'disputes_delays' && (
+            <DisputesAndDelaysTab partnerId={partner.id} userId={user!.id} />
+          )}
+        </main>
+      </div>
+    );
+  }
+
+  // ── Clean dashboard (KPIs + navigation cards + quick actions only) ──────────
   return (
     <div className="min-h-screen bg-background" dir={dir}>
       <Header />
@@ -6076,7 +6212,21 @@ export default function LogisticsDashboardPage() {
           ))}
         </div>
 
-        {/* Structured action cards */}
+        {/* Quick action bar */}
+        <div className="flex gap-2 overflow-x-auto pb-1 mb-6" aria-label="إجراءات سريعة">
+          {QUICK_ACTIONS.map(action => (
+            <Link
+              key={action.label}
+              href={action.href}
+              className="shrink-0 inline-flex items-center gap-1.5 px-4 h-10 rounded-xl border border-slate-800 bg-slate-900 text-slate-100 text-xs font-semibold hover:bg-slate-800 transition-colors"
+            >
+              <Icon name={action.icon as any} size={14} className="text-cyan-400" />
+              {action.label}
+            </Link>
+          ))}
+        </div>
+
+        {/* Operations navigation cards — each opens a dedicated full page */}
         <div className="space-y-6 mb-6">
           {SECTIONS.map(section => (
             <div key={section.key} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
@@ -6085,80 +6235,46 @@ export default function LogisticsDashboardPage() {
                 <p className="text-sm font-bold text-slate-100">{section.label}</p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {section.tabs.map(tab => {
-                  const isActive = activeTab === tab.key;
-                  return (
-                    <button
-                      key={tab.key}
-                      type="button"
-                      onClick={() => setActiveTab(tab.key as typeof activeTab)}
-                      aria-pressed={isActive}
-                      className={`flex items-center gap-3 min-h-[64px] px-4 py-3 rounded-xl border text-start transition-colors ${
-                        isActive
-                          ? 'bg-cyan-600/20 border-cyan-500 text-white' :'bg-slate-900 border-slate-800 text-slate-200 hover:bg-slate-800 hover:border-slate-700'
-                      }`}
-                    >
-                      <span className={`w-9 h-9 shrink-0 rounded-lg flex items-center justify-center ${isActive ? 'bg-cyan-500/30' : 'bg-slate-800'}`}>
-                        <Icon name={tab.icon as any} size={18} className={isActive ? 'text-cyan-300' : 'text-slate-300'} />
-                      </span>
-                      <span className="text-sm font-semibold leading-snug">{tab.label}</span>
-                    </button>
-                  );
-                })}
+                {section.tabs.map(tab => (
+                  <Link
+                    key={tab.key}
+                    href={MODULE_ROUTES[tab.key]}
+                    className="flex items-center gap-3 min-h-[64px] px-4 py-3 rounded-xl border text-start transition-colors bg-slate-900 border-slate-800 text-slate-200 hover:bg-slate-800 hover:border-slate-700"
+                  >
+                    <span className="w-9 h-9 shrink-0 rounded-lg flex items-center justify-center bg-slate-800">
+                      <Icon name={tab.icon as any} size={18} className="text-slate-300" />
+                    </span>
+                    <span className="text-sm font-semibold leading-snug">{tab.label}</span>
+                  </Link>
+                ))}
               </div>
             </div>
           ))}
         </div>
-
-        {/* Tab content */}
-        <div>
-          {activeTab === 'stats' && (
-            <PerformanceStatsTab partnerId={partner.id} />
-          )}
-          {activeTab === 'load_board' && (
-            <LoadBoardTab partnerId={partner.id} />
-          )}
-          {activeTab === 'orders' && (
-            <div className="space-y-4">
-              <OrdersTab partnerId={partner.id} userId={user?.id || ''} />
-            </div>
-          )}
-          {activeTab === 'conversations' && (
-            <ConversationsTab partnerId={partner.id} userId={user!.id} />
-          )}
-          {activeTab === 'calculator' && (
-            <ShippingCalculatorTab partner={partner} onRequestSpecialQuote={() => setActiveTab('admin_messaging')} />
-          )}
-          {activeTab === 'profile' && (
-            <ProfileTab partner={partner} onSaved={updated => setPartner(updated)} />
-          )}
-          {activeTab === 'payments' && (
-            <PaymentsTab partnerId={partner.id} partnerCountry={partner.country} />
-          )}
-          {activeTab === 'international_orders' && (
-            <InternationalShipmentsTab partnerId={partner.id} />
-          )}
-          {activeTab === 'customs_docs' && (
-            <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-              <LogisticsDocumentsPanel userId={user?.id} />
-            </div>
-          )}
-          {activeTab === 'documents' && (
-            <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-              <LogisticsDocumentsPanel userId={user?.id} />
-            </div>
-          )}
-          {activeTab === 'dispatch_rooms' && (
-            <LogisticsDispatchRoomsTab userId={user!.id} partnerId={partner.id} />
-          )}
-          {activeTab === 'admin_messaging' && (
-            <AdminDirectMessagingTab partnerId={partner.id} userId={user!.id} />
-          )}
-          {activeTab === 'disputes_delays' && (
-            <DisputesAndDelaysTab partnerId={partner.id} userId={user!.id} />
-          )}
-        </div>
       </div>
     </div>
+  );
+}
+
+const PATH_TO_MODULE: Record<string, LogisticsModuleKey> = {
+  '/logistics/load-board': 'load_board',
+  '/logistics/shipments': 'orders',
+  '/logistics/calculator': 'calculator',
+  '/logistics/analytics': 'stats',
+  '/logistics/international': 'international_orders',
+  '/logistics/customs': 'customs_docs',
+};
+
+function LogisticsDashboardRouter() {
+  const pathname = usePathname();
+  const moduleFromPath = pathname ? PATH_TO_MODULE[pathname.replace(/\/+$/, '')] : undefined;
+  return <LogisticsDashboardView module={moduleFromPath} />;
+}
+
+export default function LogisticsDashboardPage() {
+  return (
+    <Suspense fallback={null}>
+      <LogisticsDashboardRouter />
+    </Suspense>
   );
 }

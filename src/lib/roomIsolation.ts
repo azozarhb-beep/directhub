@@ -69,6 +69,11 @@ export const EXCLUSIVE_ROOM_PREFIXES: { prefix: string; roles: PlatformRole[] }[
   { prefix: '/agent/register-facility', roles: ['agent'] },
   { prefix: '/agent/add-product', roles: ['agent'] },
   { prefix: '/logistics/dashboard', roles: ['logistics'] },
+  { prefix: '/logistics/load-board', roles: ['logistics'] },
+  { prefix: '/logistics/calculator', roles: ['logistics'] },
+  { prefix: '/logistics/analytics', roles: ['logistics'] },
+  { prefix: '/logistics/international', roles: ['logistics'] },
+  { prefix: '/logistics/customs', roles: ['logistics'] },
   { prefix: '/admin/control-room', roles: ['admin'] },
   { prefix: '/admin', roles: ['admin'] },
 ];

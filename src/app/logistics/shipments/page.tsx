@@ -451,9 +451,9 @@ export default function LogisticsShipmentsPage() {
     <div className="min-h-screen bg-background" dir="rtl">
       <header className="sticky top-0 z-30 bg-card border-b border-border">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
-          <Link href="/logistics" className="inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:opacity-80 transition-opacity">
+          <Link href="/logistics/dashboard" className="inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:opacity-80 transition-opacity">
             <span aria-hidden="true">←</span>
-            لوحة التحكم اللوجستية
+            رجوع إلى لوحة العمليات اللوجستية
           </Link>
           <h1 className="text-sm sm:text-base font-bold text-foreground">الشحنات والطلبات التشغيلية</h1>
         </div>
