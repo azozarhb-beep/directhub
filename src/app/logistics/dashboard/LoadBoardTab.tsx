@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import { createClient } from '@/lib/supabase/client';
 import SubmitQuoteModal, { OpenLoad } from './SubmitQuoteModal';
@@ -18,17 +18,34 @@ interface MyBid {
 }
 
 const CARGO_LABELS: Record<string, string> = {
-  packaging_rolls: 'رولات تغليف (Packaging Rolls)',
-  industrial_raw: 'مواد خام صناعية (Industrial Raw Materials)',
-  general: 'بضائع عامة (General Cargo)',
+  packaging_rolls: 'رولات تغليف',
+  industrial_raw: 'مواد خام صناعية',
+  general: 'بضائع عامة',
 };
 
 const CONTAINER_LABELS: Record<string, string> = {
-  '20ft': '20ft',
-  '40ft': '40ft',
-  flatbed: 'Flatbed',
-  dry_box: 'Dry Box',
+  '20ft': 'حاوية 20 قدم (20ft FCL)',
+  '40ft': 'حاوية 40 قدم (40ft FCL)',
+  flatbed: 'تريلا سطحة / جوانب (Flatbed)',
+  dry_box: 'حاوية جافة (Dry Box)',
+  dyna: 'شاحنة دينا',
+  tractor: 'قاطرة',
+  reefer: 'شاحنة مبردة (Reefer)',
 };
+
+const EQUIPMENT_FILTERS: { key: string; label: string; match: string[] }[] = [
+  { key: 'all', label: 'الكل', match: [] },
+  { key: 'containers', label: 'حاويات 20/40', match: ['20ft', '40ft', 'dry_box'] },
+  { key: 'flatbed', label: 'تريلا سطحة', match: ['flatbed'] },
+  { key: 'dyna', label: 'دينا', match: ['dyna'] },
+  { key: 'reefer', label: 'مبرد', match: ['reefer'] },
+];
+
+const PRICING_FILTERS: { key: 'all' | 'budget' | 'open'; label: string }[] = [
+  { key: 'all', label: 'الكل' },
+  { key: 'budget', label: 'ميزانية محددة' },
+  { key: 'open', label: 'مطلوب عروض أسعار' },
+];
 
 const BID_STATUS_META: Record<string, { label: string; color: string }> = {
   pending: { label: 'عرضك قيد الانتظار', color: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -49,6 +66,24 @@ export default function LoadBoardTab({ partnerId }: LoadBoardTabProps) {
   const [myBids, setMyBids] = useState<Record<string, MyBid>>({});
   const [loading, setLoading] = useState(true);
   const [quoteLoad, setQuoteLoad] = useState<OpenLoad | null>(null);
+  const [routeFrom, setRouteFrom] = useState('');
+  const [routeTo, setRouteTo] = useState('');
+  const [equipmentFilter, setEquipmentFilter] = useState('all');
+  const [pricingFilter, setPricingFilter] = useState<'all' | 'budget' | 'open'>('all');
+
+  const filteredLoads = useMemo(() => {
+    const from = routeFrom.trim().toLowerCase();
+    const to = routeTo.trim().toLowerCase();
+    const equip = EQUIPMENT_FILTERS.find(f => f.key === equipmentFilter);
+    return loads.filter(l => {
+      if (from && !(l.origin_address || '').toLowerCase().includes(from)) return false;
+      if (to && !(l.destination_address || '').toLowerCase().includes(to)) return false;
+      if (equip && equip.match.length > 0 && !equip.match.includes(l.container_type || '')) return false;
+      if (pricingFilter === 'budget' && !l.target_budget) return false;
+      if (pricingFilter === 'open' && l.target_budget) return false;
+      return true;
+    });
+  }, [loads, routeFrom, routeTo, equipmentFilter, pricingFilter]);
 
   const fetchLoads = useCallback(async () => {
     setLoading(true);
@@ -86,7 +121,7 @@ export default function LoadBoardTab({ partnerId }: LoadBoardTabProps) {
   }, [fetchLoads, supabase, partnerId]);
 
   return (
-    <div className="space-y-4" dir="rtl">
+    <div className="space-y-4 pb-32" dir="rtl">
       {quoteLoad && (
         <SubmitQuoteModal
           load={quoteLoad}
@@ -105,8 +140,67 @@ export default function LoadBoardTab({ partnerId }: LoadBoardTabProps) {
             <Icon name="TruckIcon" size={20} className="text-white" />
           </div>
           <div>
-            <h2 className="font-bold text-base">سوق الطلبات المتاحة (Load Board)</h2>
-            <p className="text-xs text-white/80">اطلب شحنات مفتوحة من المصانع والمشترين وقدّم أفضل عرض سعر</p>
+            <h2 className="font-bold text-base">سوق الطلبات المتاحة</h2>
+            <p className="text-xs text-white/80">اطلب شحنات مفتوحة من الموردين والمصانع والمشترين وقدم أفضل عرض سعر</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-card border border-border rounded-xl p-3 space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input
+            type="text"
+            value={routeFrom}
+            onChange={e => setRouteFrom(e.target.value)}
+            placeholder="من ميناء / محافظة"
+            aria-label="من ميناء / محافظة"
+            className="h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
+          />
+          <input
+            type="text"
+            value={routeTo}
+            onChange={e => setRouteTo(e.target.value)}
+            placeholder="إلى ميناء / محافظة"
+            aria-label="إلى ميناء / محافظة"
+            className="h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
+          />
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold text-muted-foreground mb-1.5">نوع المعدة</p>
+          <div className="flex flex-wrap gap-1.5">
+            {EQUIPMENT_FILTERS.map(f => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setEquipmentFilter(f.key)}
+                aria-pressed={equipmentFilter === f.key}
+                className={`px-3 h-8 rounded-full text-xs font-semibold border transition-colors ${
+                  equipmentFilter === f.key
+                    ? 'bg-blue-600 text-white border-blue-600' :'bg-background text-foreground border-border hover:bg-muted'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold text-muted-foreground mb-1.5">نوع التسعير</p>
+          <div className="flex flex-wrap gap-1.5">
+            {PRICING_FILTERS.map(f => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setPricingFilter(f.key)}
+                aria-pressed={pricingFilter === f.key}
+                className={`px-3 h-8 rounded-full text-xs font-semibold border transition-colors ${
+                  pricingFilter === f.key
+                    ? 'bg-blue-600 text-white border-blue-600' :'bg-background text-foreground border-border hover:bg-muted'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -115,15 +209,19 @@ export default function LoadBoardTab({ partnerId }: LoadBoardTabProps) {
         <div className="flex justify-center py-12">
           <div className="w-7 h-7 border-2 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : loads.length === 0 ? (
+      ) : filteredLoads.length === 0 ? (
         <div className="bg-card border border-border rounded-xl p-10 text-center">
           <Icon name="InboxIcon" size={32} className="text-muted-foreground mx-auto mb-2" />
-          <p className="text-sm font-semibold text-foreground">لا توجد طلبات شحن متاحة حالياً</p>
-          <p className="text-xs text-muted-foreground mt-1">ستظهر الطلبات الجديدة هنا فور نشرها</p>
+          <p className="text-sm font-semibold text-foreground">
+            {loads.length === 0 ? 'لا توجد طلبات شحن متاحة حالياً' : 'لا توجد طلبات مطابقة للتصفية'}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {loads.length === 0 ? 'ستظهر الطلبات الجديدة هنا فور نشرها' : 'جرّب تغيير خيارات التصفية'}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {loads.map(load => {
+          {filteredLoads.map(load => {
             const bid = myBids[load.id];
             const meta = bid ? BID_STATUS_META[bid.status] : null;
             const canQuote = !bid || bid.status === 'rejected' || bid.status === 'withdrawn';
@@ -168,7 +266,7 @@ export default function LoadBoardTab({ partnerId }: LoadBoardTabProps) {
                         {Number(load.target_budget).toLocaleString('en-US')} {load.budget_currency || 'USD'}
                       </p>
                     ) : (
-                      <p className="font-semibold text-amber-700">مطلوب عروض أسعار (Open for Bids)</p>
+                      <p className="font-semibold text-amber-700">مطلوب عروض أسعار</p>
                     )}
                   </div>
                   <div className="bg-muted/50 rounded-lg px-3 py-2">
@@ -198,7 +296,7 @@ export default function LoadBoardTab({ partnerId }: LoadBoardTabProps) {
                       className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors"
                     >
                       <Icon name="BanknotesIcon" size={14} />
-                      تقديم عرض سعر (Submit Quote)
+                      تقديم عرض سعر
                     </button>
                   )}
                 </div>
