@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
+import { enforceAgentGeofence } from '@/lib/agentGeofence';
 
 interface AgentInspectionTasksPanelProps {
   userId: string;
@@ -214,6 +215,12 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
 
   const startInspection = async (task: InspectionRow) => {
     setBusyId(task.id);
+    const geo = await enforceAgentGeofence(supabase);
+    if (!geo.allowed) {
+      setBusyId(null);
+      showToast('error', geo.message);
+      return;
+    }
     const { error } = await supabase
       .from('field_inspection_tasks')
       .update({ status: 'in_progress', updated_at: new Date().toISOString() })
@@ -236,6 +243,12 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
       return;
     }
     setCreating(true);
+    const geo = await enforceAgentGeofence(supabase);
+    if (!geo.allowed) {
+      setCreating(false);
+      showToast('error', geo.message);
+      return;
+    }
     const now = new Date().toISOString();
     const { data, error } = await supabase
       .from('field_inspection_tasks')
