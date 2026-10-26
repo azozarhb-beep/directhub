@@ -88,9 +88,41 @@ function UploadModal({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [docType, setDocType] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
+  const [activeShipments, setActiveShipments] = useState<
+    { id: string; tracking_number: string; container_number: string | null }[]
+  >([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadActiveShipments = async () => {
+      try {
+        const { data: partnerRow } = await supabase
+          .from('logistics_partners')
+          .select('id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (!partnerRow?.id) return;
+        const { data } = await supabase
+          .from('logistics_shipments')
+          .select('id, tracking_number, container_number')
+          .eq('logistics_partner_id', partnerRow.id)
+          .in('shipment_status', ['pending', 'picked_up', 'in_transit', 'arrived_at_hub', 'out_for_delivery'])
+          .order('created_at', { ascending: false })
+          .limit(100);
+        if (!cancelled) setActiveShipments((data as any[]) || []);
+      } catch {
+        /* optional suggestions only */
+      }
+    };
+    loadActiveShipments();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   useEffect(() => {
     return () => {
@@ -242,11 +274,26 @@ function UploadModal({
             </label>
             <input
               type="text"
+              list="active-shipments-options"
               value={trackingNumber}
               onChange={e => setTrackingNumber(e.target.value)}
-              placeholder="مثال: CONT-2024-001234 أو TRK-2024-001"
+              placeholder="مثال: TRK-2026-001 أو CONT-2026-001234"
               className="w-full px-3 py-2.5 bg-slate-800 border border-slate-600 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
             />
+            {activeShipments.length > 0 && (
+              <>
+                <datalist id="active-shipments-options">
+                  {activeShipments.map(s => (
+                    <option key={s.id} value={s.tracking_number}>
+                      {s.container_number ? `حاوية: ${s.container_number}` : 'شحنة نشطة'}
+                    </option>
+                  ))}
+                </datalist>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  اختر من شحناتك النشطة أو اكتب رقم الحاوية يدويًا
+                </p>
+              </>
+            )}
           </div>
 
           {/* File Upload — same paperclip button + input pattern as the admin support chat */}
