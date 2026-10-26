@@ -33,7 +33,7 @@ import LogisticsDispatchRoomsTab from './LogisticsDispatchRoomsTab';
 import LogisticsDelayReportModal from './LogisticsDelayReportModal';
 import LogisticsDisputeTicketingPanel from './LogisticsDisputeTicketingPanel';
 import AirportSearchModal from './AirportSearchModal';
-import { AIR_ORIGIN_AIRPORTS, AIR_DEST_AIRPORTS } from './airportData';
+import { AIR_ORIGIN_AIRPORTS, AIR_DEST_AIRPORTS, getAirportCountry } from './airportData';
 import toast from 'react-hot-toast';
 import { uploadLogisticsFile, LOGISTICS_FILE_ACCEPT } from '@/lib/logisticsUpload';
 import { isMissingTableError } from '@/lib/hooks/useLogisticsData';
@@ -649,9 +649,13 @@ const SEA_ORIGIN_PORTS = [
 ];
 
 const SEA_DEST_PORTS = [
-  { value: 'aden',         label: 'Port of Aden (YEPOD)',   labelAr: 'ميناء عدن' },
-  { value: 'hodeidah',     label: 'Port of Hodeidah (YEHOD)', labelAr: 'ميناء الحديدة' },
+  { value: 'aden',         label: 'Port of Aden (YEPOD)',   labelAr: 'ميناء عدن', country: 'Yemen' },
+  { value: 'hodeidah',     label: 'Port of Hodeidah (YEHOD)', labelAr: 'ميناء الحديدة', country: 'Yemen' },
 ];
+
+// Top trade partners offered when no port/airport has been selected yet
+const TOP_TRADE_PARTNER_COUNTRIES = ['China', 'Saudi Arabia', 'UAE', 'Turkey', 'India', 'Oman', 'Egypt'];
+const DEST_COUNTRY_OPTIONS = ['Yemen', ...TOP_TRADE_PARTNER_COUNTRIES];
 
 // ── Air freight airports ──────────────────────────────────────────────────────
 // Airport lists are imported from ./airportData
@@ -767,6 +771,8 @@ function ShippingCalculatorTab({ partner, onRequestSpecialQuote }: { partner?: L
   const [showSeaOriginDropdown, setShowSeaOriginDropdown] = useState(false);
   const [airOriginAirport, setAirOriginAirport] = useState('');
   const [airDestAirport, setAirDestAirport] = useState('');
+  const [manualOriginCountry, setManualOriginCountry] = useState('');
+  const [manualDestCountry, setManualDestCountry] = useState('');
   const [result, setResult] = useState<CalcResult | null>(null);
   const [calculated, setCalculated] = useState(false);
   const [rates, setRates] = useState<PartnerRates>(DEFAULT_RATES);
@@ -779,6 +785,20 @@ function ShippingCalculatorTab({ partner, onRequestSpecialQuote }: { partner?: L
   const isSea = shipmentType === 'international_sea';
   const isAir = shipmentType === 'international_air';
   const isIntlLand = shipmentType === 'international_land';
+
+  // Dynamic origin/destination countries derived from the selected port/airport
+  const selectedOriginCountry: string | null = isSea
+    ? (SEA_ORIGIN_PORTS.find(p => p.value === seaOriginPort)?.country ?? null)
+    : isAir
+      ? getAirportCountry(airOriginAirport)
+      : null;
+  const selectedDestCountry: string | null = isSea
+    ? (SEA_DEST_PORTS.find(p => p.value === seaDestPort)?.country ?? null)
+    : isAir
+      ? getAirportCountry(airDestAirport)
+      : null;
+  const effectiveOriginCountry = selectedOriginCountry || manualOriginCountry || null;
+  const effectiveDestCountry = selectedDestCountry || manualDestCountry || null;
 
   // Load partner custom rates from DB
   useEffect(() => {
@@ -966,6 +986,8 @@ function ShippingCalculatorTab({ partner, onRequestSpecialQuote }: { partner?: L
     setShowSeaOriginDropdown(false);
     setAirOriginAirport('');
     setAirDestAirport('');
+    setManualOriginCountry('');
+    setManualDestCountry('');
     setFclContainerCount(1);
     setFclCountInput('1');
   };
@@ -1240,22 +1262,55 @@ function ShippingCalculatorTab({ partner, onRequestSpecialQuote }: { partner?: L
           <span className="text-emerald-700">نقل داخلي بين المحافظات اليمنية</span>
         </div>
       ) : (
-        partner && (partner.origin_countries?.length > 0 || partner.destination_countries?.length > 0) && (
-          <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex flex-wrap gap-3 text-xs">
-            {partner.origin_countries?.length > 0 && (
-              <div>
-                <span className="font-semibold text-primary">دول المنشأ: </span>
-                <span className="text-foreground">{partner.origin_countries.slice(0, 3).map(c => COUNTRIES_AR[c] || c).join('، ')}{partner.origin_countries.length > 3 ? ` +${partner.origin_countries.length - 3}` : ''}</span>
-              </div>
-            )}
-            {partner.destination_countries?.length > 0 && (
-              <div>
-                <span className="font-semibold text-emerald-600">دول الوصول: </span>
-                <span className="text-foreground">{partner.destination_countries.slice(0, 3).map(c => COUNTRIES_AR[c] || c).join('، ')}{partner.destination_countries.length > 3 ? ` +${partner.destination_countries.length - 3}` : ''}</span>
-              </div>
+        <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs" dir="rtl">
+          {/* Origin country */}
+          <div>
+            <span className="font-semibold text-primary block mb-1">دول المنشأ</span>
+            {selectedOriginCountry ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-background border border-primary/30 text-foreground font-medium">
+                {COUNTRIES_AR[selectedOriginCountry] || selectedOriginCountry}
+                <span className="text-[10px] text-muted-foreground">(تلقائي من الميناء/المطار)</span>
+              </span>
+            ) : (
+              <select
+                value={manualOriginCountry}
+                onChange={e => { setManualOriginCountry(e.target.value); setResult(null); }}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">اختر دولة المنشأ</option>
+                {TOP_TRADE_PARTNER_COUNTRIES.map(c => (
+                  <option key={c} value={c}>{COUNTRIES_AR[c] || c}</option>
+                ))}
+              </select>
             )}
           </div>
-        )
+          {/* Destination country */}
+          <div>
+            <span className="font-semibold text-emerald-600 block mb-1">دول الوصول</span>
+            {selectedDestCountry ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-background border border-emerald-300 text-foreground font-medium">
+                {COUNTRIES_AR[selectedDestCountry] || selectedDestCountry}
+                <span className="text-[10px] text-muted-foreground">(تلقائي من الميناء/المطار)</span>
+              </span>
+            ) : (
+              <select
+                value={manualDestCountry}
+                onChange={e => { setManualDestCountry(e.target.value); setResult(null); }}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">اختر دولة الوصول</option>
+                {DEST_COUNTRY_OPTIONS.map(c => (
+                  <option key={c} value={c}>{COUNTRIES_AR[c] || c}</option>
+                ))}
+              </select>
+            )}
+          </div>
+          {effectiveOriginCountry && effectiveDestCountry && (
+            <p className="sm:col-span-2 text-[11px] text-muted-foreground">
+              المسار: {COUNTRIES_AR[effectiveOriginCountry] || effectiveOriginCountry} ➔ {COUNTRIES_AR[effectiveDestCountry] || effectiveDestCountry}
+            </p>
+          )}
+        </div>
       )}
 
       {/* Input Fields */}
