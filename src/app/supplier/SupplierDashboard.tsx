@@ -119,7 +119,16 @@ export default function SupplierDashboard() {
       <SupplierTopBar />
       <div className="max-w-6xl mx-auto px-4 md:px-6 pt-8">
         <div className="rounded-3xl bg-gradient-to-l from-cyan-900/40 via-slate-900 to-slate-900 border border-cyan-500/20 p-6 mb-8">
-          <p className="text-xs text-cyan-300 font-bold mb-1">Supplier Room</p>
+          <div className="flex items-start justify-between gap-3 mb-1">
+            <p className="text-xs text-cyan-300 font-bold">Supplier Room</p>
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-200 text-xs hover:bg-slate-700 transition-colors whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+            >
+              <span aria-hidden="true">🏪</span>
+              <span>العودة للمتجر</span>
+            </Link>
+          </div>
           <h1 className="text-xl sm:text-2xl font-black text-white">لوحة تحكم المورد والوكيل التجاري</h1>
           {companyName && <p className="text-sm text-slate-400 mt-1">{companyName}</p>}
         </div>
