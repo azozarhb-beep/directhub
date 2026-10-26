@@ -2651,6 +2651,55 @@ const TRANSACTION_STATUS_META: Record<string, { label: string; color: string; ic
 
 const PLATFORM_COMMISSION_RATE = 0.05; // 5%
 
+const PAYOUT_CURRENCY_FILTERS = ['ALL', 'USD', 'SAR', 'YER', 'EUR', 'CNY'] as const;
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$', SAR: 'ر.س', YER: 'ر.ي', EUR: '€', CNY: '¥', GBP: '£', AED: 'د.إ', TRY: '₺', EGP: 'ج.م',
+};
+
+const COUNTRY_DIAL_CODES: { code: string; dial: string; label: string; aliases: string[] }[] = [
+  { code: 'YE', dial: '+967', label: 'اليمن', aliases: ['ye', 'yem', 'yemen', 'اليمن'] },
+  { code: 'SA', dial: '+966', label: 'السعودية', aliases: ['sa', 'ksa', 'saudi arabia', 'السعودية'] },
+  { code: 'AE', dial: '+971', label: 'الإمارات', aliases: ['ae', 'uae', 'الإمارات'] },
+  { code: 'EG', dial: '+20', label: 'مصر', aliases: ['eg', 'egypt', 'مصر'] },
+  { code: 'TR', dial: '+90', label: 'تركيا', aliases: ['tr', 'turkey', 'تركيا'] },
+  { code: 'CN', dial: '+86', label: 'الصين', aliases: ['cn', 'china', 'الصين'] },
+  { code: 'OM', dial: '+968', label: 'عُمان', aliases: ['om', 'oman', 'عمان', 'عُمان'] },
+  { code: 'KW', dial: '+965', label: 'الكويت', aliases: ['kw', 'kuwait', 'الكويت'] },
+  { code: 'QA', dial: '+974', label: 'قطر', aliases: ['qa', 'qatar', 'قطر'] },
+  { code: 'JO', dial: '+962', label: 'الأردن', aliases: ['jo', 'jordan', 'الأردن'] },
+  { code: 'DE', dial: '+49', label: 'ألمانيا', aliases: ['de', 'germany', 'ألمانيا'] },
+  { code: 'GB', dial: '+44', label: 'بريطانيا', aliases: ['gb', 'uk', 'united kingdom', 'بريطانيا'] },
+  { code: 'US', dial: '+1', label: 'الولايات المتحدة', aliases: ['us', 'usa', 'united states', 'الولايات المتحدة'] },
+];
+
+function resolveDialCode(country: string): string {
+  const c = (country || '').toLowerCase().trim();
+  const match = COUNTRY_DIAL_CODES.find(d => d.code.toLowerCase() === c || d.aliases.includes(c));
+  return match ? match.dial : '+967';
+}
+
+function resolveCountryCode(country: string): string {
+  const c = (country || '').toLowerCase().trim();
+  const match = COUNTRY_DIAL_CODES.find(d => d.code.toLowerCase() === c || d.aliases.includes(c));
+  return match ? match.code : '';
+}
+
+function getLocalAccountHint(country: string): { placeholder: string; label: string } {
+  const code = resolveCountryCode(country);
+  const ibanCountries = ['SA', 'AE', 'EG', 'TR', 'OM', 'KW', 'QA', 'JO', 'DE', 'GB'];
+  if (code && ibanCountries.includes(code)) {
+    return { label: 'رقم الحساب / IBAN', placeholder: `${code}00 0000 0000 0000 0000` };
+  }
+  return { label: 'رقم الحساب البنكي / IBAN', placeholder: 'أدخل رقم الحساب البنكي أو IBAN الخاص بك' };
+}
+
+function formatMoney(amount: number, currency: string): string {
+  const sym = CURRENCY_SYMBOLS[currency] || currency;
+  const num = amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return currency === 'USD' || currency === 'EUR' || currency === 'CNY' ? `${sym}${num}` : `${num} ${sym}`;
+}
+
 function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partnerCountry: string }) {
   const supabase = createClient();
   const [payments, setPayments] = useState<EscrowPayment[]>([]);
@@ -2670,6 +2719,10 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
   const [bankSaved, setBankSaved] = useState(false);
   const [swiftError, setSwiftError] = useState('');
   const [ibanError, setIbanError] = useState('');
+  const [currencyFilter, setCurrencyFilter] = useState<string>('ALL');
+  const [bankWireMode, setBankWireMode] = useState<'local' | 'international'>('local');
+  const [bankCountry, setBankCountry] = useState('');
+  const [dialCode, setDialCode] = useState<string>(() => resolveDialCode(partnerCountry));
 
   // Determine if partner is domestic (Yemen) or international
   const isDomestic = isYemenPartner(partnerCountry);
@@ -2710,6 +2763,19 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
   const totalHeld = payments.filter(p => p.payment_status === 'held_in_escrow').reduce((s, p) => s + p.amount, 0);
   const totalPending = payments.filter(p => p.payment_status === 'pending').reduce((s, p) => s + p.amount, 0);
 
+  const sumByCurrency = (status: string): Record<string, number> => {
+    const acc: Record<string, number> = {};
+    payments.filter(p => p.payment_status === status).forEach(p => {
+      const cur = (p.currency || 'USD').toUpperCase();
+      acc[cur] = (acc[cur] || 0) + p.amount;
+    });
+    return acc;
+  };
+  const releasedByCur = sumByCurrency('released');
+  const heldByCur = sumByCurrency('held_in_escrow');
+  const pendingByCur = sumByCurrency('pending');
+  const activeCurrency = currencyFilter === 'ALL' ? null : currencyFilter;
+
   const handleWithdrawSubmit = async () => {
     setWithdrawSubmitting(true);
     await new Promise(r => setTimeout(r, 1200));
@@ -2719,9 +2785,20 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
   };
 
   const handleBankSave = async () => {
-    const p = payoutMethod;
+    const p = { ...payoutMethod };
     setSwiftError('');
     setIbanError('');
+
+    // Prefix phone numbers with the selected country dialing code
+    const withDial = (phone: string) => {
+      const digits = (phone || '').replace(/\D/g, '').replace(/^0+/, '');
+      return digits ? `${dialCode}${digits}` : '';
+    };
+    if (p.payout_type === 'remittance') p.remittance_phone = withDial(p.remittance_phone);
+    if (p.payout_type === 'ewallet') p.wallet_phone = withDial(p.wallet_phone);
+    if (p.payout_type === 'international_swift' && bankCountry) {
+      p.branch_city = [bankCountry, p.branch_city].filter(Boolean).join(' - ');
+    }
 
     // Validate per type
     if (p.payout_type === 'international_swift') {
@@ -2795,24 +2872,65 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
   return (
     <div dir="rtl" className="space-y-6">
 
+      {/* ── Currency Filter ── */}
+      <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="تصفية حسب العملة">
+        <span className="text-xs font-semibold text-muted-foreground ml-1">العملة:</span>
+        {PAYOUT_CURRENCY_FILTERS.map(cur => (
+          <button
+            key={cur}
+            type="button"
+            role="tab"
+            aria-selected={currencyFilter === cur}
+            onClick={() => setCurrencyFilter(cur)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+              currencyFilter === cur
+                ? 'bg-primary text-white border-primary shadow-sm'
+                : 'bg-card text-foreground border-border hover:border-primary/40'
+            }`}
+          >
+            {cur === 'ALL' ? 'الكل ALL' : cur}
+          </button>
+        ))}
+      </div>
+
       {/* ── Balance Cards ── */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'متاحة للسحب', sublabel: 'Released', amount: totalReleased, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', icon: 'CheckCircleIcon' },
-          { label: 'في الضمان المالي المشروط', sublabel: 'In Escrow', amount: totalHeld, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200', icon: 'LockClosedIcon' },
-          { label: 'معلقة / قيد الانتظار', sublabel: 'Pending', amount: totalPending, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200', icon: 'ClockIcon' },
-        ].map(card => (
-          <div key={card.label} className={`rounded-xl border p-4 ${card.bg}`}>
-            <div className="flex items-center gap-2 mb-1">
-              <Icon name={card.icon as any} size={16} className={card.color} />
-              <span className="text-xs font-semibold text-muted-foreground">{card.label}</span>
+          { label: 'متاحة للسحب', sublabel: 'Released', byCur: releasedByCur, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', icon: 'CheckCircleIcon' },
+          { label: 'في الضمان المالي المشروط', sublabel: 'In Escrow', byCur: heldByCur, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200', icon: 'LockClosedIcon' },
+          { label: 'معلقة / قيد الانتظار', sublabel: 'Pending', byCur: pendingByCur, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200', icon: 'ClockIcon' },
+        ].map(card => {
+          const breakdownCurrencies = Array.from(new Set([
+            ...PAYOUT_CURRENCY_FILTERS.filter(c => c !== 'ALL' && c !== 'EUR' && c !== 'CNY'),
+            ...Object.keys(card.byCur),
+          ]));
+          return (
+            <div key={card.label} className={`rounded-xl border p-4 ${card.bg}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <Icon name={card.icon as any} size={16} className={card.color} />
+                <span className="text-xs font-semibold text-muted-foreground">{card.label}</span>
+              </div>
+              {activeCurrency ? (
+                <p className={`text-xl font-bold ${card.color}`} dir="ltr">
+                  {formatMoney(card.byCur[activeCurrency] || 0, activeCurrency)}
+                  <span className="text-xs font-semibold mr-1 ml-1">{activeCurrency}</span>
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5 mt-1" dir="ltr">
+                  {breakdownCurrencies.map(cur => (
+                    <span
+                      key={cur}
+                      className={`px-2 py-0.5 rounded-md bg-white/70 border border-current/10 text-xs font-bold ${card.color}`}
+                    >
+                      {formatMoney(card.byCur[cur] || 0, cur)} {cur}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground mt-1.5">{card.sublabel}</p>
             </div>
-            <p className={`text-xl font-bold ${card.color}`}>
-              ${card.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{card.sublabel}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* ── Partner Location Badge ── */}
@@ -3055,7 +3173,7 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
               <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <Icon name={isDomestic ? 'CreditCardIcon' : 'GlobeAltIcon'} size={20} className="text-primary" />
                 {isDomestic
-                  ? 'وسيلة السحب والتحويل المحلي' :'بيانات التحويل البنكي الدولي (International Wire Transfer)'
+                  ? 'إضافة وسيلة استلام المستحقات والأرباح' :'بيانات التحويل البنكي الدولي (International Wire Transfer)'
                 }
               </h2>
               <button onClick={() => setShowBankModal(false)} className="text-muted-foreground hover:text-foreground">
@@ -3074,13 +3192,27 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
               <div className="space-y-5">
 
                 {/* ── International Partner: SWIFT Wire Transfer ── */}
-                {!isDomestic && (
+                {(!isDomestic || payoutMethod.payout_type === 'international_swift') && (
                   <div className="space-y-3">
                     {/* Info Banner */}
-                    <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
-                      <Icon name="InformationCircleIcon" size={15} className="mt-0.5 shrink-0 text-blue-600" />
-                      <span>بما أن مقر شركتك خارج اليمن، يتم استخدام نظام <strong>التحويل البنكي الدولي (SWIFT Wire Transfer)</strong> لتحويل مستحقاتك.</span>
-                    </div>
+                    {!isDomestic ? (
+                      <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
+                        <Icon name="InformationCircleIcon" size={15} className="mt-0.5 shrink-0 text-blue-600" />
+                        <span>بما أن مقر شركتك خارج اليمن، يتم استخدام نظام <strong>التحويل البنكي الدولي (SWIFT Wire Transfer)</strong> لتحويل مستحقاتك.</span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBankWireMode('local');
+                          setPayoutMethod(prev => ({ ...prev, payout_type: 'bank_account', payout_category: 'local_bank' }));
+                        }}
+                        className="text-xs text-primary font-semibold flex items-center gap-1 hover:underline"
+                      >
+                        <Icon name="ArrowRightIcon" size={12} />
+                        رجوع إلى أنواع وسائل الاستلام
+                      </button>
+                    )}
 
                     {/* SWIFT Fields */}
                     <div className="space-y-3 p-4 bg-blue-50/40 border border-blue-100 rounded-xl">
@@ -3088,6 +3220,20 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
                         <Icon name="GlobeAltIcon" size={13} />
                         بيانات التحويل البنكي الدولي SWIFT
                       </p>
+
+                      {/* Bank Country */}
+                      <div>
+                        <label className="block text-xs font-semibold text-foreground mb-1.5">
+                          دولة البنك (Bank Country) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={bankCountry}
+                          onChange={e => setBankCountry(e.target.value)}
+                          placeholder="مثال: Saudi Arabia / مصر / Türkiye"
+                          className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      </div>
 
                       {/* Beneficiary Name */}
                       <div>
@@ -3202,7 +3348,7 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
                 )}
 
                 {/* ── Domestic Partner: Tabbed Local Options ── */}
-                {isDomestic && (
+                {isDomestic && payoutMethod.payout_type !== 'international_swift' && (
                   <div className="space-y-4">
                     {/* Type Selector */}
                     <div>
@@ -3313,15 +3459,27 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
                         </div>
                         <div>
                           <label className="block text-xs font-semibold text-foreground mb-1.5">رقم هاتف المحفظة <span className="text-red-500">*</span></label>
-                          <input
-                            type="tel"
-                            inputMode="numeric"
-                            value={payoutMethod.wallet_phone}
-                            onChange={e => setPayoutMethod(prev => ({ ...prev, wallet_phone: e.target.value.replace(/\D/g, '') }))}
-                            placeholder="07XXXXXXXX"
-                            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
-                            dir="ltr"
-                          />
+                          <div className="flex gap-1.5" dir="ltr">
+                            <select
+                              value={dialCode}
+                              onChange={e => setDialCode(e.target.value)}
+                              aria-label="مفتاح الدولة"
+                              className="w-24 px-1.5 py-2.5 rounded-xl border border-border bg-background text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            >
+                              {COUNTRY_DIAL_CODES.map(d => (
+                                <option key={d.code} value={d.dial}>{d.code} {d.dial}</option>
+                              ))}
+                            </select>
+                            <input
+                              type="tel"
+                              inputMode="numeric"
+                              value={payoutMethod.wallet_phone}
+                              onChange={e => setPayoutMethod(prev => ({ ...prev, wallet_phone: e.target.value.replace(/\D/g, '') }))}
+                              placeholder="7XXXXXXXX"
+                              className="min-w-0 flex-1 px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                              dir="ltr"
+                            />
+                          </div>
                         </div>
                         <div>
                           <label className="block text-xs font-semibold text-foreground mb-1.5">اسم صاحب المحفظة <span className="text-red-500">*</span></label>
@@ -3369,15 +3527,27 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="block text-xs font-semibold text-foreground mb-1.5">رقم الهاتف <span className="text-red-500">*</span></label>
-                            <input
-                              type="tel"
-                              inputMode="numeric"
-                              value={payoutMethod.remittance_phone}
-                              onChange={e => setPayoutMethod(prev => ({ ...prev, remittance_phone: e.target.value.replace(/\D/g, '') }))}
-                              placeholder="07XXXXXXXX"
-                              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
-                              dir="ltr"
-                            />
+                            <div className="flex gap-1.5" dir="ltr">
+                              <select
+                                value={dialCode}
+                                onChange={e => setDialCode(e.target.value)}
+                                aria-label="مفتاح الدولة"
+                                className="w-24 px-1.5 py-2.5 rounded-xl border border-border bg-background text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                              >
+                                {COUNTRY_DIAL_CODES.map(d => (
+                                  <option key={d.code} value={d.dial}>{d.code} {d.dial}</option>
+                                ))}
+                              </select>
+                              <input
+                                type="tel"
+                                inputMode="numeric"
+                                value={payoutMethod.remittance_phone}
+                                onChange={e => setPayoutMethod(prev => ({ ...prev, remittance_phone: e.target.value.replace(/\D/g, '') }))}
+                                placeholder="7XXXXXXXX"
+                                className="min-w-0 flex-1 px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                dir="ltr"
+                              />
+                            </div>
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-foreground mb-1.5">المدينة</label>
@@ -3399,6 +3569,25 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
                     {/* ── Bank Account Fields ── */}
                     {payoutMethod.payout_type === 'bank_account' && (
                       <div className="space-y-3 p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl">
+                        <div className="grid grid-cols-2 gap-1 p-1 bg-white/70 border border-emerald-100 rounded-xl">
+                          <button
+                            type="button"
+                            onClick={() => setBankWireMode('local')}
+                            className={`py-2 rounded-lg text-xs font-bold transition-colors ${bankWireMode === 'local' ? 'bg-emerald-600 text-white shadow-sm' : 'text-emerald-800 hover:bg-emerald-50'}`}
+                          >
+                            تحويل بنكي محلي
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBankWireMode('international');
+                              setPayoutMethod(prev => ({ ...prev, payout_type: 'international_swift', payout_category: 'international_swift' }));
+                            }}
+                            className={`py-2 rounded-lg text-xs font-bold transition-colors ${bankWireMode === 'international' ? 'bg-blue-600 text-white shadow-sm' : 'text-emerald-800 hover:bg-emerald-50'}`}
+                          >
+                            تحويل بنكي دولي (SWIFT / Wire Transfer)
+                          </button>
+                        </div>
                         <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1.5">
                           <Icon name="BuildingLibraryIcon" size={13} />
                           بيانات الحساب البنكي المحلي
@@ -3414,12 +3603,12 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-foreground mb-1.5">رقم الحساب / IBAN <span className="text-red-500">*</span></label>
+                          <label className="block text-xs font-semibold text-foreground mb-1.5">{getLocalAccountHint(partnerCountry).label} <span className="text-red-500">*</span></label>
                           <input
                             type="text"
                             value={payoutMethod.account_number}
                             onChange={e => setPayoutMethod(prev => ({ ...prev, account_number: e.target.value }))}
-                            placeholder="YE00 0000 0000 0000 0000 0000"
+                            placeholder={getLocalAccountHint(partnerCountry).placeholder}
                             className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
                             dir="ltr"
                           />
@@ -3444,7 +3633,8 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
                   onClick={handleBankSave}
                   disabled={bankSaving || (() => {
                     const p = payoutMethod;
-                    if (!isDomestic) return !p.beneficiary_name || !p.bank_name || !p.swift_code || !p.iban || !p.currency;
+                    if (!isDomestic) return !p.beneficiary_name || !p.bank_name || !p.swift_code || !p.iban || !p.currency || !bankCountry.trim();
+                    if (p.payout_type === 'international_swift') return !p.beneficiary_name || !p.bank_name || !p.swift_code || !p.iban || !p.currency || !bankCountry.trim();
                     if (p.payout_type === 'bank_account') return !p.bank_name || !p.account_number || !p.beneficiary_name;
                     if (p.payout_type === 'card') return !p.card_holder_name || !p.card_number_masked || !p.card_expiry;
                     if (p.payout_type === 'ewallet') return !p.wallet_provider || !p.wallet_phone || !p.wallet_owner_name;
@@ -5740,7 +5930,7 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
             className="w-10 h-10 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl disabled:opacity-50 transition-colors flex items-center justify-center shrink-0"
           >
             {sending ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
             ) : (
               <Icon name="PaperAirplaneIcon" size={16} />
             )}
