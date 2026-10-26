@@ -35,6 +35,36 @@ function normalizePhone(value: string): string {
 const INPUT =
   'w-full h-11 px-3 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary';
 
+interface ArabicFilePickerProps {
+  id: string;
+  file: File | null;
+  onChange: (file: File | null) => void;
+}
+
+function ArabicFilePicker({ id, file, onChange }: ArabicFilePickerProps) {
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      <input
+        id={id}
+        type="file"
+        accept=".pdf,image/*"
+        onChange={(e) => onChange(e.target.files?.[0] ?? null)}
+        className="sr-only"
+      />
+      <label
+        htmlFor={id}
+        className="inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-xl bg-primary text-primary-foreground text-xs font-extrabold cursor-pointer hover:opacity-90 transition-opacity focus-within:ring-2 focus-within:ring-primary"
+      >
+        <span aria-hidden="true">📁</span>
+        <span>استعراض الملف</span>
+      </label>
+      <span className="text-[11px] text-muted-foreground min-w-0 truncate max-w-[14rem]" dir="auto">
+        {file ? file.name : 'لم يتم اختيار ملف بعد'}
+      </span>
+    </div>
+  );
+}
+
 export default function SupplierSettingsPanel({ userId }: SupplierSettingsPanelProps) {
   const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(true);
@@ -325,14 +355,14 @@ export default function SupplierSettingsPanel({ userId }: SupplierSettingsPanelP
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="supplier-cr-file" className="block text-xs font-bold text-foreground mb-1.5">رفع السجل التجاري (PDF أو صورة)</label>
-              <input id="supplier-cr-file" type="file" accept=".pdf,image/*" onChange={(e) => setCrFile(e.target.files?.[0] ?? null)} className="block w-full text-xs text-foreground file:ml-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-xs file:font-bold file:text-primary-foreground" />
+              <ArabicFilePicker id="supplier-cr-file" file={crFile} onChange={setCrFile} />
               {docs?.commercial_register_url && !crFile && (
                 <a href={docs.commercial_register_url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-primary font-semibold hover:underline mt-1 inline-block">عرض الملف المرفوع</a>
               )}
             </div>
             <div>
               <label htmlFor="supplier-agency-file" className="block text-xs font-bold text-foreground mb-1.5">رفع عقد / شهادة الوكالة التجارية والتوزيع</label>
-              <input id="supplier-agency-file" type="file" accept=".pdf,image/*" onChange={(e) => setAgencyFile(e.target.files?.[0] ?? null)} className="block w-full text-xs text-foreground file:ml-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-xs file:font-bold file:text-primary-foreground" />
+              <ArabicFilePicker id="supplier-agency-file" file={agencyFile} onChange={setAgencyFile} />
               {docs?.agency_authorization_url && !agencyFile && (
                 <a href={docs.agency_authorization_url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-primary font-semibold hover:underline mt-1 inline-block">عرض الملف المرفوع</a>
               )}

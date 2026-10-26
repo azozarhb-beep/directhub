@@ -31,7 +31,7 @@ export default function SupplierSettingsPage() {
   }
 
   return (
-    <SupplierModuleShell title="إعدادات وتوثيق المورد">
+    <SupplierModuleShell title="إعدادات وتوثيق المورد" hideTitle>
       <div className="max-w-3xl mx-auto">
         <SupplierSettingsPanel userId={user?.id} />
       </div>
