@@ -30,11 +30,19 @@ interface ShipmentRow {
 
 type CategoryTab = 'all' | 'local' | 'international';
 type VerifyMode = 'retail' | 'b2b';
+type StatusFilter = 'all' | 'in_transit' | 'awaiting_pin' | 'delivered';
 
 const TABS: { key: CategoryTab; label: string }[] = [
   { key: 'all', label: 'جميع الشحنات' },
   { key: 'local', label: 'نقل وتوزيع داخلي 🚚' },
   { key: 'international', label: 'شحن دولي وموانئ 🚢✈️' },
+];
+
+const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
+  { key: 'all', label: 'إجمالي الشحنات المسندة' },
+  { key: 'in_transit', label: 'قيد النقل' },
+  { key: 'awaiting_pin', label: 'بانتظار كود التسليم (PIN)' },
+  { key: 'delivered', label: 'تم التسليم' },
 ];
 
 const STEPS = ['تم الاستلام', 'قيد النقل', 'بانتظار التحقق', 'تم التسليم'];
@@ -362,6 +370,19 @@ function VerifyDeliveryModal({ shipments, partnerId, initialShipmentId, initialM
   );
 }
 
+function matchesStatusFilter(status: string, filter: StatusFilter): boolean {
+  switch (filter) {
+    case 'in_transit':
+      return status === 'in_transit' || status === 'picked_up' || status === 'arrived_at_hub';
+    case 'awaiting_pin':
+      return status === 'out_for_delivery';
+    case 'delivered':
+      return status === 'delivered';
+    default:
+      return true;
+  }
+}
+
 export default function LogisticsShipmentsPage() {
   const { user, loading: authLoading } = useAuth();
   const supabase = useMemo(() => createClient(), []);
@@ -369,8 +390,16 @@ export default function LogisticsShipmentsPage() {
   const [shipments, setShipments] = useState<ShipmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<CategoryTab>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [query, setQuery] = useState('');
   const [modal, setModal] = useState<{ shipmentId?: string; mode?: VerifyMode } | null>(null);
+
+  useEffect(() => {
+    const param = new URLSearchParams(window.location.search).get('filter');
+    if (param === 'all' || param === 'in_transit' || param === 'awaiting_pin' || param === 'delivered') {
+      setStatusFilter(param);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -417,12 +446,13 @@ export default function LogisticsShipmentsPage() {
     return shipments.filter((s) => {
       if (tab === 'local' && isInternational(s)) return false;
       if (tab === 'international' && !isInternational(s)) return false;
+      if (!matchesStatusFilter(s.shipment_status, statusFilter)) return false;
       if (!q) return true;
       return [s.tracking_number, s.bl_number, s.origin_address, s.destination_address, s.route_origin_port, s.route_destination_port, s.carrier_name]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q));
     });
-  }, [shipments, tab, query]);
+  }, [shipments, tab, statusFilter, query]);
 
   const printWaybill = (s: ShipmentRow) => {
     const w = window.open('', '_blank', 'width=800,height=900');
@@ -495,6 +525,26 @@ export default function LogisticsShipmentsPage() {
               }`}
             >
               {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="تصفية حسب الحالة">
+          {STATUS_FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              role="tab"
+              aria-selected={statusFilter === f.key}
+              onClick={() => {
+                setStatusFilter(f.key);
+                window.history.replaceState(null, '', `/logistics/shipments?filter=${f.key}`);
+              }}
+              className={`whitespace-nowrap px-3 h-9 rounded-xl text-xs font-bold border transition-colors ${
+                statusFilter === f.key ? 'bg-sky-600 text-white border-sky-600' : 'bg-card text-foreground border-border hover:bg-muted'
+              }`}
+            >
+              {f.label}
             </button>
           ))}
         </div>

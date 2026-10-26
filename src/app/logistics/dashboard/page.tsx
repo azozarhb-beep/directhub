@@ -6566,10 +6566,10 @@ function LogisticsDashboardView({ module: moduleProp }: LogisticsDashboardViewPr
   });
 
   const KPI_CARDS = [
-    { label: 'إجمالي الشحنات المسندة', count: kpiOrders.length, icon: 'ClipboardDocumentListIcon', color: 'text-slate-200', iconBg: 'bg-slate-700/60' },
-    { label: 'شحنات قيد النقل', count: kpiOrders.filter(o => o.status === 'in_transit' || o.status === 'shipped').length, icon: 'TruckIcon', color: 'text-sky-400', iconBg: 'bg-sky-500/15' },
-    { label: 'بانتظار كود التسليم (PIN)', count: kpiOrders.filter(o => o.status === 'out_for_delivery' && !o.shipping_fees_released).length, icon: 'KeyIcon', color: 'text-amber-400', iconBg: 'bg-amber-500/15' },
-    { label: 'تم التسليم بنجاح', count: kpiOrders.filter(o => o.status === 'delivered').length, icon: 'CheckBadgeIcon', color: 'text-emerald-400', iconBg: 'bg-emerald-500/15' },
+    { label: 'إجمالي الشحنات المسندة', filter: 'all', count: kpiOrders.length, icon: 'ClipboardDocumentListIcon', color: 'text-slate-200', iconBg: 'bg-slate-700/60' },
+    { label: 'شحنات قيد النقل', filter: 'in_transit', count: kpiOrders.filter(o => o.status === 'in_transit' || o.status === 'shipped').length, icon: 'TruckIcon', color: 'text-sky-400', iconBg: 'bg-sky-500/15' },
+    { label: 'بانتظار كود التسليم (PIN)', filter: 'awaiting_pin', count: kpiOrders.filter(o => o.status === 'out_for_delivery' && !o.shipping_fees_released).length, icon: 'KeyIcon', color: 'text-amber-400', iconBg: 'bg-amber-500/15' },
+    { label: 'تم التسليم بنجاح', filter: 'delivered', count: kpiOrders.filter(o => o.status === 'delivered').length, icon: 'CheckBadgeIcon', color: 'text-emerald-400', iconBg: 'bg-emerald-500/15' },
   ];
 
   const SECTIONS: { key: string; label: string; icon: string; tabs: { key: LogisticsModuleKey; label: string; icon: string }[] }[] = [
@@ -6768,7 +6768,19 @@ function LogisticsDashboardView({ module: moduleProp }: LogisticsDashboardViewPr
         {/* Top KPI summary (2x2) */}
         <div className="grid grid-cols-2 gap-3 mb-6">
           {KPI_CARDS.map(kpi => (
-            <div key={kpi.label} className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+            <div
+              key={kpi.label}
+              role="link"
+              tabIndex={0}
+              onClick={() => router.push(`/logistics/shipments?filter=${kpi.filter}`)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  router.push(`/logistics/shipments?filter=${kpi.filter}`);
+                }
+              }}
+              className="rounded-2xl border border-slate-800 bg-slate-900 p-4 cursor-pointer active:scale-95 transition-all hover:border-sky-500/50"
+            >
               <div className="flex items-center gap-2 mb-2">
                 <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${kpi.iconBg}`}>
                   <Icon name={kpi.icon as any} size={16} className={kpi.color} />
