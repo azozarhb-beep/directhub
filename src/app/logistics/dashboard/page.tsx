@@ -3930,6 +3930,8 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
   const [orders, setOrders] = useState<AssignedOrder[]>([]);
   const [payments, setPayments] = useState<EscrowPayment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [releasedCurrency, setReleasedCurrency] = useState<string>('ALL');
+  const [heldCurrency, setHeldCurrency] = useState<string>('ALL');
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -3969,8 +3971,34 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
 
   const releasedPayments = payments.filter(p => p.payment_status === 'released');
   const heldPayments = payments.filter(p => p.payment_status === 'held_in_escrow');
-  const totalRevenue = releasedPayments.reduce((s, p) => s + p.amount, 0);
-  const pendingRevenue = heldPayments.reduce((s, p) => s + p.amount, 0);
+
+  const CURRENCY_SYMBOLS: Record<string, string> = {
+    USD: '$', EUR: '€', CNY: '¥', SAR: 'SAR ', AED: 'AED ', YER: 'YER ', TRY: '₺', INR: '₹', EGP: 'EGP ', OMR: 'OMR ',
+  };
+  const normalizeCurrency = (c?: string | null) => (c || 'USD').toUpperCase();
+  const formatMoney = (amount: number, cur: string) =>
+    `${CURRENCY_SYMBOLS[cur] ?? `${cur} `}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const groupByCurrency = (list: EscrowPayment[]) => {
+    const map: Record<string, number> = {};
+    list.forEach(p => {
+      const cur = normalizeCurrency(p.currency);
+      map[cur] = (map[cur] || 0) + (Number(p.amount) || 0);
+    });
+    return map;
+  };
+  const currencyOptions = Array.from(
+    new Set(payments.map(p => normalizeCurrency(p.currency)))
+  ).sort();
+  const releasedByCurrency = groupByCurrency(releasedPayments);
+  const heldByCurrency = groupByCurrency(heldPayments);
+  const releasedEntries = Object.entries(releasedByCurrency);
+  const heldEntries = Object.entries(heldByCurrency);
+  const releasedCount = releasedCurrency === 'ALL'
+    ? releasedPayments.length
+    : releasedPayments.filter(p => normalizeCurrency(p.currency) === releasedCurrency).length;
+  const heldCount = heldCurrency === 'ALL'
+    ? heldPayments.length
+    : heldPayments.filter(p => normalizeCurrency(p.currency) === heldCurrency).length;
 
   // Monthly breakdown (last 6 months)
   const now = new Date();
@@ -4055,24 +4083,78 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
       {/* Revenue Summary */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <Icon name="BanknotesIcon" size={16} className="text-emerald-600" />
-            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">إجمالي الأرباح المحررة</p>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="flex items-center gap-2">
+              <Icon name="BanknotesIcon" size={16} className="text-emerald-600" />
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">إجمالي الأرباح المحررة</p>
+            </div>
+            <select
+              value={releasedCurrency}
+              onChange={e => setReleasedCurrency(e.target.value)}
+              aria-label="العملة"
+              className="text-xs border border-emerald-200 bg-white text-emerald-800 rounded-lg px-2 py-1 focus:outline-none"
+            >
+              <option value="ALL">كل العملات</option>
+              {currencyOptions.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
           </div>
-          <p className="text-3xl font-black text-emerald-800">
-            ${totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </p>
-          <p className="text-xs text-emerald-600 mt-1">{releasedPayments.length} مستحقات تم تحريرها من الضمان</p>
+          {releasedCurrency === 'ALL' ? (
+            releasedEntries.length === 0 ? (
+              <p className="text-3xl font-black text-emerald-800">0.00</p>
+            ) : (
+              <div className="space-y-0.5">
+                {releasedEntries.map(([cur, amt]) => (
+                  <p key={cur} className={`font-black text-emerald-800 ${releasedEntries.length > 1 ? 'text-xl' : 'text-3xl'}`}>
+                    {formatMoney(amt, cur)}
+                  </p>
+                ))}
+              </div>
+            )
+          ) : (
+            <p className="text-3xl font-black text-emerald-800">
+              {formatMoney(releasedByCurrency[releasedCurrency] || 0, releasedCurrency)}
+            </p>
+          )}
+          <p className="text-xs text-emerald-600 mt-1">{releasedCount} مستحقات تم تحريرها من الضمان</p>
         </div>
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <Icon name="LockClosedIcon" size={16} className="text-blue-600" />
-            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">رصيد معلق في الضمان</p>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="flex items-center gap-2">
+              <Icon name="LockClosedIcon" size={16} className="text-blue-600" />
+              <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">رصيد معلق في الضمان</p>
+            </div>
+            <select
+              value={heldCurrency}
+              onChange={e => setHeldCurrency(e.target.value)}
+              aria-label="العملة"
+              className="text-xs border border-blue-200 bg-white text-blue-800 rounded-lg px-2 py-1 focus:outline-none"
+            >
+              <option value="ALL">كل العملات</option>
+              {currencyOptions.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
           </div>
-          <p className="text-3xl font-black text-blue-800">
-            ${pendingRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </p>
-          <p className="text-xs text-blue-600 mt-1">{heldPayments.length} مستحقات بانتظار تأكيد التسليم</p>
+          {heldCurrency === 'ALL' ? (
+            heldEntries.length === 0 ? (
+              <p className="text-3xl font-black text-blue-800">0.00</p>
+            ) : (
+              <div className="space-y-0.5">
+                {heldEntries.map(([cur, amt]) => (
+                  <p key={cur} className={`font-black text-blue-800 ${heldEntries.length > 1 ? 'text-xl' : 'text-3xl'}`}>
+                    {formatMoney(amt, cur)}
+                  </p>
+                ))}
+              </div>
+            )
+          ) : (
+            <p className="text-3xl font-black text-blue-800">
+              {formatMoney(heldByCurrency[heldCurrency] || 0, heldCurrency)}
+            </p>
+          )}
+          <p className="text-xs text-blue-600 mt-1">{heldCount} مستحقات بانتظار تأكيد التسليم</p>
         </div>
       </div>
 
