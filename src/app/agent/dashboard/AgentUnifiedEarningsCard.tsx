@@ -3,7 +3,6 @@
 import React from 'react';
 import Icon from '@/components/ui/AppIcon';
 import AgentEarningsPanel from './AgentEarningsPanel';
-import ReferralTrackingPanel from './ReferralTrackingPanel';
 import AgentCommissionAccountPanel from './AgentCommissionAccountPanel';
 
 interface Props {
@@ -19,15 +18,11 @@ export default function AgentUnifiedEarningsCard({ userId }: Props) {
           الأرباح والعمولات
         </h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          العمولة التقديرية بالدولار الأمريكي (20% من رسوم المنصة)، رابط الإحالة، المصانع المسجلة وحساب الاستلام
+          العمولة التقديرية بالدولار الأمريكي (20% من رسوم المنصة)، تفاصيل العمولات وحساب الاستلام
         </p>
       </div>
 
       <AgentEarningsPanel userId={userId} embedded />
-
-      <div className="border-t border-border pt-5">
-        <ReferralTrackingPanel userId={userId} embedded />
-      </div>
 
       <div className="border-t border-border pt-5">
         <AgentCommissionAccountPanel userId={userId} embedded />

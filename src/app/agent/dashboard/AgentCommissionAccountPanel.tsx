@@ -732,6 +732,7 @@ export default function AgentCommissionAccountPanel({ userId, embedded = false }
   };
 
   const primaryAccount = accounts.find(a => a.is_primary);
+  const ADD_ACCOUNT_LABEL = '+ إضافة حساب بنكي أو محفظة استلام';
 
   return (
     <div dir={dir} className="space-y-5">
@@ -758,8 +759,7 @@ export default function AgentCommissionAccountPanel({ userId, embedded = false }
             className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all"
             style={{ background: '#D4AF37', color: '#1E1E1E' }}
           >
-            <Icon name="PlusIcon" size={15} />
-            إضافة حساب
+            {ADD_ACCOUNT_LABEL}
           </button>
         </div>
       ) : (
@@ -784,8 +784,7 @@ export default function AgentCommissionAccountPanel({ userId, embedded = false }
             className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all"
             style={{ background: '#D4AF37', color: '#1E1E1E' }}
           >
-            <Icon name="PlusIcon" size={15} />
-            إضافة حساب
+            {ADD_ACCOUNT_LABEL}
           </button>
         </div>
 
@@ -804,13 +803,6 @@ export default function AgentCommissionAccountPanel({ userId, embedded = false }
             <span className="mr-auto text-xs font-bold px-2 py-1 rounded-lg" style={{ background: 'rgba(212,175,55,0.15)', color: '#D4AF37' }}>
               {primaryAccount.currency}
             </span>
-          </div>
-        )}
-
-        {!primaryAccount && accounts.length === 0 && (
-          <div className="mt-4 pt-4 flex items-center gap-2" style={{ borderTop: '1px solid rgba(212,175,55,0.2)' }}>
-            <Icon name="ExclamationTriangleIcon" size={15} style={{ color: '#f59e0b' }} />
-            <p className="text-xs" style={{ color: '#f59e0b' }}>لم يتم تسجيل أي حساب بعد — أضف حسابك لاستلام العمولات</p>
           </div>
         )}
       </div>
@@ -842,14 +834,6 @@ export default function AgentCommissionAccountPanel({ userId, embedded = false }
           </div>
           <p className="font-bold mb-1" style={{ color: '#fff' }}>لا توجد حسابات مسجلة</p>
           <p className="text-sm mb-4" style={{ color: '#8899aa' }}>أضف حسابك البنكي أو محفظتك الإلكترونية لاستلام عمولاتك</p>
-          <button
-            onClick={() => { setEditAccount(null); setShowForm(true); }}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold"
-            style={{ background: '#D4AF37', color: '#1E1E1E' }}
-          >
-            <Icon name="PlusIcon" size={15} />
-            إضافة حساب الآن
-          </button>
         </div>
       ) : (
         <div className="space-y-3">
