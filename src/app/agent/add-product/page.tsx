@@ -129,6 +129,8 @@ const INITIAL_FORM = {
   moq: '1',
   unit: 'piece',
   specifications: '',
+  gross_weight_kg: '',
+  carton_volume_cbm: '',
   shipping_terms: 'CALCULATED_SHIPPING',
   shipping_port: '',
 };
