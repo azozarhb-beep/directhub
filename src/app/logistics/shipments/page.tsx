@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 import { uploadLogisticsFile, LOGISTICS_FILE_ACCEPT } from '@/lib/logisticsUpload';
+import PrepAgentCard, { resolvePrepAgent } from '../dashboard/PrepAgentCard';
 
 interface ShipmentRow {
   id: string;
@@ -24,6 +25,7 @@ interface ShipmentRow {
   carrier_name: string | null;
   pod_document_url: string | null;
   created_at: string;
+  metadata?: unknown;
 }
 
 type CategoryTab = 'all' | 'local' | 'international';
@@ -50,7 +52,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const SELECT_COLUMNS =
-  'id, tracking_number, bl_number, transport_type, shipping_type, shipment_status, estimated_delivery, order_id, origin_address, destination_address, route_origin_port, route_destination_port, carrier_name, pod_document_url, created_at';
+  'id, tracking_number, bl_number, transport_type, shipping_type, shipment_status, estimated_delivery, order_id, origin_address, destination_address, route_origin_port, route_destination_port, carrier_name, pod_document_url, created_at, metadata';
 
 function isInternational(s: ShipmentRow): boolean {
   const t = `${s.transport_type || ''} ${s.shipping_type || ''}`.toLowerCase();
@@ -542,6 +544,14 @@ export default function LogisticsShipmentsPage() {
                   </div>
 
                   <MilestoneStepper status={s.shipment_status} />
+
+                  {!['delivered', 'cancelled', 'returned', 'failed_delivery'].includes(s.shipment_status) && (
+                    <PrepAgentCard
+                      shipmentId={s.id}
+                      trackingNumber={s.tracking_number}
+                      agent={resolvePrepAgent(s.metadata)}
+                    />
+                  )}
 
                   <div className="flex flex-wrap gap-2">
                     <button
