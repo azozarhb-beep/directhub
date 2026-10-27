@@ -626,6 +626,15 @@ export default function AgentDashboardPage() {
     earnings: 'earnings', referral: 'referral', dispatch_rooms: 'dispatch', order_tracking: 'orders',
   };
   const [activeTab, setActiveTabState] = useState<AgentTabId | null>(null);
+  const [deepLink, setDeepLink] = useState<{ recipientId: string; name: string } | null>(null);
+
+  const readDeepLinkFromUrl = useCallback((): { recipientId: string; name: string } | null => {
+    if (typeof window === 'undefined') return null;
+    const sp = new URLSearchParams(window.location.search);
+    const recipientId = sp.get('recipientId');
+    if (!recipientId) return null;
+    return { recipientId, name: sp.get('name') || '' };
+  }, []);
 
   const readTabFromUrl = useCallback((): AgentTabId | null => {
     if (typeof window === 'undefined') return null;
@@ -638,13 +647,18 @@ export default function AgentDashboardPage() {
 
   useEffect(() => {
     setActiveTabState(readTabFromUrl());
-    const onPopState = () => setActiveTabState(readTabFromUrl());
+    setDeepLink(readDeepLinkFromUrl());
+    const onPopState = () => {
+      setActiveTabState(readTabFromUrl());
+      setDeepLink(readDeepLinkFromUrl());
+    };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [readTabFromUrl]);
+  }, [readTabFromUrl, readDeepLinkFromUrl]);
 
   const openTab = useCallback((id: AgentTabId) => {
     setActiveTabState(id);
+    setDeepLink(null);
     router.push(`/agent/dashboard?tab=${TAB_URL_KEYS[id]}`, { scroll: false });
     if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1589,6 +1603,8 @@ export default function AgentDashboardPage() {
             showFilters={true}
             height={640}
             chatLanguage={dashboardChatLang}
+            openContactId={deepLink?.recipientId}
+            openContactName={deepLink?.name}
             contacts={factories.map(f => ({
               id: f.id,
               name: f.company_name,
@@ -1849,7 +1865,7 @@ export default function AgentDashboardPage() {
                           {/* Internal coordination (replaces direct WhatsApp) */}
                           {factory.registration_status === 'approved' && (
                             <Link
-                              href={COORDINATION_ROOM_HREF}
+                              href={`/agent/messages?recipientId=${encodeURIComponent(factory.id)}&name=${encodeURIComponent(factory.company_name || '')}`}
                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-opacity hover:opacity-90"
                               style={{ backgroundColor: '#1E1E1E', color: '#D4AF37', border: '1px solid #D4AF37' }}
                             >
