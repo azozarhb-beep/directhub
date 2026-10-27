@@ -1732,7 +1732,7 @@
         "selectFactoryType": "Fabrika Türünü Seçin",
         "selectFactoryTypeDesc": "Fabrikanızın yerel (Suudi/Körfez) mi yoksa uluslararası mı olduğunu seçin.",
         "localFactory": "Yerel Fabrika",
-        "localFactoryDesc": "Suudi Arabistan, BAE, Kuveyt, Katar, Bahreyn, Umman, Mısır, Ürdün",
+        "localFactoryDesc": "Yemen Cumhuriyeti içindeki fabrikalar ve tedarikçiler için listeleme önceliği",
         "priorityListing": "Öncelikli Listeleme",
         "internationalFactory": "Uluslararası Fabrika",
         "internationalFactoryDesc": "Çin, Türkiye, Hindistan, Almanya, ABD ve dünya genelindeki diğer ülkeler",

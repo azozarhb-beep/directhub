@@ -1732,7 +1732,7 @@
         "selectFactoryType": "选择工厂类型",
         "selectFactoryTypeDesc": "请选择您的工厂属于本地（沙特/海湾地区）还是国际工厂。",
         "localFactory": "本地工厂",
-        "localFactoryDesc": "沙特阿拉伯、阿联酋、科威特、卡塔尔、巴林、阿曼、埃及、约旦",
+        "localFactoryDesc": "优先展示也门共和国境内的工厂和供应商",
         "priorityListing": "优先展示",
         "internationalFactory": "国际工厂",
         "internationalFactoryDesc": "中国、土耳其、印度、德国、美国及全球其他国家",

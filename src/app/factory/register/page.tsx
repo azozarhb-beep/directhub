@@ -57,13 +57,17 @@ const YEMENI_GOVERNORATES = [
 
 // World countries in Arabic for international factory
 const INTERNATIONAL_COUNTRIES_AR = [
-  // الدول العربية
-  'اليمن', 'المملكة العربية السعودية', 'الإمارات العربية المتحدة', 'الكويت', 'قطر', 'البحرين', 'عُمان',
-  'مصر', 'الأردن', 'العراق', 'سوريا', 'لبنان', 'فلسطين', 'ليبيا',
+  // السعودية ودول الخليج (GCC) والدول العربية الرئيسية
+  'المملكة العربية السعودية', 'الإمارات العربية المتحدة', 'قطر', 'الكويت', 'البحرين', 'عُمان',
+  'مصر', 'الأردن',
+  // الدول الآسيوية الرئيسية
+  'الصين', 'تركيا', 'الهند', 'باكستان',
+  // بقية الدول العربية
+  'اليمن', 'العراق', 'سوريا', 'لبنان', 'فلسطين', 'ليبيا',
   'تونس', 'الجزائر', 'المغرب', 'السودان', 'الصومال', 'موريتانيا',
   'جيبوتي', 'جزر القمر',
   // آسيا
-  'الصين', 'تركيا', 'الهند', 'باكستان', 'بنغلاديش', 'إندونيسيا', 'ماليزيا',
+  'بنغلاديش', 'إندونيسيا', 'ماليزيا',
   'الفلبين', 'فيتنام', 'تايلاند', 'سنغافورة', 'اليابان', 'كوريا الجنوبية',
   'كوريا الشمالية', 'تايوان', 'هونغ كونغ', 'إيران', 'أفغانستان', 'نيبال',
   'سريلانكا', 'ميانمار', 'كمبوديا', 'لاوس', 'منغوليا', 'كازاخستان',
@@ -809,39 +813,6 @@ function FactoryRegisterPageInner() {
               </div>
             </div>
 
-            {/* Country/Region selection for step 1 */}
-            {isLocal ? (
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">
-                  {fr.governorate} <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={form.region}
-                  onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))}
-                  className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors"
-                >
-                  <option value="">{fr.selectGovernorateEllipsis}</option>
-                  {YEMENI_GOVERNORATES.map((g) => (
-                    <option key={g} value={g}>{g}</option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-muted-foreground mt-1">{fr.yemenGovOnly}</p>
-              </div>
-            ) : (
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">{fr.countryLabel}</label>
-                <select
-                  value={form.country}
-                  onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))}
-                  className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors"
-                >
-                  {INTERNATIONAL_COUNTRIES_AR.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
             <button
               onClick={() => setStep(2)}
               className="w-full h-11 bg-primary text-primary-foreground rounded-xl text-sm font-semibold flex items-center justify-center gap-2 active:opacity-80 transition-opacity"
@@ -952,7 +923,9 @@ function FactoryRegisterPageInner() {
               </div>
               {isLocal ? (
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">{fr.governorate}</label>
+                  <label className="block text-xs font-medium text-foreground mb-1">
+                    {fr.governorate} <span className="text-red-500">*</span>
+                  </label>
                   <select
                     value={form.region}
                     onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))}
@@ -964,7 +937,9 @@ function FactoryRegisterPageInner() {
                 </div>
               ) : (
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">{fr.countryLabel}</label>
+                  <label className="block text-xs font-medium text-foreground mb-1">
+                    {String(fr.countryLabel || '').replace(/\s*\*\s*$/, '')} <span className="text-red-500">*</span>
+                  </label>
                   <select
                     value={form.country}
                     onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))}
