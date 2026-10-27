@@ -55,6 +55,28 @@ const YEMENI_GOVERNORATES = [
   'الجوف', 'المحويت', 'المهرة', 'ريمة', 'سقطرى', 'أمانة العاصمة',
 ];
 
+// Cascading industrial zones per Yemeni governorate
+const YEMEN_INDUSTRIAL_ZONES: Record<string, string[]> = {
+  'صنعاء': ['ذهبان وبني الحارث', 'منطقة الحصبة الصناعية', 'منطقة الحثيلي الصناعية', 'منطقة السبعين', 'عصر / مذبح', 'أخرى / مربع عام'],
+  'عدن': ['المنطقة الصناعية - المنصورة', 'المنطقة الحرة الصناعية', 'المعلا', 'بئر فضل'],
+  'تعز': ['منطقة الحوبان الصناعية', 'البرح', 'وسط المدينة'],
+  'الحديدة': ['المنطقة الصناعية كيلو 7', 'المنطقة الصناعية كيلو 16', 'ميناء الحديدة والصليف'],
+  'حضرموت': ['منطقة الريان الصناعية', 'المكلا', 'سيئون'],
+};
+const YEMEN_DEFAULT_ZONES = ['المنطقة الصناعية الرئيسية', 'وسط المحافظة', 'أخرى'];
+
+function getYemenZones(governorate: string): string[] {
+  return YEMEN_INDUSTRIAL_ZONES[governorate] ?? YEMEN_DEFAULT_ZONES;
+}
+
+// International hubs per country (others fall back to free text)
+const SAUDI_COUNTRY = 'المملكة العربية السعودية';
+const CHINA_COUNTRY = 'الصين';
+const INTERNATIONAL_HUBS: Record<string, string[]> = {
+  [SAUDI_COUNTRY]: ['المدينة الصناعية الثانية بالرياض', 'سدير للصناعة', 'الجبيل الصناعية', 'المدينة الصناعية بجدة', 'الدمام الصناعية', 'أخرى'],
+  [CHINA_COUNTRY]: ['Guangdong – Foshan Industrial Park', 'Zhejiang – Yiwu Trade Zone', 'Shenzhen', 'Guangzhou', 'Other Hub'],
+};
+
 // World countries in Arabic for international factory
 const INTERNATIONAL_COUNTRIES_AR = [
   // السعودية ودول الخليج (GCC) والدول العربية الرئيسية
@@ -893,7 +915,7 @@ function FactoryRegisterPageInner() {
                     type="text"
                     value={form.commercial_registration_number}
                     onChange={(e) => setForm((f) => ({ ...f, commercial_registration_number: e.target.value }))}
-                    placeholder={fr.crNumberPlaceholder}
+                    placeholder="مثال: 12345"
                     className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
                   />
                 </div>
@@ -903,53 +925,110 @@ function FactoryRegisterPageInner() {
                     type="text"
                     value={form.vat_number}
                     onChange={(e) => setForm((f) => ({ ...f, vat_number: e.target.value }))}
-                    placeholder={fr.vatNumberPlaceholder}
+                    placeholder="مثال: 0012345"
                     className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
                   />
                 </div>
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">{fr.cityLabel}</label>
-                <input
-                  type="text"
-                  value={form.city}
-                  onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-                  placeholder={fr.cityPlaceholder}
-                  className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
-                />
+            {!isLocal && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">{fr.crNumberLabel}</label>
+                  <input
+                    type="text"
+                    value={form.commercial_registration_number}
+                    onChange={(e) => setForm((f) => ({ ...f, commercial_registration_number: e.target.value }))}
+                    placeholder="e.g., CR-987654"
+                    dir="ltr"
+                    className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">{fr.vatNumberLabel}</label>
+                  <input
+                    type="text"
+                    value={form.vat_number}
+                    onChange={(e) => setForm((f) => ({ ...f, vat_number: e.target.value }))}
+                    placeholder="e.g., VAT-123456"
+                    dir="ltr"
+                    className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
+                  />
+                </div>
               </div>
-              {isLocal ? (
+            )}
+
+            {isLocal ? (
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-1">
-                    {fr.governorate} <span className="text-red-500">*</span>
+                    المحافظة <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={form.region}
-                    onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))}
+                    onChange={(e) => setForm((f) => ({ ...f, region: e.target.value, city: '' }))}
                     className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors"
                   >
                     <option value="">{fr.selectGovernorate}</option>
                     {YEMENI_GOVERNORATES.map((g) => <option key={g} value={g}>{g}</option>)}
                   </select>
                 </div>
-              ) : (
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">
+                    المربع الصناعي / الميداني <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={form.city}
+                    disabled={!form.region}
+                    onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+                    className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors disabled:opacity-60"
+                  >
+                    <option value="">{form.region ? 'اختر المربع الصناعي' : 'اختر المحافظة أولاً'}</option>
+                    {form.region && getYemenZones(form.region).map((z) => <option key={z} value={z}>{z}</option>)}
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-1">
                     {String(fr.countryLabel || '').replace(/\s*\*\s*$/, '')} <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={form.country}
-                    onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))}
+                    onChange={(e) => setForm((f) => ({ ...f, country: e.target.value, city: '' }))}
                     className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors"
                   >
                     {INTERNATIONAL_COUNTRIES_AR.map((c) => <option key={c} value={c}>{c}</option>)}
+                    <option value="دول أخرى...">دول أخرى...</option>
                   </select>
                 </div>
-              )}
-            </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">
+                    المدينة / المنطقة الصناعية <span className="text-red-500">*</span>
+                  </label>
+                  {INTERNATIONAL_HUBS[form.country] ? (
+                    <select
+                      value={form.city}
+                      onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+                      className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors"
+                    >
+                      <option value="">اختر المنطقة الصناعية</option>
+                      {INTERNATIONAL_HUBS[form.country].map((h) => <option key={h} value={h}>{h}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={form.city}
+                      onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+                      placeholder="أدخل المدينة والمنطقة الصناعية"
+                      className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
+                    />
+                  )}
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-medium text-foreground mb-1">{fr.addressLabel}</label>
@@ -997,6 +1076,9 @@ function FactoryRegisterPageInner() {
                 onClick={async () => {
                   if (!form.company_name.trim()) { setError(fr.errorCompanyName); return; }
                   if (isLocal && !form.commercial_registration_number.trim()) { setError(fr.errorCRNumberStep2); return; }
+                  if (isLocal && !form.region) { setError('الرجاء اختيار المحافظة'); return; }
+                  if (isLocal && !form.city) { setError('الرجاء اختيار المربع الصناعي / الميداني'); return; }
+                  if (!isLocal && !form.city.trim()) { setError('الرجاء إدخال المدينة / المنطقة الصناعية'); return; }
                   setError('');
                   setLinkRequestSent(false);
                   const dup = await runDuplicateCheck();
