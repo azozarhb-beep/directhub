@@ -12,9 +12,9 @@ interface AgentOperationsHubProps {
 export type HubTabId = 'preparation' | 'inspection' | 'freight';
 
 const HUB_TABS: { id: HubTabId; label: string }[] = [
-  { id: 'preparation', label: '⏳ قيد التصنيع والتحضير' },
-  { id: 'inspection', label: '🔍 مهام التفتيش الفوري (PSI)' },
-  { id: 'freight', label: '🚚 شحنات جاهزة للتحميل' },
+  { id: 'preparation', label: '⏳ قيد التصنيع' },
+  { id: 'inspection', label: '🔍 تفتيش فوري (PSI)' },
+  { id: 'freight', label: '🚚 جاهز للتحميل' },
 ];
 
 const AgentOperationsHub: React.FC<AgentOperationsHubProps> = ({ userId, initialTab = 'preparation' }) => {
@@ -30,7 +30,7 @@ const AgentOperationsHub: React.FC<AgentOperationsHubProps> = ({ userId, initial
       </div>
 
       <div
-        className="flex gap-1.5 overflow-x-auto p-1 bg-muted rounded-xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="grid grid-cols-3 gap-1.5 p-1 bg-muted rounded-xl"
         role="tablist"
         aria-label="أقسام العمليات والتفتيش"
       >
@@ -43,9 +43,9 @@ const AgentOperationsHub: React.FC<AgentOperationsHubProps> = ({ userId, initial
               role="tab"
               aria-selected={active}
               onClick={() => setTab(t.id)}
-              className={`flex-1 shrink-0 whitespace-nowrap px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+              className={`min-w-0 flex items-center justify-center text-center px-1 py-2 rounded-lg text-[11px] sm:text-xs font-medium leading-tight whitespace-nowrap transition-all ${
                 active
-                  ? 'bg-card text-foreground shadow-sm border border-border'
+                  ? 'bg-card text-foreground font-bold shadow-sm border border-border'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
