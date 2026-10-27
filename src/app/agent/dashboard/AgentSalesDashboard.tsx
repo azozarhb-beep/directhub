@@ -159,12 +159,8 @@ export default function AgentSalesDashboard({ userId, factories }: Props) {
       const factoryNameMap: Record<string, string> = {};
       (agentFactoryData || []).forEach(f => { factoryNameMap[f.id] = f.company_name; });
 
-      // Query all orders and filter those that reference agent's factories or products
-      const { data: allOrders } = await supabase
-        .from('orders')
-        .select('id, order_number, status, total, currency, created_at, items, factory_user_id, platform_commission, escrow_status')
-        .order('created_at', { ascending: false })
-        .limit(200);
+      // Masked RPC: order reference, status and platform fee only (no buyer address / full order value)
+      const { data: allOrders } = await supabase.rpc('get_agent_sales_orders_view');
 
       // Referral-link factories: resolve their user ids so their orders are counted too
       const { data: referralFactories } = await supabase
@@ -185,22 +181,22 @@ export default function AgentSalesDashboard({ userId, factories }: Props) {
 
       if (allOrders && allOrders.length > 0) {
         const seen = new Set<string>();
-        for (const order of allOrders) {
-          const items = Array.isArray(order.items) ? (order.items as any[]) : [];
-          const matchingItem = items.find((item: any) => productIds.includes(item?.product_id));
+        for (const order of allOrders as any[]) {
+          const orderProductIds: string[] = Array.isArray(order.product_ids) ? order.product_ids : [];
+          const matchingProductId = orderProductIds.find((pid) => productIds.includes(pid));
           const referralFactoryName = order.factory_user_id ? referralUserMap[order.factory_user_id] : undefined;
-          if (!matchingItem && referralFactoryName === undefined) continue;
-          if (seen.has(order.id)) continue;
-          seen.add(order.id);
+          if (!matchingProductId && referralFactoryName === undefined) continue;
+          if (seen.has(order.order_id)) continue;
+          seen.add(order.order_id);
           agentOrders.push({
-            id: order.id,
-            order_number: order.order_number || order.id.slice(0, 8).toUpperCase(),
+            id: order.order_id,
+            order_number: order.order_number || String(order.order_id).slice(0, 8).toUpperCase(),
             status: order.status,
-            total_amount: order.total || 0,
+            total_amount: 0,
             currency: order.currency || 'YER',
             created_at: order.created_at,
-            factory_name: matchingItem ? productFactoryMap[matchingItem.product_id] || '' : referralFactoryName || '',
-            platform_fee: order.platform_commission || 0,
+            factory_name: matchingProductId ? productFactoryMap[matchingProductId] || '' : referralFactoryName || '',
+            platform_fee: Number(order.platform_fee) || 0,
           });
         }
       }
@@ -225,8 +221,9 @@ export default function AgentSalesDashboard({ userId, factories }: Props) {
       const d = new Date(o.created_at);
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     });
-    const totalRevYER = orders.reduce((sum, o) => sum + toYER(o.total_amount, o.currency), 0);
-    const monthRevYER = thisMonth.reduce((sum, o) => sum + toYER(o.total_amount, o.currency), 0);
+    // Full order values are masked: "revenue" figures are based on the platform fee only
+    const totalRevYER = orders.reduce((sum, o) => sum + toYER(o.platform_fee || 0, o.currency), 0);
+    const monthRevYER = thisMonth.reduce((sum, o) => sum + toYER(o.platform_fee || 0, o.currency), 0);
     // Commission = 20% of Direct Hub's platform fee on completed orders only (not of order value)
     const isCompleted = (o: FactoryOrder) => o.status === 'delivered' || o.status === 'completed';
     const feeYER = (o: FactoryOrder) => toYER(o.platform_fee || 0, o.currency);
@@ -272,7 +269,7 @@ export default function AgentSalesDashboard({ userId, factories }: Props) {
   const selectedFactoryStats = useMemo(() => {
     if (!selectedFactory) return null;
     const fo = orders.filter(o => o.factory_name === selectedFactory.company_name);
-    const salesYER = fo.reduce((s, o) => s + toYER(o.total_amount, o.currency), 0);
+    const salesYER = fo.reduce((s, o) => s + toYER(o.platform_fee || 0, o.currency), 0);
     const completed = fo.filter(o => o.status === 'delivered' || o.status === 'completed');
     const feeYER = completed.reduce((s, o) => s + toYER(o.platform_fee || 0, o.currency), 0);
     return {
@@ -427,10 +424,10 @@ export default function AgentSalesDashboard({ userId, factories }: Props) {
           <div className="space-y-2">
             {factories.slice(0, 5).map(factory => {
               const factoryOrders = orders.filter(o => o.factory_name === factory.company_name);
-              const factoryRevYER = factoryOrders.reduce((sum, o) => sum + toYER(o.total_amount, o.currency), 0);
+              const factoryRevYER = factoryOrders.reduce((sum, o) => sum + toYER(o.platform_fee || 0, o.currency), 0);
               const maxRev = Math.max(...factories.map(f => {
                 const fo = orders.filter(o => o.factory_name === f.company_name);
-                return fo.reduce((s, o) => s + toYER(o.total_amount, o.currency), 0);
+                return fo.reduce((s, o) => s + toYER(o.platform_fee || 0, o.currency), 0);
               }), 1);
               const pct = Math.round((factoryRevYER / maxRev) * 100);
               return (
@@ -532,7 +529,7 @@ export default function AgentSalesDashboard({ userId, factories }: Props) {
                   </p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-sm font-bold text-foreground">{formatYER(toYER(order.total_amount, order.currency))}</p>
+                  <p className="text-sm font-bold text-foreground">{formatYER(toYER(order.platform_fee || 0, order.currency))}</p>
                   <p className="text-[10px] font-semibold text-primary">{ui.currencyYER}</p>
                 </div>
               </div>

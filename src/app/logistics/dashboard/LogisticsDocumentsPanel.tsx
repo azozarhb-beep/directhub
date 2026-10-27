@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
+import { SignedChatImage } from '@/components/SignedChatMedia';
+import { getChatMediaSignedUrl } from '@/lib/chatMedia';
 import toast from 'react-hot-toast';
 import {
   uploadLogisticsFile,
@@ -526,6 +528,8 @@ export default function LogisticsDocumentsPanel({
         bucket = 'logistics-documents';
         storagePath = decodeURIComponent(legacyMatch[1]);
       }
+    } else if (doc.file_url.startsWith(`${LOGISTICS_UPLOAD_BUCKET}/`)) {
+      storagePath = doc.file_url.slice(LOGISTICS_UPLOAD_BUCKET.length + 1);
     }
 
     // Delete from storage (best effort)
@@ -549,21 +553,23 @@ export default function LogisticsDocumentsPanel({
       return;
     }
 
-    // Extract storage path from file_url or use file_name fallback
-    // The stored URL is a signed URL — open directly
-    if (doc.file_url.startsWith('http')) {
-      window.open(doc.file_url, '_blank');
+    // Legacy private-bucket documents keep their dedicated bucket
+    if (!doc.file_url.startsWith('http') && !doc.file_url.startsWith(`${LOGISTICS_UPLOAD_BUCKET}/`)) {
+      const { data } = await supabase.storage
+        .from('logistics-documents')
+        .createSignedUrl(doc.file_url, 3600);
+      if (data?.signedUrl) {
+        setSignedUrls(prev => ({ ...prev, [doc.id]: data.signedUrl }));
+        window.open(data.signedUrl, '_blank');
+      }
       return;
     }
 
-    // Fallback: generate new signed URL from path
-    const { data } = await supabase.storage
-      .from('logistics-documents')
-      .createSignedUrl(doc.file_url, 3600);
-
-    if (data?.signedUrl) {
-      setSignedUrls(prev => ({ ...prev, [doc.id]: data.signedUrl }));
-      window.open(data.signedUrl, '_blank');
+    // chat-media references / old public URLs: resolve an authenticated signed URL
+    const signed = await getChatMediaSignedUrl(doc.file_url);
+    if (signed) {
+      setSignedUrls(prev => ({ ...prev, [doc.id]: signed }));
+      window.open(signed, '_blank');
     }
   };
 
@@ -586,7 +592,7 @@ export default function LogisticsDocumentsPanel({
           </h2>
           <p className="text-slate-400 text-sm mt-0.5">
             {isLicensing
-              ? 'رفع وثائق تسجيل المنشأة وتراخيص النقل المعتمدة للتحقق من هوية الشريك وتفعيل الضمان' :'رفع وإدارة وثائق التخليص الجمركي والشحن'}
+              ? 'رفع وثائق تسجيل المنشأة وتراخيص النقل ووثائق التحقق من هوية المنشأة' :'رفع وإدارة وثائق التخليص الجمركي والشحن'}
           </p>
         </div>
         <button
@@ -676,8 +682,7 @@ export default function LogisticsDocumentsPanel({
                   title="معاينة / فتح"
                 >
                   {isImage ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <SignedChatImage
                       src={doc.file_url}
                       alt={`${docTypeLabel} - ${doc.file_name}`}
                       className="w-full h-44 object-cover"

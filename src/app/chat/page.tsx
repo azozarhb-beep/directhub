@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import Icon from '@/components/ui/AppIcon';
+import { SignedChatImage, SignedChatVideo, SignedChatLink } from '@/components/SignedChatMedia';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import { useAuth } from '@/contexts/AuthContext';
@@ -583,8 +584,8 @@ export default function ChatHubPage() {
           .from('chat-media')
           .upload(filePath, fileWithResolvedType(attachment.file, attachment.type), { contentType: attachment.type, upsert: false });
         if (!uploadError && uploadData) {
-          const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(filePath);
-          attachmentUrl = urlData?.publicUrl;
+          // Private bucket: store a "bucket/path" reference; it is signed at render time
+          attachmentUrl = `chat-media/${filePath}`;
           attachmentType = attachment.type;
           attachmentName = attachment.file.name;
           // Update the optimistic message with the real public URL before revoking the blob
@@ -1059,7 +1060,7 @@ export default function ChatHubPage() {
                             {/* Image attachment */}
                             {msg.attachment_url && msg.attachment_type?.startsWith('image/') && (
                               <div className="rounded-xl overflow-hidden border border-border max-w-[220px]">
-                                <img
+                                <SignedChatImage
                                   src={msg.attachment_url}
                                   alt={msg.attachment_name || 'Attachment'}
                                   className="w-full h-auto object-cover max-h-44"
@@ -1069,15 +1070,13 @@ export default function ChatHubPage() {
                             {/* Video attachment */}
                             {msg.attachment_url && msg.attachment_type?.startsWith('video/') && (
                               <div className="rounded-xl overflow-hidden border border-border max-w-[220px]">
-                                <video src={msg.attachment_url} controls className="w-full max-h-44" preload="metadata" />
+                                <SignedChatVideo src={msg.attachment_url} className="w-full max-h-44" />
                               </div>
                             )}
                             {/* PDF attachment */}
                             {msg.attachment_url && msg.attachment_type === 'application/pdf' && (
-                              <a
+                              <SignedChatLink
                                 href={msg.attachment_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
                                 className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors ${
                                   isUser
                                     ? 'bg-primary/20 border-primary/30 text-primary' : 'bg-muted border-border text-foreground hover:bg-muted/70'
@@ -1086,7 +1085,7 @@ export default function ChatHubPage() {
                                 <Icon name="DocumentTextIcon" size={14} className="shrink-0" />
                                 <span className="truncate max-w-[140px]">{msg.attachment_name || 'Document.pdf'}</span>
                                 <Icon name="ArrowTopRightOnSquareIcon" size={11} className="shrink-0 ml-auto" />
-                              </a>
+                              </SignedChatLink>
                             )}
                             {/* Pending attachment (no URL) */}
                             {msg.attachment_name && !msg.attachment_url && (

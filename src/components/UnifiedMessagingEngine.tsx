@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 import type { ChatLanguage } from '@/app/agent/dashboard/AgentLanguageSelector';
 import ChatImageAttachment, { uploadChatImage, isImageAttachment, type AttachmentState } from '@/components/ChatImageAttachment';
+import { SignedChatImage, SignedChatLink } from '@/components/SignedChatMedia';
 import LiveTranslationChatInput from '@/components/LiveTranslationChatInput';
 import { needsChatTranslation } from '@/lib/chatTranslationGate';
 
@@ -1011,26 +1012,21 @@ export default function UnifiedMessagingEngine({
                             {msg.attachmentUrl && (
                               isImageAttachment(msg.attachmentUrl, msg.attachmentName) ? (
                                 <div className="mb-1.5">
-                                  <img
+                                  <SignedChatImage
                                     src={msg.attachmentUrl}
                                     alt={msg.attachmentName || 'صورة مرفقة'}
                                     className="max-w-[220px] max-h-[200px] rounded-xl object-cover cursor-pointer"
-                                    onClick={() => window.open(msg.attachmentUrl, '_blank')}
-                                    onError={e => {
-                                      (e.target as HTMLImageElement).style.display = 'none';
-                                    }}
+                                    onClickOpen
                                   />
                                 </div>
                               ) : (
-                                <a
+                                <SignedChatLink
                                   href={msg.attachmentUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
                                   className={`flex items-center gap-1.5 text-xs underline mb-1.5 ${isMine ? 'text-[#0A192F]/80' : 'text-[#D4AF37]'}`}
                                 >
                                   <Icon name="PaperClipIcon" size={12} />
                                   {msg.attachmentName || 'مرفق'}
-                                </a>
+                                </SignedChatLink>
                               )
                             )}
                             <p className="whitespace-pre-wrap text-xs">{msg.message}</p>

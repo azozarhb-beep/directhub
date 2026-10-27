@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import { uploadLogisticsFile, LOGISTICS_FILE_ACCEPT } from '@/lib/logisticsUpload';
+import { SignedChatImage, SignedChatLink } from '@/components/SignedChatMedia';
 
 export interface PrepAgentInfo {
   name: string;
@@ -202,13 +203,12 @@ function PrepAgentThreadModal({ shipmentId, trackingNumber, agent, onClose }: Th
                     {m.message_text && <p className="whitespace-pre-wrap break-words">{m.message_text}</p>}
                     {(m.attachments || []).map((a, i) =>
                       a.type?.startsWith('image/') ? (
-                        <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" className="block mt-1.5">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={a.url} alt={a.name} className="rounded-xl max-h-48 w-full object-cover" />
+                        <SignedChatLink key={i} href={a.url} className="block mt-1.5 text-start">
+                          <SignedChatImage src={a.url} alt={a.name} className="rounded-xl max-h-48 w-full object-cover" />
                           <span className="block text-[10px] opacity-80 mt-0.5">{a.name}</span>
-                        </a>
+                        </SignedChatLink>
                       ) : (
-                        <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" className="block mt-1.5 text-xs underline">📎 {a.name}</a>
+                        <SignedChatLink key={i} href={a.url} className="block mt-1.5 text-xs underline">📎 {a.name}</SignedChatLink>
                       )
                     )}
                     <p className="text-[10px] opacity-70 mt-1">{formatTime(m.created_at)}</p>

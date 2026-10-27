@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
 import Header from '@/components/Header';
 import Icon from '@/components/ui/AppIcon';
+import { SignedChatImage, SignedChatLink } from '@/components/SignedChatMedia';
 import DispatchTruckModal from './DispatchTruckModal';
 import MaritimeBookingModal from './MaritimeBookingModal';
 import OceanCarrierFields, {
@@ -5970,7 +5971,8 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
         setError('فشل رفع المرفق. يرجى المحاولة مجدداً.');
         return;
       }
-      const { data: pub } = supabase.storage.from('chat-media').getPublicUrl(path);
+      // Private bucket: store a "bucket/path" reference; it is signed at render time
+      const pub = { publicUrl: `chat-media/${path}` };
       const { data: msg, error: msgErr } = await supabase
         .from('admin_messages')
         .insert({
@@ -6129,15 +6131,14 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
                       <p className="leading-relaxed whitespace-pre-wrap">{msg.message}</p>
                       {msg.attachment_url && (
                         msg.attachment_type?.startsWith('image/') ? (
-                          <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={msg.attachment_url} alt={msg.attachment_name || 'مرفق صورة'} className="mt-2 rounded-lg max-h-48 object-cover" />
-                          </a>
+                          <SignedChatLink href={msg.attachment_url} className="block">
+                            <SignedChatImage src={msg.attachment_url} alt={msg.attachment_name || 'مرفق صورة'} className="mt-2 rounded-lg max-h-48 object-cover" />
+                          </SignedChatLink>
                         ) : (
-                          <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="mt-2 flex items-center gap-2 text-xs underline">
+                          <SignedChatLink href={msg.attachment_url} className="mt-2 flex items-center gap-2 text-xs underline">
                             <Icon name="PaperClipIcon" size={14} />
                             {msg.attachment_name || 'عرض المرفق'}
-                          </a>
+                          </SignedChatLink>
                         )
                       )}
                     </div>

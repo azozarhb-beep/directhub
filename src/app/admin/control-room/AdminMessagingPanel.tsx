@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 import { uploadChatImage, isImageAttachment } from '@/components/ChatImageAttachment';
+import { SignedChatImage, SignedChatLink } from '@/components/SignedChatMedia';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1109,18 +1110,16 @@ export default function AdminMessagingPanel({ userId: propUserId }: AdminMessagi
                                 {msg.attachment_url && (
                                   <div className="mb-2">
                                     {isImageAttachment(msg.attachment_url, msg.attachment_name) ? (
-                                      <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer">
-                                        <img
+                                      <SignedChatLink href={msg.attachment_url} className="block">
+                                        <SignedChatImage
                                           src={msg.attachment_url}
                                           alt={msg.attachment_name || 'صورة مرفقة'}
                                           className="max-w-full rounded-xl max-h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
                                         />
-                                      </a>
+                                      </SignedChatLink>
                                     ) : (
-                                      <a
+                                      <SignedChatLink
                                         href={msg.attachment_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
                                         className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors ${
                                           isAdmin
                                             ? 'bg-[#0A192F]/20 border-[#0A192F]/30 text-[#0A192F] hover:bg-[#0A192F]/30'
@@ -1129,7 +1128,7 @@ export default function AdminMessagingPanel({ userId: propUserId }: AdminMessagi
                                       >
                                         <Icon name="DocumentArrowDownIcon" size={16} />
                                         <span className="truncate max-w-[160px]">{msg.attachment_name || 'تحميل المرفق'}</span>
-                                      </a>
+                                      </SignedChatLink>
                                     )}
                                   </div>
                                 )}

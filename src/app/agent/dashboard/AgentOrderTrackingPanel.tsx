@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { uploadLogisticsFile } from '@/lib/logisticsUpload';
+import { uploadLogisticsFile, LOGISTICS_UPLOAD_BUCKET } from '@/lib/logisticsUpload';
+import { getChatMediaSignedUrls } from '@/lib/chatMedia';
 import Icon from '@/components/ui/AppIcon';
 import DemoPSIModal from './DemoPSIModal';
 
@@ -146,41 +147,31 @@ const AgentOrderTrackingPanel: React.FC<AgentOrderTrackingPanelProps> = ({ userI
       const productById = new Map<string, any>();
       agentProducts.forEach((p: any) => productById.set(p.id, p));
 
-      // RLS limits orders to those attributed to this agent
-      const { data: orderRows, error } = await supabase
-        .from('orders')
-        .select('*')
-        .in('status', ACTIVE_STATUSES)
-        .order('created_at', { ascending: false })
-        .limit(200);
+      // Masked RPC: no raw orders access, no street address, buyer identity or order value
+      const { data: orderRows, error } = await supabase.rpc('get_agent_order_tracking_view');
       if (error) throw error;
 
       const mapped: TrackedOrder[] = [];
-      for (const o of orderRows || []) {
+      for (const o of (orderRows as any[]) || []) {
         const items: any[] = Array.isArray(o.items) ? o.items : [];
         const firstItem = items[0] || {};
-        const pid = String(firstItem.product_id ?? firstItem.productId ?? firstItem.agent_product_id ?? '');
+        const pid = String(firstItem.product_id ?? '');
         const agentProduct = productById.get(pid);
         const refFactory = o.factory_user_id ? refByUser.get(o.factory_user_id) : undefined;
         const fieldFactory = agentProduct ? fieldById.get(agentProduct.factory_id) : undefined;
         const factory = refFactory || fieldFactory;
         if (!factory) continue;
 
-        const ship = toObj(o.shipping_address);
-        const destination = [
-          ship.warehouse,
-          ship.address || ship.street || ship.address_line1,
-          ship.city,
-          ship.country,
-        ]
-          .filter(Boolean)
-          .map(String)
-          .join('، ');
+        const destination = [o.destination_city, o.destination_country].filter(Boolean).map(String).join('، ');
 
-        const totalQty = items.reduce((s, it) => s + (Number(it?.quantity ?? it?.qty) || 0), 0);
+        const totalQty = items.reduce((s, it) => s + (Number(it?.quantity) || 0), 0);
+        const rawPhotos: string[] = Array.isArray(o.agent_production_photos)
+          ? o.agent_production_photos.map((p: any) => String(p?.url || '')).filter(Boolean)
+          : [];
+        const signedPhotos = (await getChatMediaSignedUrls(rawPhotos.slice(-8))).filter(Boolean);
         mapped.push({
-          id: o.id,
-          orderNumber: o.order_number || String(o.id).slice(0, 8).toUpperCase(),
+          id: o.order_id,
+          orderNumber: o.order_number || String(o.order_id).slice(0, 8).toUpperCase(),
           status: String(o.status || '').toLowerCase(),
           escrowStatus: String(o.escrow_status || '').toLowerCase(),
           productName:
@@ -194,15 +185,13 @@ const AgentOrderTrackingPanel: React.FC<AgentOrderTrackingPanelProps> = ({ userI
           factoryPhone: factory.contact_phone || '',
           factoryAddress: [factory.address, factory.city].filter(Boolean).join('، '),
           destination: destination || '—',
-          carrierName: o.carrier_name || o.seller_carrier_name || '',
+          carrierName: o.carrier_name || '',
           driverName: o.driver_name || '',
           driverPhone: o.driver_phone || '',
           inspectionConfirmedAt: o.agent_inspection_confirmed_at || null,
           inspectionNotes: o.agent_inspection_notes || '',
           createdAt: o.created_at,
-          photos: Array.isArray(o.agent_production_photos)
-            ? o.agent_production_photos.map((p: any) => String(p?.url || '')).filter(Boolean)
-            : [],
+          photos: signedPhotos,
           delayFlaggedAt: o.agent_delay_flagged_at || null,
           delayReason: o.agent_delay_reason || '',
           delayDays: typeof o.agent_delay_days === 'number' ? o.agent_delay_days : null,
@@ -265,7 +254,8 @@ const AgentOrderTrackingPanel: React.FC<AgentOrderTrackingPanelProps> = ({ userI
       const urls: string[] = [];
       for (const file of Array.from(files).slice(0, 8)) {
         const res = await uploadLogisticsFile(file, userId, `production/${order.id}`);
-        if (res.publicUrl) urls.push(res.publicUrl);
+        // Store the private storage path (not a public URL); it is signed on read
+        if (res.storagePath) urls.push(`${LOGISTICS_UPLOAD_BUCKET}/${res.storagePath}`);
       }
       if (urls.length === 0) throw new Error('لم يتم رفع أي صورة');
       const { error } = await supabase.rpc('agent_add_production_photos', {

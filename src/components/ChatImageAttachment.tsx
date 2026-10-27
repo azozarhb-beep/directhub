@@ -59,8 +59,8 @@ export async function uploadChatImage(
     return null;
   }
 
-  const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(filePath);
-  return { publicUrl: urlData?.publicUrl ?? '', fileName: file.name };
+  // Private bucket: return a "bucket/path" reference; it is signed at render time
+  return { publicUrl: `chat-media/${filePath}`, fileName: file.name };
 }
 
 /**

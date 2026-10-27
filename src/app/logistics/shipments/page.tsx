@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
+import { SignedChatLink } from '@/components/SignedChatMedia';
 import { uploadLogisticsFile, LOGISTICS_FILE_ACCEPT } from '@/lib/logisticsUpload';
 import PrepAgentCard, { resolvePrepAgent } from '../dashboard/PrepAgentCard';
 
@@ -612,14 +613,12 @@ export default function LogisticsShipmentsPage() {
                       🖨️ طباعة بوليصة النقل (Waybill)
                     </button>
                     {s.pod_document_url ? (
-                      <a
+                      <SignedChatLink
                         href={s.pod_document_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:bg-muted transition-colors"
                       >
                         📷 سند الاستلام (POD)
-                      </a>
+                      </SignedChatLink>
                     ) : (
                       <button
                         type="button"

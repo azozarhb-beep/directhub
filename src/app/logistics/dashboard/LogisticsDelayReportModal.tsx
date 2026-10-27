@@ -99,8 +99,7 @@ export default function LogisticsDelayReportModal({
             .from('chat-attachments')
             .upload(path, proofFile, { upsert: true });
           if (!uploadErr2 && uploadData2) {
-            const { data: urlData } = supabase.storage.from('chat-attachments').getPublicUrl(path);
-            proofUrl = urlData.publicUrl;
+            proofUrl = `chat-attachments/${path}`;
             proofFilename = proofFile.name;
           }
         } else if (uploadData) {

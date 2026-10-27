@@ -138,11 +138,12 @@ export default function SupplierProfilePage({ backPath = '/my-account' }: { back
   const uploadImage = async (file: File, userId: string, kind: 'avatar' | 'cover'): Promise<string> => {
     const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
     const path = `${userId}/${kind}-${Date.now()}.${ext}`;
+    // Profile avatar/cover are public-facing branding assets -> public product-images bucket
     const { error: uploadError } = await supabase.storage
-      .from('chat-media')
-      .upload(path, file, { upsert: false, contentType: file.type });
+      .from('product-images')
+      .upload(`profile/${path}`, file, { upsert: false, contentType: file.type });
     if (uploadError) throw uploadError;
-    const { data } = supabase.storage.from('chat-media').getPublicUrl(path);
+    const { data } = supabase.storage.from('product-images').getPublicUrl(`profile/${path}`);
     return data.publicUrl;
   };
 

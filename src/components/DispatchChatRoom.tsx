@@ -4,6 +4,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 import toast from 'react-hot-toast';
+import { SignedChatLink } from '@/components/SignedChatMedia';
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -233,13 +235,10 @@ export default function DispatchChatRoom({
 
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage
-        .from('chat-attachments')
-        .getPublicUrl(path);
-
+      // Private bucket: store a "bucket/path" reference; it is signed when opened
       setPendingAttachments((prev) => [
         ...prev,
-        { url: urlData.publicUrl, name: file.name, type: file.type },
+        { url: `chat-attachments/${path}`, name: file.name, type: file.type },
       ]);
       toast.success('تم رفع الملف بنجاح');
     } catch (err: any) {
@@ -496,17 +495,15 @@ export default function DispatchChatRoom({
                     {msg.attachments && msg.attachments.length > 0 && (
                       <div className="space-y-1">
                         {msg.attachments.map((att, i) => (
-                          <a
+                          <SignedChatLink
                             key={i}
                             href={att.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
                             className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs border transition-colors ${mine ? 'bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100' : 'bg-card border-border text-foreground hover:bg-muted'}`}
                           >
                             <Icon name={att.type?.startsWith('image/') ? 'PhotoIcon' : 'PaperClipIcon'} size={14} />
                             <span className="truncate max-w-[160px]">{att.name}</span>
                             <Icon name="ArrowTopRightOnSquareIcon" size={12} className="shrink-0" />
-                          </a>
+                          </SignedChatLink>
                         ))}
                       </div>
                     )}

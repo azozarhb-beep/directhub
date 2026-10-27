@@ -4,6 +4,8 @@ import React, { useState, useRef, useEffect, useCallback, Suspense } from 'react
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
+import { SignedChatImage, SignedChatLink } from '@/components/SignedChatMedia';
+import { getChatMediaSignedUrl } from '@/lib/chatMedia';
 import Icon from '@/components/ui/AppIcon';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
@@ -324,10 +326,20 @@ function AudioMessageBubble({
     audio.addEventListener('pause', onPause);
     audio.addEventListener('play', onPlay);
 
-    audio.src = audioUrl;
-    audio.load();
+    let cancelled = false;
+    if (audioUrl.startsWith('blob:') || audioUrl.startsWith('data:')) {
+      audio.src = audioUrl;
+      audio.load();
+    } else {
+      getChatMediaSignedUrl(audioUrl).then((signed) => {
+        if (cancelled || !signed) return;
+        audio.src = signed;
+        audio.load();
+      });
+    }
 
     return () => {
+      cancelled = true;
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('ended', onEnded);
@@ -1826,8 +1838,8 @@ function LiveMessagingContent() {
         const filePath = `chat-attachments/${user.id}/${Date.now()}.${ext}`;
         const { data: uploadData, error: uploadError } = await supabase.storage.from('chat-media').upload(filePath, fileWithResolvedType(attachment.file, attachment.type), { contentType: attachment.type, upsert: false });
         if (!uploadError && uploadData) {
-          const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(filePath);
-          attachmentUrl = urlData?.publicUrl; attachmentType = attachment.type; attachmentName = attachment.file.name;
+          // Private bucket: store a "bucket/path" reference; it is signed at render time
+          attachmentUrl = `chat-media/${filePath}`; attachmentType = attachment.type; attachmentName = attachment.file.name;
           // Update optimistic message with real public URL before revoking blob URL
           setMessages(prev => prev.map(msg => msg.id === optimisticId
             ? { ...msg, attachment_url: attachmentUrl, attachment_type: attachmentType, attachment_name: attachmentName }
@@ -1902,8 +1914,7 @@ function LiveMessagingContent() {
       const { data: uploadData, error: uploadError } = await supabase.storage.from('chat-media').upload(filePath, file, { contentType: file.type, upsert: false });
       let attachmentUrl: string | undefined;
       if (!uploadError && uploadData) {
-        const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(filePath);
-        attachmentUrl = urlData?.publicUrl;
+        attachmentUrl = `chat-media/${filePath}`;
       }
       const msgPayload: any = {
         conversation_id: activeConvId, sender_id: user.id, sender_role: user.user_metadata?.role || 'buyer',
@@ -2571,11 +2582,11 @@ function LiveMessagingContent() {
                             {msg.attachment_url && !msg.attachment_type?.startsWith('audio/') && !(msg.message?.includes('🎙️') || msg.message?.includes('رسالة صوتية')) && (
                               <div className="mb-1">
                                 {msg.attachment_type?.startsWith('image/') ? (
-                                  <AppImage src={msg.attachment_url} alt={m.attachment} width={200} height={150} className="rounded-xl max-w-full" />
+                                  <SignedChatImage src={msg.attachment_url} alt={m.attachment} className="rounded-xl max-w-full w-[200px] h-auto" />
                                 ) : (
-                                  <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs underline text-primary">
+                                  <SignedChatLink href={msg.attachment_url} className="flex items-center gap-2 text-xs underline text-primary">
                                     <Icon name="PaperClipIcon" size={13} />{msg.attachment_name || m.attachment}
-                                  </a>
+                                  </SignedChatLink>
                                 )}
                               </div>
                             )}

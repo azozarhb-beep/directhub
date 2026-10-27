@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import Icon from '@/components/ui/AppIcon';
+import { SignedChatImage, SignedChatVideo, SignedChatLink } from '@/components/SignedChatMedia';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import { useAuth } from '@/contexts/AuthContext';
@@ -634,8 +635,8 @@ export default function ChatPage() {
         upload(filePath, attachment.file, { contentType: attachment.file.type || 'application/octet-stream', upsert: false });
 
         if (!uploadError && uploadData) {
-          const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(filePath);
-          attachmentUrl = urlData?.publicUrl;
+          // Private bucket: store a "bucket/path" reference; it is signed at render time
+          attachmentUrl = `chat-media/${filePath}`;
           attachmentType = attachment.file.type;
           attachmentName = attachment.file.name;
         }
@@ -880,7 +881,7 @@ export default function ChatPage() {
                   {/* Attachment preview */}
                   {msg.attachment_url && msg.attachment_type?.startsWith('image/') &&
                   <div className="rounded-xl overflow-hidden border border-border max-w-[240px]">
-                      <img
+                      <SignedChatImage
                       src={msg.attachment_url}
                       alt={msg.attachment_name || 'Attachment'}
                       className="w-full h-auto object-cover max-h-48" />
@@ -888,11 +889,7 @@ export default function ChatPage() {
                   }
                   {msg.attachment_url && msg.attachment_type?.startsWith('video/') &&
                   <div className="rounded-xl overflow-hidden border border-border max-w-[240px]">
-                      <video
-                      src={msg.attachment_url}
-                      controls
-                      className="w-full max-h-48"
-                      preload="metadata" />
+                      <SignedChatVideo src={msg.attachment_url} className="w-full max-h-48" />
                     </div>
                   }
                   {msg.attachment_url && (
@@ -902,10 +899,8 @@ export default function ChatPage() {
                     msg.attachment_type === 'application/octet-stream' ||
                     ['xlsx','xls','docx','doc','dwg','dxf'].includes(msg.attachment_name?.split('.').pop()?.toLowerCase() || '')
                   ) &&
-                  <a
+                  <SignedChatLink
                     href={msg.attachment_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
                     className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors ${
                     isUser ?
                     'bg-primary/20 border-primary/30 text-primary-foreground' :
@@ -914,7 +909,7 @@ export default function ChatPage() {
                       <Icon name={getAttachmentIcon(msg.attachment_type, msg.attachment_name) as any} size={16} className="shrink-0" />
                       <span className="truncate max-w-[160px]">{msg.attachment_name || 'Document'}</span>
                       <Icon name="ArrowTopRightOnSquareIcon" size={12} className="shrink-0 ml-auto" />
-                    </a>
+                    </SignedChatLink>
                   }
                   {/* Non-preview attachment (no URL yet / other types) */}
                   {msg.attachment_name && !msg.attachment_url &&

@@ -23,6 +23,7 @@ import ManufacturerAdvancedModules from '@/components/manufacturer/ManufacturerA
 import FactoryTeamManagement from '@/components/manufacturer/FactoryTeamManagement';
 import TieredPricingManager from '@/components/international-factory/TieredPricingManager';
 import ChatImageAttachment, { uploadChatImage, isImageAttachment, type AttachmentState } from '@/components/ChatImageAttachment';
+import { SignedChatImage, SignedChatLink } from '@/components/SignedChatMedia';
 
 
 
@@ -3087,24 +3088,21 @@ function FactoryAdminMessaging({
                       {msg.attachment_url && (
                         isImageAttachment(msg.attachment_url, msg.attachment_name) ? (
                           <div className="mb-1.5">
-                            <img
+                            <SignedChatImage
                               src={msg.attachment_url}
                               alt={msg.attachment_name || 'صورة مرفقة'}
                               className="max-w-[200px] max-h-[180px] rounded-xl object-cover cursor-pointer"
-                              onClick={() => window.open(msg.attachment_url, '_blank')}
-                              onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              onClickOpen
                             />
                           </div>
                         ) : (
-                          <a
+                          <SignedChatLink
                             href={msg.attachment_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
                             className={`flex items-center gap-1.5 text-xs underline mb-1.5 ${isAdmin ? 'text-primary' : 'text-white/80'}`}
                           >
                             <Icon name="PaperClipIcon" size={12} />
                             {msg.attachment_name || md.attachment}
-                          </a>
+                          </SignedChatLink>
                         )
                       )}
                       <p className="whitespace-pre-wrap text-xs">{msg.message}</p>

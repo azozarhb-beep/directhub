@@ -166,36 +166,30 @@ export default function AgentEarningsPanel({ userId, embedded = false }: Props) 
         totalPlatformFee += o.platform_commission || 0;
       };
 
-      const referralUserIds = referralFactories
-        .filter(isApprovedOrActiveFacility)
-        .map(f => f.user_id)
-        .filter(Boolean) as string[];
-      if (referralUserIds.length > 0) {
-        const { data: refOrders } = await supabase
-          .from('orders')
-          .select('id, total, platform_commission, status, escrow_status')
-          .in('factory_user_id', referralUserIds);
-        (refOrders || [])
-          .filter(o => COMPLETED.includes(String(o.status)) || o.escrow_status === 'funds_released')
-          .forEach(addOrder);
-      }
+      // Masked RPC: platform fee + status only (no buyer address or full order value)
+      const { data: maskedOrders } = await supabase.rpc('get_agent_sales_orders_view');
+      const maskedList = (maskedOrders as any[]) || [];
+
+      const referralUserIds = new Set(
+        referralFactories
+          .filter(isApprovedOrActiveFacility)
+          .map(f => f.user_id)
+          .filter(Boolean) as string[]
+      );
 
       const { data: agentProducts } = await supabase
         .from('agent_products')
         .select('id')
         .eq('agent_id', userId);
       const agentProductIds = new Set((agentProducts || []).map(p => p.id));
-      if (agentProductIds.size > 0) {
-        const { data: manualOrders } = await supabase
-          .from('orders')
-          .select('id, total, platform_commission, status, escrow_status, items')
-          .order('created_at', { ascending: false })
-          .limit(500);
-        (manualOrders || [])
-          .filter(o => COMPLETED.includes(String(o.status)) || o.escrow_status === 'funds_released')
-          .filter(o => Array.isArray(o.items) && (o.items as any[]).some(it => agentProductIds.has(it?.product_id)))
-          .forEach(addOrder);
-      }
+
+      maskedList
+        .filter(o => COMPLETED.includes(String(o.status)) || o.escrow_status === 'funds_released')
+        .filter(o =>
+          (o.factory_user_id && referralUserIds.has(o.factory_user_id)) ||
+          (Array.isArray(o.product_ids) && o.product_ids.some((pid: string) => agentProductIds.has(pid)))
+        )
+        .forEach(o => addOrder({ id: o.order_id, platform_commission: Number(o.platform_fee) || 0 }));
 
       const totalOrders = countedOrderIds.size;
       const estimatedCommission = totalPlatformFee * COMMISSION_RATE;
@@ -252,15 +246,14 @@ export default function AgentEarningsPanel({ userId, embedded = false }: Props) 
       // Orders whose escrow has fully cleared (delivered / funds released) → commission is withdrawable
       const commOrderIds = ((commData as CommissionRecord[]) || []).map(c => c.order_id).filter(Boolean);
       if (commOrderIds.length > 0) {
-        const { data: ordRows } = await supabase
-          .from('orders')
-          .select('id, status, escrow_status')
-          .in('id', commOrderIds);
+        const { data: ordRows } = await supabase.rpc('get_agent_commission_order_status', {
+          p_order_ids: commOrderIds,
+        });
         setClearedOrderIds(
           new Set(
-            (ordRows || [])
+            ((ordRows as any[]) || [])
               .filter(o => ['delivered', 'completed'].includes(String(o.status)) || o.escrow_status === 'funds_released')
-              .map(o => o.id as string)
+              .map(o => o.order_id as string)
           )
         );
       } else {
