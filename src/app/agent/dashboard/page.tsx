@@ -1073,10 +1073,10 @@ export default function AgentDashboardPage() {
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           {([
-            { id: 'total', label: ad.statTotal, value: statTotalFactories, icon: 'BuildingOffice2Icon', color: 'text-cyan-300', bg: 'bg-slate-800', activeBorder: 'border-cyan-400 ring-2 ring-cyan-400/25' },
-            { id: 'approved', label: ad.statApproved, value: statApprovedFactories, icon: 'CheckBadgeIcon', color: 'text-cyan-300', bg: 'bg-slate-800', activeBorder: 'border-cyan-400 ring-2 ring-cyan-400/25' },
-            { id: 'pending', label: ad.statPendingReview, value: pendingReview, icon: 'ClockIcon', color: 'text-cyan-300', bg: 'bg-slate-800', activeBorder: 'border-cyan-400 ring-2 ring-cyan-400/25' },
-            { id: 'products', label: ad.statProducts, value: totalProducts, icon: 'CubeIcon', color: 'text-cyan-300', bg: 'bg-slate-800', activeBorder: 'border-cyan-400 ring-2 ring-cyan-400/25' },
+            { id: 'total', label: ad.statTotal, value: statTotalFactories, icon: 'BuildingOffice2Icon', color: 'text-blue-600', bg: 'bg-blue-50', activeBorder: 'border-blue-400 ring-2 ring-blue-400/25' },
+            { id: 'approved', label: ad.statApproved, value: statApprovedFactories, icon: 'CheckBadgeIcon', color: 'text-emerald-600', bg: 'bg-emerald-50', activeBorder: 'border-emerald-400 ring-2 ring-emerald-400/25' },
+            { id: 'pending', label: ad.statPendingReview, value: pendingReview, icon: 'ClockIcon', color: 'text-amber-600', bg: 'bg-amber-50', activeBorder: 'border-amber-400 ring-2 ring-amber-400/25' },
+            { id: 'products', label: ad.statProducts, value: totalProducts, icon: 'CubeIcon', color: 'text-indigo-600', bg: 'bg-indigo-50', activeBorder: 'border-indigo-400 ring-2 ring-indigo-400/25' },
           ] as const).map(stat => {
             const isStatActive = activeStatCard === stat.id;
             return (
@@ -1085,15 +1085,15 @@ export default function AgentDashboardPage() {
                 type="button"
                 onClick={() => handleStatCardClick(stat.id)}
                 aria-pressed={isStatActive}
-                className={`text-start cursor-pointer bg-slate-900 border rounded-2xl p-4 min-h-[88px] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 active:scale-[0.98] ${
-                  isStatActive ? `${stat.activeBorder} border-2 shadow-md` : 'border-slate-800 hover:border-slate-700'
+                className={`text-start cursor-pointer bg-white border rounded-2xl p-4 min-h-[88px] shadow-sm hover:shadow-md transition-all duration-200 active:scale-[0.98] ${
+                  isStatActive ? `${stat.activeBorder} border-2` : 'border-slate-200'
                 }`}
               >
                 <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center mb-3`}>
                   <Icon name={stat.icon as any} size={18} className={stat.color} />
                 </div>
-                <p className="text-2xl font-bold text-white">{stat.value}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{stat.label}</p>
+                <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{stat.label}</p>
               </button>
             );
           })}
@@ -1119,42 +1119,42 @@ export default function AgentDashboardPage() {
               key: 'overview',
               title: 'لوحة الأداء',
               items: [
-                { id: 'sales', icon: 'ChartBarIcon', label: ad.tabSales, badge: 0, badgeColor: '', iconColor: 'bg-slate-800 text-cyan-300', cardTint: 'bg-slate-900 border-slate-800 hover:border-slate-700' },
-                { id: 'referral', icon: 'LinkIcon', label: 'الإحالات والتتبع', badge: 0, badgeColor: '', iconColor: 'bg-slate-800 text-cyan-300', cardTint: 'bg-slate-900 border-slate-800 hover:border-slate-700' },
+                { id: 'sales', icon: 'ChartBarIcon', label: ad.tabSales, badge: 0, badgeColor: '', iconColor: 'bg-emerald-50 text-emerald-600', cardTint: 'bg-white border-slate-200' },
+                { id: 'referral', icon: 'LinkIcon', label: 'الإحالات والتتبع', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600', cardTint: 'bg-white border-slate-200' },
               ],
             },
             {
               key: 'factories',
               title: 'المصانع والعمليات',
               items: [
-                { id: 'factories', icon: 'BuildingOffice2Icon', label: '🏭 شبكة المصانع والتوثيق (KYC)', sub: 'إدارة المصانع، إضافة مصنع جديد، وتوثيق السجلات الجغرافية', pills: `${statApprovedFactories} معتمد | ${pendingReview} قيد التوثيق`, badge: 0, badgeColor: '', iconColor: 'bg-slate-800 text-cyan-300', cardTint: 'bg-slate-900 border-slate-800 hover:border-slate-700' },
-                { id: 'order_tracking', icon: 'TruckIcon', label: '📦 العمليات والتفتيش الميداني', sub: 'متابعة خطوط الإنتاج، طلبات الشحن، ومعاينة البليتات', pills: '', badge: inspectionTasks.filter(t => !t.id.startsWith('mock-')).length, badgeColor: 'bg-amber-500', iconColor: 'bg-slate-800 text-cyan-300', cardTint: 'bg-slate-900 border-slate-800 hover:border-slate-700' },
-                { id: 'products', icon: 'CubeIcon', label: '🏷️ كتالوج المنتجات', sub: ad.tabProducts.replace('{count}', String(totalProducts)), pills: '', badge: 0, badgeColor: '', iconColor: 'bg-slate-800 text-cyan-300', cardTint: 'bg-slate-900 border-slate-800 hover:border-slate-700' },
-                { id: 'dispatch_rooms', icon: 'TruckIcon', label: '🚚 غرف التنسيق الميداني', badge: 0, badgeColor: '', iconColor: 'bg-slate-800 text-cyan-300', cardTint: 'bg-slate-900 border-slate-800 hover:border-slate-700' },
+                { id: 'factories', icon: 'BuildingOffice2Icon', label: '🏭 شبكة المصانع والتوثيق (KYC)', sub: 'إدارة المصانع، إضافة مصنع جديد، وتوثيق السجلات الجغرافية', pills: `${statApprovedFactories} معتمد | ${pendingReview} قيد التوثيق`, badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600', cardTint: 'bg-white border-slate-200' },
+                { id: 'order_tracking', icon: 'TruckIcon', label: '📦 العمليات والتفتيش الميداني', sub: 'متابعة خطوط الإنتاج، طلبات الشحن، ومعاينة البليتات', pills: '', badge: inspectionTasks.filter(t => !t.id.startsWith('mock-')).length, badgeColor: 'bg-amber-500', iconColor: 'bg-amber-50 text-amber-600', cardTint: 'bg-white border-slate-200' },
+                { id: 'products', icon: 'CubeIcon', label: '🏷️ كتالوج المنتجات', sub: ad.tabProducts.replace('{count}', String(totalProducts)), pills: '', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600', cardTint: 'bg-white border-slate-200' },
+                { id: 'dispatch_rooms', icon: 'TruckIcon', label: '🚚 غرف التنسيق الميداني', badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600', cardTint: 'bg-white border-slate-200' },
               ],
             },
             {
               key: 'messaging',
               title: 'المراسلات',
               items: [
-                { id: 'messaging', icon: 'ChatBubbleLeftRightIcon', label: ad.tabMessaging, badge: agentUnreadCount, badgeColor: 'bg-red-500', iconColor: 'bg-slate-800 text-cyan-300', cardTint: 'bg-slate-900 border-slate-800 hover:border-slate-700' },
-                { id: 'admin_msg', icon: 'ShieldCheckIcon', label: ad.tabAdminMsg, badge: adminUnreadCount, badgeColor: 'bg-red-500', iconColor: 'bg-slate-800 text-cyan-300', cardTint: 'bg-slate-900 border-slate-800 hover:border-slate-700' },
+                { id: 'messaging', icon: 'ChatBubbleLeftRightIcon', label: ad.tabMessaging, badge: agentUnreadCount, badgeColor: 'bg-red-500', iconColor: 'bg-emerald-50 text-emerald-600', cardTint: 'bg-white border-slate-200' },
+                { id: 'admin_msg', icon: 'ShieldCheckIcon', label: ad.tabAdminMsg, badge: adminUnreadCount, badgeColor: 'bg-red-500', iconColor: 'bg-indigo-50 text-indigo-600', cardTint: 'bg-white border-slate-200' },
               ],
             },
             {
               key: 'accounts',
               title: 'الحسابات والعمولات',
               items: [
-                { id: 'earnings', icon: 'BanknotesIcon', label: 'الأرباح والعمولات', badge: 0, badgeColor: '', iconColor: 'bg-slate-800 text-cyan-300', cardTint: 'bg-slate-900 border-slate-800 hover:border-slate-700' },
-                { id: 'exchange', icon: 'ArrowsRightLeftIcon', label: ad.tabInfoExchange, badge: 0, badgeColor: '', iconColor: 'bg-slate-800 text-cyan-300', cardTint: 'bg-slate-900 border-slate-800 hover:border-slate-700' },
+                { id: 'earnings', icon: 'BanknotesIcon', label: 'الأرباح والعمولات', badge: 0, badgeColor: '', iconColor: 'bg-amber-50 text-amber-600', cardTint: 'bg-white border-slate-200' },
+                { id: 'exchange', icon: 'ArrowsRightLeftIcon', label: ad.tabInfoExchange, badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600', cardTint: 'bg-white border-slate-200' },
               ],
             },
             {
               key: 'tools',
               title: 'الأدوات والشكاوى',
               items: [
-                { id: 'documents', icon: 'FolderOpenIcon', label: ad.tabDocuments, badge: 0, badgeColor: '', iconColor: 'bg-slate-800 text-cyan-300', cardTint: 'bg-slate-900 border-slate-800 hover:border-slate-700' },
-                { id: 'complaints', icon: 'ExclamationTriangleIcon', label: ad.tabComplaints, badge: 0, badgeColor: '', iconColor: 'bg-slate-800 text-cyan-300', cardTint: 'bg-slate-900 border-slate-800 hover:border-slate-700' },
+                { id: 'documents', icon: 'FolderOpenIcon', label: ad.tabDocuments, badge: 0, badgeColor: '', iconColor: 'bg-emerald-50 text-emerald-600', cardTint: 'bg-white border-slate-200' },
+                { id: 'complaints', icon: 'ExclamationTriangleIcon', label: ad.tabComplaints, badge: 0, badgeColor: '', iconColor: 'bg-amber-50 text-amber-600', cardTint: 'bg-white border-slate-200' },
               ],
             },
           ]).map(section => (
@@ -1169,23 +1169,21 @@ export default function AgentDashboardPage() {
                       type="button"
                       onClick={() => openTab(item.id as AgentTabId)}
                       aria-pressed={isActive}
-                      className={`relative flex flex-col items-center justify-center p-3 min-h-[96px] rounded-2xl border text-center transition-all duration-200 active:scale-[0.98] ${
+                      className={`relative flex flex-col items-center justify-center p-3 min-h-[96px] rounded-2xl border text-center shadow-sm hover:shadow-md transition-all duration-200 active:scale-[0.98] ${
                         isActive
-                          ? 'bg-slate-900 border-[#D4AF37] border-2 ring-2 ring-[#D4AF37]/25 shadow-md'
-                          : item.cardTint
-                            ? `${item.cardTint} hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30`
-                            : 'bg-slate-900 border-slate-800 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 hover:border-slate-700'
+                          ? 'bg-white border-[#D4AF37] border-2 ring-2 ring-[#D4AF37]/25'
+                          : `${item.cardTint || 'bg-white border-slate-200'}`
                       }`}
                     >
                       <span className={`w-11 h-11 rounded-xl flex items-center justify-center mb-2.5 ${item.iconColor}`}>
                         <Icon name={item.icon as any} size={22} />
                       </span>
-                      <span className="leading-tight font-black text-sm text-white">{item.label}</span>
+                      <span className="leading-tight text-sm text-slate-900 font-semibold">{item.label}</span>
                       {item.sub && (
-                        <span className="mt-1 text-[11px] leading-snug text-slate-400">{item.sub}</span>
+                        <span className="mt-1 text-xs leading-snug text-slate-500">{item.sub}</span>
                       )}
                       {item.pills && (
-                        <span className="mt-2 inline-flex items-center rounded-full bg-white/10 text-slate-200 px-2.5 py-0.5 text-[11px] font-bold">
+                        <span className="mt-2 inline-flex items-center rounded-full bg-slate-100 text-slate-500 px-2.5 py-0.5 text-xs font-medium">
                           {item.pills}
                         </span>
                       )}
