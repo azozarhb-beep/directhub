@@ -300,6 +300,21 @@ const nextConfig = {
         destination: '/store/:id',
         permanent: true,
       },
+      {
+        source: '/agent/kyc',
+        destination: '/agent/dashboard?tab=factories',
+        permanent: false,
+      },
+      {
+        source: '/agent/products',
+        destination: '/agent/dashboard?tab=products',
+        permanent: false,
+      },
+      {
+        source: '/agent/operations',
+        destination: '/agent/dashboard?tab=orders',
+        permanent: false,
+      },
     ];
   },
   images: {

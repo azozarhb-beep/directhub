@@ -918,28 +918,8 @@ export default function AgentDashboardPage() {
         });
         setInspectionTasks(tasks);
       } else {
-        // Fallback: build mock inspection tasks from agent's approved factories
-        const approvedFactoriesForInspection = factories.filter(f => f.registration_status === 'approved');
-        const mockTasks: InspectionTask[] = approvedFactoriesForInspection.slice(0, 5).map((f, idx) => ({
-          id: `mock-${f.id}`,
-          order_id: `mock-${f.id}`,
-          order_number: `ORD-${f.id.slice(0, 6).toUpperCase()}`,
-          factory_id: f.id,
-          factory_name: f.company_name,
-          factory_city: f.city,
-          factory_country: f.country,
-          factory_address: f.address || '—',
-          factory_contact_person: f.contact_person,
-          factory_contact_phone: f.contact_phone,
-          factory_industry: f.industry || '—',
-          escrow_status: idx % 2 === 0 ? 'ready_for_inspection' : 'funds_secured',
-          order_total: 0,
-          currency: 'USD',
-          created_at: f.created_at,
-          delivery_deadline: null,
-          items_summary: 'في انتظار التفتيش الميداني',
-        }));
-        setInspectionTasks(mockTasks);
+        // Production: never fabricate inspection tasks. Real tasks only.
+        setInspectionTasks([]);
       }
     } catch (err) {
       console.error('Error fetching inspection tasks:', err);

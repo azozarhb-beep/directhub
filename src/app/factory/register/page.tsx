@@ -273,9 +273,20 @@ function FactoryRegisterPageInner() {
     try {
       if (code) {
         window.localStorage.setItem('dh_referral_code', code);
-        document.cookie = `dh_referral_code=${encodeURIComponent(code)}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
+        window.localStorage.setItem(
+          'dh_referral_code_expires_at',
+          String(Date.now() + 180 * 24 * 60 * 60 * 1000)
+        );
+        document.cookie = `dh_referral_code=${encodeURIComponent(code)}; path=/; max-age=${60 * 60 * 24 * 180}; SameSite=Lax`;
       } else {
-        code = window.localStorage.getItem('dh_referral_code') || '';
+        const expiresAt = Number(window.localStorage.getItem('dh_referral_code_expires_at') || 0);
+        if (expiresAt && Date.now() > expiresAt) {
+          window.localStorage.removeItem('dh_referral_code');
+        window.localStorage.removeItem('dh_referral_code_expires_at');
+          window.localStorage.removeItem('dh_referral_code_expires_at');
+        } else {
+          code = window.localStorage.getItem('dh_referral_code') || '';
+        }
       }
     } catch {
       // storage unavailable

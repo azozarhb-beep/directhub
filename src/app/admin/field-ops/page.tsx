@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import Icon from '@/components/ui/AppIcon';
+import SignedDocLink from '@/components/SignedDocLink';
 
 type TabKey = 'agents' | 'factories' | 'catalog' | 'inspections' | 'documents';
 type AgentStatus = 'approved' | 'pending' | 'suspended';
@@ -798,8 +799,8 @@ export default function AdminFieldOpsPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <div className="bg-slate-950 rounded-xl p-2.5 border border-slate-800"><div className="text-slate-500 text-[10px]">الموقع</div><div className="font-semibold truncate">{[f.city, f.region].filter(Boolean).join('، ') || '—'}</div></div>
                   <div className="bg-slate-950 rounded-xl p-2.5 border border-slate-800"><div className="text-slate-500 text-[10px]">الطاقة الإنتاجية</div><div className="font-semibold truncate">{f.capacity || '—'}</div></div>
-                  <div className="bg-slate-950 rounded-xl p-2.5 border border-slate-800"><div className="text-slate-500 text-[10px]">السجل التجاري</div>{f.commercialRegistry ? <a href={f.commercialRegistry} target="_blank" rel="noopener noreferrer" className="text-blue-400 font-semibold">عرض المستند</a> : <div className="text-slate-500">غير مرفوع</div>}</div>
-                  <div className="bg-slate-950 rounded-xl p-2.5 border border-slate-800"><div className="text-slate-500 text-[10px]">الترخيص الصناعي</div>{f.industrialLicense ? <a href={f.industrialLicense} target="_blank" rel="noopener noreferrer" className="text-blue-400 font-semibold">عرض المستند</a> : <div className="text-slate-500">غير مرفوع</div>}</div>
+                  <div className="bg-slate-950 rounded-xl p-2.5 border border-slate-800"><div className="text-slate-500 text-[10px]">السجل التجاري</div>{f.commercialRegistry ? <SignedDocLink url={f.commercialRegistry} className="text-blue-400 font-semibold">عرض المستند</SignedDocLink> : <div className="text-slate-500">غير مرفوع</div>}</div>
+                  <div className="bg-slate-950 rounded-xl p-2.5 border border-slate-800"><div className="text-slate-500 text-[10px]">الترخيص الصناعي</div>{f.industrialLicense ? <SignedDocLink url={f.industrialLicense} className="text-blue-400 font-semibold">عرض المستند</SignedDocLink> : <div className="text-slate-500">غير مرفوع</div>}</div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -925,7 +926,7 @@ export default function AdminFieldOpsPage() {
                     </div>
                     <div className="mt-2 flex justify-end">
                       {d.fileUrl ? (
-                        <a href={d.fileUrl} target="_blank" rel="noopener noreferrer" className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold">معاينة / فتح الملف</a>
+                        <SignedDocLink url={d.fileUrl} className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold">معاينة / فتح الملف</SignedDocLink>
                       ) : (
                         <span className="px-3 py-2 rounded-xl bg-slate-800/50 text-slate-500 text-xs font-bold cursor-not-allowed">الملف غير متوفر</span>
                       )}

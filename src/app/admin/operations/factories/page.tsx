@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import OperationsShell from '../OperationsShell';
+import SignedDocLink from '@/components/SignedDocLink';
 import CertificateVerificationSection from '../CertificateVerificationSection';
 import { PENDING_KYC_STATUSES, OpsFactory, cleanPhone, inputCls, useOperationsData } from '../useOperationsData';
 
@@ -114,8 +115,8 @@ export default function OperationsFactoriesPage() {
                 <td className="p-3 text-xs">{f.capacity || '—'}</td>
                 <td className="p-3 text-xs font-bold">{f.agentName}</td>
                 <td className="p-3 text-xs space-y-1">
-                  {f.commercialRegistry ? <a href={f.commercialRegistry} target="_blank" rel="noopener noreferrer" className="block text-blue-400 font-semibold">السجل التجاري</a> : <span className="block text-slate-500">السجل: غير مرفوع</span>}
-                  {f.industrialLicense ? <a href={f.industrialLicense} target="_blank" rel="noopener noreferrer" className="block text-blue-400 font-semibold">الترخيص الصناعي</a> : <span className="block text-slate-500">الترخيص: غير مرفوع</span>}
+                  {f.commercialRegistry ? <SignedDocLink url={f.commercialRegistry} className="block text-blue-400 font-semibold text-start">السجل التجاري</SignedDocLink> : <span className="block text-slate-500">السجل: غير مرفوع</span>}
+                  {f.industrialLicense ? <SignedDocLink url={f.industrialLicense} className="block text-blue-400 font-semibold text-start">الترخيص الصناعي</SignedDocLink> : <span className="block text-slate-500">الترخيص: غير مرفوع</span>}
                   {(() => {
                     const fc = docs.filter((d) => d.docType === 'certificate' && d.factoryId === f.id);
                     const approved = fc.some((d) => d.verificationStatus === 'approved');

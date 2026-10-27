@@ -330,22 +330,15 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
       return;
     }
     setBusyId(task.id);
-    const now = new Date().toISOString();
-    const { error } = await supabase
-      .from('field_inspection_tasks')
-      .update({
-        status: result,
-        result,
-        photo_urls: photos,
-        report_notes: note || null,
-        check_quantity_match: checks.quantity,
-        check_packaging_ok: checks.packaging,
-        check_dates_ok: checks.dates,
-        signed_off_at: now,
-        updated_at: now,
-      })
-      .eq('id', task.id)
-      .eq('assigned_agent_id', userId);
+    const { error } = await supabase.rpc('save_inspection_results', {
+      p_task_id: task.id,
+      p_result: result,
+      p_photo_urls: photos,
+      p_report_notes: note || null,
+      p_check_quantity: checks.quantity,
+      p_check_packaging: checks.packaging,
+      p_check_dates: checks.dates,
+    });
     setBusyId(null);
     if (error) {
       showToast('error', `فشل إرسال التقرير: ${error.message}`);

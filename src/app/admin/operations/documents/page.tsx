@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import OperationsShell from '../OperationsShell';
+import SignedDocLink from '@/components/SignedDocLink';
 import CertificateVerificationSection from '../CertificateVerificationSection';
 import { DOC_TYPE_LABELS, formatFileSize, inputCls, useOperationsData } from '../useOperationsData';
 
@@ -65,7 +66,7 @@ export default function OperationsDocumentsPage() {
                 <td className="p-3 text-xs tabular-nums" dir="ltr">{d?.createdAt ? d?.createdAt?.slice(0, 10) : '—'}</td>
                 <td className="p-3">
                   {d?.fileUrl ? (
-                    <a href={d?.fileUrl} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-[11px] font-bold">فتح الملف</a>
+                    <SignedDocLink url={d?.fileUrl} className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-[11px] font-bold">فتح الملف</SignedDocLink>
                   ) : <span className="text-slate-500 text-xs">غير متوفر</span>}
                 </td>
               </tr>
