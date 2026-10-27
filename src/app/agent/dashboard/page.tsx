@@ -11,6 +11,7 @@ import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import UnifiedMessagingEngine from '@/components/UnifiedMessagingEngine';
 import { AgentProductEditDrawer, AgentProductPreviewModal } from './AgentProductEditDrawer';
+import { AgentProductShareModal, copyAgentProductLink } from './AgentProductShareModal';
 import DocumentUploadPanel from './DocumentUploadPanel';
 import InfoExchangePanel from './InfoExchangePanel';
 import ReceivingAccountPanel from './ReceivingAccountPanel';
@@ -616,6 +617,7 @@ export default function AgentDashboardPage() {
   const [referredStats, setReferredStats] = useState<{ total: number; approved: number }>({ total: 0, approved: 0 });
   const [previewProduct, setPreviewProduct] = useState<AgentProduct | null>(null);
   const [editProduct, setEditProduct] = useState<AgentProduct | null>(null);
+  const [shareProduct, setShareProduct] = useState<AgentProduct | null>(null);
   const [loading, setLoading] = useState(true);
   type AgentTabId = 'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral' | 'dispatch_rooms' | 'order_tracking';
   const VALID_TABS: AgentTabId[] = ['factories', 'products', 'messaging', 'documents', 'exchange', 'complaints', 'sales', 'admin_msg', 'commission', 'enhanced', 'inspections', 'earnings', 'referral', 'dispatch_rooms', 'order_tracking'];
@@ -1979,6 +1981,24 @@ export default function AgentDashboardPage() {
                           {t.agentProductActions.edit}
                         </button>
                       </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <button
+                          type="button"
+                          onClick={() => copyAgentProductLink(product.id, t.agentProductActions.linkCopied, t.agentProductActions.linkCopyFailed)}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 border border-border rounded-lg text-xs font-semibold text-foreground hover:bg-muted transition-colors"
+                        >
+                          <Icon name="LinkIcon" size={14} />
+                          {t.agentProductActions.copyLink}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShareProduct(product)}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 border border-border rounded-lg text-xs font-semibold text-foreground hover:bg-muted transition-colors"
+                        >
+                          <Icon name="QrCodeIcon" size={14} />
+                          {t.agentProductActions.shareQr}
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -1994,6 +2014,15 @@ export default function AgentDashboardPage() {
           factoryName={factories.find(f => f.id === previewProduct.factory_id)?.company_name}
           onClose={() => setPreviewProduct(null)}
           onEdit={() => { setEditProduct(previewProduct); setPreviewProduct(null); }}
+          onShare={() => setShareProduct(previewProduct)}
+        />
+      )}
+
+      {shareProduct && (
+        <AgentProductShareModal
+          product={shareProduct}
+          factoryName={factories.find(f => f.id === shareProduct.factory_id)?.company_name}
+          onClose={() => setShareProduct(null)}
         />
       )}
 
