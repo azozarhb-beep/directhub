@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { uploadLogisticsFile } from '@/lib/logisticsUpload';
 import Icon from '@/components/ui/AppIcon';
+import DemoPSIModal from './DemoPSIModal';
 
 interface AgentOrderTrackingPanelProps {
   userId: string;
@@ -86,31 +87,6 @@ function filterOf(o: TrackedOrder): FilterId {
   if (s === 1) return 'inspection';
   return 'production';
 }
-
-const DEMO_ORDER: TrackedOrder = {
-  id: 'demo-order',
-  orderNumber: 'DEMO-0001',
-  status: 'processing',
-  escrowStatus: '',
-  productName: 'بلاط سيراميك 60×60 (عينة تجريبية)',
-  quantity: '1200',
-  unit: 'متر مربع',
-  specs: ['اللون: بيج', 'السماكة: 9 مم', 'الدرجة: أولى'],
-  factoryName: 'مصنع تجريبي',
-  factoryPhone: '',
-  factoryAddress: 'العاشر من رمضان، مصر',
-  destination: 'ميناء عدن، اليمن',
-  carrierName: '',
-  driverName: '',
-  driverPhone: '',
-  inspectionConfirmedAt: null,
-  inspectionNotes: '',
-  createdAt: '',
-  photos: [],
-  delayFlaggedAt: null,
-  delayReason: '',
-  delayDays: null,
-};
 
 const AgentOrderTrackingPanel: React.FC<AgentOrderTrackingPanelProps> = ({ userId, embedded = false, lockedFilter }) => {
   const supabase = useMemo(() => createClient(), []);
@@ -768,14 +744,14 @@ const AgentOrderTrackingPanel: React.FC<AgentOrderTrackingPanelProps> = ({ userI
               </Link>
               <button
                 type="button"
-                onClick={() => setShowDemo((v) => !v)}
+                onClick={() => setShowDemo(true)}
                 className="text-xs font-semibold text-purple-600 dark:text-purple-300 hover:underline"
               >
                 🧪 معاينة بطاقة طلب تجريبية (Demo Order)
               </button>
             </div>
           </div>
-          {showDemo && <div className="max-w-xl mx-auto">{renderCard(DEMO_ORDER, true)}</div>}
+          <DemoPSIModal open={showDemo} onClose={() => setShowDemo(false)} />
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

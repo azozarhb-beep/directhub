@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 import { enforceAgentGeofence } from '@/lib/agentGeofence';
+import DemoPSIModal from './DemoPSIModal';
 
 interface AgentInspectionTasksPanelProps {
   userId: string;
@@ -101,6 +102,7 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
   const [cityFilter, setCityFilter] = useState('');
 
   const [showWalkIn, setShowWalkIn] = useState(false);
+  const [showDemoModal, setShowDemoModal] = useState(false);
   const [walkInFactory, setWalkInFactory] = useState('');
   const [walkInCity, setWalkInCity] = useState('');
   const [walkInPo, setWalkInPo] = useState('');
@@ -407,12 +409,24 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
       {/* Primary CTA: on-site inspection without prior assignment */}
       <button
         type="button"
-        onClick={() => setShowWalkIn((v) => !v)}
+        onClick={() => {
+          setShowWalkIn(true);
+          setShowDemoModal(true);
+        }}
         className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-white bg-primary hover:bg-primary/90 active:scale-[0.99] transition-all"
       >
         <Icon name="PlusIcon" size={16} />
         [ + بدء تفتيش أو معاينة فورية ]
       </button>
+
+      <button
+        type="button"
+        onClick={() => setShowDemoModal(true)}
+        className="w-full text-center text-xs font-semibold text-purple-600 dark:text-purple-300 hover:underline"
+      >
+        🧪 معاينة بطاقة طلب تجريبية (Demo Order)
+      </button>
+      <DemoPSIModal open={showDemoModal} onClose={() => setShowDemoModal(false)} />
 
       {showWalkIn && (
         <div className="bg-card border border-border rounded-xl p-4 space-y-3">
