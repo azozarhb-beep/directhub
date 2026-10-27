@@ -5,6 +5,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
+import SignedDocLink from '@/components/SignedDocLink';
 
 interface AgentFactory {
   id: string;
@@ -193,15 +194,12 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
 
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage
-        .from('factory-documents')
-        .getPublicUrl(fileName);
-
+      // Store the private object path (never a public URL); viewed via signed URLs.
       const { error: dbError } = await supabase.from('agent_factory_documents').insert({
         agent_id: userId,
         factory_reg_id: selectedFactory,
         doc_type: docType,
-        file_url: urlData.publicUrl,
+        file_url: fileName,
         file_name: selectedFile.name,
         file_size: selectedFile.size,
         mime_type: selectedFile.type,
@@ -624,15 +622,12 @@ export default function DocumentUploadPanel({ userId, factories }: DocumentUploa
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <a
-                      href={doc.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <SignedDocLink
+                      url={doc.file_url}
                       className="w-7 h-7 rounded-lg bg-primary/10 hover:bg-primary/20 flex items-center justify-center transition-colors"
-                      title={ui.view}
                     >
                       <Icon name="EyeIcon" size={13} className="text-primary" />
-                    </a>
+                    </SignedDocLink>
                     <button
                       onClick={() => handleDelete(doc)}
                       className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors"

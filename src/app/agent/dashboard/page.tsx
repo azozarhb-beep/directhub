@@ -874,45 +874,31 @@ export default function AgentDashboardPage() {
     if (!user) return;
     setInspectionLoading(true);
     try {
-      // Fetch orders that are in inspection-relevant escrow statuses
-      const { data: ordersData } = await supabase
-        .from('orders')
-        .select(`
-          id, order_number, status, escrow_status, total, currency, items,
-          created_at, delivery_deadline, factory_user_id,
-          agent_factory_registrations!orders_factory_id_fkey (
-            id, company_name, city, country, address, contact_person, contact_phone, industry
-          )
-        `)
-        .in('escrow_status', ['funds_secured', 'ready_for_inspection', 'shipped', 'pending_admin_payout'])
-        .order('created_at', { ascending: false })
-        .limit(50);
+      // Masked RPC: only order number, items, pallet counts and PSI checkpoints.
+      // No shipping address, buyer details, or escrow splits reach the agent.
+      const { data: viewRows } = await supabase.rpc('get_agent_assigned_inspection_view');
 
-      if (ordersData && ordersData.length > 0) {
-        const tasks: InspectionTask[] = ordersData.map((order: any) => {
-          const factory = order.agent_factory_registrations;
-          // Try to match factory from agent's registered factories
-          const agentFactory = factories.find(f => f.id === factory?.id);
-          const factoryName = agentFactory?.company_name || factory?.company_name || 'مصنع غير محدد';
-          const itemsArr = Array.isArray(order.items) ? order.items : [];
-          const itemsSummary = itemsArr.slice(0, 2).map((it: any) => it.name_ar || it.name_en || it.product_name || '').filter(Boolean).join('، ') || 'منتجات متعددة';
+      if (viewRows && (viewRows as any[]).length > 0) {
+        const tasks: InspectionTask[] = (viewRows as any[]).map((row: any) => {
+          const itemsArr = Array.isArray(row.items) ? row.items : [];
+          const itemsSummary = itemsArr.slice(0, 2).map((it: any) => it?.name || '').filter(Boolean).join('، ') || 'منتجات متعددة';
           return {
-            id: order.id,
-            order_id: order.id,
-            order_number: order.order_number || order.id.slice(0, 8).toUpperCase(),
-            factory_id: factory?.id || null,
-            factory_name: factoryName,
-            factory_city: agentFactory?.city || factory?.city || '—',
-            factory_country: agentFactory?.country || factory?.country || '—',
-            factory_address: agentFactory?.address || factory?.address || '—',
-            factory_contact_person: agentFactory?.contact_person || factory?.contact_person || '—',
-            factory_contact_phone: agentFactory?.contact_phone || factory?.contact_phone || '—',
-            factory_industry: agentFactory?.industry || factory?.industry || '—',
-            escrow_status: order.escrow_status,
-            order_total: order.total || 0,
-            currency: order.currency || 'USD',
-            created_at: order.created_at,
-            delivery_deadline: order.delivery_deadline || null,
+            id: row.task_id,
+            order_id: row.order_id || '',
+            order_number: row.order_number || String(row.task_id).slice(0, 8).toUpperCase(),
+            factory_id: null,
+            factory_name: row.factory_name || 'مصنع غير محدد',
+            factory_city: row.city || '—',
+            factory_country: '—',
+            factory_address: '—',
+            factory_contact_person: '—',
+            factory_contact_phone: '—',
+            factory_industry: '—',
+            escrow_status: row.status,
+            order_total: 0,
+            currency: '',
+            created_at: row.created_at,
+            delivery_deadline: null,
             items_summary: itemsSummary,
           };
         });

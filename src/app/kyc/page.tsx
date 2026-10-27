@@ -9,6 +9,7 @@ import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { resolveFileType, extensionForType, fileWithResolvedType } from '@/lib/attachmentTypes';
+import SignedDocLink from '@/components/SignedDocLink';
 
 interface KYCRecord {
   id: string;
@@ -140,14 +141,15 @@ export default function KYCPage() {
     setUploading(docType);
     try {
       const ext = extensionForType(resolvedType);
-      const path = `${user!.id}/${docType}_${Date.now()}.${ext}`;
+      // Path must start with factory-docs/ (storage INSERT policy); owner uid is folder [2] for private reads.
+      const path = `factory-docs/kyc/${user!.id}/${docType}_${Date.now()}.${ext}`;
       const { error: uploadErr } = await supabase.storage
         .from('factory-documents')
         .upload(path, fileWithResolvedType(file, resolvedType), { contentType: resolvedType, upsert: true });
       if (uploadErr) throw uploadErr;
 
-      const { data: urlData } = supabase.storage.from('factory-documents').getPublicUrl(path);
-      const publicUrl = urlData.publicUrl;
+      // Store the private object path (never a public URL); viewed via signed URLs.
+      const publicUrl = path;
 
       const fieldMap: Record<string, string> = {
         trade_license: 'trade_license_url',
@@ -398,15 +400,13 @@ export default function KYCPage() {
 
                 {doc.url ? (
                   <div className="flex items-center gap-2">
-                    <a
-                      href={doc.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <SignedDocLink
+                      url={doc.url}
                       className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-emerald-700 bg-emerald-100 rounded-lg hover:bg-emerald-200 transition-colors"
                     >
                       <Icon name="EyeIcon" size={14} />
                       {k.viewDoc}
-                    </a>
+                    </SignedDocLink>
                     {kycStatus !== 'approved' && (
                       <label className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-muted-foreground bg-muted rounded-lg hover:bg-muted/80 cursor-pointer transition-colors">
                         <Icon name="ArrowPathIcon" size={14} />

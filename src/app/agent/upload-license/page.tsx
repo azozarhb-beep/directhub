@@ -92,11 +92,8 @@ function UploadLicensePageInner() {
 
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage
-        .from('factory-documents')
-        .getPublicUrl(filePath);
-
-      const publicUrl = urlData?.publicUrl || '';
+      // Store the private object path (never a public URL); viewed via signed URLs.
+      const publicUrl = filePath;
 
       // Update factory record
       const updateData: Record<string, string | Date> = {

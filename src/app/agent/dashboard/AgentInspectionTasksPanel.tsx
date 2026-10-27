@@ -45,7 +45,8 @@ const PROGRESS_STATUSES = ['in_progress'];
 const DONE_STATUSES = ['passed', 'failed', 'completed'];
 const ALL_STATUSES = [...PENDING_STATUSES, ...PROGRESS_STATUSES, ...DONE_STATUSES];
 const MIN_PHOTOS = 2;
-const UPLOAD_BUCKET = 'chat-media';
+const UPLOAD_BUCKET = 'factory-documents';
+const PHOTO_SIGNED_URL_TTL = 60 * 60;
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'pending', label: 'في انتظار التفتيش' },
@@ -86,6 +87,20 @@ function summarizeItems(items: unknown): { product: string; quantity: string } {
   };
 }
 
+function extractPhotoPath(urlOrPath: string): string {
+  const marker = `/${UPLOAD_BUCKET}/`;
+  const idx = urlOrPath.indexOf(marker);
+  if (/^https?:\/\//i.test(urlOrPath) && idx >= 0) {
+    const rest = urlOrPath.slice(idx + marker.length).split('?')[0];
+    try {
+      return decodeURIComponent(rest);
+    } catch {
+      return rest;
+    }
+  }
+  return urlOrPath;
+}
+
 const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ userId, embedded = false }) => {
   const supabase = useMemo(() => createClient(), []);
   const [tasks, setTasks] = useState<InspectionRow[]>([]);
@@ -96,6 +111,7 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
   const [photosById, setPhotosById] = useState<Record<string, string[]>>({});
   const [checkById, setCheckById] = useState<Record<string, Checklist>>({});
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [search, setSearch] = useState('');
@@ -113,37 +129,48 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
     setTimeout(() => setToast(null), 5000);
   };
 
+  const signPhotoPaths = useCallback(
+    async (paths: string[]) => {
+      const unique = Array.from(new Set(paths.filter(Boolean)));
+      if (unique.length === 0) return;
+      const results = await Promise.all(
+        unique.map(async (p) => {
+          const objectPath = extractPhotoPath(p);
+          const { data } = await supabase.storage
+            .from(UPLOAD_BUCKET)
+            .createSignedUrl(objectPath, PHOTO_SIGNED_URL_TTL);
+          return [p, data?.signedUrl || ''] as const;
+        })
+      );
+      setSignedUrls((prev) => {
+        const next = { ...prev };
+        results.forEach(([p, u]) => {
+          if (u) next[p] = u;
+        });
+        return next;
+      });
+    },
+    [supabase]
+  );
+
   const load = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('field_inspection_tasks')
-        .select('*')
-        .eq('assigned_agent_id', userId)
-        .in('status', ALL_STATUSES)
-        .order('created_at', { ascending: false })
-        .limit(100);
+      // Masked RPC: no shipping address, buyer details, or escrow data is returned.
+      const { data, error } = await supabase.rpc('get_agent_assigned_inspection_view');
       if (error) throw error;
 
-      const rows = data || [];
-      const orderIds = Array.from(new Set(rows.map((r: any) => r.order_id).filter(Boolean)));
-      const orderMap = new Map<string, any>();
-      if (orderIds.length > 0) {
-        const { data: orders } = await supabase
-          .from('orders')
-          .select('id, order_number, items')
-          .in('id', orderIds);
-        (orders || []).forEach((o: any) => orderMap.set(o.id, o));
-      }
+      const rows = ((data as any[]) || []).filter((r) => ALL_STATUSES.includes(normStatus(r.status)));
 
       const mapped: InspectionRow[] = rows.map((r: any) => {
-        const order = r.order_id ? orderMap.get(r.order_id) : null;
-        const { product, quantity } = summarizeItems(order?.items);
+        const { product, quantity } = summarizeItems(r.items);
+        const palletQty = Number(r.pallet_quantity) || 0;
         const orderNumber =
-          order?.order_number || (r.order_id ? String(r.order_id).slice(0, 8).toUpperCase() : '—');
+          r.order_number || (r.order_id ? String(r.order_id).slice(0, 8).toUpperCase() : '—');
+        const checks = r.psi_checkpoints || {};
         return {
-          id: r.id,
+          id: r.task_id,
           title: r.title || '',
           status: normStatus(r.status),
           factoryName: r.factory_name || 'مصنع غير محدد',
@@ -152,18 +179,19 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
           orderNumber,
           poNumber: r.po_number || (orderNumber !== '—' ? orderNumber : ''),
           product: product !== '—' ? product : r.title || '—',
-          quantity,
-          notes: r.notes || '',
+          quantity: quantity !== '—' ? quantity : palletQty > 0 ? String(palletQty) : '—',
+          notes: r.instructions || '',
           photoUrls: Array.isArray(r.photo_urls) ? r.photo_urls : [],
           reportNotes: r.report_notes || '',
           result: r.result || '',
           createdAt: r.created_at,
-          checkQuantity: !!r.check_quantity_match,
-          checkPackaging: !!r.check_packaging_ok,
-          checkDates: !!r.check_dates_ok,
+          checkQuantity: !!checks.quantity_match,
+          checkPackaging: !!checks.packaging_ok,
+          checkDates: !!checks.dates_ok,
         };
       });
       setTasks(mapped);
+      signPhotoPaths(mapped.flatMap((t) => t.photoUrls));
     } catch (err: any) {
       console.error('Error loading inspection tasks:', err);
       showToast('error', err?.message || 'تعذر تحميل مهام التفتيش');
@@ -171,7 +199,7 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
     } finally {
       setLoading(false);
     }
-  }, [supabase, userId]);
+  }, [supabase, userId, signPhotoPaths]);
 
   useEffect(() => {
     load();
@@ -293,14 +321,14 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
       for (const file of Array.from(files)) {
         if (!file.type.startsWith('image/')) continue;
         const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-        const path = `${userId}/inspections/${task.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const path = `factory-docs/inspections/${userId}/${task.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
         const { error: upErr } = await supabase.storage
           .from(UPLOAD_BUCKET)
           .upload(path, file, { contentType: file.type, upsert: false });
         if (upErr) throw new Error(upErr.message);
-        const { data: urlData } = supabase.storage.from(UPLOAD_BUCKET).getPublicUrl(path);
-        if (urlData?.publicUrl) uploaded.push(urlData.publicUrl);
+        uploaded.push(path);
       }
+      await signPhotoPaths(uploaded);
       setPhotosById((prev) => ({ ...prev, [task.id]: [...(prev[task.id] || []), ...uploaded] }));
     } catch (err: any) {
       showToast('error', `فشل رفع الصور: ${err?.message || 'خطأ غير معروف'}`);
@@ -695,7 +723,7 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
                           {photos.map((url) => (
                             <div key={url} className="relative aspect-square rounded-lg overflow-hidden border border-border">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={url} alt="صورة تفتيش ميداني مرفوعة" className="w-full h-full object-cover" />
+                              <img src={signedUrls[url] || ''} alt="صورة تفتيش ميداني مرفوعة" className="w-full h-full object-cover" />
                               <button
                                 type="button"
                                 onClick={() => removePhoto(task.id, url)}
@@ -784,9 +812,9 @@ const AgentInspectionTasksPanel: React.FC<AgentInspectionTasksPanelProps> = ({ u
                     {task.photoUrls.length > 0 && (
                       <div className="grid grid-cols-4 gap-2">
                         {task.photoUrls.map((url) => (
-                          <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="aspect-square rounded-lg overflow-hidden border border-border block">
+                          <a key={url} href={signedUrls[url] || '#'} target="_blank" rel="noopener noreferrer" className="aspect-square rounded-lg overflow-hidden border border-border block">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={url} alt="صورة تقرير التفتيش الميداني" className="w-full h-full object-cover" />
+                            <img src={signedUrls[url] || ''} alt="صورة تقرير التفتيش الميداني" className="w-full h-full object-cover" />
                           </a>
                         ))}
                       </div>
