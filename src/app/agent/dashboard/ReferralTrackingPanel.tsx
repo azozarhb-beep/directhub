@@ -22,6 +22,30 @@ interface CommissionTotal {
   currency: string;
 }
 
+interface FactoryDetails {
+  user_id?: string | null;
+  contact_person?: string | null;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+  factory_type?: string | null;
+  kyc_status?: string | null;
+  admin_note?: string | null;
+  reviewed_at?: string | null;
+  submitted_at?: string | null;
+}
+
+interface FactoryProduct {
+  id: string;
+  name: string;
+  unit_price: number | null;
+  unit: string | null;
+  is_active: boolean | null;
+}
+
+type ReferralFilter = 'all' | 'active';
+
+const COMMISSION_NOTE = '(عمولة دائمة 20% من رسوم المنصة عند تنفيذ الطلبات)';
+
 interface Props {
   userId: string;
   embedded?: boolean;
@@ -55,6 +79,11 @@ export default function ReferralTrackingPanel({ userId, embedded = false }: Prop
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [filter, setFilter] = useState<ReferralFilter>('all');
+  const [selectedFactory, setSelectedFactory] = useState<ReferredFactory | null>(null);
+  const [details, setDetails] = useState<FactoryDetails | null>(null);
+  const [detailProducts, setDetailProducts] = useState<FactoryProduct[]>([]);
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
   const referralCode = `AGT-${userId.slice(0, 8).toUpperCase()}`;
   const referralLink = `https://direct-hub.net/register?ref=${referralCode}`;
@@ -118,18 +147,15 @@ export default function ReferralTrackingPanel({ userId, embedded = false }: Prop
   };
 
   const handleShare = () => {
-    if (navigator.share) {
-      navigator.share({ title: 'رابط إحالة DirectHub', url: referralLink }).catch(() => {});
-    } else {
-      handleCopy('link');
-    }
+    const message = `مرحباً 👋\nأدعوك للتسجيل كمصنع/مورد في منصة DirectHub والوصول إلى مشترين جادين مباشرة.\nسجّل عبر رابط الدعوة الخاص بي:\n${referralLink}\nرمز الإحالة: ${referralCode}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
   };
 
   const handleDownloadQr = () => {
     if (!qrDataUrl) return;
     const a = document.createElement('a');
     a.href = qrDataUrl;
-    a.download = `directhub-referral-${referralCode}.png`;
+    a.download = `referral-qr-${referralCode}.png`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -138,20 +164,58 @@ export default function ReferralTrackingPanel({ userId, embedded = false }: Prop
   const handleShareQr = async () => {
     if (!qrDataUrl) return;
     try {
-      const blob = await (await fetch(qrDataUrl)).blob();
-      const file = new File([blob], `directhub-referral-${referralCode}.png`, { type: 'image/png' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'رمز QR لإحالة DirectHub', text: referralLink });
+      const res = await fetch(qrDataUrl);
+      const blob = await res.blob();
+      const file = new File([blob], `referral-qr-${referralCode}.png`, { type: 'image/png' });
+      const nav = navigator as Navigator & { canShare?: (data: { files: File[] }) => boolean };
+      if (nav.canShare && nav.canShare({ files: [file] })) {
+        await nav.share({
+          files: [file],
+          title: 'رمز QR للتسجيل',
+          text: `رمز الإحالة: ${referralCode}\n${referralLink}`,
+        });
         return;
       }
-      if (navigator.share) {
-        await navigator.share({ title: 'رمز QR لإحالة DirectHub', url: referralLink });
-        return;
-      }
-      handleDownloadQr();
     } catch {
-      /* user cancelled share */
+      // fall through to WhatsApp share
     }
+    handleShare();
+  };
+
+  const openDetails = async (f: ReferredFactory) => {
+    setSelectedFactory(f);
+    setDetails(null);
+    setDetailProducts([]);
+    setDetailsLoading(true);
+    try {
+      const { data: reg } = await supabase
+        .from('factory_registrations')
+        .select('user_id, contact_person, contact_phone, contact_email, factory_type, kyc_status, admin_note, reviewed_at, submitted_at')
+        .eq('id', f.id)
+        .maybeSingle();
+      const regData = (reg as FactoryDetails | null) || null;
+      setDetails(regData);
+      if (regData?.user_id) {
+        const { data: prods } = await supabase
+          .from('manufacturer_products')
+          .select('id, name, unit_price, unit, is_active')
+          .eq('manufacturer_id', regData.user_id)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        setDetailProducts((prods as FactoryProduct[]) || []);
+      }
+    } catch {
+      setDetails(null);
+      setDetailProducts([]);
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  const closeDetails = () => {
+    setSelectedFactory(null);
+    setDetails(null);
+    setDetailProducts([]);
   };
 
   const getCommission = (f: ReferredFactory): CommissionTotal => {
@@ -163,6 +227,9 @@ export default function ReferralTrackingPanel({ userId, embedded = false }: Prop
 
   const totalReferred = referredFactories.length;
   const totalActive = referredFactories.filter(isApprovedOrActiveFacility).length;
+  const visibleFactories = filter === 'active'
+    ? referredFactories.filter(isApprovedOrActiveFacility)
+    : referredFactories;
 
   const qrButton = (
     <button
@@ -192,20 +259,34 @@ export default function ReferralTrackingPanel({ userId, embedded = false }: Prop
       {/* Summary Stats */}
       {!embedded && (
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-border rounded-xl p-4 text-center">
+        <button
+          type="button"
+          onClick={() => setFilter('all')}
+          aria-pressed={filter === 'all'}
+          className={`rounded-xl p-4 text-center border transition-all cursor-pointer hover:shadow-sm ${
+            filter === 'all' ? 'bg-blue-50/60 border-blue-400 ring-1 ring-blue-300' : 'bg-card border-border'
+          }`}
+        >
           <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center mb-2 mx-auto">
             <Icon name="BuildingOffice2Icon" size={18} className="text-blue-600" />
           </div>
           <p className="text-2xl font-bold text-foreground">{totalReferred}</p>
           <p className="text-xs text-muted-foreground mt-0.5">إجمالي المصانع المُحالة</p>
-        </div>
-        <div className="bg-card border border-border rounded-xl p-4 text-center">
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter('active')}
+          aria-pressed={filter === 'active'}
+          className={`rounded-xl p-4 text-center border transition-all cursor-pointer hover:shadow-sm ${
+            filter === 'active' ? 'bg-emerald-50/60 border-emerald-400 ring-1 ring-emerald-300' : 'bg-card border-border'
+          }`}
+        >
           <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center mb-2 mx-auto">
             <Icon name="CheckBadgeIcon" size={18} className="text-emerald-600" />
           </div>
           <p className="text-2xl font-bold text-foreground">{totalActive}</p>
           <p className="text-xs text-muted-foreground mt-0.5">مصانع نشطة (معتمدة)</p>
-        </div>
+        </button>
       </div>
       )}
 
@@ -300,12 +381,24 @@ export default function ReferralTrackingPanel({ userId, embedded = false }: Prop
           </div>
         ) : (
           <>
+            {visibleFactories.length === 0 && (
+              <div className="bg-card border border-border rounded-xl p-6 text-center text-sm text-muted-foreground">
+                لا توجد مصانع معتمدة حتى الآن
+              </div>
+            )}
             {/* Mobile: compact cards */}
             <div className="md:hidden space-y-2.5">
-              {referredFactories.map(f => {
+              {visibleFactories.map(f => {
                 const comm = getCommission(f);
                 return (
-                  <div key={f.id} className="bg-card border border-border rounded-xl p-3.5">
+                  <div
+                    key={f.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openDetails(f)}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetails(f); } }}
+                    className="bg-card border border-border rounded-xl p-3.5 cursor-pointer hover:border-primary/50 hover:shadow-sm transition-all"
+                  >
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <p className="text-sm font-bold text-foreground break-words min-w-0">{f.company_name}</p>
                       <StatusBadge f={f} />
@@ -329,6 +422,15 @@ export default function ReferralTrackingPanel({ userId, embedded = false }: Prop
                           {formatCommission(comm)}
                         </dd>
                       </div>
+                      <div className="col-span-2 -mt-1">
+                        <p className="text-[10px] text-muted-foreground leading-snug">{COMMISSION_NOTE}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary">
+                          عرض التفاصيل
+                          <Icon name="ChevronLeftIcon" size={12} />
+                        </span>
+                      </div>
                     </dl>
                   </div>
                 );
@@ -343,27 +445,43 @@ export default function ReferralTrackingPanel({ userId, embedded = false }: Prop
               <table className="w-full text-sm min-w-[640px]">
                 <thead>
                   <tr className="bg-muted border-b border-border">
-                    {['اسم الشركة', 'الموقع', 'تاريخ التسجيل', 'الحالة', 'العمولة المحققة'].map(h => (
-                      <th key={h} className="px-4 py-3 text-right text-xs font-bold text-muted-foreground whitespace-nowrap">{h}</th>
+                    {['اسم الشركة', 'الموقع', 'تاريخ التسجيل', 'الحالة', 'العمولة المحققة', ''].map((h, i) => (
+                      <th key={`${h}-${i}`} className="px-4 py-3 text-right text-xs font-bold text-muted-foreground whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {referredFactories.map((f, idx) => {
+                  {visibleFactories.map((f, idx) => {
                     const comm = getCommission(f);
                     return (
-                      <tr key={f.id} className={`border-b border-border ${idx % 2 === 0 ? 'bg-card' : 'bg-muted/30'}`}>
+                      <tr
+                        key={f.id}
+                        onClick={() => openDetails(f)}
+                        className={`border-b border-border cursor-pointer hover:bg-primary/5 transition-colors ${idx % 2 === 0 ? 'bg-card' : 'bg-muted/30'}`}
+                      >
                         <td className="px-4 py-3 text-xs font-semibold text-foreground">{f.company_name}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">{f.city}{f.country ? `, ${f.country}` : ''}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                           {new Date(f.created_at).toLocaleDateString('ar')}
                         </td>
                         <td className="px-4 py-3"><StatusBadge f={f} /></td>
-                        <td
-                          className={`px-4 py-3 text-xs font-bold whitespace-nowrap ${comm.amount > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}
-                          dir="ltr"
-                        >
-                          {formatCommission(comm)}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <p
+                            className={`text-xs font-bold ${comm.amount > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}
+                            dir="ltr"
+                          >
+                            {formatCommission(comm)}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground font-normal mt-0.5 whitespace-normal max-w-[220px]">{COMMISSION_NOTE}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); openDetails(f); }}
+                            className="text-[11px] font-semibold text-primary hover:underline whitespace-nowrap"
+                          >
+                            عرض التفاصيل
+                          </button>
                         </td>
                       </tr>
                     );
@@ -374,6 +492,119 @@ export default function ReferralTrackingPanel({ userId, embedded = false }: Prop
           </>
         )}
       </div>
+
+      {/* Factory Details Modal */}
+      {selectedFactory && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60"
+          onClick={closeDetails}
+          role="dialog"
+          aria-modal="true"
+          aria-label="تفاصيل المصنع"
+        >
+          <div
+            className="w-full max-w-md max-h-[85vh] overflow-y-auto bg-card rounded-2xl p-5 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-2 mb-3">
+              <div className="min-w-0">
+                <h4 className="text-sm font-bold text-foreground break-words">{selectedFactory.company_name}</h4>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {selectedFactory.city}{selectedFactory.country ? `, ${selectedFactory.country}` : ''}
+                </p>
+              </div>
+              <button
+                onClick={closeDetails}
+                className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
+                aria-label="إغلاق"
+              >
+                <Icon name="XMarkIcon" size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs font-bold text-muted-foreground mb-1.5">الحالة التشغيلية</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <StatusBadge f={selectedFactory} />
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                    selectedFactory.is_active === false
+                      ? 'bg-gray-50 text-gray-600 border-gray-200' :'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  }`}>
+                    {selectedFactory.is_active === false ? 'غير مفعّل' : 'مفعّل'}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-muted-foreground mb-1.5">بيانات التوثيق</p>
+                {detailsLoading ? (
+                  <div className="flex justify-center py-3">
+                    <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : (
+                  <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                    <div>
+                      <dt className="text-muted-foreground">اعتماد المنصة</dt>
+                      <dd className="font-medium text-foreground">{selectedFactory.is_approved || isApprovedOrActiveFacility(selectedFactory) ? 'معتمد' : 'غير معتمد بعد'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">حالة KYC</dt>
+                      <dd className="font-medium text-foreground">{details?.kyc_status || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">تاريخ التسجيل</dt>
+                      <dd className="font-medium text-foreground">{new Date(selectedFactory.created_at).toLocaleDateString('ar')}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">تاريخ المراجعة</dt>
+                      <dd className="font-medium text-foreground">
+                        {details?.reviewed_at ? new Date(details.reviewed_at).toLocaleDateString('ar') : '—'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">نوع المنشأة</dt>
+                      <dd className="font-medium text-foreground">{details?.factory_type || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">جهة الاتصال</dt>
+                      <dd className="font-medium text-foreground break-words">{details?.contact_person || '—'}</dd>
+                    </div>
+                    {details?.admin_note && (
+                      <div className="col-span-2">
+                        <dt className="text-muted-foreground">ملاحظة الإدارة</dt>
+                        <dd className="font-medium text-foreground break-words">{details.admin_note}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-muted-foreground mb-1.5">
+                  المنتجات المرفوعة ({detailProducts.length})
+                </p>
+                {detailsLoading ? null : detailProducts.length === 0 ? (
+                  <p className="text-xs text-muted-foreground bg-muted/40 border border-border rounded-lg p-3 text-center">
+                    لم يتم رفع أي منتجات بعد
+                  </p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {detailProducts.map(p => (
+                      <li key={p.id} className="flex items-center justify-between gap-2 text-xs bg-muted/40 border border-border rounded-lg px-3 py-2">
+                        <span className="font-semibold text-foreground break-words min-w-0">{p.name}</span>
+                        <span className="text-muted-foreground whitespace-nowrap" dir="ltr">
+                          {p.unit_price != null ? `${p.unit_price}${p.unit ? ` / ${p.unit}` : ''}` : '—'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* QR Modal */}
       {qrOpen && (
