@@ -10,41 +10,8 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 import { OrdersSection, PaymentsSection, SmartServicesSection, ManufacturerBanner } from '@/app/components/DashboardSections';
 
+
 // Dashboard sections (Orders, Payments, SmartServices, ManufacturerBanner) are loaded via dynamic() below
-
-
-
-
-
-
-
-// Dashboard sections are imported lazily via dynamic() below
-
-
-
-
-
-// Dashboard sections are loaded lazily via dynamic() below
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // Below-the-fold sections are code-split into their own chunks so the initial
 // app/page chunk stays small and compiles/loads quickly.
