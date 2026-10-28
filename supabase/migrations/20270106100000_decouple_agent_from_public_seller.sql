@@ -119,8 +119,8 @@ AS $func$
   WHERE mp.is_active = true
     AND (
       mp.registered_factory_id = p_ref
-      OR mp.facility_id = p_ref
       OR mp.registered_factory_id IN (SELECT a.id FROM public.agent_factory_registrations a WHERE a.factory_user_id = p_ref)
+      OR mp.manufacturer_id = p_ref
     )
   ORDER BY mp.created_at DESC
   LIMIT 60;
@@ -218,13 +218,13 @@ BEGIN
 
   IF v_mp_id IS NULL THEN
     INSERT INTO public.manufacturer_products (
-      manufacturer_id, facility_id, registered_factory_id, attributed_agent_id, agent_product_id,
+      manufacturer_id, registered_factory_id, attributed_agent_id, agent_product_id,
       name, name_ar, description, description_ar,
       category, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status,
       origin_country, images, image_url, is_active, is_published, sku,
       created_by_role, created_by_id, created_by_name, approval_status
     ) VALUES (
-      v_owner, v_owner, v_ap.factory_id, v_ap.agent_id, v_ap.id,
+      v_owner, v_ap.factory_id, v_ap.agent_id, v_ap.id,
       COALESCE(NULLIF(v_ap.name_en, ''), v_ap.name_ar, 'Product'),
       COALESCE(v_ap.name_ar, ''),
       COALESCE(v_ap.description_en, ''),
@@ -243,7 +243,6 @@ BEGIN
       SET is_active = NOT v_pending, is_published = NOT v_pending, stock_quantity = v_stock,
           inventory_status = 'in_stock'::public.inventory_status,
           registered_factory_id = COALESCE(registered_factory_id, v_ap.factory_id),
-          facility_id = COALESCE(facility_id, manufacturer_id),
           attributed_agent_id = COALESCE(attributed_agent_id, v_ap.agent_id),
           approval_status = CASE WHEN v_pending THEN 'pending_factory_approval' ELSE 'approved' END
       WHERE id = v_mp_id AND approval_status IS DISTINCT FROM 'approved';
@@ -269,8 +268,7 @@ WHERE mp.agent_product_id = ap.id
   AND mp.registered_factory_id IS NULL;
 
 UPDATE public.manufacturer_products mp
-SET manufacturer_id = afr.factory_user_id,
-    facility_id = afr.factory_user_id
+SET manufacturer_id = afr.factory_user_id
 FROM public.agent_factory_registrations afr
 WHERE mp.registered_factory_id = afr.id
   AND afr.factory_user_id IS NOT NULL
