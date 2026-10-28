@@ -378,17 +378,14 @@ export default function FactoryStorePage() {
               const b2cPrice = Math.round(product.unit_price * 1.35 * 100) / 100;
               const displayPrice = salesMode === 'b2c' ? b2cPrice : b2bPrice;
               const isOutOfStock = product.inventory_status === 'out_of_stock';
-
-              // Hybrid B2B/B2C logic
-              const effectivePrice = product.price ?? product.unit_price;
               const effectiveMoq = product.moq ?? product.minimum_order_qty ?? 1;
-              const isReadyToShip = product.is_ready_to_ship ?? (product.inventory_status === 'in_stock');
-
-              const showBuyButton = isReadyToShip && effectivePrice > 0;
-              const showRfqButton = effectiveMoq > 1 || salesMode === 'b2b';
 
               return (
-                <div key={product.id} className={`bg-white border rounded-xl overflow-hidden hover:shadow-md transition-all ${salesMode === 'b2b' ? 'hover:border-indigo-300' : 'hover:border-rose-300'} ${isOutOfStock ? 'opacity-60' : ''}`}>
+                <Link
+                  key={product.id}
+                  href={`/product/${product.id}`}
+                  className={`block bg-white border rounded-xl overflow-hidden hover:shadow-md transition-all ${salesMode === 'b2b' ? 'hover:border-indigo-300' : 'hover:border-rose-300'} ${isOutOfStock ? 'opacity-60' : ''}`}
+                >
                   <div className="bg-slate-100 h-36 relative overflow-hidden">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -401,74 +398,28 @@ export default function FactoryStorePage() {
                         if (!img.src.endsWith(BRAND_PLACEHOLDER_IMAGE)) img.src = BRAND_PLACEHOLDER_IMAGE;
                       }}
                     />
-                    {isReadyToShip && (
-                      <span className="absolute top-2 right-2 flex items-center gap-0.5 bg-emerald-500 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
-                        <Icon name="Zap" size={9} />
-                        جاهز للشحن
-                      </span>
-                    )}
                   </div>
-                  <div className="p-3">
+                  <div className="p-3" dir="rtl">
                     <p className="font-semibold text-slate-900 text-sm line-clamp-2">{language === 'ar' && product.name_ar ? product.name_ar : product.name}</p>
-                    <p className="text-slate-500 text-xs mt-0.5">{product.category}</p>
-                    {product.shipping_terms === 'DELIVERY_INCLUDED' && (
-                      <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-semibold">
-                        <Icon name="Truck" size={11} />
-                        شامل التجهيز والتوصيل
-                      </span>
-                    )}
-                    {product.shipping_terms === 'EX_FACTORY' && (
-                      <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-semibold">
-                        <Icon name="Factory" size={11} />
-                        استلام من باب المصنع (سعر المصنع)
-                      </span>
-                    )}
                     <div className="flex items-center justify-between mt-2">
                       <div>
                         <p className={`font-bold text-lg ${salesMode === 'b2b' ? 'text-indigo-700' : 'text-rose-700'}`}>{formatYer(displayPrice)}</p>
                         <p className="text-slate-400 text-xs">/ {translateUnitAr(product.unit)}</p>
                       </div>
-                      <div className="text-right">
+                      <div className="text-left">
                         <p className="text-slate-500 text-xs">الحد الأدنى</p>
                         <p className="text-slate-700 text-xs font-medium">{effectiveMoq} {translateUnitAr(product.unit)}</p>
                       </div>
                     </div>
-
-                    {/* Hybrid action buttons */}
-                    <div className="mt-3 flex flex-col gap-1.5">
-                      {showBuyButton && (
-                        <button
-                          onClick={() => handleAddToCart(product)}
-                          disabled={isOutOfStock}
-                          className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-white text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${addedToCart === product.id ? 'bg-emerald-600' : 'bg-rose-600 hover:bg-rose-700'}`}
-                        >
-                          <Icon name={addedToCart === product.id ? 'Check' : 'ShoppingCart'} size={12} />
-                          {addedToCart === product.id ? 'تمت الإضافة!' : isOutOfStock ? 'نفد المخزون' : '🛒 إضافة للسلة / شراء فوري'}
-                        </button>
-                      )}
-                      {showRfqButton && (
-                        <button
-                          onClick={() => { setSelectedProduct(product); setShowRFQModal(true); }}
-                          disabled={isOutOfStock}
-                          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <Icon name="FileQuestion" size={12} />
-                          📋 طلب تسعير (RFQ)
-                        </button>
-                      )}
-                      {!showBuyButton && !showRfqButton && (
-                        <button
-                          onClick={() => handleAddToCart(product)}
-                          disabled={isOutOfStock}
-                          className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-white text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${addedToCart === product.id ? 'bg-emerald-600' : 'bg-rose-600 hover:bg-rose-700'}`}
-                        >
-                          <Icon name={addedToCart === product.id ? 'Check' : 'ShoppingCart'} size={12} />
-                          {addedToCart === product.id ? 'تمت الإضافة!' : isOutOfStock ? 'نفد المخزون' : '🛒 إضافة للسلة'}
-                        </button>
+                    <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-100">
+                      <Icon name="Factory" size={12} className="text-slate-400 shrink-0" />
+                      <span className="text-xs text-slate-600 truncate">{profile?.company_name}</span>
+                      {profile?.verified_tier === 'verified' && (
+                        <Icon name="BadgeCheck" size={13} className="text-blue-500 shrink-0" />
                       )}
                     </div>
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>

@@ -772,7 +772,7 @@ export default function ProductDetailPage() {
       price: parseFloat(String(product.price ?? '').replace(/,/g, '')) || 0,
       currency: product.currency,
       moq: product.moq,
-      quantity: 1,
+      quantity: Math.max(1, orderQty),
       supplier: product.supplier,
       countryFlag: product.countryFlag,
       verified: product.verified,
@@ -1228,47 +1228,53 @@ export default function ProductDetailPage() {
 
             {/* ── PRIMARY CTA BLOCK — conditional on B2B vs B2C ── */}
             {isB2B ? (
-            /* B2B: single Add to Cart (or Request Sample) — Chat & RFQ live in sticky bar/sidebar */
-            <div className="rounded-2xl border border-border bg-muted/20 p-4">
-                <div className="grid grid-cols-1 gap-2">
-                  {product.sampleAvailable &&
-                <Link
-                  href={`/rfq/create?productId=${product.id}&type=sample`}
-                  className="flex items-center justify-center gap-2 py-2.5 bg-card text-foreground text-xs font-extrabold rounded-xl border-2 border-border hover:border-accent/50 hover:bg-accent/5 active:scale-[0.98] transition-all">
-                      <Icon name="BeakerIcon" size={14} className="text-accent" />
-                      <span>{isArabic ? 'طلب عينة' : 'Request Sample'}</span>
-                    </Link>
-                }
-                  <button
-                  onClick={handleAddToCart}
-                  className={`flex items-center justify-center gap-2 py-2.5 text-xs font-extrabold rounded-xl border-2 active:scale-[0.98] transition-all ${
-                  isInCart(product.id) ?
-                  'bg-accent text-accent-foreground border-accent' :
-                  'bg-card text-foreground border-border hover:bg-muted/80'}`
-                  }>
-                      <Icon name={isInCart(product.id) ? 'CheckIcon' : 'ShoppingCartIcon'} size={14} />
-                      <span>{addedToCart ? pp.added : isInCart(product.id) ? pp.inCart : pp.addToCart}</span>
-                    </button>
-                </div>
-              </div>) : (
-
-            /* B2C: Standard retail Add to Cart + Buy Now */
+            /* B2B: Primary Escrow order + secondary factory chat */
             <div className="space-y-2.5">
                 <button
                 onClick={handleEscrowOrder}
                 className="w-full flex items-center justify-center gap-2.5 py-3.5 px-5 bg-primary text-primary-foreground text-sm font-extrabold rounded-xl shadow-md shadow-primary/20 hover:bg-primary/90 active:scale-[0.98] transition-all">
-                  <Icon name="ShoppingBagIcon" size={18} variant="solid" />
-                  <span>{pp.orderNow}</span>
+                  <Icon name="LockClosedIcon" size={18} variant="solid" />
+                  <span>اطلب الآن والدفع عبر الضمان</span>
                 </button>
+                <Link
+                href={chatHref}
+                className="w-full flex items-center justify-center gap-2.5 py-3 px-5 bg-card text-foreground text-sm font-extrabold rounded-xl border-2 border-primary/30 hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all">
+                  <Icon name="ChatBubbleLeftRightIcon" size={18} variant="solid" className="text-primary" />
+                  <span>تواصل مع المصنع</span>
+                </Link>
+              </div>) : (
+
+            /* B2C: Add to Cart with quantity selector */
+            <div className="space-y-2.5">
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/20 px-3 py-2">
+                  <span className="text-xs font-bold text-foreground">الكمية</span>
+                  <div className="flex items-center gap-2" dir="ltr">
+                    <button
+                    type="button"
+                    aria-label="إنقاص الكمية"
+                    onClick={() => setOrderQty((q) => Math.max(1, q - 1))}
+                    className="w-9 h-9 rounded-lg border border-border bg-card flex items-center justify-center font-bold text-foreground hover:bg-muted transition-colors">
+                      −
+                    </button>
+                    <span className="min-w-[2.5rem] text-center text-sm font-extrabold text-foreground">{orderQty}</span>
+                    <button
+                    type="button"
+                    aria-label="زيادة الكمية"
+                    onClick={() => setOrderQty((q) => q + 1)}
+                    className="w-9 h-9 rounded-lg border border-border bg-card flex items-center justify-center font-bold text-foreground hover:bg-muted transition-colors">
+                      +
+                    </button>
+                  </div>
+                </div>
                 <button
                 onClick={handleAddToCart}
-                className={`w-full flex items-center justify-center gap-2.5 py-3 px-5 text-sm font-extrabold rounded-xl border-2 active:scale-[0.98] transition-all ${
+                className={`w-full flex items-center justify-center gap-2.5 py-3.5 px-5 text-sm font-extrabold rounded-xl active:scale-[0.98] transition-all ${
                 isInCart(product.id) ?
-                'bg-accent text-accent-foreground border-accent' :
-                'bg-card text-foreground border-primary/30 hover:border-primary hover:bg-primary/5'}`
+                'bg-accent text-accent-foreground' :
+                'bg-primary text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90'}`
                 }>
                   <Icon name={isInCart(product.id) ? 'CheckIcon' : 'ShoppingCartIcon'} size={18} />
-                  <span>{addedToCart ? pp.added : isInCart(product.id) ? pp.inCart : pp.addToCart}</span>
+                  <span>{addedToCart ? 'تمت الإضافة' : 'إضافة إلى السلة'}</span>
                 </button>
               </div>)
             }
@@ -1412,31 +1418,7 @@ export default function ProductDetailPage() {
               }
             </div>
 
-            {/* Mobile CTA — shown only on mobile/tablet, hidden on lg+ */}
-            <div className="flex flex-col gap-3 lg:hidden">
-              {isB2B ? null : (
-
-              /* B2C mobile: Buy Now + Add to Cart */
-              <>
-                  <button
-                  onClick={handleEscrowOrder}
-                  className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-primary text-primary-foreground text-base font-extrabold rounded-2xl shadow-lg shadow-primary/25 hover:bg-primary/90 active:scale-[0.98] transition-all">
-                    <Icon name="ShoppingBagIcon" size={20} variant="solid" />
-                    <span>{pp.orderNow}</span>
-                  </button>
-                  <button
-                  onClick={handleAddToCart}
-                  className={`w-full flex items-center justify-center gap-3 py-3.5 px-6 text-base font-extrabold rounded-2xl border-2 active:scale-[0.98] transition-all ${
-                  isInCart(product.id) ?
-                  'bg-accent text-accent-foreground border-accent' :
-                  'bg-card text-foreground border-primary/35 hover:border-primary hover:bg-primary/5'}`
-                  }>
-                    <Icon name={isInCart(product.id) ? 'CheckIcon' : 'ShoppingCartIcon'} size={20} />
-                    <span>{addedToCart ? pp.added : isInCart(product.id) ? pp.inCart : pp.addToCart}</span>
-                  </button>
-                </>)
-              }
-            </div>
+            {/* Mobile CTA lives in the fixed bottom bar below */}
           </div>
 
           {/* ── Column 3: Sticky Sidebar (Desktop only) ── */}
@@ -1454,57 +1436,34 @@ export default function ProductDetailPage() {
                 </div>
                 <div className="p-4 space-y-2.5">
                   {isB2B ? (
-                  /* B2B sidebar: primary RFQ + secondary Chat + optional Sample */
-                  <>
-                      <Link
-                      href={`/rfq/create?productId=${product.id}`}
-                      className="w-full flex items-center justify-center gap-2.5 py-3.5 px-5 bg-primary text-primary-foreground text-sm font-extrabold rounded-xl shadow-md shadow-primary/25 hover:bg-primary/90 active:scale-[0.98] transition-all">
-                        <Icon name="DocumentTextIcon" size={18} variant="solid" />
-                        <span>{isArabic ? 'طلب تسعير كميات' : 'Request Custom RFQ'}</span>
-                      </Link>
-
-                      <Link
-                      href={chatHref}
-                      className="w-full flex items-center justify-center gap-2.5 py-3 px-5 bg-card text-foreground text-sm font-extrabold rounded-xl border-2 border-primary/35 hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all">
-                        <Icon name="ChatBubbleLeftRightIcon" size={18} variant="solid" className="text-primary" />
-                        <span>{chatSellerLabel ?? (isArabic ? 'تواصل مع المصنع' : 'Chat with Factory')}</span>
-                      </Link>
-
-                      {product.sampleAvailable &&
-                    <Link
-                      href={`/rfq/create?productId=${product.id}&type=sample`}
-                      className="w-full flex items-center justify-center gap-2.5 py-3 px-5 bg-card text-foreground text-sm font-extrabold rounded-xl border-2 border-border hover:border-accent/50 hover:bg-accent/5 active:scale-[0.98] transition-all">
-                          <Icon name="BeakerIcon" size={16} className="text-accent" />
-                          <span>{isArabic ? 'طلب عينة' : 'Request Sample'}{product.samplePrice ? ` · $${product.samplePrice}` : ''}</span>
-                        </Link>
-                    }
-                    </>) : (
-
-                  /* B2C sidebar: Buy Now + Add to Cart */
+                  /* B2B sidebar: Escrow order + factory chat */
                   <>
                       <button
                       onClick={handleEscrowOrder}
                       className="w-full flex items-center justify-center gap-2.5 py-3.5 px-5 bg-primary text-primary-foreground text-sm font-extrabold rounded-xl shadow-md shadow-primary/25 hover:bg-primary/90 active:scale-[0.98] transition-all">
-                        <Icon name="ShoppingBagIcon" size={18} variant="solid" />
-                        <span>{pp.orderNow}</span>
+                        <Icon name="LockClosedIcon" size={18} variant="solid" />
+                        <span>اطلب الآن والدفع عبر الضمان</span>
                       </button>
 
                       <Link
                       href={chatHref}
                       className="w-full flex items-center justify-center gap-2.5 py-3 px-5 bg-card text-foreground text-sm font-extrabold rounded-xl border-2 border-primary/35 hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all">
                         <Icon name="ChatBubbleLeftRightIcon" size={18} variant="solid" className="text-primary" />
-                        <span>{chatSellerLabel ?? (isArabic ? 'تواصل مع المصنع' : 'Chat with Factory')}</span>
+                        <span>تواصل مع المصنع</span>
                       </Link>
+                    </>) : (
 
+                  /* B2C sidebar: Add to Cart (quantity selector is in the main CTA block) */
+                  <>
                       <button
                       onClick={handleAddToCart}
-                      className={`w-full flex items-center justify-center gap-2.5 py-3 text-sm font-bold rounded-xl border transition-all ${
+                      className={`w-full flex items-center justify-center gap-2.5 py-3.5 px-5 text-sm font-extrabold rounded-xl active:scale-[0.98] transition-all ${
                       isInCart(product.id) ?
-                      'bg-accent text-accent-foreground border-accent' :
-                      'bg-muted text-foreground border-border hover:bg-muted/80'}`
+                      'bg-accent text-accent-foreground' :
+                      'bg-primary text-primary-foreground shadow-md shadow-primary/25 hover:bg-primary/90'}`
                       }>
-                        <Icon name={isInCart(product.id) ? 'CheckIcon' : 'ShoppingCartIcon'} size={16} />
-                        <span>{addedToCart ? pp.added : isInCart(product.id) ? pp.inCart : pp.addToCart}</span>
+                        <Icon name={isInCart(product.id) ? 'CheckIcon' : 'ShoppingCartIcon'} size={18} />
+                        <span>{addedToCart ? 'تمت الإضافة' : 'إضافة إلى السلة'}</span>
                       </button>
                     </>)
                   }
@@ -1957,53 +1916,53 @@ export default function ProductDetailPage() {
         <div className="fixed bottom-20 md:bottom-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-md border-t border-border px-4 py-3 lg:hidden">
           <div className="max-w-7xl mx-auto flex flex-col gap-2">
             {isB2B ? (
-            /* B2B fixed bar: primary RFQ + Chat */
+            /* B2B fixed bar: Escrow order + factory chat */
             <div className="flex gap-2">
-                <Link
-                href={`/rfq/create?productId=${product.id}`}
+                <button
+                onClick={handleEscrowOrder}
                 className="flex-1 flex items-center justify-center gap-2 py-3.5 bg-primary text-primary-foreground text-sm font-extrabold rounded-2xl shadow-md shadow-primary/25 active:opacity-80 transition-all">
-                  <Icon name="DocumentTextIcon" size={20} variant="solid" />
-                  <span>{isArabic ? 'طلب تسعير كميات' : 'Request Custom RFQ'}</span>
-                </Link>
+                  <Icon name="LockClosedIcon" size={20} variant="solid" />
+                  <span>اطلب الآن والدفع عبر الضمان</span>
+                </button>
                 <Link
                 href={chatHref}
-                aria-label={chatSellerLabel ?? undefined}
+                aria-label="تواصل مع المصنع"
                 className="flex items-center justify-center gap-2 py-3.5 px-4 bg-card text-foreground text-sm font-extrabold rounded-2xl border-2 border-primary/40 active:opacity-80 transition-all">
                   <Icon name="ChatBubbleLeftRightIcon" size={20} variant="solid" className="text-primary" />
+                  <span className="hidden sm:inline">تواصل مع المصنع</span>
                 </Link>
-                <WishlistButton itemType="product" productId={product.id} size="sm" />
               </div>) : (
 
-            /* B2C fixed bar: Buy Now + Chat + Cart + Wishlist + Share */
-            <>
-                <div className="flex gap-2">
+            /* B2C fixed bar: quantity selector + Add to Cart */
+            <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 shrink-0" dir="ltr">
                   <button
-                  onClick={handleEscrowOrder}
-                  className="flex-1 flex items-center justify-center gap-2 py-3.5 bg-primary text-primary-foreground text-sm font-extrabold rounded-2xl shadow-md shadow-primary/25 active:opacity-80 transition-all">
-                    <Icon name="ShoppingBagIcon" size={20} variant="solid" />
-                    <span>{pp.orderNow}</span>
+                  type="button"
+                  aria-label="إنقاص الكمية"
+                  onClick={() => setOrderQty((q) => Math.max(1, q - 1))}
+                  className="w-10 h-11 rounded-xl border border-border bg-muted flex items-center justify-center font-bold text-foreground">
+                    −
                   </button>
-                  <Link
-                  href={isSupplierSeller ? chatHref : `/messaging?productId=${product.id}`}
-                  className="flex-1 flex items-center justify-center gap-2 py-3.5 bg-card text-foreground text-sm font-extrabold rounded-2xl border-2 border-primary/40 active:opacity-80 transition-all">
-                    <Icon name="ChatBubbleLeftRightIcon" size={20} variant="solid" className="text-primary" />
-                    <span>{chatSellerLabel ?? pp.chatFactory}</span>
-                  </Link>
-                </div>
-                <div className="flex gap-2">
+                  <span className="min-w-[2rem] text-center text-sm font-extrabold text-foreground">{orderQty}</span>
                   <button
-                  onClick={handleAddToCart}
-                  className={`flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold rounded-xl active:opacity-80 transition-all border flex-1 ${
-                  isInCart(product.id) ?
-                  'bg-accent text-accent-foreground border-accent' :
-                  'bg-muted text-foreground border-border hover:bg-muted/80'}`
-                  }>
-                    <Icon name={isInCart(product.id) ? 'CheckIcon' : 'ShoppingCartIcon'} size={15} />
-                    <span>{addedToCart ? pp.added : isInCart(product.id) ? pp.inCart : pp.addToCart}</span>
+                  type="button"
+                  aria-label="زيادة الكمية"
+                  onClick={() => setOrderQty((q) => q + 1)}
+                  className="w-10 h-11 rounded-xl border border-border bg-muted flex items-center justify-center font-bold text-foreground">
+                    +
                   </button>
-                  <WishlistButton itemType="product" productId={product.id} size="sm" />
                 </div>
-              </>)
+                <button
+                onClick={handleAddToCart}
+                className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-extrabold rounded-2xl active:opacity-80 transition-all ${
+                isInCart(product.id) ?
+                'bg-accent text-accent-foreground' :
+                'bg-primary text-primary-foreground shadow-md shadow-primary/25'}`
+                }>
+                  <Icon name={isInCart(product.id) ? 'CheckIcon' : 'ShoppingCartIcon'} size={20} />
+                  <span>{addedToCart ? 'تمت الإضافة' : 'إضافة إلى السلة'}</span>
+                </button>
+              </div>)
             }
           </div>
         </div>
