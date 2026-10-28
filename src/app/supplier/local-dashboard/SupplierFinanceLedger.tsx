@@ -73,11 +73,12 @@ export default function SupplierFinanceLedger({ userId }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [serverAvailable, setServerAvailable] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [ordersRes, payoutsRes, accountsRes] = await Promise.all([
+      const [ordersRes, payoutsRes, accountsRes, balanceRes] = await Promise.all([
         supabase
           .from('orders')
           .select('id, order_number, status, escrow_status, total, net_factory_payout, currency, created_at')
@@ -93,8 +94,11 @@ export default function SupplierFinanceLedger({ userId }: Props) {
           .from('factory_bank_accounts')
           .select('id, bank_name, account_number, is_primary, status')
           .eq('manufacturer_id', userId)
+          .eq('currency', 'YER')
           .order('created_at', { ascending: false }),
+        supabase.rpc('supplier_available_balance_yer', { p_supplier_id: userId }),
       ]);
+      setServerAvailable(balanceRes.error ? null : Number(balanceRes.data ?? 0));
       setOrders((ordersRes.data as LedgerOrder[]) || []);
       setPayouts((payoutsRes.data as PayoutRequest[]) || []);
       const accs = (accountsRes.data as BankAccountLite[]) || [];
@@ -125,9 +129,10 @@ export default function SupplierFinanceLedger({ userId }: Props) {
     const reserved = payouts
       .filter((p) => !EXCLUDED_PAYOUT_STATUSES.includes(p.status) && p.status !== 'completed')
       .reduce((s, p) => s + Number(p.amount || 0), 0);
-    const available = Math.max(0, released - withdrawn - reserved);
+    const clientAvailable = Math.max(0, released - withdrawn - reserved);
+    const available = serverAvailable !== null ? Math.max(0, serverAvailable) : clientAvailable;
     return { available, escrow, withdrawn };
-  }, [orders, payouts]);
+  }, [orders, payouts, serverAvailable]);
 
   const rows: LedgerRow[] = useMemo(() => {
     const saleRows: LedgerRow[] = orders

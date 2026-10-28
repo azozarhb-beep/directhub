@@ -123,6 +123,10 @@ function formatDate(dateStr: string | null | undefined): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function formatYER(n: number | null | undefined): string {
+  return `${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })} ر.ي`;
+}
+
 function EmptyState({ text }: { text: string }) {
   return (
     <div className={`${CARD} p-10 text-center`}>
@@ -140,6 +144,7 @@ function OrdersSection({ userId }: { userId: string }) {
   const [search, setSearch] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
+  const [readyIds, setReadyIds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -159,7 +164,7 @@ function OrdersSection({ userId }: { userId: string }) {
               o.user_profiles?.company_name || o.user_profiles?.full_name || addr?.full_name || addr?.name || 'مشتري محلي',
             buyer_phone: o.user_profiles?.phone || addr?.phone || addr?.phone_number || '',
             total_amount: o.total || 0,
-            currency: o.currency || 'YER',
+            currency: 'YER',
             status: o.status,
             order_type: o.order_category === 'wholesale' || o.order_category === 'bulk_wholesale' ? 'wholesale' : 'retail',
             is_direct_link: !!o.accepted_quote_id,
@@ -232,6 +237,19 @@ function OrdersSection({ userId }: { userId: string }) {
     await load();
   };
 
+  const markReadyForDispatch = async (o: LocalOrder) => {
+    setBusyId(o.id);
+    setActionError('');
+    const { error } = await supabase.rpc('supplier_mark_order_ready_for_dispatch', { p_order_id: o.id });
+    setBusyId(null);
+    if (error) {
+      setActionError(error.message);
+      return;
+    }
+    setReadyIds((prev) => (prev.includes(o.id) ? prev : [...prev, o.id]));
+    await load();
+  };
+
   const printInvoice = (o: LocalOrder) => {
     const w = window.open('', '_blank', 'width=800,height=900');
     if (!w) {
@@ -243,7 +261,7 @@ function OrdersSection({ userId }: { userId: string }) {
 <h1>فاتورة وسند صرف</h1><p>رقم الطلب: <b>#${escapeHtml(o.order_number)}</b></p>
 <table><tr><th>المشتري</th><td>${escapeHtml(o.buyer_name)}</td><th>الهاتف</th><td dir="ltr">${escapeHtml(o.buyer_phone || '—')}</td></tr>
 <tr><th>نوع البيع</th><td>${o.is_direct_link ? 'صفقة رابط مباشر' : o.order_type === 'wholesale' ? 'جملة (B2B)' : 'تجزئة (B2C)'}</td><th>التاريخ</th><td>${escapeHtml(formatDate(o.created_at))}</td></tr>
-<tr><th>الحالة</th><td>${escapeHtml(STATUS_LABEL[o.status] || o.status)}</td><th>الإجمالي</th><td><b>${escapeHtml(String(o.total_amount))} ${escapeHtml(o.currency)}</b></td></tr></table>
+<tr><th>الحالة</th><td>${escapeHtml(STATUS_LABEL[o.status] || o.status)}</td><th>الإجمالي</th><td><b>${escapeHtml(formatYER(o.total_amount))}</b></td></tr></table>
 <div class="sign"><span>توقيع المورد: ______________</span><span>توقيع المستلم: ______________</span></div>
 <script>window.onload=function(){window.print()}</script></body></html>`;
     w.document.write(html);
@@ -336,7 +354,7 @@ function OrdersSection({ userId }: { userId: string }) {
                     الهاتف: <span dir="ltr" className="text-slate-100 font-mono">{o.buyer_phone || '—'}</span>
                   </p>
                   <p className="text-slate-400">
-                    المبلغ: <span className="text-slate-100 font-bold">{o.total_amount} {o.currency}</span>
+                    المبلغ: <span className="text-slate-100 font-bold">{formatYER(o.total_amount)}</span>
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2 pt-1">
@@ -357,6 +375,16 @@ function OrdersSection({ userId }: { userId: string }) {
                   >
                     طباعة الفاتورة وسند الصرف
                   </button>
+                  {group === 'processing' && (
+                    <button
+                      type="button"
+                      disabled={busy || readyIds.includes(o.id)}
+                      onClick={() => markReadyForDispatch(o)}
+                      className="px-3 py-2 rounded-lg bg-amber-500 text-slate-950 text-xs sm:text-sm font-bold hover:bg-amber-400 disabled:opacity-50 transition-all"
+                    >
+                      {readyIds.includes(o.id) ? 'تم النشر في لوحة الناقلين' : 'جاهز للشحن'}
+                    </button>
+                  )}
                   {group === 'processing' && (
                     <button
                       type="button"

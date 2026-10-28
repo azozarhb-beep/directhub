@@ -289,7 +289,8 @@ export default function SupplierProductForm({ userId, product, onClose, onSaved 
       unit: form.unit,
       wholesale_price: wholesale,
       retail_price: retail,
-      currency: form.currency,
+      currency: 'YER',
+      origin_type: 'local',
       min_order_qty: minQty,
       stock_quantity: stock,
       status: form.status,
@@ -404,11 +405,7 @@ export default function SupplierProductForm({ userId, product, onClose, onSaved 
             </div>
             <div>
               <label htmlFor="sp-currency" className={LABEL}>العملة</label>
-              <select id="sp-currency" className={INPUT} value={form.currency} onChange={(e) => set('currency', e.target.value)}>
-                <option value="YER">ريال يمني (YER)</option>
-                <option value="SAR">ريال سعودي (SAR)</option>
-                <option value="USD">دولار (USD)</option>
-              </select>
+              <input id="sp-currency" readOnly className={`${INPUT} opacity-80 cursor-not-allowed`} value="ر.ي (ريال يمني)" />
             </div>
             <div>
               <label htmlFor="sp-wholesale" className={LABEL}>سعر الجملة *</label>
@@ -447,7 +444,7 @@ export default function SupplierProductForm({ userId, product, onClose, onSaved 
                   <input type="number" min={1} className={INPUT} value={t.max_qty} placeholder="∞" onChange={(e) => updateTier(i, 'max_qty', e.target.value)} aria-label="إلى كمية" />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-500 mb-1">السعر ({form.currency})</label>
+                  <label className="block text-[10px] text-slate-500 mb-1">السعر (ر.ي)</label>
                   <input type="number" min={0} step="0.01" className={INPUT} value={t.price} onChange={(e) => updateTier(i, 'price', e.target.value)} aria-label="سعر الشريحة" />
                 </div>
                 <button

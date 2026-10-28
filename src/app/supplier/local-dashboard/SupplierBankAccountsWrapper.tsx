@@ -151,7 +151,7 @@ export default function SupplierBankAccountsWrapper({ userId }: Props) {
         account_number: accountNumber,
         iban,
         swift_bic: swift,
-        currency: formData.currency,
+        currency: 'YER',
         account_type: 'local_collection',
         account_type_label: label,
         status: 'pending_review',

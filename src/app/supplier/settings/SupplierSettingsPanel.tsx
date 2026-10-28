@@ -22,6 +22,7 @@ interface SupplierDocumentsRow {
   tax_id: string | null;
   field_agent_code: string | null;
   verification_status: string | null;
+  reject_reason?: string | null;
 }
 
 const YEMEN_PHONE_REGEX = /^(?:\+?967|00967)?0?7[0137]\d{7}$/;
@@ -99,7 +100,7 @@ export default function SupplierSettingsPanel({ userId }: SupplierSettingsPanelP
         supabase.from('user_profiles').select('company_name, full_name, description, city, phone').eq('id', userId).maybeSingle(),
         supabase
           .from('supplier_documents')
-          .select('commercial_register_number, commercial_register_url, agency_authorization_url, agency_authorization_note, trade_name, tax_id, field_agent_code, verification_status')
+          .select('commercial_register_number, commercial_register_url, agency_authorization_url, agency_authorization_note, trade_name, tax_id, field_agent_code, verification_status, reject_reason')
           .eq('supplier_id', userId)
           .maybeSingle(),
       ]);
@@ -138,7 +139,10 @@ export default function SupplierSettingsPanel({ userId }: SupplierSettingsPanelP
   const hasCommercial = !!docs?.commercial_register_url;
   const hasAgency = !!docs?.agency_authorization_url;
   const trustPct = (hasCommercial ? 50 : 0) + (hasAgency ? 50 : 0);
-  const isVerified = trustPct === 100;
+  const verificationStatus = docs?.verification_status ?? 'pending';
+  const isVerified = verificationStatus === 'approved';
+  const isRejected = verificationStatus === 'rejected';
+  const awaitingReview = !isVerified && !isRejected && trustPct === 100;
 
   const validateFile = (file: File | null): string | null => {
     if (!file) return null;
@@ -267,8 +271,14 @@ export default function SupplierSettingsPanel({ userId }: SupplierSettingsPanelP
             </span>
             حالة توثيق المورد والوكيل التجاري
           </h3>
-          <span className={`inline-flex items-center text-[11px] font-bold px-2.5 py-1 rounded-full ${isVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-            {isVerified ? '✅ مورد ووكيل تجاري موثق (100%)' : `${trustPct}% من التوثيق`}
+          <span className={`inline-flex items-center text-[11px] font-bold px-2.5 py-1 rounded-full ${isVerified ? 'bg-emerald-100 text-emerald-700' : isRejected ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+            {isVerified
+              ? '✅ مورد ووكيل تجاري موثق (معتمد من الإدارة)'
+              : isRejected
+                ? `❌ تم رفض التوثيق${docs?.reject_reason ? `: ${docs.reject_reason}` : ''}`
+                : awaitingReview
+                  ? '⏳ بانتظار اعتماد الإدارة'
+                  : `${trustPct}% من التوثيق`}
           </span>
         </div>
         <div className="w-full h-2 bg-muted rounded-full overflow-hidden mb-4" aria-hidden="true">

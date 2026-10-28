@@ -71,9 +71,6 @@ interface Props {
   md: Record<string, string>;
 }
 
-const CURRENCIES = ['YER', 'SAR', 'USD', 'EUR', 'AED'];
-const CARD_CURRENCIES = ['USD', 'SAR', 'YER'];
-
 const inputCls =
   'w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30';
 
@@ -166,7 +163,7 @@ export default function SupplierPayoutChannelsPanel({
     setFormData({
       ...formData,
       channel,
-      currency: channel === 'card' && !CARD_CURRENCIES.includes(formData.currency) ? 'USD' : formData.currency,
+      currency: 'YER',
     });
   };
 
@@ -412,13 +409,13 @@ export default function SupplierPayoutChannelsPanel({
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-foreground mb-1.5">{md.cardCurrencyLabel} <span className="text-red-500">*</span></label>
-                        <select
-                          value={formData.currency}
-                          onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                          className={inputCls}
-                        >
-                          {CARD_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                        </select>
+                        <input
+                          type="text"
+                          value="ر.ي (YER)"
+                          readOnly
+                          aria-readonly="true"
+                          className={`${inputCls} opacity-80 cursor-not-allowed`}
+                        />
                       </div>
                     </div>
                     <div>
@@ -500,13 +497,13 @@ export default function SupplierPayoutChannelsPanel({
                     )}
                     <div>
                       <label className="block text-xs font-semibold text-foreground mb-1.5">{md.currencyLabel} <span className="text-red-500">*</span></label>
-                      <select
-                        value={formData.currency}
-                        onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                        className={inputCls}
-                      >
-                        {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                      </select>
+                      <input
+                        type="text"
+                        value="ر.ي (YER)"
+                        readOnly
+                        aria-readonly="true"
+                        className={`${inputCls} opacity-80 cursor-not-allowed`}
+                      />
                     </div>
                   </>
                 )}

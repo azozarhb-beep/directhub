@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import { createClient } from '@/lib/supabase/client';
 import EscrowMilestoneTimeline, { isB2BOrder, computeMilestones } from '@/app/manufacturer/dashboard/EscrowMilestoneTimeline';
 
-const CURRENCIES = ['YER', 'SAR', 'USD'] as const;
+const CURRENCIES = ['YER'] as const;
 type Currency = (typeof CURRENCIES)[number];
 
 const ACTIVE_STATUSES = ['funds_secured', 'shipped'];
@@ -18,11 +18,6 @@ interface SupplierEscrowPanelProps {
   loading: boolean;
   fetchEscrowOrders: () => void | Promise<void>;
   onPinRelease: (orderId: string, pin: string) => Promise<{ ok: boolean; message: string }>;
-}
-
-function orderCurrency(order: any, fallback: Currency): Currency {
-  const c = String(order?.currency || '').toUpperCase();
-  return (CURRENCIES as readonly string[]).includes(c) ? (c as Currency) : fallback;
 }
 
 function buyerLabel(order: any): string {
@@ -63,8 +58,7 @@ function progressPct(order: any, isB2B: boolean): number {
 
 export default function SupplierEscrowPanel({ userId, escrowOrders, loading, fetchEscrowOrders, onPinRelease }: SupplierEscrowPanelProps) {
   const [tab, setTab] = useState<'b2b' | 'b2c'>('b2b');
-  const [currency, setCurrency] = useState<Currency>('USD');
-  const [defaultCurrency, setDefaultCurrency] = useState<Currency>('USD');
+  const currency: Currency = 'YER';
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -80,47 +74,7 @@ export default function SupplierEscrowPanel({ userId, escrowOrders, loading, fet
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [uploadMsg, setUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // Resolve supplier's default currency from their bank accounts
-  useEffect(() => {
-    if (!userId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const supabase = createClient();
-        const { data } = await supabase
-          .from('factory_bank_accounts')
-          .select('currency, status, created_at')
-          .eq('manufacturer_id', userId)
-          .order('created_at', { ascending: false });
-        const rows: any[] = Array.isArray(data) ? data : [];
-        const valid = (r: any) => (CURRENCIES as readonly string[]).includes(String(r.currency || '').toUpperCase());
-        const pick = rows.find((r) => r.status === 'approved' && valid(r)) || rows.find(valid);
-        if (!cancelled && pick) {
-          const c = String(pick.currency).toUpperCase() as Currency;
-          setDefaultCurrency(c);
-          setCurrency(c);
-        }
-      } catch {
-        /* keep USD default */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [userId]);
-
-  const currencyCounts = useMemo(() => {
-    const counts: Record<Currency, number> = { YER: 0, SAR: 0, USD: 0 };
-    escrowOrders.forEach((o) => {
-      counts[orderCurrency(o, defaultCurrency)] += 1;
-    });
-    return counts;
-  }, [escrowOrders, defaultCurrency]);
-
-  const currencyOrders = useMemo(
-    () => escrowOrders.filter((o) => orderCurrency(o, defaultCurrency) === currency),
-    [escrowOrders, currency, defaultCurrency]
-  );
+  const currencyOrders = useMemo(() => escrowOrders, [escrowOrders]);
 
   const b2bOrders = useMemo(() => currencyOrders.filter((o) => isB2BOrder(o)), [currencyOrders]);
   const b2cOrders = useMemo(() => currencyOrders.filter((o) => !isB2BOrder(o)), [currencyOrders]);
@@ -139,7 +93,7 @@ export default function SupplierEscrowPanel({ userId, escrowOrders, loading, fet
   }, [tabOrders, search]);
 
   const formatMoney = (n: number) =>
-    `${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${currency}`;
+    `${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ر.ي`;
   const sum = (list: any[]) => list.reduce((acc, o) => acc + Number(o.total || 0), 0);
 
   const stats = [
@@ -264,33 +218,6 @@ export default function SupplierEscrowPanel({ userId, escrowOrders, loading, fet
             <p className="text-2xl font-bold">{tabOrders.filter((o) => ACTIVE_STATUSES.includes(o.escrow_status)).length}</p>
             <p className="text-xs text-white/70">طلب نشط</p>
           </div>
-        </div>
-      </div>
-
-      {/* Currency switcher */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-xs font-bold text-slate-300">العملة:</span>
-        <div className="inline-flex bg-muted/50 p-1 rounded-xl gap-1" role="tablist" aria-label="اختيار العملة">
-          {CURRENCIES.map((c) => (
-            <button
-              key={c}
-              type="button"
-              role="tab"
-              aria-selected={currency === c}
-              onClick={() => {
-                setCurrency(c);
-                setExpandedId(null);
-              }}
-              className={`px-4 h-9 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                currency === c ? 'bg-indigo-600 text-white shadow' : 'bg-card text-foreground hover:bg-indigo-50'
-              }`}
-            >
-              <span dir="ltr">{c}</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${currency === c ? 'bg-white/20' : 'bg-indigo-100 text-indigo-700'}`}>
-                {currencyCounts[c]}
-              </span>
-            </button>
-          ))}
         </div>
       </div>
 
@@ -465,7 +392,7 @@ export default function SupplierEscrowPanel({ userId, escrowOrders, loading, fet
         <div className="bg-card border border-dashed border-border rounded-2xl p-10 text-center">
           <Icon name="ShieldCheckIcon" size={32} className="text-muted-foreground mx-auto mb-3" />
           <p className="text-sm font-bold text-foreground">
-            {search.trim() ? 'لا توجد نتائج مطابقة لبحثك' : `لا توجد معاملات ضمان بعملة ${currency} في هذا القسم حتى الآن`}
+            {search.trim() ? 'لا توجد نتائج مطابقة لبحثك' : `لا توجد معاملات ضمان بالريال اليمني (ر.ي) في هذا القسم حتى الآن`}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             {search.trim()
