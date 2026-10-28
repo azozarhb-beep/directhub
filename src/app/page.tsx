@@ -10,6 +10,8 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 import { OrdersSection, PaymentsSection, SmartServicesSection, ManufacturerBanner } from '@/app/components/DashboardSections';
 
+// Dashboard sections are imported lazily via dynamic() below
+
 
 
 
