@@ -173,16 +173,12 @@ export default function SupplierFinanceLedger({ userId }: Props) {
     }
     setSubmitting(true);
     try {
-      const ref = `WD-${Date.now().toString().slice(-8)}`;
-      const { error: insErr } = await supabase.from('supplier_payout_requests').insert({
-        supplier_id: userId,
-        amount,
-        currency: 'YER',
-        bank_account_id: accountId,
-        reference: ref,
-        status: 'pending_review',
+      const { error: rpcErr } = await supabase.rpc('request_supplier_payout', {
+        p_amount: amount,
+        p_bank_account_id: accountId,
+        p_currency: 'YER',
       });
-      if (insErr) throw insErr;
+      if (rpcErr) throw rpcErr;
       setSuccess('تم إرسال طلب سحب الأرباح وهو قيد المراجعة');
       setAmountInput('');
       await load();

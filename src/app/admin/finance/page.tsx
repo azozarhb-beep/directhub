@@ -7,8 +7,9 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import Icon from '@/components/ui/AppIcon';
+import AdminSupplierPayoutsPanel from './AdminSupplierPayoutsPanel';
 
-type TabKey = 'escrow' | 'milestones' | 'deposits' | 'commissions' | 'vault';
+type TabKey = 'escrow' | 'milestones' | 'deposits' | 'commissions' | 'vault' | 'supplier_payouts';
 type CurrencyCode = 'USD' | 'SAR' | 'YER';
 type StageKey = 'held' | 'inspection' | 'pod' | 'ready';
 
@@ -158,7 +159,7 @@ export default function AdminFinancePage() {
   const [tab, setTab] = useState<TabKey>('escrow');
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get('tab') as TabKey | null;
-    if (q && ['escrow', 'milestones', 'deposits', 'commissions', 'vault'].includes(q)) setTab(q);
+    if (q && ['escrow', 'milestones', 'deposits', 'commissions', 'vault', 'supplier_payouts'].includes(q)) setTab(q);
   }, []);
   const [orders, setOrders] = useState<EscrowOrder[]>([]);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
@@ -683,6 +684,7 @@ export default function AdminFinancePage() {
     { key: 'deposits', label: 'مراجعة وتدقيق سندات الإيداع — Bank Deposit Slip Queue' },
     { key: 'commissions', label: 'محرك العمولات ومستحقات الميدان — Agent Commission Clearing Engine' },
     { key: 'vault', label: 'سجل التسويات والتحويلات المكتملة — Settlement & Audit Vault' },
+    { key: 'supplier_payouts', label: 'طلبات سحب أرباح الموردين (YER) — Supplier Payouts' },
   ];
 
   const only = displayCurrency === 'ALL' ? undefined : displayCurrency;
@@ -1072,6 +1074,8 @@ export default function AdminFinancePage() {
             </div>
           </div>
         )}
+
+        {tab === 'supplier_payouts' && <AdminSupplierPayoutsPanel onToast={showToast} />}
 
         {/* Tab D */}
         {!loading && tab === 'vault' && (
