@@ -148,6 +148,7 @@ export default function FactoryThreadsMessaging({
   const [extractNotice, setExtractNotice] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [piDraft, setPiDraft] = useState<ExtractedInvoice | null>(null);
   const [piOpen, setPiOpen] = useState(false);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   const activeThread = threads.find(t => t.id === activeId) || null;
@@ -351,6 +352,7 @@ export default function FactoryThreadsMessaging({
         .maybeSingle();
       if (existing) {
         setActiveId((existing as any).id);
+        setMobileChatOpen(true);
         setShowNewLogistics(false);
         return;
       }
@@ -369,6 +371,7 @@ export default function FactoryThreadsMessaging({
       if (err) throw err;
       setThreads(prev => [data as FactoryThread, ...prev]);
       setActiveId((data as FactoryThread).id);
+      setMobileChatOpen(true);
       setShowNewLogistics(false);
       setNewShipmentId('');
       setNewPort('');
@@ -536,9 +539,14 @@ export default function FactoryThreadsMessaging({
         <div className="px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-xs">{error}</div>
       )}
 
-      <div className="flex flex-col md:flex-row gap-3" style={{ minHeight: height }}>
+      <div
+        className={`flex flex-col md:flex-row gap-3 md:min-h-[var(--ftm-height)] ${
+          mobileChatOpen ? 'h-[calc(100dvh-7rem)] min-h-[420px]' : 'min-h-[420px]'
+        }`}
+        style={{ ['--ftm-height' as string]: `${height}px` }}
+      >
         {/* Thread list */}
-        <div className="md:w-80 shrink-0 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex flex-col">
+        <div className={`${mobileChatOpen ? 'hidden' : 'flex'} md:flex w-full md:w-80 shrink-0 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex-col`}>
           <div className="flex gap-1 p-2 border-b border-slate-800 overflow-x-auto">
             {([
               { k: 'all', l: 'الكل' },
@@ -574,7 +582,7 @@ export default function FactoryThreadsMessaging({
                   <button
                     key={t.id}
                     type="button"
-                    onClick={() => setActiveId(t.id)}
+                    onClick={() => { setActiveId(t.id); setMobileChatOpen(true); }}
                     className={`w-full text-start px-3 py-3 border-b border-slate-800/70 transition-colors ${
                       selected ? 'bg-slate-800/70' : 'hover:bg-slate-900'
                     }`}
@@ -604,9 +612,17 @@ export default function FactoryThreadsMessaging({
         </div>
 
         {/* Chat panel */}
-        <div className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex flex-col">
+        <div className={`${mobileChatOpen ? 'flex' : 'hidden'} md:flex flex-1 min-w-0 min-h-0 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex-col`}>
           {!activeThread ? (
             <div className="flex-1 flex flex-col items-center justify-center text-slate-500 py-16">
+              <button
+                type="button"
+                onClick={() => setMobileChatOpen(false)}
+                className="md:hidden mb-4 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 text-slate-200 text-xs font-semibold"
+              >
+                <Icon name="ArrowRightIcon" size={14} />
+                رجوع للمحادثات
+              </button>
               <Icon name="ChatBubbleLeftRightIcon" size={36} className="mb-2" />
               <p className="text-sm">اختر محادثة للبدء</p>
             </div>
@@ -615,6 +631,14 @@ export default function FactoryThreadsMessaging({
               {/* Chat header */}
               <div className="px-4 py-3 border-b border-slate-800 bg-slate-900/60 shrink-0">
                 <div className="flex items-start gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setMobileChatOpen(false)}
+                    className="md:hidden w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center shrink-0"
+                    aria-label="رجوع إلى قائمة المحادثات"
+                  >
+                    <Icon name="ArrowRightIcon" size={16} />
+                  </button>
                   <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${KIND_META[activeThread.thread_kind].badge}`}>
                     <Icon name={KIND_META[activeThread.thread_kind].icon as any} size={18} />
                   </div>
@@ -655,7 +679,7 @@ export default function FactoryThreadsMessaging({
               </div>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" style={{ maxHeight: height - 160 }}>
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3 md:max-h-[var(--ftm-msgs-height)]" style={{ ['--ftm-msgs-height' as string]: `${height - 160}px` }}>
                 {msgsLoading ? (
                   <div className="flex items-center justify-center py-12">
                     <Icon name="ArrowPathIcon" size={22} className="animate-spin text-cyan-400" />
