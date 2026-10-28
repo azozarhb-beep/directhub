@@ -304,7 +304,7 @@ BEGIN
 
   UPDATE public.user_profiles
   SET seller_category = 'commercial_supplier',
-      account_type    = 'commercial_supplier',
+      account_type    = 'local_supplier',
       dashboard_path  = '/supplier',
       role_selected   = true,
       updated_at      = now()
