@@ -183,7 +183,11 @@ function isAIBot(userAgent: string): boolean {
   return AI_BOT_PATTERNS.some(pattern => ua.includes(pattern));
 }
 
+const PUBLIC_FACTORY_PROFILE_RE = /^\/supplier\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/?$/i;
+
 function isProtectedPage(pathname: string): boolean {
+  // /supplier/<factory uuid> is the public factory profile (buyer-facing)
+  if (PUBLIC_FACTORY_PROFILE_RE.test(normalizePath(pathname))) return false;
   return PROTECTED_PAGE_ROUTES.some(route => matchesRoute(pathname, route));
 }
 

@@ -615,6 +615,7 @@ export default function ProductDetailPage() {
         }
 
         // Public view: factory/facility is the only seller. Strip internal agent attribution.
+        let factoryPublic: any = null;
         if (data) {
           const {
             attributed_agent_id: _attributedAgent,
@@ -623,7 +624,17 @@ export default function ProductDetailPage() {
             created_by_role: _createdByRole,
             ...publicData
           } = data;
-          data = { ...publicData, manufacturer_id: data.facility_id || data.manufacturer_id };
+          // Seller = registered factory only (never created_by / onboarded agent / agent-owned manufacturer_id)
+          const sellerRef: string | null = data.registered_factory_id || data.facility_id || null;
+          data = { ...publicData, manufacturer_id: sellerRef };
+          if (sellerRef) {
+            try {
+              const { data: fp } = await supabase.rpc('get_public_factory_profile', { p_ref: sellerRef });
+              factoryPublic = Array.isArray(fp) ? fp[0] : fp;
+            } catch {
+              factoryPublic = null;
+            }
+          }
         }
 
         if (data) {
@@ -650,8 +661,17 @@ export default function ProductDetailPage() {
           const supplierRaw = userProfileRaw?.supplier_profiles;
           const supplierProfile = Array.isArray(supplierRaw) ? supplierRaw[0] : supplierRaw;
           const userProfile = userProfileRaw as any;
-          const supplierName = userProfile?.company_name || userProfile?.full_name || (language === 'ar' ? 'مصنع مسجل' : 'Registered Factory');
-          const supplierCountry = data.origin_country || userProfile?.country || 'Global';
+          // Only trust the joined user profile when it belongs to the resolved factory (not an agent)
+          const joinedProfileIsFactory = !!factoryPublic ? false : !data.registered_factory_id;
+          const supplierName =
+          factoryPublic?.company_name || (
+          joinedProfileIsFactory ? userProfile?.company_name || userProfile?.full_name : null) || (
+          language === 'ar' ? 'مصنع مسجل' : 'Registered Factory');
+          const factoryCountryCode: string = factoryPublic?.country_code || '';
+          const factoryCity: string = factoryPublic?.city || '';
+          const supplierCountry = factoryCountryCode ?
+          `${factoryCity ? `${factoryCity}، ` : ''}${factoryCountryCode === 'YE' ? language === 'ar' ? 'اليمن' : 'Yemen' : factoryCountryCode} (${factoryCountryCode})` :
+          data.origin_country || (joinedProfileIsFactory ? userProfile?.country : null) || 'Global';
           const isVerified = true;
           const rating = supplierProfile?.rating || 4.5;
           const reviewCount = supplierProfile?.review_count || 0;
@@ -704,7 +724,7 @@ export default function ProductDetailPage() {
             currency: rowCurrency === 'YER' ? 'YER' : 'USD',
             moq: `${moqNum} ${data.unit || (language === 'ar' ? 'وحدة' : 'units')}`,
             supplier: supplierName,
-            supplierId: supplierProfile?.id || data.manufacturer_id,
+            supplierId: factoryPublic?.factory_id || data.manufacturer_id || undefined,
             supplierCountry,
             countryFlag: '🏭',
             verified: isVerified,
@@ -1373,11 +1393,13 @@ export default function ProductDetailPage() {
                   <p className="text-[10px] text-muted-foreground mt-0.5">{pp.factory}: {product.factoryArea}</p>
                   }
                 </div>
+                {product.supplierId ?
                 <Link
-                  href={`/seller/${product.supplierId || product.id}`}
+                  href={`/supplier/${product.supplierId}`}
                   className="shrink-0 px-3 py-1.5 border border-border rounded-lg text-xs font-semibold text-foreground hover:bg-muted hover:border-primary/40 transition-colors">
                   {pp.viewProfile}
-                </Link>
+                </Link> :
+                null}
               </div>
 
               {/* Trust signals: Rating + Response Rate + Response Time */}
