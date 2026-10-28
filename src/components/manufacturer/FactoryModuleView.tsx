@@ -53,11 +53,13 @@ interface ShipmentForm {
   container_number: string;
   etd: string;
   eta: string;
+  cbm: string;
+  container_capacity: '' | '20ft' | '40ft_hq';
 }
 
 const EMPTY_SHIPMENT_FORM: ShipmentForm = {
   tracking_number: '', bl_number: '', transport_type: 'FCL', origin_port: '', destination_port: '',
-  shipping_line: '', container_number: '', etd: '', eta: '',
+  shipping_line: '', container_number: '', etd: '', eta: '', cbm: '', container_capacity: '',
 };
 
 const shipInputClass =
@@ -474,6 +476,8 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
         destination_port: shipmentForm.destination_port.trim() || null,
         shipping_line: shipmentForm.shipping_line.trim() || null,
         container_number: shipmentForm.container_number.trim() || null,
+        cbm: shipmentForm.cbm ? Number(shipmentForm.cbm) : null,
+        container_capacity: shipmentForm.container_capacity || null,
         etd: shipmentForm.etd || null,
         eta: shipmentForm.eta || null,
         status: 'In Transit',
@@ -773,6 +777,12 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
                 <input className={shipInputClass} placeholder="ميناء الوصول" value={shipmentForm.destination_port} onChange={(ev) => setShipmentForm({ ...shipmentForm, destination_port: ev.target.value })} />
                 <input className={shipInputClass} placeholder="خط الملاحة" value={shipmentForm.shipping_line} onChange={(ev) => setShipmentForm({ ...shipmentForm, shipping_line: ev.target.value })} />
                 <input className={shipInputClass} placeholder="رقم الحاوية" value={shipmentForm.container_number} onChange={(ev) => setShipmentForm({ ...shipmentForm, container_number: ev.target.value })} />
+                <input type="number" min={0} step="0.01" dir="ltr" className={shipInputClass} placeholder="الحجم CBM" value={shipmentForm.cbm} onChange={(ev) => setShipmentForm({ ...shipmentForm, cbm: ev.target.value })} />
+                <select className={shipInputClass} value={shipmentForm.container_capacity} onChange={(ev) => setShipmentForm({ ...shipmentForm, container_capacity: ev.target.value === '20ft' ? '20ft' : ev.target.value === '40ft_hq' ? '40ft_hq' : '' })}>
+                  <option value="">سعة الحاوية</option>
+                  <option value="20ft">20ft</option>
+                  <option value="40ft_hq">40ft HQ</option>
+                </select>
                 <label className="text-xs text-slate-400 space-y-1">
                   <span>تاريخ المغادرة ETD</span>
                   <input type="date" className={shipInputClass} value={shipmentForm.etd} onChange={(ev) => setShipmentForm({ ...shipmentForm, etd: ev.target.value })} />

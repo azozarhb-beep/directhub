@@ -10,6 +10,34 @@ import ChatImageAttachment, {
   type AttachmentState,
 } from '@/components/ChatImageAttachment';
 import { extractInvoiceFromConversation, saveInvoiceDraft, sanitizeExtraction, type ExtractedInvoice } from '@/lib/exportInvoiceAI';
+import LiveTranslationChatInput from '@/components/LiveTranslationChatInput';
+
+type ChatLang = 'ar' | 'en' | 'zh' | 'tr';
+
+const TRANSLATE_LANGS: { code: ChatLang; label: string }[] = [
+  { code: 'ar', label: 'العربية' },
+  { code: 'en', label: 'English' },
+  { code: 'zh', label: '中文' },
+];
+
+/** Separator used to store "translated + original" text in a single message body. */
+const ORIGINAL_MARKER = '\n───\n';
+
+async function translateViaApi(text: string, targetLanguage: ChatLang): Promise<string> {
+  try {
+    const res = await fetch('/api/ai/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, targetLanguage }),
+    });
+    if (!res.ok) return text;
+    const data = await res.json();
+    const out = typeof data?.translated === 'string' ? data.translated.trim() : '';
+    return out || text;
+  } catch {
+    return text;
+  }
+}
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -149,6 +177,10 @@ export default function FactoryThreadsMessaging({
   const [piDraft, setPiDraft] = useState<ExtractedInvoice | null>(null);
   const [piOpen, setPiOpen] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [viewLang, setViewLang] = useState<ChatLang>('ar');
+  const [translatedMap, setTranslatedMap] = useState<Record<string, string>>({});
+  const [translatingId, setTranslatingId] = useState<string | null>(null);
+  const [liveTranslated, setLiveTranslated] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
 
   const activeThread = threads.find(t => t.id === activeId) || null;
@@ -294,9 +326,10 @@ export default function FactoryThreadsMessaging({
   }, [messages]);
 
   // ── Send ────────────────────────────────────────────────────────────────────
-  const handleSend = async () => {
+  const sendMessage = async (original: string, translated: string) => {
     if (!activeThread || sending) return;
-    if (!input.trim() && !attachment) return;
+    const trimmedOriginal = original.trim();
+    if (!trimmedOriginal && !attachment) return;
     if (activeThread.status === 'closed') return;
     setSending(true);
     setError('');
@@ -309,22 +342,41 @@ export default function FactoryThreadsMessaging({
         attachmentUrl = up.publicUrl;
         attachmentName = up.fileName;
       }
+      const cleanTranslated = translated.trim();
+      const body =
+        cleanTranslated && cleanTranslated !== trimmedOriginal
+          ? `${cleanTranslated}${ORIGINAL_MARKER}${trimmedOriginal}`
+          : trimmedOriginal;
       const { error: err } = await supabase.from('factory_thread_messages').insert({
         thread_id: activeThread.id,
         sender_id: userId,
         sender_role: viewerRole,
-        message: input.trim(),
+        message: body,
         attachment_url: attachmentUrl,
         attachment_name: attachmentName,
       });
       if (err) throw err;
       setInput('');
+      setLiveTranslated('');
       setAttachment(null);
     } catch (e: any) {
       setError(e?.message || 'فشل إرسال الرسالة');
     } finally {
       setSending(false);
     }
+  };
+
+  const handleSend = async () => {
+    await sendMessage(input, liveTranslated || input);
+  };
+
+  const handleTranslateMessage = async (m: ThreadMessage) => {
+    if (translatedMap[`${m.id}:${viewLang}`] || translatingId) return;
+    setTranslatingId(m.id);
+    const source = m.message.split(ORIGINAL_MARKER)[0];
+    const out = await translateViaApi(source, viewLang);
+    setTranslatedMap(prev => ({ ...prev, [`${m.id}:${viewLang}`]: out }));
+    setTranslatingId(null);
   };
 
   // ── Open a logistics thread for a shipment ─────────────────────────────────
@@ -410,7 +462,7 @@ export default function FactoryThreadsMessaging({
         .map(m => `[${ROLE_LABEL[m.sender_role] || m.sender_role} · ${formatTime(m.created_at)}] ${m.message.trim()}`)
         .join('\n');
       const extracted = await extractInvoiceFromConversation(transcript);
-      setPiDraft(extracted);
+      setPiDraft({ ...extracted, scope: 'export', currency: 'USD' });
       setPiOpen(true);
     } catch (e: any) {
       setExtractNotice({ type: 'err', text: e?.message || 'فشل استخراج بيانات الفاتورة من المحادثة' });
@@ -435,7 +487,7 @@ export default function FactoryThreadsMessaging({
 
   const handleConfirmPi = () => {
     if (!piDraft || !activeThread) return;
-    saveInvoiceDraft(sanitizeExtraction(piDraft), activeThread.id);
+    saveInvoiceDraft(sanitizeExtraction({ ...piDraft, currency: 'USD' }), activeThread.id);
     setPiOpen(false);
     setExtractNotice({
       type: 'ok',
@@ -541,7 +593,9 @@ export default function FactoryThreadsMessaging({
 
       <div
         className={`flex flex-col md:flex-row gap-3 md:min-h-[var(--ftm-height)] ${
-          mobileChatOpen ? 'h-[calc(100dvh-7rem)] min-h-[420px]' : 'min-h-[420px]'
+          mobileChatOpen
+            ? 'fixed inset-0 z-[60] h-[100dvh] bg-slate-950 p-0 gap-0 md:static md:z-auto md:h-auto md:bg-transparent md:p-0 md:gap-3'
+            : 'min-h-[420px]'
         }`}
         style={{ ['--ftm-height' as string]: `${height}px` }}
       >
@@ -612,15 +666,15 @@ export default function FactoryThreadsMessaging({
         </div>
 
         {/* Chat panel */}
-        <div className={`${mobileChatOpen ? 'flex' : 'hidden'} md:flex flex-1 min-w-0 min-h-0 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex-col`}>
+        <div className={`${mobileChatOpen ? 'flex' : 'hidden'} md:flex flex-1 min-w-0 min-h-0 bg-slate-950 border border-slate-800 md:rounded-xl rounded-none overflow-hidden flex-col`}>
           {!activeThread ? (
             <div className="flex-1 flex flex-col items-center justify-center text-slate-500 py-16">
               <button
                 type="button"
                 onClick={() => setMobileChatOpen(false)}
-                className="md:hidden mb-4 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 text-slate-200 text-xs font-semibold"
+                className="md:hidden mb-4 flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-cyan-600 text-white text-sm font-bold"
               >
-                <Icon name="ArrowRightIcon" size={14} />
+                <span aria-hidden="true">←</span>
                 رجوع للمحادثات
               </button>
               <Icon name="ChatBubbleLeftRightIcon" size={36} className="mb-2" />
@@ -628,17 +682,19 @@ export default function FactoryThreadsMessaging({
             </div>
           ) : (
             <>
+              {/* Mobile back bar */}
+              <button
+                type="button"
+                onClick={() => setMobileChatOpen(false)}
+                className="md:hidden w-full flex items-center gap-2 px-4 py-3 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold shrink-0"
+                aria-label="رجوع للمحادثات"
+              >
+                <span aria-hidden="true" className="text-base leading-none">←</span>
+                رجوع للمحادثات
+              </button>
               {/* Chat header */}
               <div className="px-4 py-3 border-b border-slate-800 bg-slate-900/60 shrink-0">
                 <div className="flex items-start gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setMobileChatOpen(false)}
-                    className="md:hidden w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center shrink-0"
-                    aria-label="رجوع إلى قائمة المحادثات"
-                  >
-                    <Icon name="ArrowRightIcon" size={16} />
-                  </button>
                   <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${KIND_META[activeThread.thread_kind].badge}`}>
                     <Icon name={KIND_META[activeThread.thread_kind].icon as any} size={18} />
                   </div>
@@ -650,6 +706,23 @@ export default function FactoryThreadsMessaging({
                     <p className="text-[11px] text-slate-400 leading-snug break-words">{KIND_META[activeThread.thread_kind].hint}</p>
                   </div>
                 </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1 px-1.5 py-1 rounded-lg bg-slate-800 border border-slate-700" role="group" aria-label="لغة الترجمة">
+                      <span className="text-[10px] text-slate-400 px-1">🌐</span>
+                      {TRANSLATE_LANGS.map(l => (
+                        <button
+                          key={l.code}
+                          type="button"
+                          onClick={() => setViewLang(l.code)}
+                          className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors ${
+                            viewLang === l.code ? 'bg-cyan-600 text-white' : 'text-slate-300 hover:bg-slate-700'
+                          }`}
+                        >
+                          {l.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 {((activeThread.thread_kind === 'logistics' && activeThread.shipment_ref && (isFactoryViewer || isAdminViewer)) || isFactoryViewer) && (
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     {isFactoryViewer && (
@@ -716,7 +789,32 @@ export default function FactoryThreadsMessaging({
                               </SignedChatLink>
                             )
                           )}
-                          {m.message && <p className="whitespace-pre-wrap text-xs">{previewText(m.message)}</p>}
+                          {m.message && (() => {
+                            const [mainText, originalText] = m.message.split(ORIGINAL_MARKER);
+                            const translatedKey = `${m.id}:${viewLang}`;
+                            const translatedText = translatedMap[translatedKey];
+                            return (
+                              <>
+                                <p className="whitespace-pre-wrap text-xs">{previewText(mainText)}</p>
+                                {originalText && (
+                                  <p className="whitespace-pre-wrap text-[10px] opacity-60 mt-1 pt-1 border-t border-white/10">{originalText}</p>
+                                )}
+                                {translatedText && (
+                                  <p className="whitespace-pre-wrap text-[11px] mt-1 pt-1 border-t border-white/10 text-amber-200">🌐 {translatedText}</p>
+                                )}
+                                {!mine && !translatedText && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleTranslateMessage(m)}
+                                    disabled={translatingId === m.id}
+                                    className="mt-1 text-[10px] underline opacity-70 hover:opacity-100 disabled:opacity-40"
+                                  >
+                                    {translatingId === m.id ? '...' : `ترجمة → ${TRANSLATE_LANGS.find(l => l.code === viewLang)?.label}`}
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -731,21 +829,17 @@ export default function FactoryThreadsMessaging({
                   <p className="text-center text-xs text-slate-500">هذه المحادثة مغلقة</p>
                 ) : (
                   <div className="flex items-end gap-2">
-                    <textarea
-                      value={input}
-                      onChange={e => setInput(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSend();
-                        }
-                      }}
-                      rows={2}
-                      dir="rtl"
+                    <LiveTranslationChatInput
+                      className="flex-1 min-w-0"
                       placeholder={
                         activeThread.thread_kind === 'logistics' ?'جدولة الاستلام، ختم الحاوية، تسليم المستندات...' :'اكتب رسالتك هنا...'
                       }
-                      className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500 resize-none"
+                      defaultTargetLang="en"
+                      showLanguageSelector
+                      showPreview
+                      disabled={sending}
+                      onTranslationChange={setLiveTranslated}
+                      onSend={(original, translated) => sendMessage(original, translated)}
                     />
                     <div className="flex flex-col gap-1.5 shrink-0">
                       <ChatImageAttachment
@@ -754,16 +848,6 @@ export default function FactoryThreadsMessaging({
                         onRemove={() => setAttachment(null)}
                         disabled={sending}
                       />
-                      <button
-                        type="button"
-                        onClick={handleSend}
-                        disabled={sending || (!input.trim() && !attachment)}
-                        className="h-10 w-10 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl flex items-center justify-center disabled:opacity-40"
-                      >
-                        {sending
-                          ? <Icon name="ArrowPathIcon" size={16} className="animate-spin" />
-                          : <Icon name="PaperAirplaneIcon" size={16} />}
-                      </button>
                     </div>
                   </div>
                 )}
@@ -816,11 +900,52 @@ export default function FactoryThreadsMessaging({
                       <label className="block text-[11px] text-slate-400 mb-1">الشرط التجاري (Incoterm)</label>
                       <select
                         value={piDraft.incoterm}
-                        onChange={e => updatePi({ incoterm: e.target.value === 'CIF' ? 'CIF' : 'FOB' })}
+                        onChange={e => {
+                          const v = e.target.value;
+                          updatePi({ incoterm: v === 'CIF' ? 'CIF' : v === 'EXW' ? 'EXW' : 'FOB' });
+                        }}
                         className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500"
                       >
+                        <option value="EXW">EXW</option>
                         <option value="FOB">FOB</option>
                         <option value="CIF">CIF</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">العملة</label>
+                      <input
+                        value="USD ($)"
+                        readOnly
+                        dir="ltr"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-sm cursor-not-allowed"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">الحجم الإجمالي CBM</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={piDraft.cbm || ''}
+                        onChange={e => updatePi({ cbm: Math.max(0, Number(e.target.value) || 0) })}
+                        dir="ltr"
+                        placeholder="28.5"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">سعة الحاوية</label>
+                      <select
+                        value={piDraft.container_capacity}
+                        onChange={e => {
+                          const v = e.target.value;
+                          updatePi({ container_capacity: v === '20ft' ? '20ft' : v === '40ft_hq' ? '40ft_hq' : '' });
+                        }}
+                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500"
+                      >
+                        <option value="">— غير محدد —</option>
+                        <option value="20ft">20ft</option>
+                        <option value="40ft_hq">40ft HQ</option>
                       </select>
                     </div>
                     <div>
@@ -862,15 +987,12 @@ export default function FactoryThreadsMessaging({
                     </div>
                     <div>
                       <label className="block text-[11px] text-slate-400 mb-1">العملة</label>
-                      <select
-                        value={piDraft.currency}
-                        onChange={e => updatePi({ currency: e.target.value as ExtractedInvoice['currency'] })}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-cyan-500"
-                      >
-                        <option value="USD">USD</option>
-                        <option value="YER">YER</option>
-                        <option value="SAR">SAR</option>
-                      </select>
+                      <input
+                        value="USD ($)"
+                        readOnly
+                        dir="ltr"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-sm cursor-not-allowed"
+                      />
                     </div>
                     <div className="sm:col-span-2">
                       <label className="block text-[11px] text-slate-400 mb-1">شروط الدفع</label>
@@ -949,7 +1071,7 @@ export default function FactoryThreadsMessaging({
               <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
                 <span className="text-xs text-emerald-300 font-semibold">الإجمالي</span>
                 <span className="text-sm font-bold text-white" dir="ltr">
-                  {piTotal.toFixed(2)} {piDraft.scope === 'export' ? 'USD' : piDraft.currency}
+                  {piTotal.toFixed(2)} USD
                 </span>
               </div>
             </div>

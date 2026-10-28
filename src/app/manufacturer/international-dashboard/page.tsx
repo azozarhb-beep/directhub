@@ -41,21 +41,26 @@ function getHomeRoomForRole(role: string): string {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface ExportOrder {
-  id: string;
-  total_value: number;
-  status: 'pending_docs' | 'customs_review' | 'in_transit' | 'delivered' | 'held';
+interface ExportMetrics {
+  totalExportValue: number;
+  inTransitCount: number;
+  heldCount: number;
 }
 
-// ─── Summary data for the top stats cards ────────────────────────────────────
+const EMPTY_METRICS: ExportMetrics = { totalExportValue: 0, inTransitCount: 0, heldCount: 0 };
 
-const SUMMARY_EXPORT_ORDERS: ExportOrder[] = [
-  { id: 'EXP-001', total_value: 85000, status: 'in_transit' },
-  { id: 'EXP-002', total_value: 42000, status: 'customs_review' },
-  { id: 'EXP-003', total_value: 120000, status: 'pending_docs' },
-  { id: 'EXP-004', total_value: 67500, status: 'delivered' },
-  { id: 'EXP-005', total_value: 18000, status: 'held' },
-];
+function isHeldStatus(status: string | null | undefined): boolean {
+  const s = (status || '').toLowerCase();
+  return s.includes('held') || s.includes('hold') || s.includes('customs');
+}
+
+function isInTransitStatus(status: string | null | undefined): boolean {
+  const s = (status || '').toLowerCase();
+  if (!s) return false;
+  if (s.includes('deliver')) return false;
+  if (isHeldStatus(s)) return false;
+  return s.includes('transit') || s.includes('sail') || s.includes('load') || s.includes('booking') || s.includes('arriv');
+}
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
@@ -65,11 +70,59 @@ export default function InternationalDashboardPage() {
   const { dir, language, setLanguage } = useLanguage();
   const [showDealLinkModal, setShowDealLinkModal] = React.useState(false);
   const [showLangMenu, setShowLangMenu] = React.useState(false);
+  const [metrics, setMetrics] = useState<ExportMetrics>(EMPTY_METRICS);
   const supabase = React.useMemo(() => {
     const { createClient } = require('@/lib/supabase/client');
     return createClient();
   }, []);
   const s = getIntlRoomStrings(language);
+
+  // Live metric aggregation from orders + international_shipments
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    const userId = user.id;
+
+    const loadMetrics = async () => {
+      try {
+        const [ordersRes, shipmentsRes] = await Promise.all([
+          supabase
+            .from('orders')
+            .select('total, total_amount, status')
+            .eq('manufacturer_id', userId),
+          supabase
+            .from('international_shipments')
+            .select('status')
+            .eq('created_by', userId),
+        ]);
+        if (cancelled) return;
+        const orderRows = (ordersRes?.data || []) as Array<{ total?: number | string | null; total_amount?: number | string | null; status?: string | null }>;
+        const shipmentRows = (shipmentsRes?.data || []) as Array<{ status?: string | null }>;
+        const totalExportValue = orderRows
+          .filter((o) => (o.status || '').toLowerCase() !== 'cancelled')
+          .reduce((sum, o) => sum + (Number(o.total ?? o.total_amount) || 0), 0);
+        setMetrics({
+          totalExportValue,
+          inTransitCount: shipmentRows.filter((r) => isInTransitStatus(r.status)).length,
+          heldCount: shipmentRows.filter((r) => isHeldStatus(r.status)).length,
+        });
+      } catch (e) {
+        console.error('Failed to load export metrics', e);
+      }
+    };
+
+    loadMetrics();
+    const channel = supabase
+      .channel(`intl-dashboard-metrics-${userId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `manufacturer_id=eq.${userId}` }, () => loadMetrics())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'international_shipments', filter: `created_by=eq.${userId}` }, () => loadMetrics())
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, supabase]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -139,9 +192,9 @@ export default function InternationalDashboardPage() {
     );
   }
 
-  const totalExportValue = SUMMARY_EXPORT_ORDERS.reduce((sum, o) => sum + o.total_value, 0);
-  const inTransitCount = SUMMARY_EXPORT_ORDERS.filter(o => o.status === 'in_transit').length;
-  const heldCount = SUMMARY_EXPORT_ORDERS.filter(o => o.status === 'held').length;
+  const totalExportValue = metrics.totalExportValue;
+  const inTransitCount = metrics.inTransitCount;
+  const heldCount = metrics.heldCount;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" dir={dir}>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import PackingListUpload from '@/components/manufacturer/PackingListUpload';
 
 export interface DrawerShipment {
   id: string;
@@ -260,6 +261,8 @@ export default function ShipmentDetailsDrawer({ shipment, onClose, onStatusChang
               ))}
             </ul>
           </section>
+
+          <PackingListUpload shipmentId={shipment.id} />
 
           <section className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 space-y-3">
             <h4 className="text-sm font-semibold text-white">تحديث حالة الشحنة</h4>

@@ -34,7 +34,8 @@ interface ExportInvoiceLine {
 }
 
 type InvoiceType = 'PI' | 'CI' | 'DI' | 'QT';
-type Incoterm = 'FOB' | 'CIF';
+type Incoterm = 'EXW' | 'FOB' | 'CIF';
+type ContainerCap = '' | '20ft' | '40ft_hq';
 type InvoiceScopeUI = 'export' | 'local';
 type InvoiceCurrency = 'USD' | 'YER' | 'SAR';
 type LocalPaymentMethodUI = 'kuraimi' | 'local_bank' | 'cod' | 'tt';
@@ -161,6 +162,8 @@ interface InvoicePrintData {
   accountNumber: string;
   swiftCode: string;
   notes: string;
+  cbm: number;
+  containerCapacity: ContainerCap;
 }
 
 function buildInvoiceHtml(d: InvoicePrintData): string {
@@ -185,7 +188,9 @@ function buildInvoiceHtml(d: InvoicePrintData): string {
     : `<div class="box"><div class="lbl">Incoterms</div><strong>${d.incoterm}</strong></div>
     <div class="box"><div class="lbl">Currency</div><strong>USD</strong></div>
     <div class="box"><div class="lbl">Port of Loading</div><strong>${escapeHtml(d.portOfLoading) || '—'}</strong></div>
-    <div class="box"><div class="lbl">Port of Discharge</div><strong>${escapeHtml(d.portOfDischarge) || '—'}</strong></div>`;
+    <div class="box"><div class="lbl">Port of Discharge</div><strong>${escapeHtml(d.portOfDischarge) || '—'}</strong></div>
+    <div class="box"><div class="lbl">CBM</div><strong>${d.cbm > 0 ? d.cbm : '—'}</strong></div>
+    <div class="box"><div class="lbl">Container</div><strong>${d.containerCapacity === '20ft' ? '20ft' : d.containerCapacity === '40ft_hq' ? '40ft HQ' : '—'}</strong></div>`;
   const bankBlock = isLocal
     ? d.localPaymentLabel || d.localBankDetails
       ? `<div class="box" style="margin-top:16px"><div class="lbl">Payment Details — بيانات الدفع</div>
@@ -697,6 +702,8 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
   const [buyerAddress, setBuyerAddress] = useState('');
   const [buyerCountry, setBuyerCountry] = useState('');
   const [incoterm, setIncoterm] = useState<Incoterm>('FOB');
+  const [cbm, setCbm] = useState(0);
+  const [containerCapacity, setContainerCapacity] = useState<ContainerCap>('');
   const [portOfLoading, setPortOfLoading] = useState('');
   const [portOfDischarge, setPortOfDischarge] = useState('');
   const [bankName, setBankName] = useState('');
@@ -797,6 +804,8 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
         setCurrency('USD');
         setPortOfLoading(d.port_of_loading);
         setPortOfDischarge(d.port_of_discharge);
+        setCbm(d.cbm || 0);
+        setContainerCapacity(d.container_capacity || '');
       }
       setBuyerName(d.consignee_name);
       setBuyerAddress(d.consignee_address);
@@ -931,6 +940,8 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
         incoterm: isLocal ? null : incoterm,
         port_of_loading: isLocal ? null : portOfLoading.trim() || null,
         port_of_discharge: isLocal ? null : portOfDischarge.trim() || null,
+        cbm: isLocal || !cbm ? null : Number(cbm),
+        container_capacity: isLocal ? null : containerCapacity || null,
         governorate: isLocal ? governorate.trim() || null : null,
         delivery_terms: isLocal ? deliveryTerms : null,
         local_payment_method: isLocal ? localPaymentMethod : null,
@@ -1003,6 +1014,8 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
     accountNumber,
     swiftCode,
     notes,
+    cbm,
+    containerCapacity,
   };
 
   const handleExport = () => {
@@ -1268,8 +1281,8 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
                 <>
               <div>
                 <label className="text-[10px] text-muted-foreground block mb-1">Incoterms</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['FOB', 'CIF'] as const).map(term => (
+                <div className="grid grid-cols-3 gap-2">
+                  {(['EXW', 'FOB', 'CIF'] as const).map(term => (
                     <button
                       key={term}
                       type="button"
@@ -1294,6 +1307,40 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
               <div>
                 <label className="text-[10px] text-muted-foreground block mb-1">ميناء التفريغ / Port of Discharge</label>
                 <input value={portOfDischarge} onChange={e => setPortOfDischarge(e.target.value)} placeholder="e.g. Aden, YE" dir="ltr" className={inputCls} />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-1">الحجم الإجمالي CBM</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={cbm || ''}
+                  onChange={e => setCbm(Math.max(0, Number(e.target.value) || 0))}
+                  placeholder="e.g. 28.5"
+                  dir="ltr"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-1">سعة الحاوية / Container Capacity</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { v: '' as ContainerCap, l: '—' },
+                    { v: '20ft' as ContainerCap, l: '20ft' },
+                    { v: '40ft_hq' as ContainerCap, l: '40ft HQ' },
+                  ]).map(opt => (
+                    <button
+                      key={opt.v || 'none'}
+                      type="button"
+                      onClick={() => setContainerCapacity(opt.v)}
+                      className={`py-2 text-xs font-semibold rounded-lg border transition-colors ${
+                        containerCapacity === opt.v ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border text-foreground hover:border-primary/50'
+                      }`}
+                    >
+                      {opt.l}
+                    </button>
+                  ))}
+                </div>
               </div>
               {incoterm === 'CIF' && (
                 <div className="sm:col-span-2">
