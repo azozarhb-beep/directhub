@@ -14,6 +14,7 @@ import { sanitizeChatMessage } from '@/lib/privacyShield';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { needsChatTranslation } from '@/lib/chatTranslationGate';
 
+
 interface Message {
   id: string;
   sender_id: string;
@@ -161,7 +162,7 @@ async function translateText(text: string, targetLanguage: SupportedLang): Promi
   }
 }
 
-export default function ChatPage() {
+function ChatPageLegacyUnused() {
   const { t, dir, isRTL, language } = useLanguage();
   const M = t.messaging;
   const params = useParams();
@@ -1172,4 +1173,14 @@ export default function ChatPage() {
       <BottomNav />
     </div>);
 
+}
+
+export default function LegacyChatProductPage() {
+  const params = useParams();
+  const router = useRouter();
+  const productId = typeof params?.productId === 'string' ? params.productId : '';
+  useEffect(() => {
+    router.replace(productId ? `/messaging?productId=${encodeURIComponent(productId)}` : '/messaging');
+  }, [router, productId]);
+  return null;
 }

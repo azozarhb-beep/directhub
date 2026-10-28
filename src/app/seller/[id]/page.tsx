@@ -330,7 +330,7 @@ export default function SellerPublicProfilePage() {
             {/* Desktop action buttons — hidden on mobile (shown in sticky bar) */}
             <div className="hidden sm:flex gap-3 mt-5">
               <Link
-                href={`/chat/${seller.id}`}
+                href="/messaging"
                 className="flex-1 flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity"
               >
                 <Icon name="ChatBubbleLeftRightIcon" size={16} />
@@ -466,7 +466,7 @@ export default function SellerPublicProfilePage() {
       {/* ── Mobile Sticky CTA Bar ── */}
       <div className="sm:hidden fixed bottom-16 left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-t border-border px-4 py-3 flex gap-3 shadow-lg">
         <Link
-          href={`/chat/${seller.id}`}
+          href="/messaging"
           className="flex-1 flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground text-sm font-bold rounded-xl active:opacity-80 transition-opacity"
         >
           <Icon name="ChatBubbleLeftRightIcon" size={16} />

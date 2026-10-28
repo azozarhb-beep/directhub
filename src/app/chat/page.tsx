@@ -152,7 +152,7 @@ async function translateText(text: string, targetLanguage: SupportedLang): Promi
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function ChatHubPage() {
+function ChatHubPageLegacyUnused() {
   const { t, dir, isRTL, language } = useLanguage();
   const M = t.messaging;
   const threadLabel = (type: string) => ({ negotiation: M.negotiation, rfq: M.rfq, order: M.order } as Record<string, string>)[type] || type;
@@ -1410,4 +1410,17 @@ export default function ChatHubPage() {
       <BottomNav />
     </div>
   );
+}
+
+export default function LegacyChatHubPage() {
+  const router = useRouter();
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const conv = sp.get('conv');
+    const productId = sp.get('productId');
+    if (conv) router.replace(`/messaging?conv=${encodeURIComponent(conv)}`);
+    else if (productId) router.replace(`/messaging?productId=${encodeURIComponent(productId)}`);
+    else router.replace('/messaging');
+  }, [router]);
+  return null;
 }

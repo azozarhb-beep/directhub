@@ -291,6 +291,22 @@ const nextConfig = {
   async redirects() {
     return [
       {
+        source: '/chat',
+        has: [{ type: 'query', key: 'conv', value: '(?<conv>.*)' }],
+        destination: '/messaging?conv=:conv',
+        permanent: false,
+      },
+      {
+        source: '/chat',
+        destination: '/messaging',
+        permanent: false,
+      },
+      {
+        source: '/chat/:productId',
+        destination: '/messaging?productId=:productId',
+        permanent: false,
+      },
+      {
         source: '/suppliers/:id',
         destination: '/store/:id',
         permanent: true,

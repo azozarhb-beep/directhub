@@ -509,7 +509,7 @@ export default function ProductDetailPage() {
     };
   }, [id]);
   const chatSellerLabel = isSupplierSeller && isArabic ? 'مراسلة المورد / الوكيل' : isSupplierSeller ? 'Message Supplier / Agent' : null;
-  const chatHref = isSupplierSeller ? `/chat/${id}` : `/chat/${product.id}`;
+  const chatHref = `/messaging?productId=${encodeURIComponent(isSupplierSeller ? id : product.id)}`;
 
   useEffect(() => {
     setActiveImage(0);

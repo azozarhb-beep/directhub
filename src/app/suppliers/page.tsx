@@ -109,9 +109,7 @@ function SupplierCard({ supplier }: { supplier: SupplierProfile }) {
   const rfqHref = supplier.user_id
     ? `/rfq/new?supplier=${supplier.user_id}`
     : `/rfq/new`;
-  const chatHref = supplier.user_id
-    ? `/chat/${supplier.user_id}`
-    : `/messaging`;
+  const chatHref = '/messaging';
 
   return (
     <div className="bg-card border border-border rounded-2xl p-5 hover:shadow-md hover:border-primary/30 transition-all duration-200 flex flex-col gap-4">

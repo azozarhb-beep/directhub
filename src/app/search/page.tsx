@@ -726,7 +726,7 @@ const ProductCard: React.FC<{ product: SearchProduct; view: 'grid' | 'list'; inS
           {buyerMode === 'b2b' ? (
             <>
               <Link
-                href={`/chat/${product.id}`}
+                href={`/messaging?productId=${encodeURIComponent(product.id)}`}
                 onClick={(e) => e.stopPropagation()}
                 className="flex-1 flex items-center justify-center gap-0.5 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-bold rounded-lg hover:bg-emerald-100 transition-colors"
                 dir="rtl"

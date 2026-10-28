@@ -1513,33 +1513,57 @@ function LiveMessagingContent() {
           if (targetConvId) {
             setActiveConvId(targetConvId);
           } else if (targetProductId) {
-            // Find existing conversation for this product
-            const existing = withMeta.find(c => c.product_id === targetProductId);
+            // Resolve supplier-listed product (supplier_products) first, fall back to products table
+            let resolvedProductId = targetProductId;
+            let productName = 'Product Inquiry';
+            let supplierName = 'DirectHub Supplier';
+            let supplierCountry = 'Global';
+            let supplierFlag = '🏭';
+            let manufacturerId: string | null = null;
+            let supplierListing: { id: string; supplier_id: string; name: string; name_ar: string | null; sku: string | null; supplier_name: string } | null = null;
+            try {
+              const { data: spData } = await supabase.rpc('get_supplier_product_for_inquiry', { p_ref: targetProductId });
+              const spRow = (Array.isArray(spData) ? spData[0] : spData) as typeof supplierListing | undefined;
+              if (spRow?.id) {
+                supplierListing = spRow;
+                resolvedProductId = spRow.id;
+                manufacturerId = spRow.supplier_id;
+                productName = spRow.name_ar || spRow.name || productName;
+                supplierName = spRow.supplier_name || supplierName;
+                supplierCountry = 'اليمن';
+                supplierFlag = '🏪';
+              }
+            } catch { /* not a supplier-listed product */ }
+
+            // Find existing conversation for this buyer + product
+            const existing = withMeta.find(c => (c.product_id === resolvedProductId || c.product_id === targetProductId) && c.buyer_id === user.id)
+              || withMeta.find(c => c.product_id === resolvedProductId || c.product_id === targetProductId);
             if (existing) {
               setActiveConvId(existing.id);
             } else {
-              // Create a new conversation for this product and open it
+              // Create a new negotiation thread (deal_status = open) for this product and open it
               try {
-                // Fetch product info from Supabase if available
-                const { data: productData } = await supabase
-                  .from('products')
-                  .select('id, name, manufacturer_id, manufacturer_name, country_of_origin')
-                  .eq('id', targetProductId)
-                  .single();
-
-                const productName = productData?.name || 'Product Inquiry';
-                const supplierName = productData?.manufacturer_name || 'DirectHub Supplier';
-                const supplierCountry = productData?.country_of_origin || 'Global';
-                const manufacturerId = productData?.manufacturer_id || null;
+                if (!supplierListing) {
+                  const { data: productData } = await supabase
+                    .from('products')
+                    .select('id, name, manufacturer_id, manufacturer_name, country_of_origin, origin_country')
+                    .eq('id', targetProductId)
+                    .maybeSingle();
+                  productName = productData?.name || productName;
+                  supplierName = productData?.manufacturer_name || supplierName;
+                  supplierCountry = productData?.country_of_origin || productData?.origin_country || supplierCountry;
+                  manufacturerId = productData?.manufacturer_id || null;
+                }
                 let newSellerCategory: string | null = null;
                 if (manufacturerId) {
                   try {
                     const { data: mfrProfile } = await supabase
                       .from('user_profiles')
-                      .select('seller_category')
+                      .select('seller_category, country')
                       .eq('id', manufacturerId)
                       .maybeSingle();
                     newSellerCategory = mfrProfile?.seller_category ?? null;
+                    if (mfrProfile?.country) supplierCountry = mfrProfile.country;
                   } catch { /* ignore */ }
                 }
 
@@ -1548,18 +1572,30 @@ function LiveMessagingContent() {
                   .insert({
                     buyer_id: user.id,
                     manufacturer_id: manufacturerId,
-                    product_id: targetProductId,
+                    product_id: resolvedProductId,
                     product_name: productName,
                     supplier_name: supplierName,
                     supplier_country: supplierCountry,
-                    supplier_flag: '🏭',
+                    supplier_flag: supplierFlag,
                     supplier_avatar: '',
                     last_message: '',
+                    deal_status: 'open',
                   })
                   .select()
                   .single();
 
                 if (!createErr && created) {
+                  if (supplierListing) {
+                    const inquiryText = `استفسار عن المنتج: ${productName}${supplierListing.sku ? ` (SKU: ${supplierListing.sku})` : ''}`;
+                    await supabase.from('chat_messages').insert({
+                      conversation_id: created.id,
+                      sender_id: user.id,
+                      sender_role: 'buyer',
+                      message: inquiryText,
+                      is_read: false,
+                    });
+                    try { await supabase.rpc('notify_supplier_product_inquiry', { p_conversation_id: created.id }); } catch { /* non-blocking */ }
+                  }
                   const newConv = {
                     ...created,
                     unread_count: 0,
@@ -1567,7 +1603,7 @@ function LiveMessagingContent() {
                     deal_status: 'open' as const,
                     seller_category: newSellerCategory,
                   };
-                  setConversations(prev => [newConv, ...prev]);
+                  setConversations(prev => prev.some(c => c.id === created.id) ? prev : [newConv, ...prev]);
                   setActiveConvId(created.id);
                 }
               } catch (convErr) {
@@ -1591,7 +1627,7 @@ function LiveMessagingContent() {
         if (payload.eventType === 'INSERT') {
           const conv = payload.new as Conversation;
           if (conv.buyer_id === user.id || conv.manufacturer_id === user.id) {
-            setConversations(prev => [{ ...conv, unread_count: 0, thread_type: inferThreadType(conv), deal_status: 'open' }, ...prev]);
+            setConversations(prev => prev.some(c => c.id === conv.id) ? prev : [{ ...conv, unread_count: 0, thread_type: inferThreadType(conv), deal_status: 'open' }, ...prev]);
           }
         } else if (payload.eventType === 'UPDATE') {
           const updated = payload.new as Conversation;
