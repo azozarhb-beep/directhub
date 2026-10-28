@@ -282,6 +282,26 @@ export default function FactoryThreadsMessaging({
 
   useEffect(() => { fetchThreads(); }, [fetchThreads]);
 
+  // ── Mobile full-screen chat: lock body scroll + browser back returns to the thread list ──
+  useEffect(() => {
+    if (!mobileChatOpen) return;
+    const isMobile = window.matchMedia('(max-width: 767px)').matches;
+    if (!isMobile) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.history.pushState({ ftmChat: true }, '');
+
+    const onPopState = () => setMobileChatOpen(false);
+    window.addEventListener('popstate', onPopState);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('popstate', onPopState);
+      if (window.history.state?.ftmChat) window.history.back();
+    };
+  }, [mobileChatOpen]);
+
   // ── Fetch messages ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!activeId) { setMessages([]); return; }
