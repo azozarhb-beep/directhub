@@ -8,6 +8,7 @@ import WishlistButton from '@/components/WishlistButton';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { getTierPriceBounds, normalizeTiers } from '@/lib/tieredPricing';
+import { BRAND_PLACEHOLDER_IMAGE, formatYer, pickFactoryName, translateUnitAr } from '@/lib/catalogDisplay';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface MarketplaceProduct {
@@ -66,24 +67,8 @@ const CATEGORY_AR_LABELS: Record<string, string> = {
 };
 
 // ─── Unit translator ──────────────────────────────────────────────────────────
-const UNIT_AR_LABELS: Record<string, string> = {
-  ton: 'لكل طن',
-  tons: 'لكل طن',
-  kg: 'لكل كجم',
-  kgs: 'لكل كجم',
-  pcs: 'قطعة',
-  units: 'وحدة',
-  unit: 'وحدة',
-  meters: 'متر',
-  liters: 'لتر',
-  sheets: 'صفيحة',
-  rolls: 'لفة',
-  sets: 'طقم',
-  sqm: 'م²',
-};
-
 function translateUnit(unit: string): string {
-  return UNIT_AR_LABELS[unit.toLowerCase()] || unit;
+  return translateUnitAr(unit);
 }
 
 function translateCategory(category: string): string {
@@ -117,7 +102,7 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
   priority = false,
   showChat = true,
 }) => {
-  const FALLBACK_IMAGE = '/assets/images/no_image.png';
+  const FALLBACK_IMAGE = BRAND_PLACEHOLDER_IMAGE;
   const primaryImage =
     (Array.isArray(product.images) ? product.images.find((i) => typeof i === 'string' && i.trim()) : null) ||
     product.image_url ||
@@ -128,7 +113,7 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
     setImageSrc(primaryImage);
   }, [primaryImage]);
   const imageUrl = imageSrc;
-  const supplierName = product.company_name || 'مورّد موثّق';
+  const supplierName = pickFactoryName(product.company_name) || 'مصنع موثّق';
   const rating = product.rating || 4.2;
   const reviewCount = product.review_count ?? ((index * 37 + 42) % 200 + 20);
   const txVolume = product.transaction_volume ?? ((index * 53 + 50) % 500 + 50);
@@ -141,10 +126,10 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
   const flatPrice = Number(product.unit_price) || 0;
   const priceMinNum = tierBounds ? tierBounds.min : flatPrice;
   const priceMaxNum = tierBounds ? tierBounds.max : flatPrice;
-  const b2bPriceMin = priceMinNum.toFixed(2);
-  const b2bPriceMax = priceMaxNum.toFixed(2);
+  const b2bPriceMin = formatYer(priceMinNum);
+  const b2bPriceMax = formatYer(priceMaxNum);
   const hasPriceRange = b2bPriceMin !== b2bPriceMax;
-  const b2cPrice = priceMinNum.toFixed(2);
+  const b2cPrice = formatYer(priceMinNum);
   const displayMoq = cardTiers.length > 0 ? cardTiers[0].min_qty : Math.max(1, Number(product.minimum_order_qty) || 1);
 
   const displayNameAr = product.name_ar || product.name;
@@ -172,14 +157,14 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
         productId: product.id,
         name: product.name,
         nameAr: product.name_ar || product.name,
-        image: product.images?.[0] || product.image_url || product.image || '/assets/images/no_image.png',
+        image: product.images?.[0] || product.image_url || product.image || BRAND_PLACEHOLDER_IMAGE,
         alt: product.name_ar || product.name,
         price: unitPrice,
-        currency: 'USD',
-        moq: `${moq} ${product.unit || ''}`.trim(),
+        currency: 'YER',
+        moq: `${moq} ${translateUnit(product.unit || '')}`.trim(),
         moqNumber: moq,
         quantity: 1,
-        supplier: product.company_name || '',
+        supplier: supplierName,
         countryFlag: product.origin_country || '',
         verified: product.is_verified ?? true,
         category: product.category || '',
@@ -264,15 +249,15 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
         <div className="bg-muted/40 rounded-lg px-2 py-1.5 my-1">
           {buyerMode === 'b2b' ? (
             <>
-              <div className="flex items-baseline gap-1" dir="ltr">
-                <span className="text-sm font-extrabold text-primary">${b2bPriceMin}</span>
+              <div className="flex items-baseline gap-1 flex-wrap" dir="rtl">
+                <span className="text-sm font-extrabold text-primary">{b2bPriceMin}</span>
                 {hasPriceRange && (
                   <>
                     <span className="text-xs text-muted-foreground">-</span>
-                    <span className="text-sm font-extrabold text-primary">${b2bPriceMax}</span>
+                    <span className="text-sm font-extrabold text-primary">{b2bPriceMax}</span>
                   </>
                 )}
-                <span className="text-[10px] text-muted-foreground mr-1">{unitLabel}</span>
+                <span className="text-[10px] text-muted-foreground">/ {unitLabel}</span>
               </div>
               <div className="flex items-center gap-1 mt-0.5">
                 <Icon name="CubeIcon" size={10} className="text-amber-600" />
@@ -282,9 +267,9 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
               </div>
             </>
           ) : (
-            <div className="flex items-baseline gap-1" dir="ltr">
-              <span className="text-sm font-extrabold text-primary">${b2cPrice}</span>
-              <span className="text-[10px] text-muted-foreground">{unitLabel}</span>
+            <div className="flex items-baseline gap-1 flex-wrap" dir="rtl">
+              <span className="text-sm font-extrabold text-primary">{b2cPrice}</span>
+              <span className="text-[10px] text-muted-foreground">/ {unitLabel}</span>
             </div>
           )}
         </div>

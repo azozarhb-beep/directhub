@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useSourcingFilter, SourcingTab } from '@/contexts/SourcingFilterContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import MarketplaceProductCard from '@/components/MarketplaceProductCard';
+import { pickFactoryName } from '@/lib/catalogDisplay';
 
 // Yemen country codes / names used to determine "local"
 const LOCAL_COUNTRY_IDENTIFIERS = ['YE', 'Yemen', 'اليمن', 'yemen'];
@@ -152,7 +153,7 @@ const ProductCard: React.FC<{product: Product;index: number;isInternational?: bo
           category: product.category,
           is_verified: product.supplier_profiles?.is_verified ?? false,
           seller_badge: product.seller_badge,
-          company_name: product.user_profiles?.company_name || product.user_profiles?.full_name,
+          company_name: pickFactoryName(product.user_profiles?.company_name, product.user_profiles?.full_name) || undefined,
           manufacturer_id: product.international_manufacturer_id
         }}
         buyerMode="b2b"

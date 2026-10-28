@@ -10,6 +10,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
 import TrustScoreBadge from '@/components/TrustScoreBadge';
+import { BRAND_PLACEHOLDER_IMAGE, formatYer, translateUnitAr } from '@/lib/catalogDisplay';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ interface Product {
   is_ready_to_ship: boolean | null;
   /** Domestic delivery term: EX_FACTORY | DELIVERY_INCLUDED | CALCULATED_SHIPPING */
   shipping_terms?: string | null;
+  image_url?: string | null;
 }
 
 type SalesMode = 'b2b' | 'b2c';
@@ -128,7 +130,7 @@ export default function FactoryStorePage() {
 
       const { data: productsData } = await supabase
         .from('manufacturer_products')
-        .select('id, name, name_ar, category, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, is_active, shipping_terms')
+        .select('id, name, name_ar, category, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, is_active, shipping_terms, image_url')
         .eq('manufacturer_id', regData.user_id)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
@@ -164,12 +166,13 @@ export default function FactoryStorePage() {
       name: language === 'ar' && product.name_ar ? product.name_ar : product.name,
       nameAr: product.name_ar,
       price: product.unit_price,
-      currency: 'USD',
+      currency: 'YER',
       quantity: 1,
-      moq: String(product.minimum_order_qty ?? 1),
+      moq: `${product.minimum_order_qty ?? 1} ${translateUnitAr(product.unit)}`,
+      moqNumber: Math.max(1, Number(product.minimum_order_qty) || 1),
       supplier: profile?.company_name || '',
       countryFlag: profile?.country || '',
-      image: '',
+      image: product.image_url || BRAND_PLACEHOLDER_IMAGE,
       alt: product.name,
       verified: false,
       category: product.category,
@@ -235,7 +238,7 @@ export default function FactoryStorePage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50" dir={dir}>
+    <div className="min-h-screen bg-slate-50 pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-8" dir={dir}>
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
         <div className="max-w-screen-xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
@@ -285,31 +288,36 @@ export default function FactoryStorePage() {
         </div>
       </div>
 
-      {/* Sales Mode Toggle */}
+      {/* Unified Sticky Filter Row: B2B/B2C toggle + category pills */}
       <div className="bg-white border-b border-slate-200 sticky top-[57px] z-30">
-        <div className="max-w-screen-xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
-            <button
-              onClick={() => setSalesMode('b2c')}
-              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${salesMode === 'b2c' ? 'bg-rose-600 text-white shadow' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              <Icon name="ShoppingBag" size={14} />
-              تجزئة (B2C)
-            </button>
+        <div className="max-w-screen-xl mx-auto px-4 py-2.5 flex items-center gap-2">
+          <div className="flex gap-1 bg-slate-100 rounded-xl p-1 shrink-0">
             <button
               onClick={() => setSalesMode('b2b')}
-              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${salesMode === 'b2b' ? 'bg-indigo-600 text-white shadow' : 'text-slate-600 hover:text-slate-900'}`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${salesMode === 'b2b' ? 'bg-indigo-600 text-white shadow' : 'text-slate-600 hover:text-slate-900'}`}
             >
               <Icon name="Building2" size={14} />
               جملة (B2B)
             </button>
+            <button
+              onClick={() => setSalesMode('b2c')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${salesMode === 'b2c' ? 'bg-rose-600 text-white shadow' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              <Icon name="ShoppingBag" size={14} />
+              تجزئة (B2C)
+            </button>
           </div>
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            {salesMode === 'b2c' ? (
-              <span className="flex items-center gap-1 text-rose-600"><Icon name="Zap" size={12} /> شحن سريع متاح</span>
-            ) : (
-              <span className="flex items-center gap-1 text-indigo-600"><Icon name="Shield" size={12} /> نظام ضمان مالي متاح</span>
-            )}
+          <span className="h-5 w-px bg-slate-200 shrink-0" aria-hidden="true" />
+          <div className="flex-1 flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+            {categories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setFilterCategory(cat)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${filterCategory === cat ? (salesMode === 'b2b' ? 'bg-indigo-600 text-white' : 'bg-rose-600 text-white') : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+              >
+                {cat === 'all' ? 'الكل' : cat}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -345,29 +353,16 @@ export default function FactoryStorePage() {
           </div>
         )}
 
-        {/* Search & Filter */}
-        <div className="flex flex-wrap gap-2">
-          <div className="flex-1 min-w-48 relative">
-            <Icon name="Search" size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="ابحث عن منتج..."
-              className="w-full border border-slate-200 rounded-lg pr-9 pl-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-            />
-          </div>
-          <div className="flex gap-1 overflow-x-auto">
-            {categories.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setFilterCategory(cat)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${filterCategory === cat ? (salesMode === 'b2b' ? 'bg-indigo-600 text-white' : 'bg-rose-600 text-white') : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-              >
-                {cat === 'all' ? 'الكل' : cat}
-              </button>
-            ))}
-          </div>
+        {/* Search */}
+        <div className="relative">
+          <Icon name="Search" size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="ابحث عن منتج..."
+            className="w-full border border-slate-200 rounded-lg pr-9 pl-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+          />
         </div>
 
         {/* Products Grid */}
@@ -394,8 +389,18 @@ export default function FactoryStorePage() {
 
               return (
                 <div key={product.id} className={`bg-white border rounded-xl overflow-hidden hover:shadow-md transition-all ${salesMode === 'b2b' ? 'hover:border-indigo-300' : 'hover:border-rose-300'} ${isOutOfStock ? 'opacity-60' : ''}`}>
-                  <div className="bg-slate-100 h-36 flex items-center justify-center relative">
-                    <Icon name="Package" size={40} className="text-slate-300" />
+                  <div className="bg-slate-100 h-36 relative overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={product.image_url || BRAND_PLACEHOLDER_IMAGE}
+                      alt={language === 'ar' && product.name_ar ? product.name_ar : product.name}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      onError={(e) => {
+                        const img = e.currentTarget;
+                        if (!img.src.endsWith(BRAND_PLACEHOLDER_IMAGE)) img.src = BRAND_PLACEHOLDER_IMAGE;
+                      }}
+                    />
                     {isReadyToShip && (
                       <span className="absolute top-2 right-2 flex items-center gap-0.5 bg-emerald-500 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
                         <Icon name="Zap" size={9} />
@@ -420,12 +425,12 @@ export default function FactoryStorePage() {
                     )}
                     <div className="flex items-center justify-between mt-2">
                       <div>
-                        <p className={`font-bold text-lg ${salesMode === 'b2b' ? 'text-indigo-700' : 'text-rose-700'}`}>${displayPrice}</p>
-                        <p className="text-slate-400 text-xs">/{product.unit}</p>
+                        <p className={`font-bold text-lg ${salesMode === 'b2b' ? 'text-indigo-700' : 'text-rose-700'}`}>{formatYer(displayPrice)}</p>
+                        <p className="text-slate-400 text-xs">/ {translateUnitAr(product.unit)}</p>
                       </div>
                       <div className="text-right">
                         <p className="text-slate-500 text-xs">الحد الأدنى</p>
-                        <p className="text-slate-700 text-xs font-medium">{effectiveMoq} {product.unit}</p>
+                        <p className="text-slate-700 text-xs font-medium">{effectiveMoq} {translateUnitAr(product.unit)}</p>
                       </div>
                     </div>
 
@@ -490,7 +495,7 @@ export default function FactoryStorePage() {
               <form onSubmit={handleRFQSubmit} className="space-y-3">
                 <div className="bg-slate-50 rounded-lg p-3 text-sm">
                   <p className="text-slate-500">المنتج: <span className="text-slate-900 font-medium">{selectedProduct.name}</span></p>
-                  <p className="text-slate-500 mt-1">الحد الأدنى: <span className="text-slate-900 font-medium">{selectedProduct.minimum_order_qty} {selectedProduct.unit}</span></p>
+                  <p className="text-slate-500 mt-1">الحد الأدنى: <span className="text-slate-900 font-medium">{selectedProduct.minimum_order_qty} {translateUnitAr(selectedProduct.unit)}</span></p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">الكمية المطلوبة *</label>

@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { CATEGORY_IMAGES } from '@/lib/categoryLabels';
 import MarketplaceProductCard from '@/components/MarketplaceProductCard';
+import { pickFactoryName } from '@/lib/catalogDisplay';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Category {
@@ -163,7 +164,7 @@ const CategoriesBrowser: React.FC = () => {
             .order('sort_order', { ascending: true }),
           supabase
             .from('manufacturer_products')
-            .select('id, name, name_ar, category, category_id, unit_price, tiered_pricing, origin_country, image_url, images, minimum_order_qty, unit, target_market, user_profiles!manufacturer_products_manufacturer_id_fkey(company_name, full_name)')
+            .select('id, name, name_ar, category, category_id, unit_price, tiered_pricing, origin_country, image_url, images, minimum_order_qty, unit, target_market, manufacturer_id, user_profiles!manufacturer_products_manufacturer_id_fkey(company_name, full_name)')
             .eq('is_active', true)
             .limit(300),
         ]);
@@ -269,7 +270,7 @@ const CategoriesBrowser: React.FC = () => {
   }, [selectedCategory, allCategories, language]);
 
   return (
-    <div className="pb-32 md:pb-12 min-h-screen bg-background" dir={dir}>
+    <div className="pb-[calc(8rem+env(safe-area-inset-bottom))] md:pb-12 min-h-screen bg-background" dir={dir}>
 
       {/* ── Page Header ── */}
       <div className="bg-foreground py-6 md:py-10 border-b border-border/20 relative overflow-hidden">
@@ -293,97 +294,78 @@ const CategoriesBrowser: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Sticky Search + Mode Bar ── */}
-      <div className="sticky top-0 z-40 bg-card/95 backdrop-blur-md border-b border-border">
-        <div className="max-w-5xl mx-auto px-4 md:px-6 py-3 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-          {/* Search */}
-          <div className="flex-1 flex items-center gap-2 border border-border rounded-xl px-3 py-2 bg-background focus-within:border-primary transition-colors">
-            <Icon name="MagnifyingGlassIcon" size={16} className="text-muted-foreground shrink-0" />
-            <input
-              type="text"
-              placeholder={t.categories?.searchPlaceholder || 'ابحث عن منتجات، مصنعين، موردين...'}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 text-sm bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none"
-              dir="rtl"
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="text-muted-foreground hover:text-foreground">
-                <Icon name="XMarkIcon" size={14} />
-              </button>
-            )}
-          </div>
-
-          {/* B2B / B2C toggle */}
-          <div className="flex items-center border border-border rounded-xl overflow-hidden shrink-0">
-            <button
-              onClick={() => setBuyerMode('b2c')}
-              className={`h-9 px-3 text-xs font-bold transition-colors whitespace-nowrap ${buyerMode === 'b2c' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
-            >
-              تجزئة وأفراد (B2C)
+      {/* ── Search (non-sticky) ── */}
+      <div className="max-w-5xl mx-auto px-4 md:px-6 pt-3">
+        <div className="flex items-center gap-2 border border-border rounded-xl px-3 py-2 bg-background focus-within:border-primary transition-colors">
+          <Icon name="MagnifyingGlassIcon" size={16} className="text-muted-foreground shrink-0" />
+          <input
+            type="text"
+            placeholder={t.categories?.searchPlaceholder || 'ابحث عن منتجات، مصنعين، موردين...'}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="flex-1 text-sm bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none"
+            dir="rtl"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="text-muted-foreground hover:text-foreground">
+              <Icon name="XMarkIcon" size={14} />
             </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Unified Sticky Filter Row: B2B/B2C toggle + category pills ── */}
+      <div className="sticky top-0 z-40 bg-card/95 backdrop-blur-md border-b border-border mt-3">
+        <div className="max-w-5xl mx-auto px-4 md:px-6 py-2.5 flex items-center gap-2">
+          {/* B2B / B2C toggle */}
+          <div className="flex items-center border border-border rounded-full overflow-hidden shrink-0">
             <button
               onClick={() => setBuyerMode('b2b')}
-              className={`h-9 px-3 text-xs font-bold transition-colors whitespace-nowrap ${buyerMode === 'b2b' ? 'bg-foreground text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+              className={`h-8 px-3 text-xs font-bold transition-colors whitespace-nowrap ${buyerMode === 'b2b' ? 'bg-foreground text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
             >
-              جملة وشركات (B2B)
+              جملة (B2B)
+            </button>
+            <button
+              onClick={() => setBuyerMode('b2c')}
+              className={`h-8 px-3 text-xs font-bold transition-colors whitespace-nowrap ${buyerMode === 'b2c' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+            >
+              تجزئة (B2C)
             </button>
           </div>
-        </div>
 
-        {/* ── Category Tabs ── */}
-        <div
-          ref={tabsRef}
-          className="max-w-5xl mx-auto px-4 md:px-6 pb-3 flex gap-2 overflow-x-auto scrollbar-hide"
-          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-        >
-          {/* All tab */}
-          <button
-            data-cat="all"
-            onClick={() => handleCategorySelect('all')}
-            className={`shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold border transition-all whitespace-nowrap ${
-              selectedCategory === 'all' ?'bg-primary text-primary-foreground border-primary shadow-sm' :'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
-            }`}
+          <span className="h-5 w-px bg-border shrink-0" aria-hidden="true" />
+
+          {/* Category pills */}
+          <div
+            ref={tabsRef}
+            className="flex-1 flex gap-2 overflow-x-auto scrollbar-hide"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
-            <Icon name="Squares2X2Icon" size={13} />
-            {language === 'ar' ? 'الكل' : 'All'}
-          </button>
-
-          {/* جهات التصنيع المحلية / الموردون المحليون / جهات التصنيع */}
-          {[
-            { id: 'local', label_ar: 'جهات التصنيع المحلية', label_en: 'Local Manufacturers' },
-            { id: 'suppliers', label_ar: 'الموردون المحليين', label_en: 'Local Suppliers' },
-            { id: 'exporters', label_ar: 'جهات التصنيع العالمية', label_en: 'Manufacturers' },
-          ].map((tab) => (
             <button
-              key={tab.id}
-              data-cat={tab.id}
-              onClick={() => handleCategorySelect(tab.id)}
-              className={`shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold border transition-all whitespace-nowrap ${
-                selectedCategory === tab.id
-                  ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                  : 'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
+              data-cat="all"
+              onClick={() => handleCategorySelect('all')}
+              className={`shrink-0 flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold border transition-all whitespace-nowrap ${
+                selectedCategory === 'all' ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
               }`}
             >
-              {language === 'ar' ? tab.label_ar : tab.label_en}
+              {language === 'ar' ? 'الكل' : 'All'}
             </button>
-          ))}
 
-          {/* Dynamic category tabs */}
-          {allCategories.map((cat) => (
-            <button
-              key={cat.id}
-              data-cat={cat.id}
-              onClick={() => handleCategorySelect(cat.id)}
-              className={`shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold border transition-all whitespace-nowrap ${
-                selectedCategory === cat.id
-                  ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                  : 'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
-              }`}
-            >
-              {language === 'ar' ? cat.name_ar : cat.name_en}
-            </button>
-          ))}
+            {allCategories.map((cat) => (
+              <button
+                key={cat.id}
+                data-cat={cat.id}
+                onClick={() => handleCategorySelect(cat.id)}
+                className={`shrink-0 flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold border transition-all whitespace-nowrap ${
+                  selectedCategory === cat.id
+                    ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                    : 'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
+                }`}
+              >
+                {language === 'ar' ? cat.name_ar : cat.name_en}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -458,7 +440,10 @@ const CategoriesBrowser: React.FC = () => {
                     category: product.category,
                     is_verified: true,
                     manufacturer_id: product.manufacturer_id,
-                    company_name: (Array.isArray(product.user_profiles) ? product.user_profiles[0] : product.user_profiles)?.company_name || undefined,
+                    company_name: pickFactoryName(
+                      (Array.isArray(product.user_profiles) ? product.user_profiles[0] : product.user_profiles)?.company_name,
+                      (Array.isArray(product.user_profiles) ? product.user_profiles[0] : product.user_profiles)?.full_name
+                    ) || undefined,
                   }}
                   buyerMode={buyerMode}
                   index={idx}
