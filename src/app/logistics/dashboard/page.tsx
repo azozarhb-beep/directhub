@@ -2947,6 +2947,9 @@ function formatMoney(amount: number, currency: string): string {
   return currency === 'USD' || currency === 'EUR' || currency === 'CNY' ? `${sym}${num}` : `${num} ${sym}`;
 }
 
+// Single source of truth for "In Transit" (out_for_delivery is tracked as "Awaiting PIN")
+const IN_TRANSIT_STATUSES: string[] = ['shipped', 'in_transit'];
+
 function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partnerCountry: string }) {
   const supabase = createClient();
   const [payments, setPayments] = useState<EscrowPayment[]>([]);
@@ -2957,6 +2960,12 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
   const [withdrawSuccess, setWithdrawSuccess] = useState(false);
+  const [withdrawCurrency, setWithdrawCurrency] = useState<string>('USD');
+  const [withdrawError, setWithdrawError] = useState('');
+  const [payoutRequests, setPayoutRequests] = useState<{
+    id: string; amount: number; currency: string; payout_method: string;
+    status: string; admin_note: string | null; created_at: string; processed_at: string | null;
+  }[]>([]);
 
   // Payout method state
   const [showBankModal, setShowBankModal] = useState(false);
@@ -2971,6 +2980,38 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
   const [bankCountry, setBankCountry] = useState('');
   const [dialCode, setDialCode] = useState<string>(() => resolveDialCode(partnerCountry));
 
+  const handleBankSave = async () => {
+    setSwiftError('');
+    setIbanError('');
+    const p = payoutMethod;
+    const needsSwift = !isDomestic || p.payout_type === 'international_swift';
+    if (needsSwift) {
+      if (!validateSwiftCode(p.swift_code)) {
+        setSwiftError('رمز SWIFT/BIC غير صالح (8 أو 11 حرفاً).');
+        return;
+      }
+      if (!validateIBAN(p.iban)) {
+        setIbanError('رقم IBAN غير صالح.');
+        return;
+      }
+    }
+    setBankSaving(true);
+    try {
+      const toSave: PayoutMethod = {
+        ...p,
+        country: needsSwift && bankCountry.trim() ? bankCountry.trim() : p.country,
+      };
+      setSavedPayout(toSave);
+      setBankSaved(true);
+      setTimeout(() => {
+        setBankSaved(false);
+        setShowBankModal(false);
+      }, 1800);
+    } finally {
+      setBankSaving(false);
+    }
+  };
+
   // Determine if partner is domestic (Yemen) or international
   const isDomestic = isYemenPartner(partnerCountry);
 
@@ -2980,12 +3021,20 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
   useEffect(() => {
     const fetch = async () => {
       setLoading(true);
-      const { data } = await supabase
-        .from('logistics_escrow_payments')
-        .select('*, buyer:buyer_id(full_name, email)')
-        .eq('partner_id', partnerId)
-        .order('created_at', { ascending: false });
+      const [{ data }, { data: reqs }] = await Promise.all([
+        supabase
+          .from('logistics_escrow_payments')
+          .select('*, buyer:buyer_id(full_name, email)')
+          .eq('partner_id', partnerId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('logistics_payout_requests')
+          .select('id, amount, currency, payout_method, status, admin_note, created_at, processed_at')
+          .eq('partner_id', partnerId)
+          .order('created_at', { ascending: false }),
+      ]);
       setPayments((data as any[]) || []);
+      setPayoutRequests((reqs as any[]) || []);
       setLoading(false);
     };
     fetch();
@@ -3006,105 +3055,89 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
     setShowBankModal(true);
   };
 
-  const totalReleased = payments.filter(p => p.payment_status === 'released').reduce((s, p) => s + p.amount, 0);
+  const totalReleased = payments.filter(p => p.payment_status === 'released' && !(p as any).withdrawn_at).reduce((s, p) => s + p.amount, 0);
   const totalHeld = payments.filter(p => p.payment_status === 'held_in_escrow').reduce((s, p) => s + p.amount, 0);
   const totalPending = payments.filter(p => p.payment_status === 'pending').reduce((s, p) => s + p.amount, 0);
 
   const sumByCurrency = (status: string): Record<string, number> => {
     const acc: Record<string, number> = {};
-    payments.filter(p => p.payment_status === status).forEach(p => {
-      const cur = (p.currency || 'USD').toUpperCase();
-      acc[cur] = (acc[cur] || 0) + p.amount;
-    });
+    payments
+      .filter(p => p.payment_status === status && !(status === 'released' && (p as any).withdrawn_at))
+      .forEach(p => {
+        const cur = (p.currency || 'USD').toUpperCase();
+        acc[cur] = (acc[cur] || 0) + p.amount;
+      });
     return acc;
   };
+  const pendingPayoutByCur: Record<string, number> = {};
+  payoutRequests.filter(r => r.status === 'pending').forEach(r => {
+    const cur = (r.currency || 'USD').toUpperCase();
+    pendingPayoutByCur[cur] = (pendingPayoutByCur[cur] || 0) + r.amount;
+  });
   const releasedByCur = sumByCurrency('released');
+  const availableByCur: Record<string, number> = {};
+  Object.keys(releasedByCur).forEach(cur => {
+    availableByCur[cur] = Math.max(0, (releasedByCur[cur] || 0) - (pendingPayoutByCur[cur] || 0));
+  });
   const heldByCur = sumByCurrency('held_in_escrow');
   const pendingByCur = sumByCurrency('pending');
   const activeCurrency = currencyFilter === 'ALL' ? null : currencyFilter;
+  const withdrawableCurrencies = Object.keys(availableByCur).filter(c => availableByCur[c] > 0);
+  const selectedWithdrawCurrency = withdrawableCurrencies.includes(withdrawCurrency)
+    ? withdrawCurrency
+    : (withdrawableCurrencies[0] || 'USD');
+  const maxWithdraw = availableByCur[selectedWithdrawCurrency] || 0;
+  const totalAvailableAny = withdrawableCurrencies.length > 0;
 
   const handleWithdrawSubmit = async () => {
-    setWithdrawSubmitting(true);
-    await new Promise(r => setTimeout(r, 1200));
-    setWithdrawSubmitting(false);
-    setWithdrawSuccess(true);
-    setTimeout(() => { setWithdrawSuccess(false); setShowWithdrawModal(false); setWithdrawAmount(''); }, 2500);
-  };
-
-  const handleBankSave = async () => {
-    const p = { ...payoutMethod };
-    setSwiftError('');
-    setIbanError('');
-
-    // Prefix phone numbers with the selected country dialing code
-    const withDial = (phone: string) => {
-      const digits = (phone || '').replace(/\D/g, '').replace(/^0+/, '');
-      return digits ? `${dialCode}${digits}` : '';
-    };
-    if (p.payout_type === 'remittance') p.remittance_phone = withDial(p.remittance_phone);
-    if (p.payout_type === 'ewallet') p.wallet_phone = withDial(p.wallet_phone);
-    if (p.payout_type === 'international_swift' && bankCountry) {
-      p.branch_city = [bankCountry, p.branch_city].filter(Boolean).join(' - ');
+    setWithdrawError('');
+    const amount = parseFloat(withdrawAmount);
+    if (!amount || amount <= 0 || amount > maxWithdraw) {
+      setWithdrawError('المبلغ غير صالح أو يتجاوز الرصيد المتاح');
+      return;
     }
-
-    // Validate per type
-    if (p.payout_type === 'international_swift') {
-      if (!p.beneficiary_name || !p.bank_name || !p.swift_code || !p.iban || !p.currency) return;
-      if (!validateSwiftCode(p.swift_code)) {
-        setSwiftError('رمز SWIFT/BIC غير صحيح. يجب أن يكون من 8 إلى 11 حرفاً (مثال: NBEGYEGC أو NBEGYEGCXXX)');
-        return;
-      }
-      if (!validateIBAN(p.iban)) {
-        setIbanError('رقم IBAN غير صحيح. يجب أن يبدأ برمز الدولة (مثال: EG، SA، AE) متبوعاً بالأرقام');
-        return;
-      }
-    } else if (p.payout_type === 'bank_account' && (!p.bank_name || !p.account_number || !p.beneficiary_name)) return;
-    else if (p.payout_type === 'card' && (!p.card_holder_name || !p.card_number_masked || !p.card_expiry)) return;
-    else if (p.payout_type === 'ewallet' && (!p.wallet_provider || !p.wallet_phone || !p.wallet_owner_name)) return;
-    else if (p.payout_type === 'remittance' && (!p.remittance_network || !p.remittance_recipient_name || !p.remittance_phone)) return;
-
-    setBankSaving(true);
+    setWithdrawSubmitting(true);
     try {
-      const { error } = await supabase
-        .from('logistics_payout_methods')
-        .insert({
-          partner_id: partnerId,
-          payout_type: p.payout_type === 'international_swift' ? 'bank_account' : p.payout_type,
-          payout_category: p.payout_type === 'international_swift' ? 'international_swift' : (p.payout_type === 'bank_account' ? 'local_bank' : p.payout_type === 'ewallet' ? 'e_wallet' : p.payout_type === 'remittance' ? 'cash_remittance' : 'card'),
-          bank_name: p.bank_name || null,
-          account_number: p.account_number || null,
-          iban: p.iban || null,
-          beneficiary_name: p.beneficiary_name || null,
-          swift_code: p.swift_code || null,
-          currency: p.currency || 'USD',
-          branch_city: p.branch_city || null,
-          card_number_masked: p.card_number_masked || null,
-          card_holder_name: p.card_holder_name || null,
-          card_expiry: p.card_expiry || null,
-          card_issuing_bank: p.card_issuing_bank || null,
-          wallet_provider: p.wallet_provider || null,
-          wallet_phone: p.wallet_phone || null,
-          wallet_owner_name: p.wallet_owner_name || null,
-          remittance_network: p.remittance_network || null,
-          remittance_recipient_name: p.remittance_recipient_name || null,
-          remittance_phone: p.remittance_phone || null,
-          remittance_city: p.remittance_city || null,
-          country: partnerCountry || null,
-          is_primary: true,
-        });
-      if (error) throw error;
-      setSavedPayout({ ...p });
-      setBankSaved(true);
-      toast.success('تم حفظ بيانات وسيلة التحويل بنجاح ✓');
-      setTimeout(() => { setBankSaved(false); setShowBankModal(false); }, 1800);
-    } catch {
-      // fallback: save locally even if DB fails
-      setSavedPayout({ ...p });
-      setBankSaved(true);
-      toast.success('تم حفظ بيانات وسيلة التحويل بنجاح ✓');
-      setTimeout(() => { setBankSaved(false); setShowBankModal(false); }, 1800);
+      const details = savedPayout
+        ? {
+            payout_type: savedPayout.payout_type,
+            bank_name: savedPayout.bank_name || null,
+            account_number: savedPayout.account_number || null,
+            iban: savedPayout.iban || null,
+            swift_code: savedPayout.swift_code || null,
+            beneficiary_name: savedPayout.beneficiary_name || null,
+            card_number_masked: savedPayout.card_number_masked || null,
+            wallet_provider: savedPayout.wallet_provider || null,
+            wallet_phone: savedPayout.wallet_phone || null,
+            remittance_network: savedPayout.remittance_network || null,
+            remittance_recipient_name: savedPayout.remittance_recipient_name || null,
+            remittance_phone: savedPayout.remittance_phone || null,
+            remittance_city: savedPayout.remittance_city || null,
+          }
+        : {};
+      const { error: rpcErr } = await supabase.rpc('request_logistics_payout', {
+        p_partner_id: partnerId,
+        p_amount: amount,
+        p_currency: selectedWithdrawCurrency,
+        p_payout_method: savedPayout?.payout_type || 'bank_account',
+        p_payout_details: details,
+      });
+      if (rpcErr) throw rpcErr;
+
+      const { data: reqs } = await supabase
+        .from('logistics_payout_requests')
+        .select('id, amount, currency, payout_method, status, admin_note, created_at, processed_at')
+        .eq('partner_id', partnerId)
+        .order('created_at', { ascending: false });
+      setPayoutRequests((reqs as any[]) || []);
+
+      setWithdrawSuccess(true);
+      toast.success('تم إرسال طلب السحب للإدارة');
+      setTimeout(() => { setWithdrawSuccess(false); setShowWithdrawModal(false); setWithdrawAmount(''); }, 2500);
+    } catch (e: any) {
+      setWithdrawError(e?.message || 'تعذر إرسال طلب السحب');
     } finally {
-      setBankSaving(false);
+      setWithdrawSubmitting(false);
     }
   };
 
@@ -3143,7 +3176,7 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
       {/* ── Balance Cards ── */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'متاحة للسحب', sublabel: 'Released', byCur: releasedByCur, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', icon: 'CheckCircleIcon' },
+          { label: 'متاحة للسحب', sublabel: 'Released', byCur: availableByCur, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', icon: 'CheckCircleIcon' },
           { label: 'في الضمان المالي المشروط', sublabel: 'In Escrow', byCur: heldByCur, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200', icon: 'LockClosedIcon' },
           { label: 'معلقة / قيد الانتظار', sublabel: 'Pending', byCur: pendingByCur, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200', icon: 'ClockIcon' },
         ].map(card => {
@@ -3192,15 +3225,15 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
       {/* ── Action Buttons ── */}
       <div className="flex flex-wrap gap-3">
         <button
-          onClick={() => setShowWithdrawModal(true)}
-          disabled={totalReleased <= 0}
+          onClick={() => { setWithdrawError(''); setWithdrawCurrency(withdrawableCurrencies[0] || 'USD'); setShowWithdrawModal(true); }}
+          disabled={!totalAvailableAny}
           className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-sm"
         >
           <Icon name="ArrowUpTrayIcon" size={16} />
           طلب سحب الأرباح
-          {totalReleased > 0 && (
-            <span className="bg-white/20 px-2 py-0.5 rounded-lg text-xs">
-              ${totalReleased.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          {totalAvailableAny && (
+            <span className="bg-white/20 px-2 py-0.5 rounded-lg text-xs" dir="ltr">
+              {withdrawableCurrencies.map(c => formatMoney(availableByCur[c], c)).join(' · ')}
             </span>
           )}
         </button>
@@ -3264,6 +3297,45 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
                 {savedPayout.remittance_city && <p className="text-blue-700">المدينة: <span className="font-medium">{savedPayout.remittance_city}</span></p>}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Payout Requests History ── */}
+      {payoutRequests.length > 0 && (
+        <div>
+          <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+            <Icon name="ArrowUpTrayIcon" size={16} className="text-emerald-600" />
+            طلبات السحب
+          </h3>
+          <div className="border border-border rounded-xl overflow-x-auto">
+            <table className="w-full text-sm min-w-[560px]">
+              <thead className="bg-muted/40 border-b border-border">
+                <tr>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">التاريخ</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">المبلغ</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">الحالة</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">ملاحظة الإدارة</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {payoutRequests.map(r => (
+                  <tr key={r.id}>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{formatDate(r.created_at)}</td>
+                    <td className="px-4 py-3 font-semibold" dir="ltr">{formatMoney(r.amount, (r.currency || 'USD').toUpperCase())} {r.currency}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-medium border ${
+                        r.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : r.status === 'rejected'? 'bg-red-50 text-red-700 border-red-200' :'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}>
+                        {r.status === 'approved' ? 'تمت الموافقة' : r.status === 'rejected' ? 'مرفوض' : 'قيد المراجعة'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{r.admin_note || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -3359,44 +3431,38 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
             ) : (
               <div className="space-y-4">
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-800">
-                  الرصيد المتاح للسحب: <span className="font-bold">${totalReleased.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                  الرصيد المتاح للسحب: <span className="font-bold" dir="ltr">{formatMoney(maxWithdraw, selectedWithdrawCurrency)} {selectedWithdrawCurrency}</span>
                 </div>
-                {!savedPayout && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-start gap-2">
-                    <Icon name="ExclamationTriangleIcon" size={14} className="mt-0.5 shrink-0" />
-                    يرجى إضافة وسيلة السحب أولاً لضمان تحويل المبلغ بشكل صحيح.
+                {withdrawableCurrencies.length > 1 && (
+                  <div className="flex flex-wrap gap-2">
+                    {withdrawableCurrencies.map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => { setWithdrawCurrency(c); setWithdrawAmount(''); }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${selectedWithdrawCurrency === c ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-card text-foreground border-border'}`}
+                      >{c}</button>
+                    ))}
                   </div>
                 )}
                 <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1.5">المبلغ المطلوب سحبه (USD)</label>
+                  <label className="block text-sm font-semibold text-foreground mb-1.5">المبلغ المطلوب سحبه ({selectedWithdrawCurrency})</label>
                   <input
                     type="number"
                     min="1"
-                    max={totalReleased}
+                    max={maxWithdraw}
                     value={withdrawAmount}
                     onChange={e => setWithdrawAmount(e.target.value)}
-                    placeholder={`الحد الأقصى: $${totalReleased.toFixed(2)}`}
+                    placeholder={`الحد الأقصى: ${maxWithdraw.toFixed(2)}`}
                     className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
                   />
                 </div>
-                {savedPayout && (
-                  <div className="text-xs text-muted-foreground bg-muted/30 rounded-xl p-3">
-                    سيتم التحويل عبر: <span className="font-semibold text-foreground">
-                      {savedPayout.payout_type === 'international_swift'
-                        ? 'تحويل بنكي دولي SWIFT'
-                        : PAYOUT_TYPES.find(t => t.value === savedPayout.payout_type)?.label
-                      }
-                    </span>
-                    {savedPayout.payout_type === 'international_swift' && ` — ${savedPayout.bank_name} / ${savedPayout.beneficiary_name}`}
-                    {savedPayout.payout_type === 'bank_account' && ` — ${savedPayout.bank_name} / ${savedPayout.beneficiary_name}`}
-                    {savedPayout.payout_type === 'card' && ` — ${savedPayout.card_number_masked}`}
-                    {savedPayout.payout_type === 'ewallet' && ` — ${EWALLET_PROVIDERS.find(w => w.value === savedPayout.wallet_provider)?.label || savedPayout.wallet_provider}`}
-                    {savedPayout.payout_type === 'remittance' && ` — ${REMITTANCE_NETWORKS.find(n => n.value === savedPayout.remittance_network)?.label || savedPayout.remittance_network}`}
-                  </div>
+                {withdrawError && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">{withdrawError}</div>
                 )}
                 <button
                   onClick={handleWithdrawSubmit}
-                  disabled={withdrawSubmitting || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > totalReleased}
+                  disabled={withdrawSubmitting || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > maxWithdraw}
                   className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2"
                 >
                   {withdrawSubmitting ? (
@@ -4400,7 +4466,7 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
 
   let total = orders.length;
   const delivered = orders.filter(o => o.status === 'delivered').length;
-  const inTransit = orders.filter(o => ['shipped', 'in_transit', 'out_for_delivery'].includes(o.status)).length;
+  const inTransit = orders.filter(o => IN_TRANSIT_STATUSES.includes(o.status)).length;
   const pending = orders.filter(o => ['pending', 'confirmed', 'processing'].includes(o.status)).length;
   const cancelled = orders.filter(o => o.status === 'cancelled').length;
   const disputed = orders.filter(o => o.status === 'disputed').length;
@@ -6568,7 +6634,7 @@ function LogisticsDashboardView({ module: moduleProp }: LogisticsDashboardViewPr
 
   const KPI_CARDS = [
     { label: 'إجمالي الشحنات المسندة', filter: 'all', count: kpiOrders.length, icon: 'ClipboardDocumentListIcon', color: 'text-slate-200', iconBg: 'bg-slate-700/60' },
-    { label: 'شحنات قيد النقل', filter: 'in_transit', count: kpiOrders.filter(o => o.status === 'in_transit' || o.status === 'shipped').length, icon: 'TruckIcon', color: 'text-sky-400', iconBg: 'bg-sky-500/15' },
+    { label: 'شحنات قيد النقل', filter: 'in_transit', count: kpiOrders.filter(o => IN_TRANSIT_STATUSES.includes(o.status)).length, icon: 'TruckIcon', color: 'text-sky-400', iconBg: 'bg-sky-500/15' },
     { label: 'بانتظار كود التسليم (PIN)', filter: 'awaiting_pin', count: kpiOrders.filter(o => o.status === 'out_for_delivery' && !o.shipping_fees_released).length, icon: 'KeyIcon', color: 'text-amber-400', iconBg: 'bg-amber-500/15' },
     { label: 'تم التسليم بنجاح', filter: 'delivered', count: kpiOrders.filter(o => o.status === 'delivered').length, icon: 'CheckBadgeIcon', color: 'text-emerald-400', iconBg: 'bg-emerald-500/15' },
   ];
