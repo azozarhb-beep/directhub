@@ -614,6 +614,18 @@ export default function ProductDetailPage() {
           }
         }
 
+        // Public view: factory/facility is the only seller. Strip internal agent attribution.
+        if (data) {
+          const {
+            attributed_agent_id: _attributedAgent,
+            created_by_id: _createdById,
+            created_by_name: _createdByName,
+            created_by_role: _createdByRole,
+            ...publicData
+          } = data;
+          data = { ...publicData, manufacturer_id: data.facility_id || data.manufacturer_id };
+        }
+
         if (data) {
           const images =
           Array.isArray(data.images) && data.images.length > 0 ?

@@ -461,6 +461,7 @@ function AddProductPageInner() {
         .from('agent_products')
         .insert({
           agent_id: user.id,
+          attributed_agent_id: user.id,
           factory_id: factory.id,
           name_ar: form.name_ar.trim(),
           name_en: form.name_en.trim(),

@@ -603,6 +603,9 @@ export default function AdminProductsPage() {
                         ) : (
                           <span className="px-3 py-2 rounded-xl bg-slate-800/50 text-slate-500 text-xs font-bold cursor-not-allowed" title="منتج مندوب غير منشور بصفحة عامة">معاينة بالمتجر</span>
                         )}
+                        {p.source === 'manufacturer' && (
+                          <Link href={`/admin/products/${p.id}`} className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold">مسار التتبع</Link>
+                        )}
                         <button onClick={() => openEdit(p)} className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold">تعديل</button>
                         {isPending(p) && (
                           <button onClick={() => approve(p)} disabled={busyKey === p.key} className="px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold disabled:opacity-50">اعتماد</button>
