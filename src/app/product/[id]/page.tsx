@@ -566,14 +566,30 @@ export default function ProductDetailPage() {
 
         let data: any = null;
         if (isUuidRef) {
+          // QR posters / shared links may carry either manufacturer_products.id or the
+          // originating agent_products.id (stored as manufacturer_products.agent_product_id).
           const res = await supabase.
           from('manufacturer_products').
           select(selectCols).
-          eq('id', rawRef).
+          or(`id.eq.${rawRef},agent_product_id.eq.${rawRef}`).
           eq('is_active', true).
+          order('created_at', { ascending: false }).
           limit(1).
           maybeSingle();
           data = res.data;
+
+          if (!data) {
+            // Retry without the embedded profile join in case the joined tables are not readable by guests.
+            const plain = await supabase.
+            from('manufacturer_products').
+            select('*').
+            or(`id.eq.${rawRef},agent_product_id.eq.${rawRef}`).
+            eq('is_active', true).
+            order('created_at', { ascending: false }).
+            limit(1).
+            maybeSingle();
+            data = plain.data;
+          }
         } else if (safeRef) {
           // short_id is case-sensitive; slug/sku are matched case-insensitively (e.g. /p/ya35 or /p/DH-YE-1000).
           const lowered = safeRef.toLowerCase();
@@ -585,6 +601,17 @@ export default function ProductDetailPage() {
           limit(1).
           maybeSingle();
           data = bySlugOrSku.data;
+
+          if (!data) {
+            const plain = await supabase.
+            from('manufacturer_products').
+            select('*').
+            or(`short_id.eq.${safeRef},slug.ilike.${lowered},sku.ilike.${safeRef}`).
+            eq('is_active', true).
+            limit(1).
+            maybeSingle();
+            data = plain.data;
+          }
         }
 
         if (data) {
