@@ -2980,6 +2980,9 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
   const [bankCountry, setBankCountry] = useState('');
   const [dialCode, setDialCode] = useState<string>(() => resolveDialCode(partnerCountry));
 
+  // Determine if partner is domestic (Yemen) or international
+  const isDomestic = isYemenPartner(partnerCountry);
+
   const handleBankSave = async () => {
     setSwiftError('');
     setIbanError('');
@@ -3011,9 +3014,6 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
       setBankSaving(false);
     }
   };
-
-  // Determine if partner is domestic (Yemen) or international
-  const isDomestic = isYemenPartner(partnerCountry);
 
   // Keep for backward compat display
   const savedBank = savedPayout ? { bank_name: savedPayout.bank_name, account_number: savedPayout.account_number, beneficiary_name: savedPayout.beneficiary_name } : null;
