@@ -672,7 +672,9 @@ export default function ProductDetailPage() {
           dbTiers[0].min_qty :
           parseInt(String(data.minimum_order_qty || data.min_order_quantity || data.moq || 1)) || 1;
           const tierUnit = data.unit || 'unit';
-          const rowCurrency = String(data.currency || 'YER').toUpperCase();
+          const rowCurrency = String(data.origin_type || '').toLowerCase() === 'international' ?
+          'USD' : String(data.origin_type || '').toLowerCase() === 'local' ?
+          'YER' : String(data.currency || 'YER').toUpperCase() === 'USD' ? 'USD' : 'YER';
           const curSym = rowCurrency === 'YER' ? '' : '$';
           const curSuffix = rowCurrency === 'YER' ? ' ر.ي' : '';
           const fmtCur = (n: number) => `${curSym}${n.toFixed(2)}${curSuffix}`;

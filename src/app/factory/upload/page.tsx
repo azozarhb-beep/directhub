@@ -70,16 +70,13 @@ const CATEGORY_META: { value: ProductCategory; labelKey: string; icon: string }[
 ];
 
 const CURRENCIES = [
+  { code: 'YER', symbol: 'ر.ي', label: 'YER' },
   { code: 'USD', symbol: '$', label: 'USD' },
-  { code: 'SAR', symbol: 'ر.س', label: 'SAR' },
-  { code: 'AED', symbol: 'د.إ', label: 'AED' },
-  { code: 'QAR', symbol: 'ر.ق', label: 'QAR' },
-  { code: 'EGP', symbol: 'ج.م', label: 'EGP' },
-  { code: 'YER', symbol: '﷼', label: 'YER' },
-  { code: 'EUR', symbol: '€',   label: 'EUR' },
-  { code: 'GBP', symbol: '£',   label: 'GBP' },
-  { code: 'TRY', symbol: '₺',   label: 'TRY' },
-  { code: 'CNY', symbol: '¥',   label: 'CNY' },
+];
+
+const ORIGIN_OPTIONS: { value: 'local' | 'international'; currency: 'YER' | 'USD'; labelAr: string }[] = [
+  { value: 'local', currency: 'YER', labelAr: 'محلي — ر.ي' },
+  { value: 'international', currency: 'USD', labelAr: 'دولي — $' },
 ];
 
 const SALES_MODEL_OPTIONS: { value: SalesModel; labelAr: string; labelEn: string; icon: string; descAr: string }[] = [
@@ -94,7 +91,7 @@ const INITIAL_FORM: FormState = {
   category: 'other',
   description: '',
   description_ar: '',
-  currency: 'USD',
+  currency: 'YER',
   unit_price: '',
   unit: 'kg',
   custom_unit: '',
@@ -470,6 +467,7 @@ export default function FactoryProductUploadPage() {
         is_active: true,
         is_published: false,
         factory_type: 'local',
+        origin_type: form.currency === 'USD' ? 'international' : 'local',
         lead_time_days: 14,
         payout_account_ref: selectedPayoutAccountId || null,
         sales_model: form.sales_model,
@@ -768,15 +766,15 @@ export default function FactoryProductUploadPage() {
                     <span className="text-red-500 mr-1">*</span>
                   </label>
                   <div className="flex flex-col sm:flex-row gap-2">
-                    {/* Currency selector */}
+                    {/* Currency selector (strict: YER for local, USD for international) */}
                     <select
                       value={form.currency}
                       onChange={(e) => set('currency', e.target.value)}
                       className="w-full sm:w-36 px-3 py-2.5 border border-border rounded-xl text-sm text-foreground bg-background focus:outline-none focus:border-primary transition-colors sm:shrink-0"
                     >
-                      {CURRENCIES.map((c) => (
-                        <option key={c.code} value={c.code}>
-                          {c.symbol} {c.code}
+                      {ORIGIN_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.currency}>
+                          {o.labelAr}
                         </option>
                       ))}
                     </select>

@@ -10,7 +10,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
 import TrustScoreBadge from '@/components/TrustScoreBadge';
-import { BRAND_PLACEHOLDER_IMAGE, formatYer, translateUnitAr } from '@/lib/catalogDisplay';
+import { BRAND_PLACEHOLDER_IMAGE, currencyForOrigin, formatPriceByOrigin, translateUnitAr } from '@/lib/catalogDisplay';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,6 +40,7 @@ interface Product {
   stock_quantity: number;
   inventory_status: string;
   origin_country: string;
+  origin_type?: 'local' | 'international' | null;
   is_active: boolean;
   /** Retail / quick-buy unit price (B2C) */
   price: number | null;
@@ -130,7 +131,7 @@ export default function FactoryStorePage() {
 
       const { data: productsData } = await supabase
         .from('manufacturer_products')
-        .select('id, name, name_ar, category, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, is_active, shipping_terms, image_url')
+        .select('id, name, name_ar, category, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, origin_type, is_active, shipping_terms, image_url')
         .eq('manufacturer_id', regData.user_id)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
@@ -166,7 +167,7 @@ export default function FactoryStorePage() {
       name: language === 'ar' && product.name_ar ? product.name_ar : product.name,
       nameAr: product.name_ar,
       price: product.unit_price,
-      currency: 'YER',
+      currency: currencyForOrigin(product.origin_type),
       quantity: 1,
       moq: `${product.minimum_order_qty ?? 1} ${translateUnitAr(product.unit)}`,
       moqNumber: Math.max(1, Number(product.minimum_order_qty) || 1),
@@ -403,7 +404,7 @@ export default function FactoryStorePage() {
                     <p className="font-semibold text-slate-900 text-sm line-clamp-2">{language === 'ar' && product.name_ar ? product.name_ar : product.name}</p>
                     <div className="flex items-center justify-between mt-2">
                       <div>
-                        <p className={`font-bold text-lg ${salesMode === 'b2b' ? 'text-indigo-700' : 'text-rose-700'}`}>{formatYer(displayPrice)}</p>
+                        <p className={`font-bold text-lg ${salesMode === 'b2b' ? 'text-indigo-700' : 'text-rose-700'}`}>{formatPriceByOrigin(displayPrice, product.origin_type)}</p>
                         <p className="text-slate-400 text-xs">/ {translateUnitAr(product.unit)}</p>
                       </div>
                       <div className="text-left">

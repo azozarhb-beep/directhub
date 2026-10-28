@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Icon from '@/components/ui/AppIcon';
 import { getTierPriceBounds, normalizeTiers } from '@/lib/tieredPricing';
-import { BRAND_PLACEHOLDER_IMAGE, formatYer, pickFactoryName, translateUnitAr } from '@/lib/catalogDisplay';
+import { BRAND_PLACEHOLDER_IMAGE, formatPriceByOrigin, pickFactoryName, translateUnitAr } from '@/lib/catalogDisplay';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface MarketplaceProduct {
@@ -30,6 +30,7 @@ export interface MarketplaceProduct {
   seller_badge?: string | null;
   company_name?: string | null;
   manufacturer_id?: string | null;
+  origin_type?: 'local' | 'international' | null;
 }
 
 interface MarketplaceProductCardProps {
@@ -73,10 +74,10 @@ const MarketplaceProductCard: React.FC<MarketplaceProductCardProps> = ({
   const flatPrice = Number(product.unit_price) || 0;
   const priceMinNum = tierBounds ? tierBounds.min : flatPrice;
   const priceMaxNum = tierBounds ? tierBounds.max : flatPrice;
-  const b2bPriceMin = formatYer(priceMinNum);
-  const b2bPriceMax = formatYer(priceMaxNum);
+  const b2bPriceMin = formatPriceByOrigin(priceMinNum, product.origin_type);
+  const b2bPriceMax = formatPriceByOrigin(priceMaxNum, product.origin_type);
   const hasPriceRange = b2bPriceMin !== b2bPriceMax;
-  const b2cPrice = formatYer(priceMinNum);
+  const b2cPrice = formatPriceByOrigin(priceMinNum, product.origin_type);
   const displayMoq = cardTiers.length > 0 ? cardTiers[0].min_qty : Math.max(1, Number(product.minimum_order_qty) || 1);
 
   const displayNameAr = product.name_ar || product.name;

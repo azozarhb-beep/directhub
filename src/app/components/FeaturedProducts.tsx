@@ -27,6 +27,7 @@ interface Product {
   category: string;
   seller_badge?: 'certified_factory' | 'local_supplier' | null;
   international_manufacturer_id?: string | null;
+  origin_type?: 'local' | 'international' | null;
   user_profiles?: {company_name: string;full_name: string;country: string;role: string;};
   supplier_profiles?: {is_verified: boolean;tier: string;};
 }
@@ -154,7 +155,8 @@ const ProductCard: React.FC<{product: Product;index: number;isInternational?: bo
           is_verified: product.supplier_profiles?.is_verified ?? false,
           seller_badge: product.seller_badge,
           company_name: pickFactoryName(product.user_profiles?.company_name, product.user_profiles?.full_name) || undefined,
-          manufacturer_id: product.international_manufacturer_id
+          manufacturer_id: product.international_manufacturer_id,
+          origin_type: product.origin_type ?? (isInternational ? 'international' : 'local')
         }}
         buyerMode="b2b"
         index={index}
@@ -240,7 +242,7 @@ const FeaturedProducts: React.FC = () => {
 
   useEffect(() => {
     const PRODUCT_SELECT =
-    'id, name, name_ar, image_url, unit_price, tiered_pricing, minimum_order_qty, unit, origin_country, is_active, category, seller_badge, international_manufacturer_id, user_profiles!manufacturer_products_manufacturer_id_fkey(company_name, full_name, country, role, supplier_profiles(is_verified, tier))';
+    'id, name, name_ar, image_url, unit_price, tiered_pricing, minimum_order_qty, unit, origin_country, origin_type, is_active, category, seller_badge, international_manufacturer_id, user_profiles!manufacturer_products_manufacturer_id_fkey(company_name, full_name, country, role, supplier_profiles(is_verified, tier))';
 
     const normalizeProducts = (rows: any[]): Product[] =>
     (rows || []).map((row) => {
@@ -281,17 +283,16 @@ const FeaturedProducts: React.FC = () => {
         if (activeTab === 'local_manufacturers') {
           // Local origin + manufacturer role
           query = query.
-          in('origin_country', LOCAL_COUNTRY_IDENTIFIERS).
+          eq('origin_type', 'local').
           eq('user_profiles.role', 'manufacturer');
         } else if (activeTab === 'local_suppliers') {
           // Local origin + supplier role (non-manufacturer)
           query = query.
-          in('origin_country', LOCAL_COUNTRY_IDENTIFIERS).
+          eq('origin_type', 'local').
           eq('user_profiles.role', 'supplier');
         } else if (activeTab === 'global_manufacturers') {
-          // NOT local origin — international manufacturers
-          // PostgREST not.in syntax: values as comma-separated list in parentheses
-          query = query.not('origin_country', 'in', `(${LOCAL_COUNTRY_IDENTIFIERS.join(',')})`);
+          // International manufacturers
+          query = query.eq('origin_type', 'international');
         }
 
         const { data, error } = await query;
@@ -306,7 +307,7 @@ const FeaturedProducts: React.FC = () => {
           from('manufacturer_products').
           select(PRODUCT_SELECT).
           eq('is_active', true).
-          in('origin_country', LOCAL_COUNTRY_IDENTIFIERS).
+          eq('origin_type', 'local').
           order('created_at', { ascending: false }).
           limit(6);
           if (activeFilter !== 'All') {

@@ -57,6 +57,27 @@ export function formatYer(amount: number | string | null | undefined): string {
   return `${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ر.ي`;
 }
 
+/** Format a price strictly in USD: "$1,250.00" */
+export function formatUsd(amount: number | string | null | undefined): string {
+  const n = Number(amount) || 0;
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+export type OriginType = 'local' | 'international';
+
+/** Strict two-currency rule: international => USD, local => YER. */
+export function currencyForOrigin(origin?: string | null): 'USD' | 'YER' {
+  return String(origin || 'local').toLowerCase() === 'international' ? 'USD' : 'YER';
+}
+
+/** Format a price using the currency dictated by the product origin (USD for international, YER for local). */
+export function formatPriceByOrigin(
+  amount: number | string | null | undefined,
+  origin?: string | null
+): string {
+  return currencyForOrigin(origin) === 'USD' ? formatUsd(amount) : formatYer(amount);
+}
+
 const HIDDEN_VENDOR_PATTERNS = [/مكتب\s*التنسيق/i, /coordination\s*office/i, /field\s*agent/i, /مندوب/i, /وكيل\s*ميداني/i];
 
 /** Returns true when a vendor label is an agent / coordination-office label that must never be shown to buyers. */

@@ -112,7 +112,7 @@ function MobileProductCard({ product }: { product: Product }) {
         <div className="flex items-center justify-between mt-auto pt-2 border-t border-border">
           <div>
             <p className="text-base font-extrabold text-primary">
-              {product.unit_price.toLocaleString()} <span className="text-xs font-medium">{product.currency || 'SAR'}</span>
+              {product.unit_price.toLocaleString()} <span className="text-xs font-medium">{String(product.currency || 'YER').toUpperCase() === 'USD' ? '$' : 'ر.ي'}</span>
             </p>
             <p className="text-[10px] text-muted-foreground">{sp.per} {product.unit} · {sp.moq} {product.minimum_order_qty}</p>
           </div>
