@@ -669,8 +669,19 @@ export default function ProductDetailPage() {
           language === 'ar' ? 'مصنع مسجل' : 'Registered Factory');
           const factoryCountryCode: string = factoryPublic?.country_code || '';
           const factoryCity: string = factoryPublic?.city || '';
+          const COUNTRY_LABELS: Record<string, {ar: string;en: string;}> = {
+            YE: { ar: 'اليمن', en: 'Yemen' },
+            SA: { ar: 'السعودية', en: 'Saudi Arabia' },
+            CN: { ar: 'الصين', en: 'China' },
+            TR: { ar: 'تركيا', en: 'Turkey' },
+            IN: { ar: 'الهند', en: 'India' },
+            EG: { ar: 'مصر', en: 'Egypt' },
+            AE: { ar: 'الإمارات', en: 'UAE' },
+            OM: { ar: 'عمان', en: 'Oman' }
+          };
+          const factoryCountryName = COUNTRY_LABELS[factoryCountryCode]?.[language === 'ar' ? 'ar' : 'en'] || factoryCountryCode;
           const supplierCountry = factoryCountryCode ?
-          `${factoryCity ? `${factoryCity}، ` : ''}${factoryCountryCode === 'YE' ? language === 'ar' ? 'اليمن' : 'Yemen' : factoryCountryCode} (${factoryCountryCode})` :
+          `${factoryCity ? `${factoryCity}، ` : ''}${factoryCountryName} (${factoryCountryCode})` :
           data.origin_country || (joinedProfileIsFactory ? userProfile?.country : null) || 'Global';
           const isVerified = true;
           const rating = supplierProfile?.rating || 4.5;
@@ -692,7 +703,7 @@ export default function ProductDetailPage() {
           dbTiers[0].min_qty :
           parseInt(String(data.minimum_order_qty || data.min_order_quantity || data.moq || 1)) || 1;
           const tierUnit = data.unit || 'unit';
-          const rowCurrency = String(data.origin_type || '').toLowerCase() === 'international' ?
+          const rowCurrency = String(data.origin_type || factoryPublic?.origin_type || '').toLowerCase() === 'international' ?
           'USD' : String(data.origin_type || '').toLowerCase() === 'local' ?
           'YER' : String(data.currency || 'YER').toUpperCase() === 'USD' ? 'USD' : 'YER';
           const curSym = rowCurrency === 'YER' ? '' : '$';
@@ -737,7 +748,7 @@ export default function ProductDetailPage() {
             specifications: specs,
             leadTime: leadTimeStr,
             paymentTerms: language === 'ar' ? 'دفع عبر الضمان / تحويل بنكي / محفظة' : 'Escrow / Bank transfer / Wallet',
-            port: data.shipping_port === 'YEMEN_ALL' ? language === 'ar' ? 'كافة المحافظات اليمنية' : 'All Yemeni governorates' : data.shipping_port === 'FACTORY_GOVERNORATE' ? language === 'ar' ? 'نطاق محافظة المصنع فقط' : 'Factory governorate only' : data.shipping_port || supplierCountry,
+            port: data.shipping_port === 'YEMEN_ALL' ? language === 'ar' ? 'كافة المحافظات اليمنية' : 'All Yemeni governorates' : data.shipping_port === 'FACTORY_GOVERNORATE' ? language === 'ar' ? 'نطاق محافظة المصنع فقط' : 'Factory governorate only' : data.shipping_port || factoryPublic?.shipping_port || supplierCountry,
             shippingTerms: (['DELIVERY_INCLUDED', 'EX_FACTORY', 'CALCULATED_SHIPPING'].includes(data.shipping_terms) ? data.shipping_terms : 'CALCULATED_SHIPPING') as 'DELIVERY_INCLUDED' | 'EX_FACTORY' | 'CALCULATED_SHIPPING',
             agentListed: !!data.agent_product_id,
             certifications: certs.length > 0 ? certs : undefined,
@@ -758,7 +769,7 @@ export default function ProductDetailPage() {
             shortId: data.short_id || undefined,
             slug: data.slug || undefined,
             incoterms: Array.isArray(data.supported_incoterms) ? data.supported_incoterms.filter(Boolean) : [],
-            portOfLoading: data.port_of_loading || undefined
+            portOfLoading: data.port_of_loading || factoryPublic?.shipping_port || undefined
           });
           // Determine B2B: sales_model field, b2b_enabled flag, or has tiered pricing
           const salesModel = (data.sales_model || '').toLowerCase();

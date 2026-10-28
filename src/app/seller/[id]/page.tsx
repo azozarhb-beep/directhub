@@ -161,7 +161,9 @@ export default function SellerPublicProfilePage() {
           .select('established_year')
           .eq('user_id', id)
           .maybeSingle();
-        setSeller({ ...profileData, established_year: regData?.established_year ?? null });
+        const rawYear = Number(regData?.established_year);
+        const validYear = Number.isInteger(rawYear) && rawYear >= 1900 && rawYear <= new Date().getFullYear() ? rawYear : null;
+        setSeller({ ...profileData, established_year: validYear });
       }
 
       const { data: productsData } = await supabase

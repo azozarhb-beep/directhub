@@ -535,11 +535,12 @@ export default function RFQPage() {
                 <div>
                   <label className="block text-xs font-bold text-foreground mb-1.5">{L.currency}</label>
                   <select
-                    value={form.currency}
-                    onChange={e => update('currency', e.target.value)}
-                    className="w-full px-4 py-3 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                    value="USD"
+                    onChange={() => update('currency', 'USD')}
+                    disabled
+                    className="w-full px-4 py-3 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary transition-colors opacity-80 cursor-not-allowed"
                   >
-                    {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    <option value="USD">USD</option>
                   </select>
                 </div>
               </div>

@@ -125,7 +125,7 @@ export default function FactoryStorePage() {
         trust_percentage: regData.trust_percentage || 0,
         verified_tier: regData.verified_tier || 'unverified',
         registration_status: regData.registration_status || 'pending',
-        established_year: regData.established_year || 0,
+        established_year: Number(regData.established_year) >= 1900 && Number(regData.established_year) <= new Date().getFullYear() ? Number(regData.established_year) : 0,
         user_id: regData.user_id,
       });
 

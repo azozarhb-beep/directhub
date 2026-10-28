@@ -14,6 +14,8 @@ interface FactoryPublicProfile {
   company_name: string | null;
   city: string;
   country_code: string;
+  origin_type?: string | null;
+  shipping_port?: string | null;
   industry: string | null;
   annual_capacity: string | null;
   established_year: string | null;
@@ -33,6 +35,8 @@ interface CatalogItem {
   inventory_status: string | null;
   origin_country: string | null;
   image_url: string | null;
+  currency?: string | null;
+  origin_type?: string | null;
 }
 
 interface PublicFactoryProfileProps {
@@ -110,6 +114,14 @@ export default function PublicFactoryProfile({ factoryId }: PublicFactoryProfile
 
   const countryName = COUNTRY_NAMES[profile.country_code]?.[isAr ? 'ar' : 'en'] || profile.country_code;
   const locationLine = `${profile.city ? `${profile.city}، ` : ''}${countryName} (${profile.country_code})`;
+  const isInternational = String(profile.origin_type || '').toLowerCase() === 'international';
+  const establishedYearNum = Number(profile.established_year);
+  const currentYear = new Date().getFullYear();
+  const validEstablished =
+  Number.isInteger(establishedYearNum) && establishedYearNum >= 1900 && establishedYearNum <= currentYear ?
+  establishedYearNum :
+  null;
+  const experienceYears = validEstablished ? currentYear - validEstablished : null;
 
   return (
     <div className="min-h-screen bg-background flex flex-col" dir={dir}>
@@ -126,6 +138,18 @@ export default function PublicFactoryProfile({ factoryId }: PublicFactoryProfile
               </h1>
               <p className="text-sm text-muted-foreground mt-1">{locationLine}</p>
               <div className="flex flex-wrap gap-2 mt-3">
+                {isInternational &&
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-[11px] font-bold">
+                    {isAr ? 'جهة تصنيع دولية' : 'International manufacturer'}
+                  </span>
+                }
+                {validEstablished && experienceYears !== null &&
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[11px] font-bold">
+                    {experienceYears > 0 ?
+                  isAr ? `خبرة ${experienceYears} عاماً` : `${experienceYears} years experience` :
+                  isAr ? `منذ ${validEstablished}` : `Since ${validEstablished}`}
+                  </span>
+                }
                 {profile.commercial_register_verified ?
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[11px] font-bold">
                     <Icon name="CheckBadgeIcon" size={12} variant="solid" />
@@ -139,6 +163,13 @@ export default function PublicFactoryProfile({ factoryId }: PublicFactoryProfile
               </div>
             </div>
           </div>
+
+          {isInternational && profile.shipping_port &&
+          <p className="text-xs text-muted-foreground mt-4" dir="ltr">
+              {isAr ? 'ميناء الشحن (FOB): ' : 'Port of loading (FOB): '}
+              <span className="font-semibold text-foreground">{profile.shipping_port}</span>
+            </p>
+          }
 
           <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 pt-5 border-t border-border text-sm">
             <div>
@@ -180,7 +211,9 @@ export default function PublicFactoryProfile({ factoryId }: PublicFactoryProfile
                     {isAr && item.name_ar ? item.name_ar : item.name}
                   </h3>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {Number(item.unit_price ?? 0).toLocaleString('en-US')} {isAr ? 'ر.ي' : 'YER'}
+                    {String(item.currency || '').toUpperCase() === 'USD' || String(item.origin_type || profile.origin_type || '').toLowerCase() === 'international' ?
+                  `$${Number(item.unit_price ?? 0).toLocaleString('en-US')}` :
+                  `${Number(item.unit_price ?? 0).toLocaleString('en-US')} ${isAr ? 'ر.ي' : 'YER'}`}
                     {item.unit ? ` / ${item.unit}` : ''}
                   </p>
                 </div>
