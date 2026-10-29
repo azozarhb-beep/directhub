@@ -164,6 +164,7 @@ interface InvoicePrintData {
   notes: string;
   cbm: number;
   containerCapacity: ContainerCap;
+  plannedExport: boolean;
 }
 
 function buildInvoiceHtml(d: InvoicePrintData): string {
@@ -184,7 +185,11 @@ function buildInvoiceHtml(d: InvoicePrintData): string {
   const tradeGrid = isLocal
     ? `<div class="box"><div class="lbl">Currency / العملة</div><strong>${d.currency}</strong></div>
     <div class="box"><div class="lbl">Governorate / City — المحافظة / المدينة</div><strong>${escapeHtml(d.governorate) || '—'}</strong></div>
-    <div class="box" style="grid-column:span 2"><div class="lbl">Delivery Terms — شروط التسليم</div><strong>${escapeHtml(d.deliveryTermsLabel) || '—'}</strong></div>`
+    <div class="box" style="grid-column:span 2"><div class="lbl">Delivery Terms — شروط التسليم</div><strong>${escapeHtml(d.deliveryTermsLabel) || '—'}</strong></div>${
+      d.plannedExport
+        ? `<div class="box" style="grid-column:span 2"><div class="lbl">Planned Export Incoterm — شرط التصدير المخطط</div><strong>${d.incoterm}</strong></div>`
+        : ''
+    }`
     : `<div class="box"><div class="lbl">Incoterms</div><strong>${d.incoterm}</strong></div>
     <div class="box"><div class="lbl">Currency</div><strong>USD</strong></div>
     <div class="box"><div class="lbl">Port of Loading</div><strong>${escapeHtml(d.portOfLoading) || '—'}</strong></div>
@@ -702,6 +707,7 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
   const [buyerAddress, setBuyerAddress] = useState('');
   const [buyerCountry, setBuyerCountry] = useState('');
   const [incoterm, setIncoterm] = useState<Incoterm>('FOB');
+  const [plannedExport, setPlannedExport] = useState(false);
   const [cbm, setCbm] = useState(0);
   const [containerCapacity, setContainerCapacity] = useState<ContainerCap>('');
   const [portOfLoading, setPortOfLoading] = useState('');
@@ -937,7 +943,7 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
         consignee_name: buyerName.trim(),
         consignee_address: buyerAddress.trim() || null,
         consignee_country: buyerCountry.trim() || null,
-        incoterm: isLocal ? null : incoterm,
+        incoterm: isLocal ? (plannedExport ? incoterm : null) : incoterm,
         port_of_loading: isLocal ? null : portOfLoading.trim() || null,
         port_of_discharge: isLocal ? null : portOfDischarge.trim() || null,
         cbm: isLocal || !cbm ? null : Number(cbm),
@@ -1016,6 +1022,7 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
     notes,
     cbm,
     containerCapacity,
+    plannedExport: isLocal && plannedExport,
   };
 
   const handleExport = () => {
@@ -1275,6 +1282,33 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
                         </button>
                       ))}
                     </div>
+                  </div>
+                  <div className="sm:col-span-2 rounded-lg border border-dashed border-border p-3 space-y-2">
+                    <label className="flex items-center gap-2 text-xs font-semibold text-foreground cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={plannedExport}
+                        onChange={e => setPlannedExport(e.target.checked)}
+                        className="rounded border-border"
+                      />
+                      أخطط للتصدير / Planning to export (Incoterms)
+                    </label>
+                    {plannedExport && (
+                      <div className="grid grid-cols-3 gap-2">
+                        {(['EXW', 'FOB', 'CIF'] as const).map(term => (
+                          <button
+                            key={term}
+                            type="button"
+                            onClick={() => setIncoterm(term)}
+                            className={`py-2 text-xs font-semibold rounded-lg border transition-colors ${
+                              incoterm === term ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border text-foreground hover:border-primary/50'
+                            }`}
+                          >
+                            {term}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </>
               ) : (
@@ -1611,6 +1645,12 @@ function ExportInvoicingModule({ userId }: { userId: string }) {
                     <p className="text-[10px] text-muted-foreground">شروط التسليم / Delivery Terms</p>
                     <p className="font-semibold text-foreground">{LOCAL_DELIVERY_LABELS[deliveryTerms].ar}</p>
                   </div>
+                  {plannedExport && (
+                    <div className="bg-muted/30 rounded-lg p-2 col-span-2">
+                      <p className="text-[10px] text-muted-foreground">شرط التصدير المخطط / Planned Export Incoterm</p>
+                      <p className="font-semibold text-foreground">{incoterm}</p>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>

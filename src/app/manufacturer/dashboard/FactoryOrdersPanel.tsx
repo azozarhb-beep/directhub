@@ -9,6 +9,36 @@ import { computeFreeTime } from '@/lib/portFreeTime';
 import { isB2BOrder } from './EscrowMilestoneTimeline';
 import FactorySelfReleasePanel from './FactorySelfReleasePanel';
 
+type OrderCurrency = 'YER' | 'USD';
+
+/**
+ * Resolve an order's currency from its origin.
+ * Explicit order.currency (YER/USD) wins, then export signals (incoterms / port),
+ * otherwise domestic orders default to YER.
+ */
+function resolveOrderCurrency(order: any): OrderCurrency {
+  const itemCur = Array.isArray(order?.items)
+    ? String(order.items.find((it: any) => it?.currency)?.currency || '').trim().toUpperCase()
+    : '';
+  if (itemCur === 'YER' || itemCur === 'USD') return itemCur as OrderCurrency;
+  const exportSignal = order?.incoterms || order?.incoterm_type || order?.port_of_discharge || order?.bl_document_url || order?.bill_of_lading_url;
+  if (exportSignal) return 'USD';
+  const explicit = String(order?.currency || '').trim().toUpperCase();
+  // orders.currency defaults to 'USD' in the DB, so only YER is trusted without export signals
+  if (explicit === 'YER') return 'YER';
+  const country = String(order?.user_profiles?.country || order?.shipping_address?.country || '').trim().toLowerCase();
+  if (country && !['yemen', 'ye', 'yem', 'اليمن', 'يمني'].includes(country)) return 'USD';
+  return 'YER';
+}
+
+function formatOrderMoney(amount: number, currency: OrderCurrency, withCode = false): string {
+  const n = Number(amount || 0);
+  if (currency === 'USD') {
+    return `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}${withCode ? ' USD' : ''}`;
+  }
+  return `${n.toLocaleString('en-US', { maximumFractionDigits: 0 })} ر.ي${withCode ? ' YER' : ''}`;
+}
+
 interface FactoryOrdersPanelProps {
   factoryOrders: any[];
   factoryOrdersLoading: boolean;
@@ -56,7 +86,7 @@ export default function FactoryOrdersPanel({
   const [showDispatchChat, setShowDispatchChat] = useState<string | null>(null);
   const [portShipments, setPortShipments] = useState<Record<string, any[]>>({});
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createForm, setCreateForm] = useState({ productName: '', quantity: '1', unitPrice: '', note: '' });
+  const [createForm, setCreateForm] = useState({ productName: '', quantity: '1', unitPrice: '', note: '', currency: 'YER' as OrderCurrency });
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError] = useState('');
 
@@ -82,14 +112,15 @@ export default function FactoryOrdersPanel({
         factory_user_id: currentUserId,
         order_number: orderNumber,
         status: 'pending',
-        items: [{ name: createForm.productName.trim(), quantity: qty, unit_price: unitPrice }],
+        items: [{ name: createForm.productName.trim(), quantity: qty, unit_price: unitPrice, currency: createForm.currency }],
+        currency: createForm.currency,
         subtotal: total,
         total,
         notes: createForm.note.trim(),
       });
       if (error) throw error;
       setShowCreateModal(false);
-      setCreateForm({ productName: '', quantity: '1', unitPrice: '', note: '' });
+      setCreateForm({ productName: '', quantity: '1', unitPrice: '', note: '', currency: 'YER' });
       setFactoryOrderStatusFilter('all');
       fetchFactoryOrders();
     } catch (err: any) {
@@ -164,13 +195,22 @@ export default function FactoryOrdersPanel({
     const secured = bulk.filter((o: any) =>
       ['funds_secured', 'shipped', 'ready_for_inspection', 'pending_otp_confirmation', 'pending_admin_payout'].includes(o.escrow_status || '')
     );
-    const securedValue = secured.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+    const sumBy = (list: any[], cur: OrderCurrency) =>
+      list.filter((o: any) => resolveOrderCurrency(o) === cur).reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+    const securedValue = { YER: sumBy(secured, 'YER'), USD: sumBy(secured, 'USD') };
     const blAwaiting = bulk.filter(
       (o: any) => (o.bl_document_url || o.bill_of_lading_url) && !o.milestone_2_paid && o.escrow_status !== 'funds_released'
     ).length;
-    const bulkValue = bulk.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+    const bulkValue = { YER: sumBy(bulk, 'YER'), USD: sumBy(bulk, 'USD') };
     return { count: bulk.length, securedValue, blAwaiting, bulkValue };
   }, [factoryOrders]);
+
+  const formatDual = (v: { YER: number; USD: number }): string => {
+    const parts: string[] = [];
+    if (v.YER > 0) parts.push(formatOrderMoney(v.YER, 'YER'));
+    if (v.USD > 0) parts.push(formatOrderMoney(v.USD, 'USD'));
+    return parts.length ? parts.join(' + ') : formatOrderMoney(0, localInbox ? 'YER' : 'USD');
+  };
 
   return (
     <div className="space-y-5">
@@ -232,8 +272,8 @@ export default function FactoryOrdersPanel({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3" dir="rtl" aria-label="مؤشرات طلبات الجملة">
         {[
           { label: 'طلبات الجملة B2B', value: bulkKpis.count.toLocaleString('en-US'), tone: 'bg-sky-50 text-sky-800 border-sky-200' },
-          { label: 'قيمة طلبات الجملة', value: `$${bulkKpis.bulkValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}`, tone: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
-          { label: 'أموال مؤمَّنة بالضمان', value: `$${bulkKpis.securedValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}`, tone: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+          { label: 'قيمة طلبات الجملة', value: formatDual(bulkKpis.bulkValue), tone: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
+          { label: 'أموال مؤمَّنة بالضمان', value: formatDual(bulkKpis.securedValue), tone: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
           { label: 'بانتظار صرف الدفعة 40%', value: bulkKpis.blAwaiting.toLocaleString('en-US'), tone: 'bg-amber-50 text-amber-800 border-amber-200' },
         ].map((k) => (
           <div key={k.label} className={`rounded-xl border p-4 ${k.tone}`}>
@@ -380,7 +420,7 @@ export default function FactoryOrdersPanel({
                         <p className="text-xs text-muted-foreground">
                           {new Date(order.created_at).toLocaleDateString('ar-SA', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </p>
-                        <p className="text-sm font-bold text-foreground">${Number(order.total || 0).toLocaleString()}</p>
+                        <p className="text-sm font-bold text-foreground">{formatOrderMoney(Number(order.total || 0), resolveOrderCurrency(order))}</p>
                       </div>
                       {(portShipments[order.id] || []).length > 0 && (
                         <div className="mt-2 space-y-1.5">
@@ -454,7 +494,7 @@ export default function FactoryOrdersPanel({
                   </div>
                   <div>
                     <p className="text-muted-foreground mb-0.5">المبلغ الإجمالي</p>
-                    <p className="font-bold text-foreground">${Number(selectedFactoryOrder.total || 0).toLocaleString()} USD</p>
+                    <p className="font-bold text-foreground">{formatOrderMoney(Number(selectedFactoryOrder.total || 0), resolveOrderCurrency(selectedFactoryOrder), true)}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground mb-0.5">تاريخ الطلب</p>
@@ -501,7 +541,7 @@ export default function FactoryOrdersPanel({
                           </div>
                           <div className="text-right shrink-0 ml-3">
                             <p className="font-semibold text-foreground">الكمية: {item.quantity || item.qty || 1}</p>
-                            {item.unit_price && <p className="text-muted-foreground">${Number(item.unit_price).toLocaleString()} / وحدة</p>}
+                            {item.unit_price && <p className="text-muted-foreground">{formatOrderMoney(Number(item.unit_price), (String(item.currency || '').toUpperCase() === 'USD' || String(item.currency || '').toUpperCase() === 'YER' ? String(item.currency).toUpperCase() : resolveOrderCurrency(selectedFactoryOrder)) as OrderCurrency)} / وحدة</p>}
                           </div>
                         </div>
                       ))}
@@ -701,7 +741,7 @@ export default function FactoryOrdersPanel({
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-muted-foreground block mb-1">سعر الوحدة (USD)</label>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">سعر الوحدة ({createForm.currency})</label>
                 <input
                   type="number"
                   min={0}
@@ -709,6 +749,23 @@ export default function FactoryOrdersPanel({
                   onChange={e => setCreateForm(f => ({ ...f, unitPrice: e.target.value }))}
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background text-foreground text-xs focus:outline-none focus:border-sky-500"
                 />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">العملة / Currency</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['YER', 'USD'] as const).map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCreateForm(f => ({ ...f, currency: c }))}
+                    className={`py-2 text-xs font-bold rounded-xl border transition-colors ${
+                      createForm.currency === c ? 'bg-sky-600 text-white border-sky-600' : 'bg-background border-border text-foreground hover:border-sky-300'
+                    }`}
+                  >
+                    {c === 'YER' ? 'YER — محلي' : 'USD — تصدير'}
+                  </button>
+                ))}
               </div>
             </div>
             <div>
