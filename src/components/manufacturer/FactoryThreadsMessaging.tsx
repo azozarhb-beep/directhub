@@ -743,9 +743,9 @@ export default function FactoryThreadsMessaging({
                       ))}
                     </div>
                   </div>
-                {((activeThread.thread_kind === 'logistics' && activeThread.shipment_ref && (isFactoryViewer || isAdminViewer)) || isFactoryViewer) && (
+                {(activeThread.thread_kind === 'logistics' && activeThread.shipment_ref && (isFactoryViewer || isAdminViewer)) || (isFactoryViewer && activeThread.thread_kind !== 'logistics' && !!activeThread.order_ref) ? (
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {isFactoryViewer && (
+                    {isFactoryViewer && activeThread.thread_kind !== 'logistics' && !!activeThread.order_ref && (
                       <button
                         type="button"
                         onClick={handleGenerateInvoice}
@@ -768,7 +768,7 @@ export default function FactoryThreadsMessaging({
                       </button>
                     )}
                   </div>
-                )}
+                ) : null}
               </div>
 
               {/* Messages */}
