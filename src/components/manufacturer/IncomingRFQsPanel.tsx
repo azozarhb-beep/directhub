@@ -44,7 +44,7 @@ interface IncomingRFQsPanelProps {
   userId: string;
 }
 
-const CURRENCIES = ['USD', 'EUR', 'CNY', 'SAR', 'AED', 'TRY', 'YER'];
+const CURRENCIES = ['USD', 'YER'];
 
 const URGENCY_LABELS: Record<string, string> = {
   urgent: 'عاجل',
@@ -66,9 +66,29 @@ export default function IncomingRFQsPanel({ userId }: IncomingRFQsPanelProps) {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [factoryCurrency, setFactoryCurrency] = useState<'USD' | 'YER' | null>(null);
+  const [liveFlash, setLiveFlash] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  useEffect(() => {
+    let cancelled = false;
+    if (!userId) return;
+    (async () => {
+      const { data } = await supabase
+        .from('factory_registrations')
+        .select('origin_type')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (cancelled) return;
+      const origin = (data as { origin_type?: string } | null)?.origin_type;
+      setFactoryCurrency(origin === 'international' ? 'USD' : 'YER');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, userId]);
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError('');
     try {
       const { data, error: rfqErr } = await supabase
@@ -93,13 +113,50 @@ export default function IncomingRFQsPanel({ userId }: IncomingRFQsPanelProps) {
     } catch (e: any) {
       setError(e?.message || 'تعذر تحميل طلبات الأسعار');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [supabase, userId]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const flash = (msg: string) => {
+      setLiveFlash(msg);
+      setTimeout(() => setLiveFlash(''), 4000);
+    };
+    const channel = supabase
+      .channel(`factory-rfq-inbox-${userId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'rfq_requests' }, (payload) => {
+        const row = payload.new as IncomingRFQ & { is_published?: boolean };
+        if (row?.is_published === false) return;
+        setRfqs((prev) => (prev.some((r) => r.id === row.id) ? prev : [row, ...prev]));
+        flash('وصل طلب سعر جديد');
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rfq_requests' }, (payload) => {
+        const row = payload.new as IncomingRFQ & { is_published?: boolean };
+        setRfqs((prev) => {
+          if (row?.is_published === false || !['pending', 'responded'].includes(String(row?.status))) {
+            return prev.filter((r) => r.id !== row.id);
+          }
+          return prev.map((r) => (r.id === row.id ? { ...r, ...row } : r));
+        });
+      })
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'rfq_responses', filter: `manufacturer_id=eq.${userId}` },
+        (payload) => {
+          const rfqId = (payload.new as { rfq_id?: string })?.rfq_id;
+          if (rfqId) setRespondedIds((prev) => new Set(prev).add(rfqId));
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, userId]);
 
   const dismissKey = `dh_dismissed_rfqs_${userId || 'anon'}`;
 
@@ -128,19 +185,28 @@ export default function IncomingRFQsPanel({ userId }: IncomingRFQsPanelProps) {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const visible = rfqs.filter((r) => !dismissedIds.has(r.id));
+    const visible = rfqs.filter(
+      (r) =>
+        !dismissedIds.has(r.id) &&
+        (!factoryCurrency || String(r.currency || 'USD').toUpperCase() === factoryCurrency)
+    );
     if (!q) return visible;
     return visible.filter((r) =>
       [r.product_name, r.custom_product_description, r.specifications, r.category, r.sector, r.destination_country]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q))
     );
-  }, [rfqs, search, dismissedIds]);
+  }, [rfqs, search, dismissedIds, factoryCurrency]);
 
   const openForm = (rfq: IncomingRFQ) => {
     setDetailsRfq(null);
     setSelected(rfq);
-    setForm({ unit_price: '', currency: rfq.currency || 'USD', lead_time_days: '', notes: '' });
+    setForm({
+      unit_price: '',
+      currency: factoryCurrency || (rfq.currency === 'YER' ? 'YER' : 'USD'),
+      lead_time_days: '',
+      notes: '',
+    });
     setFormError('');
   };
 
@@ -205,7 +271,7 @@ export default function IncomingRFQsPanel({ userId }: IncomingRFQsPanelProps) {
             />
           </div>
           <button
-            onClick={load}
+            onClick={() => load()}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm text-slate-300 border border-slate-700"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -217,6 +283,11 @@ export default function IncomingRFQsPanel({ userId }: IncomingRFQsPanelProps) {
       {successMsg && (
         <div className="flex items-center gap-2 bg-emerald-900/30 border border-emerald-700/40 text-emerald-300 text-sm rounded-lg px-3 py-2">
           <CheckCircle2 size={16} /> {successMsg}
+        </div>
+      )}
+      {liveFlash && (
+        <div className="flex items-center gap-2 bg-cyan-900/30 border border-cyan-700/40 text-cyan-300 text-sm rounded-lg px-3 py-2">
+          <Inbox size={16} /> {liveFlash}
         </div>
       )}
       {error && (
@@ -369,6 +440,7 @@ export default function IncomingRFQsPanel({ userId }: IncomingRFQsPanelProps) {
                 <select
                   value={form.currency}
                   onChange={(e) => setForm({ ...form, currency: e.target.value })}
+                  disabled={!!factoryCurrency}
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-2 text-sm text-slate-100 focus:outline-none focus:border-purple-500"
                 >
                   {CURRENCIES.map((c) => (
