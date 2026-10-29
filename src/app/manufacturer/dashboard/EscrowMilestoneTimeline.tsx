@@ -3,6 +3,7 @@
 import React, { useRef, useState } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import { createClient } from '@/lib/supabase/client';
+import FactorySelfReleasePanel from './FactorySelfReleasePanel';
 
 export interface EscrowMilestoneOrder {
   id: string;
@@ -394,6 +395,14 @@ export default function EscrowMilestoneTimeline({ order, userId, compact = false
         <div className={`rounded-lg px-3 py-2 text-xs font-semibold border ${msg.ok ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
           {msg.text}
         </div>
+      )}
+
+      {blUrl && order.id && !order.milestone_2_paid && (
+        <FactorySelfReleasePanel
+          orderId={order.id}
+          refreshKey={`${blUrl}|${order.bl_verified_at || ''}`}
+          onReleased={onChanged}
+        />
       )}
     </div>
   );

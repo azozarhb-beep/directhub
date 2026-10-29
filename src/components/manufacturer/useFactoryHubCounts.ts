@@ -59,12 +59,12 @@ export function useFactoryHubCounts(userId?: string | null): { counts: FactoryMo
         safe(() => supabase.from('manufacturer_products').select('id, is_active', { count: 'exact' }).eq('manufacturer_id', userId), emptyRes),
         safe(() => supabase.from('inventory_items').select('id, quantity_available, reorder_level', { count: 'exact' }).eq('manufacturer_id', userId), emptyRes),
         safe(() => supabase.from('rfq_responses').select('id', { count: 'exact', head: true }).eq('supplier_id', userId), emptyRes),
-        safe(() => supabase.from('orders').select('id, status', { count: 'exact' }).eq('manufacturer_id', userId), emptyRes),
-        safe(() => supabase.from('orders').select('id, escrow_status', { count: 'exact' }).eq('manufacturer_id', userId).eq('payment_method', 'escrow'), emptyRes),
+        safe(() => supabase.from('orders').select('id, status', { count: 'exact' }).eq('factory_user_id', userId), emptyRes),
+        safe(() => supabase.from('orders').select('id, escrow_status', { count: 'exact' }).eq('factory_user_id', userId).not('escrow_status', 'is', null), emptyRes),
         safe(() => supabase.from('manufacturer_bank_accounts').select('id', { count: 'exact', head: true }).eq('manufacturer_id', userId), emptyRes),
         safe(() => supabase.from('factory_documents').select('id', { count: 'exact', head: true }).eq('factory_id', userId), emptyRes),
-        safe(() => supabase.from('factory_threads').select('id', { count: 'exact', head: true }), emptyRes),
-        safe(() => supabase.from('order_disputes').select('id', { count: 'exact', head: true }), emptyRes),
+        safe(() => supabase.from('factory_threads').select('id', { count: 'exact', head: true }).eq('factory_id', userId), emptyRes),
+        safe(() => supabase.from('order_disputes').select('id', { count: 'exact', head: true }).eq('factory_id', userId), emptyRes),
       ]);
       if (cancelled) return;
       const prodRows: any[] = products?.data ?? [];

@@ -99,6 +99,21 @@ const SENDER_LABEL: Record<string, string> = {
   system: 'النظام',
 };
 
+/** Tri-party participant model: each role is a separate participant with its own identity + bubble style. */
+const PARTICIPANT_STYLE: Record<string, { emoji: string; bubble: string; tag: string }> = {
+  factory: { emoji: '🏭', bubble: 'bg-primary text-primary-foreground', tag: 'text-primary' },
+  admin: { emoji: '🏢', bubble: 'bg-emerald-50 border border-emerald-200 text-emerald-900', tag: 'text-emerald-700' },
+  agent: { emoji: '👔', bubble: 'bg-blue-50 border border-blue-200 text-blue-900', tag: 'text-blue-700' },
+  logistics: { emoji: '🚚', bubble: 'bg-violet-50 border border-violet-200 text-violet-900', tag: 'text-violet-700' },
+  system: { emoji: '⚙️', bubble: 'bg-muted border border-border text-foreground', tag: 'text-muted-foreground' },
+};
+
+const THREAD_PARTICIPANTS: Record<ChannelKey, ('factory' | 'admin' | 'agent' | 'logistics')[]> = {
+  admin: ['factory', 'admin'],
+  agent: ['factory', 'agent'],
+  logistics: ['factory', 'logistics'],
+};
+
 const FULFILLMENT_OPTIONS: { value: string; label: string; factoryStatus?: string }[] = [
   { value: 'processing', label: 'قيد التصنيع', factoryStatus: 'accepted' },
   { value: 'ready_for_dispatch', label: 'جاهز للاستلام', factoryStatus: 'ready_for_dispatch' },
@@ -140,6 +155,7 @@ export default function ManufacturerMessagingHub({ userId }: ManufacturerMessagi
   const [fulfillment, setFulfillment] = useState('');
   const [fulfillmentSaving, setFulfillmentSaving] = useState(false);
   const [fulfillmentMsg, setFulfillmentMsg] = useState('');
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -467,10 +483,34 @@ export default function ManufacturerMessagingHub({ userId }: ManufacturerMessagi
   const placeholder =
     activeChannel === 'logistics' ? 'اكتب رسالتك هنا... (موعد وصول الشاحنة، وقت الاستلام، بوليصة الشحن)' : 'اكتب رسالتك هنا...';
 
+  const participantName = (role: string): string => {
+    if (role === 'agent') return supervisor?.full_name || activeThread?.counterpart_name || SENDER_LABEL.agent;
+    return SENDER_LABEL[role] || role;
+  };
+
+  // Lock body scroll + support hardware back while the mobile full-screen chat is open
+  useEffect(() => {
+    if (!mobileChatOpen) return;
+    const isMobile = window.matchMedia('(max-width: 767px)').matches;
+    if (!isMobile) {
+      setMobileChatOpen(false);
+      return;
+    }
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.history.pushState({ mfrHubChat: true }, '');
+    const onPopState = () => setMobileChatOpen(false);
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('popstate', onPopState);
+    };
+  }, [mobileChatOpen]);
+
   return (
     <div className="space-y-4" dir="rtl">
       {/* Channel tabs */}
-      <div className="bg-card border border-border rounded-2xl p-1.5 grid grid-cols-3 gap-1.5" role="tablist" aria-label="قنوات المراسلة">
+      <div className={`${mobileChatOpen ? 'hidden md:grid' : 'grid'} bg-card border border-border rounded-2xl p-1.5 grid-cols-3 gap-1.5`} role="tablist" aria-label="قنوات المراسلة">
         {CHANNELS.map((c) => {
           const isActive = c.key === activeChannel;
           return (
@@ -482,6 +522,7 @@ export default function ManufacturerMessagingHub({ userId }: ManufacturerMessagi
               onClick={() => {
                 setActiveChannel(c.key);
                 setError('');
+                setMobileChatOpen(true);
               }}
               className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2 py-2.5 rounded-xl text-[11px] sm:text-sm font-bold leading-tight text-center transition-all ${
                 isActive ? c.active : 'text-muted-foreground hover:bg-muted/60'
@@ -493,6 +534,25 @@ export default function ManufacturerMessagingHub({ userId }: ManufacturerMessagi
           );
         })}
       </div>
+
+      <div
+        className={
+          mobileChatOpen
+            ? 'fixed inset-0 z-[60] h-[100dvh] bg-background flex flex-col overflow-y-auto p-3 gap-3 md:static md:z-auto md:h-auto md:bg-transparent md:block md:overflow-visible md:p-0 md:space-y-4'
+            : 'space-y-4'
+        }
+      >
+      {/* Mobile back to channel list */}
+      {mobileChatOpen && (
+        <button
+          type="button"
+          onClick={() => setMobileChatOpen(false)}
+          className="md:hidden flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 text-white text-sm font-bold shrink-0"
+        >
+          <Icon name="ArrowRightIcon" size={16} />
+          العودة إلى القنوات
+        </button>
+      )}
 
       {/* Channel header */}
       <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl p-4 text-white">
@@ -508,6 +568,18 @@ export default function ManufacturerMessagingHub({ userId }: ManufacturerMessagi
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-[11px] font-semibold text-white/90">داخل المنصة</span>
           </div>
+        </div>
+        {/* Tri-party participants: Admin, Field Agent and Logistics are separate parties */}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5" aria-label="أطراف المحادثة">
+          {THREAD_PARTICIPANTS[activeChannel].map((role) => (
+            <span
+              key={role}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/15 text-[11px] font-semibold text-white"
+            >
+              <span aria-hidden="true">{PARTICIPANT_STYLE[role].emoji}</span>
+              {participantName(role)}
+            </span>
+          ))}
         </div>
       </div>
 
@@ -585,11 +657,14 @@ export default function ManufacturerMessagingHub({ userId }: ManufacturerMessagi
       )}
 
       {/* Chat panel */}
-      <div className="bg-card border border-border rounded-2xl overflow-hidden flex flex-col" style={{ minHeight: 520 }}>
+      <div
+        className={`bg-card border border-border rounded-2xl overflow-hidden flex flex-col ${mobileChatOpen ? 'flex-1 min-h-0 md:flex-none' : ''}`}
+        style={mobileChatOpen ? undefined : { minHeight: 520 }}
+      >
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 space-y-3 bg-muted/10"
-          style={{ maxHeight: 520, minHeight: 360 }}
+          className={`flex-1 overflow-y-auto px-3 sm:px-4 py-4 space-y-3 bg-muted/10 ${mobileChatOpen ? 'min-h-0 md:max-h-[520px] md:min-h-[360px]' : ''}`}
+          style={mobileChatOpen ? undefined : { maxHeight: 520, minHeight: 360 }}
         >
           {threadsLoading || msgsLoading ? (
             <div className="flex items-center justify-center py-16">
@@ -608,19 +683,19 @@ export default function ManufacturerMessagingHub({ userId }: ManufacturerMessagi
           ) : (
             messages.map((m) => {
               const mine = m.sender_id === userId;
+              const pStyle = PARTICIPANT_STYLE[m.sender_role] || PARTICIPANT_STYLE.system;
               const isImg = !!m.attachment_url && isImageAttachment(m.attachment_url, m.attachment_name || undefined);
               return (
                 <div key={m.id} className={`flex ${mine ? 'justify-start' : 'justify-end'}`}>
                   <div className="max-w-[85%] sm:max-w-[75%]">
-                    <p className={`text-[10px] text-muted-foreground mb-0.5 ${mine ? 'text-start' : 'text-end'}`}>
-                      {SENDER_LABEL[m.sender_role] || m.sender_role} · {formatStamp(m.created_at)}
+                    <p className={`text-[10px] mb-0.5 ${pStyle.tag} ${mine ? 'text-start' : 'text-end'}`}>
+                      <span aria-hidden="true">{pStyle.emoji}</span>{' '}
+                      {m.sender_role === 'agent' && !mine ? participantName('agent') : SENDER_LABEL[m.sender_role] || m.sender_role} · {formatStamp(m.created_at)}
                       {m.pending ? ' · جارٍ الإرسال...' : ''}
                     </p>
                     <div
-                      className={`px-3 py-2 rounded-2xl text-sm leading-relaxed ${
-                        mine
-                          ? 'bg-primary text-primary-foreground rounded-tr-sm'
-                          : 'bg-card border border-border text-foreground rounded-tl-sm'
+                      className={`px-3 py-2 rounded-2xl text-sm leading-relaxed ${pStyle.bubble} ${
+                        mine ? 'rounded-tr-sm' : 'rounded-tl-sm'
                       } ${m.pending ? 'opacity-70' : ''}`}
                     >
                       {m.attachment_url && (
@@ -725,6 +800,7 @@ export default function ManufacturerMessagingHub({ userId }: ManufacturerMessagi
             الفواتير وصور الفحص وإيصالات التسليم: صور أو PDF حتى 25 ميغابايت.
           </p>
         </div>
+      </div>
       </div>
     </div>
   );

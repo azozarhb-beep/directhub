@@ -7,6 +7,7 @@ import PortFreeTimeBadge from '@/components/PortFreeTimeBadge';
 import { createClient } from '@/lib/supabase/client';
 import { computeFreeTime } from '@/lib/portFreeTime';
 import { isB2BOrder } from './EscrowMilestoneTimeline';
+import FactorySelfReleasePanel from './FactorySelfReleasePanel';
 
 interface FactoryOrdersPanelProps {
   factoryOrders: any[];
@@ -157,6 +158,20 @@ export default function FactoryOrdersPanel({
   );
   const hasLocalFilters = localInbox && (segment !== 'all' || searchQuery.trim() !== '');
 
+  // Live bulk (B2B) KPIs computed from the factory's real order rows
+  const bulkKpis = useMemo(() => {
+    const bulk = factoryOrders.filter((o: any) => isB2BOrder(o));
+    const secured = bulk.filter((o: any) =>
+      ['funds_secured', 'shipped', 'ready_for_inspection', 'pending_otp_confirmation', 'pending_admin_payout'].includes(o.escrow_status || '')
+    );
+    const securedValue = secured.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+    const blAwaiting = bulk.filter(
+      (o: any) => (o.bl_document_url || o.bill_of_lading_url) && !o.milestone_2_paid && o.escrow_status !== 'funds_released'
+    ).length;
+    const bulkValue = bulk.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+    return { count: bulk.length, securedValue, blAwaiting, bulkValue };
+  }, [factoryOrders]);
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -212,6 +227,21 @@ export default function FactoryOrdersPanel({
           </div>
         </div>
       )}
+
+      {/* Live bulk-orders KPI cards (computed from live Supabase order rows) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3" dir="rtl" aria-label="مؤشرات طلبات الجملة">
+        {[
+          { label: 'طلبات الجملة B2B', value: bulkKpis.count.toLocaleString('en-US'), tone: 'bg-sky-50 text-sky-800 border-sky-200' },
+          { label: 'قيمة طلبات الجملة', value: `$${bulkKpis.bulkValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}`, tone: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
+          { label: 'أموال مؤمَّنة بالضمان', value: `$${bulkKpis.securedValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}`, tone: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+          { label: 'بانتظار صرف الدفعة 40%', value: bulkKpis.blAwaiting.toLocaleString('en-US'), tone: 'bg-amber-50 text-amber-800 border-amber-200' },
+        ].map((k) => (
+          <div key={k.label} className={`rounded-xl border p-4 ${k.tone}`}>
+            <p className="text-xl font-bold" dir="ltr" style={{ textAlign: 'right' }}>{factoryOrdersLoading ? '…' : k.value}</p>
+            <p className="text-xs font-medium mt-0.5">{k.label}</p>
+          </div>
+        ))}
+      </div>
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -603,6 +633,16 @@ export default function FactoryOrdersPanel({
                 )}
 
                 {/* Dispatch Chat Room — shown inline when toggled */}
+                {(selectedFactoryOrder.bl_document_url || selectedFactoryOrder.bill_of_lading_url) &&
+                  !selectedFactoryOrder.milestone_2_paid &&
+                  isB2BOrder(selectedFactoryOrder) && (
+                    <FactorySelfReleasePanel
+                      orderId={selectedFactoryOrder.id}
+                      refreshKey={`${selectedFactoryOrder.bl_document_url || selectedFactoryOrder.bill_of_lading_url}|${selectedFactoryOrder.bl_verified_at || ''}`}
+                      onReleased={fetchFactoryOrders}
+                    />
+                  )}
+
                 {showDispatchChat === selectedFactoryOrder.id && currentUserId && (
                   <div className="mt-4">
                     <DispatchChatRoom
