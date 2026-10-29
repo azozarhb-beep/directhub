@@ -76,6 +76,65 @@ interface ProposalData {
 
 type SupportedLang = 'ar' | 'en' | 'zh' | 'tr';
 
+interface InquiryCardData {
+  productId: string;
+  convId?: string;
+  name: string;
+  image: string | null;
+  priceText: string;
+  moqText: string;
+}
+
+function formatInquiryPrice(price: number | null | undefined, currency: string | null | undefined, isAr: boolean): string {
+  const n = Number(price || 0);
+  if (!n || n <= 0) return isAr ? 'تواصل لمعرفة السعر' : 'Contact for price';
+  const cur = String(currency || 'YER').toUpperCase();
+  const num = n.toFixed(2).replace(/\.00$/, '');
+  return cur === 'USD' ? `$${num}` : `${num} ${isAr ? 'ر.ي' : 'YER'}`;
+}
+
+function firstProductImage(row: any): string | null {
+  const arr = Array.isArray(row?.images) && row.images.length > 0
+    ? row.images
+    : Array.isArray(row?.product_images) && row.product_images.length > 0
+      ? row.product_images
+      : [];
+  const first = arr[0];
+  const src = typeof first === 'string' ? first : first?.src || first?.url;
+  return src || row?.image_url || null;
+}
+
+function ProductInquiryCard({ data, isAr }: { data: InquiryCardData; isAr: boolean }) {
+  return (
+    <div className="mx-3 sm:mx-4 mt-3 mb-1 rounded-2xl border border-primary/30 bg-white shadow-sm overflow-hidden" dir={isAr ? 'rtl' : 'ltr'}>
+      <div className="px-3 py-1.5 bg-primary/10 text-[11px] font-bold text-primary flex items-center gap-1.5">
+        <Icon name="TagIcon" size={12} />
+        {isAr ? 'استفسار عن منتج' : 'Product Inquiry'}
+      </div>
+      <Link href={`/product/${encodeURIComponent(data.productId)}`} className="flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors">
+        <div className="w-16 h-16 rounded-xl bg-gray-100 overflow-hidden shrink-0 flex items-center justify-center">
+          {data.image ? (
+            <AppImage src={data.image} alt={data.name} width={64} height={64} className="w-16 h-16 object-cover" />
+          ) : (
+            <Icon name="CubeIcon" size={24} className="text-gray-400" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-gray-900 truncate">{data.name}</p>
+          <p className="text-xs text-gray-600 mt-0.5">
+            <span className="font-semibold">{isAr ? 'سعر الوحدة: ' : 'Unit price: '}</span>
+            <span className="font-extrabold text-primary">{data.priceText}</span>
+          </p>
+          <p className="text-xs text-gray-600">
+            <span className="font-semibold">{isAr ? 'الحد الأدنى للطلب: ' : 'MOQ: '}</span>
+            {data.moqText}
+          </p>
+        </div>
+      </Link>
+    </div>
+  );
+}
+
 const LANG_OPTIONS: { value: SupportedLang; label: string; flag: string; nativeName: string }[] = [
   { value: 'ar', label: 'Arabic', flag: '🇸🇦', nativeName: 'العربية' },
   { value: 'en', label: 'English', flag: '🇬🇧', nativeName: 'English' },
@@ -1149,6 +1208,7 @@ function LiveMessagingContent() {
   const [dealStatusUpdating, setDealStatusUpdating] = useState(false);
   const [dealToken, setDealToken] = useState<string | null>(null);
   const [newMessageAlert, setNewMessageAlert] = useState<{ convId: string; senderName: string } | null>(null);
+  const [inquiryCard, setInquiryCard] = useState<InquiryCardData | null>(null);
 
   // ── Chat header extra state ────────────────────────────────────────────────
   const [showAvatarSettings, setShowAvatarSettings] = useState(false);
@@ -1510,17 +1570,20 @@ function LiveMessagingContent() {
           setConversations(withMeta);
           const targetConvId = searchParams?.get('conv');
           const targetProductId = searchParams?.get('productId');
+          const targetSupplierId = searchParams?.get('supplierId');
+          const isAr = language === 'ar';
           if (targetConvId) {
             setActiveConvId(targetConvId);
           } else if (targetProductId) {
-            // Resolve supplier-listed product (supplier_products) first, fall back to products table
+            // Resolve product: supplier_products → manufacturer_products → products
             let resolvedProductId = targetProductId;
             let productName = 'Product Inquiry';
             let supplierName = 'DirectHub Supplier';
             let supplierCountry = 'Global';
             let supplierFlag = '🏭';
-            let manufacturerId: string | null = null;
-            let supplierListing: { id: string; supplier_id: string; name: string; name_ar: string | null; sku: string | null; supplier_name: string } | null = null;
+            let manufacturerId: string | null = targetSupplierId || null;
+            let supplierListing: { id: string; supplier_id: string; name: string; name_ar: string | null; sku: string | null; supplier_name: string; wholesale_price?: number; currency?: string; image_url?: string | null; unit?: string; moq?: number; min_order_qty?: number } | null = null;
+            let card: InquiryCardData | null = null;
             try {
               const { data: spData } = await supabase.rpc('get_supplier_product_for_inquiry', { p_ref: targetProductId });
               const spRow = (Array.isArray(spData) ? spData[0] : spData) as typeof supplierListing | undefined;
@@ -1532,28 +1595,89 @@ function LiveMessagingContent() {
                 supplierName = spRow.supplier_name || supplierName;
                 supplierCountry = 'اليمن';
                 supplierFlag = '🏪';
+                const moqVal = spRow.moq ?? spRow.min_order_qty;
+                card = {
+                  productId: targetProductId,
+                  name: productName,
+                  image: spRow.image_url || null,
+                  priceText: formatInquiryPrice(spRow.wholesale_price, spRow.currency, isAr),
+                  moqText: moqVal ? `${moqVal} ${spRow.unit || ''}`.trim() : (isAr ? 'حسب الاتفاق' : 'Negotiable'),
+                };
               }
             } catch { /* not a supplier-listed product */ }
 
-            // Find existing conversation for this buyer + product
-            const existing = withMeta.find(c => (c.product_id === resolvedProductId || c.product_id === targetProductId) && c.buyer_id === user.id)
-              || withMeta.find(c => c.product_id === resolvedProductId || c.product_id === targetProductId);
+            // Factory catalogue (manufacturer_products): resolves factory + card data
+            if (!supplierListing) {
+              try {
+                const safeRef = targetProductId.replace(/[^A-Za-z0-9_-]/g, '');
+                const isUuidRef = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetProductId);
+                const mpQuery = supabase.from('manufacturer_products').select('*');
+                const { data: mp } = isUuidRef
+                  ? await mpQuery.or(`id.eq.${targetProductId},agent_product_id.eq.${targetProductId}`).limit(1).maybeSingle()
+                  : await mpQuery.or(`short_id.eq.${safeRef},slug.ilike.${safeRef.toLowerCase()},sku.ilike.${safeRef}`).limit(1).maybeSingle();
+                if (mp?.id) {
+                  resolvedProductId = mp.id;
+                  const sellerRef: string | null = mp.registered_factory_id || mp.facility_id || mp.manufacturer_id || null;
+                  manufacturerId = targetSupplierId || sellerRef;
+                  productName = (isAr ? mp.name_ar : null) || mp.name || mp.name_ar || productName;
+                  if (sellerRef) {
+                    try {
+                      const { data: fp } = await supabase.rpc('get_public_factory_profile', { p_ref: sellerRef });
+                      const f = Array.isArray(fp) ? fp[0] : fp;
+                      if (f?.company_name) supplierName = f.company_name;
+                      if (f?.country_code === 'YE') { supplierCountry = 'اليمن'; }
+                    } catch { /* optional */ }
+                  }
+                  const tiers = Array.isArray(mp.tiered_pricing) ? mp.tiered_pricing : [];
+                  const tierMin = tiers.length > 0 ? Number(tiers[0]?.min_qty ?? tiers[0]?.minQty ?? 0) : 0;
+                  const moqNum = tierMin || parseInt(String(mp.minimum_order_qty || mp.min_order_quantity || mp.moq || 1)) || 1;
+                  const tierPrice = tiers.length > 0 ? Number(tiers[0]?.unit_price ?? tiers[0]?.unitPrice ?? tiers[0]?.price ?? 0) : 0;
+                  const unitPrice = tierPrice || parseFloat(String(mp.unit_price || mp.price || 0)) || 0;
+                  const origin = String(mp.origin_type || '').toLowerCase();
+                  const cur = origin === 'international' ? 'USD' : origin === 'local' ? 'YER' : String(mp.currency || 'YER');
+                  card = {
+                    productId: targetProductId,
+                    name: productName,
+                    image: firstProductImage(mp),
+                    priceText: formatInquiryPrice(unitPrice, cur, isAr),
+                    moqText: `${moqNum} ${mp.unit || (isAr ? 'وحدة' : 'units')}`,
+                  };
+                }
+              } catch { /* fall through to products table */ }
+            }
+
+            // Find existing conversation for this buyer + product (+ supplier when provided)
+            const sameProduct = (c: Conversation) => c.product_id === resolvedProductId || c.product_id === targetProductId;
+            const sameSupplier = (c: Conversation) => !manufacturerId || !c.manufacturer_id || c.manufacturer_id === manufacturerId;
+            const existing = withMeta.find(c => sameProduct(c) && sameSupplier(c) && c.buyer_id === user.id)
+              || withMeta.find(c => sameProduct(c) && sameSupplier(c));
             if (existing) {
+              if (card) setInquiryCard({ ...card, convId: existing.id });
               setActiveConvId(existing.id);
             } else {
               // Create a new negotiation thread (deal_status = open) for this product and open it
               try {
-                if (!supplierListing) {
+                if (!supplierListing && !card) {
                   const { data: productData } = await supabase
                     .from('products')
-                    .select('id, name, manufacturer_id, manufacturer_name, country_of_origin, origin_country')
+                    .select('*')
                     .eq('id', targetProductId)
                     .maybeSingle();
                   productName = productData?.name || productName;
                   supplierName = productData?.manufacturer_name || supplierName;
                   supplierCountry = productData?.country_of_origin || productData?.origin_country || supplierCountry;
-                  manufacturerId = productData?.manufacturer_id || null;
+                  manufacturerId = targetSupplierId || productData?.manufacturer_id || null;
+                  if (productData?.id) {
+                    card = {
+                      productId: targetProductId,
+                      name: productName,
+                      image: firstProductImage(productData),
+                      priceText: formatInquiryPrice(parseFloat(String(productData.unit_price || productData.price || 0)) || 0, productData.currency || 'USD', isAr),
+                      moqText: String(productData.moq || productData.minimum_order_qty || productData.min_order_quantity || (isAr ? 'حسب الاتفاق' : 'Negotiable')),
+                    };
+                  }
                 }
+
                 let newSellerCategory: string | null = null;
                 if (manufacturerId) {
                   try {
@@ -1585,19 +1709,24 @@ function LiveMessagingContent() {
                   .single();
 
                 if (!createErr && created) {
+                  const inquiryText = isAr
+                    ? `مرحباً، أرغب في الاستفسار عن المنتج: ${productName}${card ? ` — سعر الوحدة: ${card.priceText} — الحد الأدنى للطلب: ${card.moqText}` : ''}${supplierListing?.sku ? ` (SKU: ${supplierListing.sku})` : ''}. هل يمكنكم تزويدي بالتفاصيل وأفضل عرض سعر؟`
+                    : `Hello, I'm interested in: ${productName}${card ? ` — Unit price: ${card.priceText} — MOQ: ${card.moqText}` : ''}${supplierListing?.sku ? ` (SKU: ${supplierListing.sku})` : ''}. Could you share details and your best quote?`;
+                  await supabase.from('chat_messages').insert({
+                    conversation_id: created.id,
+                    sender_id: user.id,
+                    sender_role: 'buyer',
+                    message: inquiryText,
+                    is_read: false,
+                  });
+                  await supabase.from('chat_conversations').update({ last_message: inquiryText, last_message_at: new Date().toISOString() }).eq('id', created.id);
                   if (supplierListing) {
-                    const inquiryText = `استفسار عن المنتج: ${productName}${supplierListing.sku ? ` (SKU: ${supplierListing.sku})` : ''}`;
-                    await supabase.from('chat_messages').insert({
-                      conversation_id: created.id,
-                      sender_id: user.id,
-                      sender_role: 'buyer',
-                      message: inquiryText,
-                      is_read: false,
-                    });
                     try { await supabase.rpc('notify_supplier_product_inquiry', { p_conversation_id: created.id }); } catch { /* non-blocking */ }
                   }
+                  if (card) setInquiryCard({ ...card, convId: created.id });
                   const newConv = {
                     ...created,
+                    last_message: inquiryText,
                     unread_count: 0,
                     thread_type: inferThreadType(created),
                     deal_status: 'open' as const,
@@ -2546,6 +2675,11 @@ function LiveMessagingContent() {
                     <Icon name="XMarkIcon" size={13} className="text-gray-500" />
                   </button>
                 </div>
+              )}
+
+              {/* ── Pinned Product Inquiry Card ───────────────────────────────── */}
+              {inquiryCard && inquiryCard.convId === activeConv.id && (
+                <ProductInquiryCard data={inquiryCard} isAr={language === 'ar'} />
               )}
 
               {/* ── Messages Area ────────────────────────────────────────────── */}

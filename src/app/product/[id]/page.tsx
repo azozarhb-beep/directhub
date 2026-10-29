@@ -509,7 +509,9 @@ export default function ProductDetailPage() {
     };
   }, [id]);
   const chatSellerLabel = isSupplierSeller && isArabic ? 'مراسلة المورد / الوكيل' : isSupplierSeller ? 'Message Supplier / Agent' : null;
-  const chatHref = `/messaging?productId=${encodeURIComponent(isSupplierSeller ? id : product.id)}`;
+  const chatProductRef = isSupplierSeller ? id : product.id;
+  const chatSupplierId = product.supplierId && !String(product.supplierId).startsWith('sup-') ? product.supplierId : '';
+  const chatHref = `/messaging?${chatSupplierId ? `supplierId=${encodeURIComponent(chatSupplierId)}&` : ''}productId=${encodeURIComponent(chatProductRef)}`;
 
   useEffect(() => {
     setActiveImage(0);
