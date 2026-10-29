@@ -49,12 +49,44 @@ interface SupplierInquiryProduct {
   currency: string;
   image_url: string | null;
   supplier_name: string;
+  moq?: number | null;
+  min_order_qty?: number | null;
 }
 
 const SUPPLIER_UNIT_AR: Record<string, string> = {
   carton: 'كرتون', bale: 'بالة', bundle: 'بندل', dozen: 'درزن', bag: 'كيس / شوال',
   roll: 'رول', piece: 'قطعة', kg: 'كجم', ton: 'طن',
 };
+
+// ─── Inline Product Inquiry message (type: 'product_inquiry') ────────────────
+const PRODUCT_INQUIRY_TYPE = 'product_inquiry';
+
+interface ProductInquiryPayload {
+  productId: string;
+  name: string;
+  image: string | null;
+  priceText: string;
+  moqText: string;
+}
+
+function encodeInquiryPayload(p: ProductInquiryPayload): string {
+  return JSON.stringify(p);
+}
+
+function decodeInquiryPayload(raw?: string | null): ProductInquiryPayload | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.name === 'string') return parsed as ProductInquiryPayload;
+  } catch { /* not an inquiry payload */ }
+  return null;
+}
+
+function formatInquiryPrice(price: number, currency: string): string {
+  if (!price || price <= 0) return 'تواصل لمعرفة السعر';
+  const num = price.toFixed(2).replace(/\.00$/, '');
+  return String(currency).toUpperCase() === 'USD' ? `$${num}` : `${num} ر.ي`;
+}
 
 // ─── Translation Types ────────────────────────────────────────────────────────
 type SupportedLang = 'ar' | 'en' | 'zh';
@@ -333,6 +365,25 @@ function ChatPageLegacyUnused() {
 
           if (created && supplierListing) {
             const inquiryText = `استفسار عن المنتج: ${resolvedProductName}${supplierListing.sku ? ` (SKU: ${supplierListing.sku})` : ''}`;
+            const moqVal = supplierListing.moq ?? supplierListing.min_order_qty;
+            const inquiryPayload: ProductInquiryPayload = {
+              productId,
+              name: supplierListing.name_ar || supplierListing.name,
+              image: supplierListing.image_url || null,
+              priceText: formatInquiryPrice(Number(supplierListing.wholesale_price || 0), supplierListing.currency || 'YER'),
+              moqText: moqVal
+                ? `${moqVal} ${SUPPLIER_UNIT_AR[supplierListing.unit] || supplierListing.unit || ''}`.trim()
+                : 'حسب الاتفاق'
+            };
+            await supabase.from('chat_messages').insert({
+              conversation_id: created.id,
+              sender_id: user.id,
+              sender_role: 'buyer',
+              message: 'استفسار عن منتج',
+              attachment_type: PRODUCT_INQUIRY_TYPE,
+              attachment_name: encodeInquiryPayload(inquiryPayload),
+              is_read: false
+            });
             await supabase.from('chat_messages').insert({
               conversation_id: created.id,
               sender_id: user.id,
@@ -372,11 +423,35 @@ function ChatPageLegacyUnused() {
         setConversation(existing);
 
         if (existing) {
-          const { data: msgs } = await supabase.
+          let { data: msgs } = await supabase.
           from('chat_messages').
           select('*').
           eq('conversation_id', existing.id).
           order('created_at', { ascending: true });
+
+          // Entering from a product page: make sure the thread has an inline product card
+          if (supplierListing && !(msgs || []).some((m: Message) => m.attachment_type === PRODUCT_INQUIRY_TYPE)) {
+            const moqVal = supplierListing.moq ?? supplierListing.min_order_qty;
+            const cardPayload: ProductInquiryPayload = {
+              productId,
+              name: supplierListing.name_ar || supplierListing.name,
+              image: supplierListing.image_url || null,
+              priceText: formatInquiryPrice(Number(supplierListing.wholesale_price || 0), supplierListing.currency || 'YER'),
+              moqText: moqVal
+                ? `${moqVal} ${SUPPLIER_UNIT_AR[supplierListing.unit] || supplierListing.unit || ''}`.trim()
+                : 'حسب الاتفاق'
+            };
+            const { data: cardMsg } = await supabase.from('chat_messages').insert({
+              conversation_id: existing.id,
+              sender_id: user.id,
+              sender_role: 'buyer',
+              message: 'استفسار عن منتج',
+              attachment_type: PRODUCT_INQUIRY_TYPE,
+              attachment_name: encodeInquiryPayload(cardPayload),
+              is_read: false
+            }).select().single();
+            if (cardMsg) msgs = [...(msgs || []), cardMsg as Message];
+          }
 
           setMessages(msgs || []);
 
@@ -821,29 +896,6 @@ function ChatPageLegacyUnused() {
 
       {/* Messages */}
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-4 pb-48 md:pb-36 overflow-y-auto">
-        {inquiryProduct && (
-          <div className="mb-3 rounded-2xl border border-cyan-500/40 bg-cyan-500/5 p-3 flex items-center gap-3" dir="rtl">
-            <div className="w-16 h-16 rounded-xl overflow-hidden bg-muted border border-border shrink-0">
-              <AppImage
-                src={inquiryProduct.image_url || '/assets/images/no_image.png'}
-                alt={inquiryProduct.name_ar || inquiryProduct.name}
-                width={64}
-                height={64}
-                className="object-cover w-full h-full" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-bold text-cyan-600">📌 استفسار عن منتج</p>
-              <p className="text-sm font-extrabold text-foreground truncate">{inquiryProduct.name_ar || inquiryProduct.name}</p>
-              <p className="text-xs text-muted-foreground" dir="ltr" style={{ textAlign: 'right' }}>
-                SKU: {inquiryProduct.sku || '—'}
-              </p>
-              <p className="text-xs font-bold text-foreground">
-                {Number(inquiryProduct.wholesale_price).toLocaleString('en-US')} {inquiryProduct.currency} / {SUPPLIER_UNIT_AR[inquiryProduct.unit] || inquiryProduct.unit}
-              </p>
-            </div>
-          </div>
-        )}
-
         {/* Security Banner — Direct Hub Protection */}
         <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-3">
           <div className="w-8 h-8 rounded-full bg-green-100 border border-green-300 flex items-center justify-center shrink-0">
@@ -865,6 +917,42 @@ function ChatPageLegacyUnused() {
             const isTranslating = translatingIds.has(msg.id);
             const showBoth = showBothIds.has(msg.id);
             const hasTranslation = !!cached?.translated && cached.translated !== msg.message;
+
+            if (msg.attachment_type === PRODUCT_INQUIRY_TYPE) {
+              const card = decodeInquiryPayload(msg.attachment_name);
+              if (card) {
+                return (
+                  <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                    <div className="w-full max-w-[85%] sm:max-w-[320px] rounded-2xl border border-primary/30 bg-card shadow-sm overflow-hidden" dir="rtl">
+                      <div className="px-3 py-1.5 bg-primary/10 text-[11px] font-bold text-primary flex items-center gap-1.5">
+                        <Icon name="TagIcon" size={12} />
+                        استفسار عن منتج
+                      </div>
+                      <Link href={`/product/${encodeURIComponent(card.productId)}`} className="flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors">
+                        <div className="w-16 h-16 rounded-xl overflow-hidden bg-muted border border-border shrink-0 flex items-center justify-center">
+                          {card.image ? (
+                            <AppImage src={card.image} alt={card.name} width={64} height={64} className="object-cover w-full h-full" />
+                          ) : (
+                            <Icon name="CubeIcon" size={24} className="text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-extrabold text-foreground truncate">{card.name}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            <span className="font-semibold">سعر الوحدة: </span>
+                            <span className="font-extrabold text-primary">{card.priceText}</span>
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            <span className="font-semibold">الحد الأدنى للطلب: </span>
+                            {card.moqText}
+                          </p>
+                        </div>
+                      </Link>
+                    </div>
+                  </div>
+                );
+              }
+            }
 
             return (
               <div key={msg.id} className={`flex gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
