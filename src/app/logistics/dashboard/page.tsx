@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
 import Header from '@/components/Header';
 import Icon from '@/components/ui/AppIcon';
-import { SignedChatImage, SignedChatLink } from '@/components/SignedChatMedia';
+
 import DispatchTruckModal from './DispatchTruckModal';
 import MaritimeBookingModal from './MaritimeBookingModal';
 import OceanCarrierFields, {
@@ -39,6 +39,7 @@ import toast from 'react-hot-toast';
 import { uploadLogisticsFile, LOGISTICS_FILE_ACCEPT } from '@/lib/logisticsUpload';
 import { isMissingTableError } from '@/lib/hooks/useLogisticsData';
 import { useSearchParams } from 'next/navigation';
+import { ChatAttachmentView } from '@/components/ChatAttachmentView';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -6196,16 +6197,14 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
                     }`}>
                       <p className="leading-relaxed whitespace-pre-wrap">{msg.message}</p>
                       {msg.attachment_url && (
-                        msg.attachment_type?.startsWith('image/') ? (
-                          <SignedChatLink href={msg.attachment_url} className="block">
-                            <SignedChatImage src={msg.attachment_url} alt={msg.attachment_name || 'مرفق صورة'} className="mt-2 rounded-lg max-h-48 object-cover" />
-                          </SignedChatLink>
-                        ) : (
-                          <SignedChatLink href={msg.attachment_url} className="mt-2 flex items-center gap-2 text-xs underline">
-                            <Icon name="PaperClipIcon" size={14} />
-                            {msg.attachment_name || 'عرض المرفق'}
-                          </SignedChatLink>
-                        )
+                        <div className="mt-2">
+                          <ChatAttachmentView
+                            url={msg.attachment_url}
+                            name={msg.attachment_name}
+                            type={msg.attachment_type}
+                            tone="dark"
+                          />
+                        </div>
                       )}
                     </div>
                     <span className="text-[10px] text-slate-500 px-1">

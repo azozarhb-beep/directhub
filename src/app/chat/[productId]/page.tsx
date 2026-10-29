@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import Icon from '@/components/ui/AppIcon';
-import { SignedChatImage, SignedChatVideo, SignedChatLink } from '@/components/SignedChatMedia';
+import { SignedChatVideo, SignedChatLink } from '@/components/SignedChatMedia';
+import ChatAttachmentView, { isImageAttachmentMeta } from '@/components/ChatAttachmentView';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import { useAuth } from '@/contexts/AuthContext';
@@ -968,12 +969,13 @@ function ChatPageLegacyUnused() {
                 }
                 <div className={`max-w-[75%] space-y-1 ${isUser ? 'items-end' : 'items-start'} flex flex-col`}>
                   {/* Attachment preview */}
-                  {msg.attachment_url && msg.attachment_type?.startsWith('image/') &&
+                  {msg.attachment_url && isImageAttachmentMeta(msg.attachment_url, msg.attachment_name, msg.attachment_type) &&
                   <div className="rounded-xl overflow-hidden border border-border max-w-[240px]">
-                      <SignedChatImage
-                      src={msg.attachment_url}
-                      alt={msg.attachment_name || 'Attachment'}
-                      className="w-full h-auto object-cover max-h-48" />
+                      <ChatAttachmentView
+                      url={msg.attachment_url}
+                      name={msg.attachment_name}
+                      type={msg.attachment_type}
+                      className="!mb-0" />
                     </div>
                   }
                   {msg.attachment_url && msg.attachment_type?.startsWith('video/') &&

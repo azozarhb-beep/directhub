@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
-import { SignedChatImage, SignedChatLink } from '@/components/SignedChatMedia';
+
+import ChatAttachmentView from '@/components/ChatAttachmentView';
 import ChatImageAttachment, {
   uploadChatImage,
   isImageAttachment,
@@ -791,23 +792,11 @@ export default function FactoryThreadsMessaging({
                           mine ? 'bg-cyan-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-100 rounded-tl-sm'
                         }`}>
                           {m.attachment_url && (
-                            isImageAttachment(m.attachment_url, m.attachment_name || undefined) ? (
-                              <SignedChatLink href={m.attachment_url} className="block">
-                                <SignedChatImage
-                                  src={m.attachment_url}
-                                  alt={m.attachment_name || 'مرفق'}
-                                  className="max-w-[220px] max-h-[180px] rounded-xl object-cover mb-1.5"
-                                />
-                              </SignedChatLink>
-                            ) : (
-                              <SignedChatLink
-                                href={m.attachment_url}
-                                className="flex items-center gap-1.5 text-xs underline mb-1.5"
-                              >
-                                <Icon name="PaperClipIcon" size={12} />
-                                {attachmentLabel(m.attachment_name, m.attachment_url)}
-                              </SignedChatLink>
-                            )
+                            <ChatAttachmentView
+                              url={m.attachment_url}
+                              name={m.attachment_name ? attachmentLabel(m.attachment_name, m.attachment_url) : m.attachment_name}
+                              tone="dark"
+                            />
                           )}
                           {m.message && (() => {
                             const [mainText, originalText] = m.message.split(ORIGINAL_MARKER);

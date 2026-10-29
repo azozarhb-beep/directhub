@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 import { uploadChatImage, isImageAttachment } from '@/components/ChatImageAttachment';
+import ChatAttachmentView from '@/components/ChatAttachmentView';
 import { resolveFileType } from '@/lib/attachmentTypes';
 
 type ChannelKey = 'admin' | 'agent' | 'logistics';
@@ -699,25 +700,11 @@ export default function ManufacturerMessagingHub({ userId }: ManufacturerMessagi
                       } ${m.pending ? 'opacity-70' : ''}`}
                     >
                       {m.attachment_url && (
-                        isImg ? (
-                          <a href={m.attachment_url} target="_blank" rel="noopener noreferrer">
-                            <img
-                              src={m.attachment_url}
-                              alt={m.attachment_name || 'مرفق صورة'}
-                              className="max-w-[220px] max-h-[200px] rounded-xl object-cover mb-1.5"
-                            />
-                          </a>
-                        ) : (
-                          <a
-                            href={m.attachment_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 text-xs underline mb-1.5"
-                          >
-                            <Icon name="PaperClipIcon" size={13} />
-                            {m.attachment_name || 'مستند مرفق'}
-                          </a>
-                        )
+                        <ChatAttachmentView
+                          url={m.attachment_url}
+                          name={m.attachment_name}
+                          tone="dark"
+                        />
                       )}
                       {m.message && <p className="whitespace-pre-wrap text-[13px]">{m.message}</p>}
                     </div>

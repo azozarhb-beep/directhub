@@ -4,7 +4,8 @@ import React, { useState, useRef, useEffect, useCallback, Suspense } from 'react
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
-import { SignedChatImage, SignedChatLink } from '@/components/SignedChatMedia';
+
+import ChatAttachmentView from '@/components/ChatAttachmentView';
 import { getChatMediaSignedUrl } from '@/lib/chatMedia';
 import Icon from '@/components/ui/AppIcon';
 import Header from '@/components/Header';
@@ -2853,13 +2854,12 @@ function LiveMessagingContent() {
                             })()}
                             {msg.attachment_url && !msg.attachment_type?.startsWith('audio/') && !(msg.message?.includes('🎙️') || msg.message?.includes('رسالة صوتية')) && (
                               <div className="mb-1">
-                                {msg.attachment_type?.startsWith('image/') ? (
-                                  <SignedChatImage src={msg.attachment_url} alt={m.attachment} className="rounded-xl max-w-full w-[200px] h-auto" />
-                                ) : (
-                                  <SignedChatLink href={msg.attachment_url} className="flex items-center gap-2 text-xs underline text-primary">
-                                    <Icon name="PaperClipIcon" size={13} />{msg.attachment_name || m.attachment}
-                                  </SignedChatLink>
-                                )}
+                                <ChatAttachmentView
+                                  url={msg.attachment_url}
+                                  name={msg.attachment_name || m.attachment}
+                                  type={msg.attachment_type}
+                                  tone="dark"
+                                />
                               </div>
                             )}
                             {text && !(msg.local_audio_url || (msg.attachment_url && msg.attachment_type?.startsWith('audio/')) || (msg.attachment_url && (msg.message?.includes('🎙️') || msg.message?.includes('رسالة صوتية')))) && !(msg.message?.includes('🎙️') && msg.message?.includes('رسالة صوتية')) && (

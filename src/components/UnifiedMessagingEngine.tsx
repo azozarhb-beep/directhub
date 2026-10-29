@@ -5,7 +5,8 @@ import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 import type { ChatLanguage } from '@/app/agent/dashboard/AgentLanguageSelector';
 import ChatImageAttachment, { uploadChatImage, isImageAttachment, type AttachmentState } from '@/components/ChatImageAttachment';
-import { SignedChatImage, SignedChatLink } from '@/components/SignedChatMedia';
+
+import ChatAttachmentView from '@/components/ChatAttachmentView';
 import LiveTranslationChatInput from '@/components/LiveTranslationChatInput';
 import { needsChatTranslation } from '@/lib/chatTranslationGate';
 
@@ -1010,24 +1011,11 @@ export default function UnifiedMessagingEngine({
                               : 'bg-[#0A192F]/60 text-white rounded-bl-sm border border-[#D4AF37]/15'
                           }`}>
                             {msg.attachmentUrl && (
-                              isImageAttachment(msg.attachmentUrl, msg.attachmentName) ? (
-                                <div className="mb-1.5">
-                                  <SignedChatImage
-                                    src={msg.attachmentUrl}
-                                    alt={msg.attachmentName || 'صورة مرفقة'}
-                                    className="max-w-[220px] max-h-[200px] rounded-xl object-cover cursor-pointer"
-                                    onClickOpen
-                                  />
-                                </div>
-                              ) : (
-                                <SignedChatLink
-                                  href={msg.attachmentUrl}
-                                  className={`flex items-center gap-1.5 text-xs underline mb-1.5 ${isMine ? 'text-[#0A192F]/80' : 'text-[#D4AF37]'}`}
-                                >
-                                  <Icon name="PaperClipIcon" size={12} />
-                                  {msg.attachmentName || 'مرفق'}
-                                </SignedChatLink>
-                              )
+                              <ChatAttachmentView
+                                url={msg.attachmentUrl}
+                                name={msg.attachmentName}
+                                tone={isMine ? 'light' : 'dark'}
+                              />
                             )}
                             <p className="whitespace-pre-wrap text-xs">{msg.message}</p>
                           </div>

@@ -74,9 +74,23 @@ export async function getChatMediaSignedUrl(
   if (cached && cached.expires > Date.now() + 30_000) return cached.url;
 
   const supabase = createClient();
-  const { data, error } = await supabase.storage.from(ref.bucket).createSignedUrl(ref.path, expiresIn);
+  let { data, error } = await supabase.storage.from(ref.bucket).createSignedUrl(ref.path, expiresIn);
+  let usedBucket: ChatBucket = ref.bucket;
+  if (error || !data?.signedUrl) {
+    // Legacy rows may point at the sibling chat bucket (e.g. "Bucket not found" / object missing)
+    const fallback = CHAT_BUCKETS.find((b) => b !== ref.bucket);
+    if (fallback) {
+      const retry = await supabase.storage.from(fallback).createSignedUrl(ref.path, expiresIn);
+      if (!retry.error && retry.data?.signedUrl) {
+        data = retry.data;
+        error = null;
+        usedBucket = fallback;
+      }
+    }
+  }
   if (error || !data?.signedUrl) return null;
   signedCache.set(key, { url: data.signedUrl, expires: Date.now() + expiresIn * 1000 });
+  void usedBucket;
   return data.signedUrl;
 }
 
