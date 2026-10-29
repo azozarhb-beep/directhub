@@ -9,18 +9,27 @@ import { useAuth } from '@/contexts/AuthContext';
 import AppLogo from '@/components/ui/AppLogo';
 import FactoryControlHub from '@/components/manufacturer/FactoryControlHub';
 import { useSalesRepAccess } from '@/components/manufacturer/useSalesRepAccess';
+import { useLiveExportData } from '@/components/manufacturer/useLiveExportData';
 import { Globe, TrendingUp, Ship, AlertTriangle, Store } from 'lucide-react';
 
-const STAT_CARDS = [
-  { key: 'exports', href: '/manufacturer/analytics', label: 'حجم الصادرات', value: '$333K', sub: 'هذا الشهر', icon: TrendingUp, color: 'from-cyan-600 to-cyan-800' },
-  { key: 'in_transit', href: '/manufacturer/logistics', label: 'الشحنات في الطريق', value: '1', sub: 'شحنة نشطة', icon: Ship, color: 'from-indigo-600 to-indigo-800' },
-  { key: 'held', href: '/manufacturer/logistics', label: 'شحنات محتجزة', value: '1', sub: 'تحتاج مراجعة', icon: AlertTriangle, color: 'from-red-600 to-red-800' },
-];
+const formatCompactUSD = (amount: number): string => {
+  if (!Number.isFinite(amount) || amount <= 0) return '$0';
+  if (amount >= 1_000_000) return `$${+(amount / 1_000_000).toFixed(1)}M`;
+  if (amount >= 1_000) return `$${Math.round(amount / 1_000)}K`;
+  return `$${Math.round(amount)}`;
+};
 
 export default function ManufacturerHubPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const { loading: roleLoading, isSalesRep } = useSalesRepAccess();
+  const { kpis } = useLiveExportData(user?.id);
+
+  const STAT_CARDS = [
+    { key: 'exports', href: '/manufacturer/analytics', label: 'حجم الصادرات', value: formatCompactUSD(kpis.exportVolume), sub: kpis.exportVolume > 0 ? 'إجمالي الطلبات' : 'لا توجد طلبات بعد', icon: TrendingUp, color: 'from-cyan-600 to-cyan-800' },
+    { key: 'in_transit', href: '/manufacturer/logistics', label: 'الشحنات في الطريق', value: String(kpis.inTransit), sub: kpis.inTransit > 0 ? 'شحنة نشطة' : '0 نشطة', icon: Ship, color: 'from-indigo-600 to-indigo-800' },
+    { key: 'held', href: '/manufacturer/logistics', label: 'شحنات محتجزة', value: String(kpis.held), sub: kpis.held > 0 ? 'تحتاج مراجعة' : 'لا توجد شحنات محتجزة', icon: AlertTriangle, color: 'from-red-600 to-red-800' },
+  ];
 
   useEffect(() => {
     if (!loading && !user) router?.push('/manufacturer/login');

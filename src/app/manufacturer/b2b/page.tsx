@@ -63,32 +63,83 @@ interface SupplyContract {
   auto_renew: boolean;
 }
 
-// ─── Mock Data (bulk orders & contracts remain static; RFQs are live) ─────────
+// ─── Live mappers (bulk orders from `orders`, contracts from accepted `custom_quotes`) ───
 
-const MOCK_BULK_ORDERS: BulkOrder[] = [
-  {
-    id: 'BO-001', company: 'Müller Industries GmbH', country: '🇩🇪 Germany', product: 'Steel Pipes DN100', quantity: 2000, unit: 'pcs', unit_price: 47, total: 94000, currency: 'USD', contract_type: 'spot', escrow_status: 'milestone_1',
-    milestones: [
-      { label: 'دفعة أولى (30%) — عند التصنيع', amount: 28200, status: 'completed' },
-      { label: 'دفعة ثانية (40%) — عند الشحن', amount: 37600, status: 'completed' },
-      { label: 'دفعة نهائية (30%) — عند التسليم', amount: 28200, status: 'pending' },
-    ],
-  },
-  {
-    id: 'BO-002', company: 'Riyadh Contracting Co.', country: '🇸🇦 Saudi Arabia', product: 'Cement 50kg Bags', quantity: 50000, unit: 'bags', unit_price: 9, total: 450000, currency: 'USD', contract_type: 'quarterly', escrow_status: 'funded',
-    milestones: [
-      { label: 'دفعة أولى (25%) — عند التأكيد', amount: 112500, status: 'completed' },
-      { label: 'دفعة ثانية (50%) — عند الشحن', amount: 225000, status: 'pending' },
-      { label: 'دفعة نهائية (25%) — عند التسليم', amount: 112500, status: 'pending' },
-    ],
-  },
-];
+function firstItem(items: unknown): Record<string, any> {
+  return Array.isArray(items) && items.length > 0 && typeof items[0] === 'object' && items[0] !== null ? (items[0] as Record<string, any>) : {};
+}
 
-const MOCK_CONTRACTS: SupplyContract[] = [
-  { id: 'SC-001', company: 'Istanbul Metals A.Ş.', country: '🇹🇷 Turkey', product: 'Copper Wire 2.5mm', monthly_volume: 5000, unit: 'kg', unit_price: 13.5, currency: 'EUR', duration_months: 12, start_date: '2026-01-01', end_date: '2026-12-31', status: 'active', auto_renew: true },
-  { id: 'SC-002', company: 'Shenzhen Trade Co.', country: '🇨🇳 China', product: 'Aluminium Sheets', monthly_volume: 10000, unit: 'kg', unit_price: 3.8, currency: 'USD', duration_months: 6, start_date: '2026-07-01', end_date: '2026-12-31', status: 'active', auto_renew: false },
-  { id: 'SC-003', company: 'Cairo Industrial Group', country: '🇪🇬 Egypt', product: 'Steel Rebar 12mm', monthly_volume: 20000, unit: 'kg', unit_price: 0.85, currency: 'USD', duration_months: 24, start_date: '2025-01-01', end_date: '2026-12-31', status: 'pending_signature', auto_renew: true },
-];
+function orderCountry(order: Record<string, any>): string {
+  const addr = order?.shipping_address;
+  if (addr && typeof addr === 'object' && addr.country) return String(addr.country);
+  return String(order?.port_of_discharge || '—');
+}
+
+function orderCompany(order: Record<string, any>): string {
+  const addr = order?.shipping_address;
+  if (addr && typeof addr === 'object') {
+    const n = addr.company || addr.company_name || addr.full_name || addr.name;
+    if (n) return String(n);
+  }
+  return order?.order_number ? `Buyer · ${order.order_number}` : 'Buyer';
+}
+
+function mapOrderToBulkOrder(order: Record<string, any>, stage2Released: boolean, stage1Released: boolean, stage3Released: boolean): BulkOrder {
+  const total = Number(order?.total) || 0;
+  const item = firstItem(order?.items);
+  const quantity = Number(item.quantity ?? item.qty) || Number(order?.container_count) || 1;
+  const unitPrice = Number(item.unit_price ?? item.price) || (quantity > 0 ? total / quantity : total);
+  const m1 = !!order?.milestone_1_paid || stage1Released || order?.escrow_status === 'funds_released';
+  const m2 = !!order?.milestone_2_paid || stage2Released || order?.escrow_status === 'funds_released';
+  const m3 = !!order?.milestone_3_paid || stage3Released || order?.escrow_status === 'funds_released';
+  const funded = ['funds_secured', 'shipped', 'ready_for_inspection', 'pending_otp_confirmation', 'pending_admin_payout', 'funds_released'].includes(String(order?.escrow_status || ''));
+  const escrow_status: BulkOrder['escrow_status'] =
+    order?.escrow_status === 'funds_released' || m3 ? 'released' : m2 ? 'milestone_2' : m1 ? 'milestone_1' : funded ? 'funded' : 'pending';
+  return {
+    id: String(order?.order_number || order?.id || ''),
+    company: orderCompany(order),
+    country: orderCountry(order),
+    product: String(item.name_ar || item.name || item.product_name || item.title || 'Order items'),
+    quantity,
+    unit: String(item.unit || 'units'),
+    unit_price: Math.round(unitPrice * 100) / 100,
+    total,
+    currency: String(order?.currency || 'USD'),
+    contract_type: 'spot',
+    escrow_status,
+    milestones: [
+      { label: 'دفعة أولى (30%) — عند التصنيع', amount: Math.round(total * 0.3 * 100) / 100, status: m1 ? 'completed' : 'pending' },
+      { label: 'دفعة ثانية (40%) — عند الشحن (B/L)', amount: Math.round(total * 0.4 * 100) / 100, status: m2 ? 'completed' : 'pending' },
+      { label: 'دفعة نهائية (30%) — عند التسليم', amount: Math.round(total * 0.3 * 100) / 100, status: m3 ? 'completed' : 'pending' },
+    ],
+  };
+}
+
+function mapQuoteToContract(q: Record<string, any>): SupplyContract {
+  const start = String(q?.accepted_at || q?.created_at || '').slice(0, 10);
+  const end = String(q?.expires_at || '').slice(0, 10);
+  const durationMonths = start && end ? Math.max(1, Math.round((new Date(end).getTime() - new Date(start).getTime()) / (30 * 86400000))) : 0;
+  const rawStatus = String(q?.status || 'pending');
+  const status: SupplyContract['status'] =
+    rawStatus === 'accepted' ? (end && new Date(end).getTime() < Date.now() ? 'expired' : 'active')
+    : rawStatus === 'pending' ? 'pending_signature'
+    : rawStatus === 'expired'? 'expired' :'terminated';
+  return {
+    id: `SC-${String(q?.id || '').slice(0, 8).toUpperCase()}`,
+    company: 'Buyer',
+    country: String(q?.port_of_loading || '—'),
+    product: String(q?.product_title || 'Supply contract'),
+    monthly_volume: Number(q?.quantity) || 0,
+    unit: 'units',
+    unit_price: Number(q?.quoted_price) || 0,
+    currency: String(q?.currency || 'USD'),
+    duration_months: durationMonths,
+    start_date: start,
+    end_date: end,
+    status,
+    auto_renew: false,
+  };
+}
 
 const QUOTE_INCOTERMS = ['EXW', 'FOB', 'CIF'] as const;
 const CONTAINER_OPTIONS = [
@@ -165,10 +216,73 @@ export default function B2BSalesPage() {
   const [quoteSubmitting, setQuoteSubmitting] = useState(false);
   const [quoteError, setQuoteError] = useState('');
   const [showQuoteForm, setShowQuoteForm] = useState(false);
+  const [bulkOrders, setBulkOrders] = useState<BulkOrder[]>([]);
+  const [contracts, setContracts] = useState<SupplyContract[]>([]);
+  const [poLoading, setPoLoading] = useState(true);
+  const [poError, setPoError] = useState('');
 
   useEffect(() => {
     if (!authLoading && !user) router.push('/manufacturer/login');
   }, [user, authLoading, router]);
+
+  const loadPoAndContracts = useCallback(async () => {
+    if (!user?.id) return;
+    setPoError('');
+    try {
+      const [ordersRes, quotesRes] = await Promise.all([
+        supabase
+          .from('orders')
+          .select('id, order_number, total, currency, items, shipping_address, port_of_discharge, container_count, escrow_status, milestone_1_paid, milestone_2_paid, milestone_3_paid, bl_document_url, bill_of_lading_url, bl_verified_at, status, created_at')
+          .eq('factory_user_id', user.id)
+          .not('escrow_status', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(100),
+        supabase
+          .from('custom_quotes')
+          .select('id, product_title, quantity, quoted_price, currency, status, accepted_at, expires_at, created_at, port_of_loading')
+          .eq('factory_user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(100),
+      ]);
+      if (ordersRes.error) throw ordersRes.error;
+      const orderRows = ((ordersRes.data || []) as any[]).filter((o) => String(o?.status || '').toLowerCase() !== 'cancelled');
+      const orderIds = orderRows.map((o) => o.id);
+      const stagesByOrder = new Map<string, Set<number>>();
+      if (orderIds.length > 0) {
+        const relRes = await supabase.from('escrow_milestone_releases').select('order_id, stage').in('order_id', orderIds);
+        ((relRes.data || []) as Array<{ order_id: string; stage: number }>).forEach((r) => {
+          const set = stagesByOrder.get(r.order_id) ?? new Set<number>();
+          set.add(Number(r.stage));
+          stagesByOrder.set(r.order_id, set);
+        });
+      }
+      setBulkOrders(
+        orderRows.map((o) => {
+          const stages = stagesByOrder.get(o.id);
+          return mapOrderToBulkOrder(o, !!stages?.has(2), !!stages?.has(1), !!stages?.has(3));
+        })
+      );
+      setContracts(((quotesRes.data || []) as any[]).filter((q) => q.status !== 'superseded').map(mapQuoteToContract));
+    } catch (e: any) {
+      setPoError(e?.message || 'تعذر تحميل الطلبات والعقود');
+    } finally {
+      setPoLoading(false);
+    }
+  }, [supabase, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    loadPoAndContracts();
+    const channel = supabase
+      .channel(`b2b-po-live-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `factory_user_id=eq.${user.id}` }, () => loadPoAndContracts())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'escrow_milestone_releases' }, () => loadPoAndContracts())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_quotes', filter: `factory_user_id=eq.${user.id}` }, () => loadPoAndContracts())
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, supabase, loadPoAndContracts]);
 
   const loadRfqs = useCallback(async () => {
     if (!user?.id) return;
@@ -278,8 +392,8 @@ export default function B2BSalesPage() {
   }
 
   const totalRFQValue = rfqs.reduce((s, r) => s + r.quantity * r.target_price, 0);
-  const activeContracts = MOCK_CONTRACTS.filter(c => c.status === 'active').length;
-  const escrowFunded = MOCK_BULK_ORDERS.reduce((s, o) => s + (o.escrow_status !== 'pending' ? o.total : 0), 0);
+  const activeContracts = contracts.filter(c => c.status === 'active').length;
+  const escrowFunded = bulkOrders.reduce((s, o) => s + (o.escrow_status !== 'pending' ? o.total : 0), 0);
 
   return (
     <div className="min-h-screen bg-slate-50" dir={dir}>
@@ -469,7 +583,18 @@ export default function B2BSalesPage() {
         {/* Tab: Bulk Orders & Escrow */}
         {activeTab === 'bulk_orders' && (
           <div className="space-y-4">
-            {MOCK_BULK_ORDERS.map(order => (
+            {poError && (
+              <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{poError}</div>
+            )}
+            {poLoading ? (
+              <div className="flex justify-center py-12">
+                <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : bulkOrders.length === 0 ? (
+              <div className="bg-white border border-dashed border-slate-300 rounded-xl p-10 text-center text-slate-500 text-sm">
+                لا توجد طلبات شراء بالجملة حالياً
+              </div>
+            ) : bulkOrders.map(order => (
               <div key={order.id} className="bg-white border border-slate-200 rounded-xl p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
                   <div>
@@ -525,7 +650,15 @@ export default function B2BSalesPage() {
                 عقد توريد جديد
               </button>
             </div>
-            {MOCK_CONTRACTS.map(contract => (
+            {poLoading ? (
+              <div className="flex justify-center py-12">
+                <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : contracts.length === 0 ? (
+              <div className="bg-white border border-dashed border-slate-300 rounded-xl p-10 text-center text-slate-500 text-sm">
+                لا توجد عقود توريد حالياً
+              </div>
+            ) : contracts.map(contract => (
               <div key={contract.id} className="bg-white border border-slate-200 rounded-xl p-4 hover:border-indigo-300 transition-all">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>

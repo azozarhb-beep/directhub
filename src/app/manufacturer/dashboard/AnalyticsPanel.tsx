@@ -6,6 +6,7 @@ import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { getShipmentsForPeriod, aggregateByCountry, formatShipmentsAr } from '@/components/manufacturer/ExportVolumeKPIs';
+import { useLiveExportData } from '@/components/manufacturer/useLiveExportData';
 
 const formatUSD = (amount: number, fractionDigits = 0): string =>
   new Intl.NumberFormat('en-US', {
@@ -162,7 +163,8 @@ export default function AnalyticsPanel({
   const periodDays = analyticsPeriod === '7d' ? 7 : analyticsPeriod === '30d' ? 30 : 90;
   const prev = analyticsPrev ?? { totalOrders: 0, totalRfqs: 0, totalRevenue: 0 };
 
-  const exportShipments = getShipmentsForPeriod(analyticsPeriod);
+  const { records: liveExportRecords } = useLiveExportData(user?.id);
+  const exportShipments = getShipmentsForPeriod(liveExportRecords, analyticsPeriod);
   const exportByCountry = aggregateByCountry(exportShipments);
 
   const handleExportCsv = () => {

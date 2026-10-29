@@ -218,7 +218,7 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
       const now = Date.now();
       const periodStart = now - days * 86400000;
       const prevStart = now - days * 2 * 86400000;
-      const { data: orders } = await supabase.from('orders').select('total_amount, created_at').eq('manufacturer_id', user.id);
+      const { data: orders } = await supabase.from('orders').select('total, status, created_at').eq('factory_user_id', user.id);
       const { data: rfqResp } = await supabase.from('rfq_responses').select('created_at').eq('manufacturer_id', user.id);
       const { data: prods } = await supabase.from('manufacturer_products').select('id, is_active').eq('manufacturer_id', user.id);
 
@@ -226,17 +226,12 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
         const ts = iso ? new Date(iso).getTime() : NaN;
         return Number.isFinite(ts) && ts >= from && ts < to;
       };
-      const curOrders = (orders || []).filter((o: any) => inRange(o.created_at, periodStart, now + 1));
-      const prevOrders = (orders || []).filter((o: any) => inRange(o.created_at, prevStart, periodStart));
+      const liveOrders = (orders || []).filter((o: any) => String(o?.status || '').toLowerCase() !== 'cancelled');
+      const curOrders = liveOrders.filter((o: any) => inRange(o.created_at, periodStart, now + 1));
+      const prevOrders = liveOrders.filter((o: any) => inRange(o.created_at, prevStart, periodStart));
       const curRfqs = (rfqResp || []).filter((r: any) => inRange(r.created_at, periodStart, now + 1));
       const prevRfqs = (rfqResp || []).filter((r: any) => inRange(r.created_at, prevStart, periodStart));
-      const sumAmt = (list: any[]) => list.reduce((sum: number, o: any) => sum + (Number(o.total_amount) || 0), 0);
-
-      // Aligned shipment data (completed export shipments are real fulfilled sales)
-      const curShip = getShipmentsForPeriod(analyticsPeriod);
-      const prevShip = getPreviousShipmentsForPeriod(analyticsPeriod);
-      const shipRevenue = curShip.reduce((s, x) => s + x.volume, 0);
-      const prevShipRevenue = prevShip.reduce((s, x) => s + x.volume, 0);
+      const sumAmt = (list: any[]) => list.reduce((sum: number, o: any) => sum + (Number(o.total) || 0), 0);
 
       // Daily series for charts (bucketed so long ranges stay readable)
       const bucketDays = days <= 7 ? 1 : days <= 30 ? 3 : 10;
@@ -248,27 +243,26 @@ export default function FactoryModuleView({ moduleKey }: FactoryModuleViewProps)
         const from = now - startAgo * 86400000;
         const to = now - endAgo * 86400000;
         const bucketOrders = curOrders.filter((o: any) => inRange(o.created_at, from, to));
-        const bucketShips = curShip.filter((x) => x.daysAgo >= endAgo && x.daysAgo < startAgo);
         const label = new Date(to - 1).toISOString().slice(5, 10);
         series.push({
           date: label,
           views: 0,
-          orders: bucketOrders.length + bucketShips.length,
-          revenue: sumAmt(bucketOrders) + bucketShips.reduce((s, x) => s + x.volume, 0),
+          orders: bucketOrders.length,
+          revenue: sumAmt(bucketOrders),
         });
       }
 
       setAnalyticsSeries(series);
       setAnalyticsPrev({
-        totalOrders: prevOrders.length + prevShip.length,
+        totalOrders: prevOrders.length,
         totalRfqs: prevRfqs.length,
-        totalRevenue: sumAmt(prevOrders) + prevShipRevenue,
+        totalRevenue: sumAmt(prevOrders),
       });
       setAnalyticsStats((prev) => ({
         ...prev,
-        totalOrders: curOrders.length + curShip.length,
+        totalOrders: curOrders.length,
         totalRfqs: curRfqs.length,
-        totalRevenue: sumAmt(curOrders) + shipRevenue,
+        totalRevenue: sumAmt(curOrders),
         activeProducts: (prods || []).filter((p: any) => p.is_active).length,
       }));
     } catch (e) { console.error(e); } finally { setAnalyticsLoading(false); }

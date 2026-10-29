@@ -3,8 +3,18 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import Icon from '@/components/ui/AppIcon';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  PERIOD_DAYS,
+  filterRecordsForPeriod,
+  filterPreviousRecordsForPeriod,
+  useLiveExportData,
+  type AnalyticsPeriod,
+  type ExportShipmentRecord,
+} from '@/components/manufacturer/useLiveExportData';
 
-export type AnalyticsPeriod = '7d' | '30d' | '90d';
+export type { AnalyticsPeriod, ExportShipmentRecord };
+export { PERIOD_DAYS };
 
 export interface CountryExport {
   country: string;
@@ -13,46 +23,14 @@ export interface CountryExport {
   shipments: number;
 }
 
-interface ExportShipmentRecord {
-  id: string;
-  country: string;
-  country_ar: string;
-  volume: number;
-  /** Days before today the shipment was completed */
-  daysAgo: number;
-  product_ar: string;
-  buyer: string;
-  tons: number;
+/** Records that fall inside the selected period (0..days ago). Live data is passed in by the caller. */
+export function getShipmentsForPeriod(records: ExportShipmentRecord[], period: AnalyticsPeriod): ExportShipmentRecord[] {
+  return filterRecordsForPeriod(records, period);
 }
 
-/** Source dataset: individual completed export shipments with age in days. */
-export const EXPORT_SHIPMENTS: ExportShipmentRecord[] = [
-  { id: 'EXP-1012', country: 'Saudi Arabia', country_ar: 'السعودية', volume: 38000, daysAgo: 3, product_ar: 'رولات أفلام التغليف', buyer: 'Al-Rajhi Trading', tons: 21 },
-  { id: 'EXP-1011', country: 'Saudi Arabia', country_ar: 'السعودية', volume: 30000, daysAgo: 9, product_ar: 'حبيبات بلاستيك', buyer: 'Gulf Packaging Co.', tons: 18 },
-  { id: 'EXP-1010', country: 'Saudi Arabia', country_ar: 'السعودية', volume: 32000, daysAgo: 21, product_ar: 'رولات أفلام التغليف', buyer: 'Al-Rajhi Trading', tons: 19 },
-  { id: 'EXP-1007', country: 'Saudi Arabia', country_ar: 'السعودية', volume: 28000, daysAgo: 58, product_ar: 'مواد خام', buyer: 'Najd Industrial', tons: 16 },
-  { id: 'EXP-1009', country: 'UAE', country_ar: 'الإمارات', volume: 36000, daysAgo: 6, product_ar: 'حبيبات بلاستيك', buyer: 'Emirates Polymers', tons: 22 },
-  { id: 'EXP-1008', country: 'UAE', country_ar: 'الإمارات', volume: 34000, daysAgo: 27, product_ar: 'رولات أفلام التغليف', buyer: 'Emirates Polymers', tons: 20 },
-  { id: 'EXP-1004', country: 'UAE', country_ar: 'الإمارات', volume: 24000, daysAgo: 71, product_ar: 'مواد خام', buyer: 'Dubai Pack LLC', tons: 14 },
-  { id: 'EXP-1006', country: 'Oman', country_ar: 'عمان', volume: 31000, daysAgo: 14, product_ar: 'حبيبات بلاستيك', buyer: 'Muscat Plastics', tons: 17 },
-  { id: 'EXP-1003', country: 'Oman', country_ar: 'عمان', volume: 30000, daysAgo: 64, product_ar: 'رولات أفلام التغليف', buyer: 'Muscat Plastics', tons: 17 },
-  { id: 'EXP-1005', country: 'Yemen', country_ar: 'اليمن', volume: 18000, daysAgo: 12, product_ar: 'مواد خام', buyer: 'Sanaa Trading', tons: 11 },
-  { id: 'EXP-1002', country: 'Yemen', country_ar: 'اليمن', volume: 15000, daysAgo: 45, product_ar: 'حبيبات بلاستيك', buyer: 'Aden Industries', tons: 9 },
-  { id: 'EXP-1001', country: 'Egypt', country_ar: 'مصر', volume: 17000, daysAgo: 82, product_ar: 'مواد خام', buyer: 'Cairo Chem', tons: 10 },
-];
-
-export const PERIOD_DAYS: Record<AnalyticsPeriod, number> = { '7d': 7, '30d': 30, '90d': 90 };
-
-/** Shipments that fall inside the selected period (0..days ago). */
-export function getShipmentsForPeriod(period: AnalyticsPeriod): ExportShipmentRecord[] {
-  const days = PERIOD_DAYS[period];
-  return EXPORT_SHIPMENTS.filter((s) => s.daysAgo < days);
-}
-
-/** Shipments inside the previous equivalent period (days..2*days ago). */
-export function getPreviousShipmentsForPeriod(period: AnalyticsPeriod): ExportShipmentRecord[] {
-  const days = PERIOD_DAYS[period];
-  return EXPORT_SHIPMENTS.filter((s) => s.daysAgo >= days && s.daysAgo < days * 2);
+/** Records inside the previous equivalent period (days..2*days ago). */
+export function getPreviousShipmentsForPeriod(records: ExportShipmentRecord[], period: AnalyticsPeriod): ExportShipmentRecord[] {
+  return filterPreviousRecordsForPeriod(records, period);
 }
 
 export function aggregateByCountry(records: ExportShipmentRecord[]): CountryExport[] {
@@ -69,13 +47,9 @@ export function aggregateByCountry(records: ExportShipmentRecord[]): CountryExpo
   return Array.from(map.values()).sort((a, b) => b.volume - a.volume);
 }
 
-export function getExportByCountry(period: AnalyticsPeriod): CountryExport[] {
-  return aggregateByCountry(getShipmentsForPeriod(period));
+export function getExportByCountry(records: ExportShipmentRecord[], period: AnalyticsPeriod): CountryExport[] {
+  return aggregateByCountry(filterRecordsForPeriod(records, period));
 }
-
-export const EXPORT_BY_COUNTRY: CountryExport[] = getExportByCountry('90d');
-
-export const TOTAL_EXPORT_VOLUME_USD: number = EXPORT_BY_COUNTRY.reduce((s, c) => s + c.volume, 0);
 
 function formatUSD(amount: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
@@ -116,7 +90,9 @@ export default function ExportVolumeKPIs({ period = '30d' }: ExportVolumeKPIsPro
     setNow(new Date());
   }, []);
 
-  const records = useMemo(() => getShipmentsForPeriod(period), [period]);
+  const { user } = useAuth();
+  const { records: allRecords } = useLiveExportData(user?.id);
+  const records = useMemo(() => getShipmentsForPeriod(allRecords, period), [allRecords, period]);
   const data = useMemo(() => aggregateByCountry(records), [records]);
   const total = data.reduce((s, c) => s + c.volume, 0);
   const shipments = data.reduce((s, c) => s + c.shipments, 0);
@@ -179,7 +155,6 @@ export default function ExportVolumeKPIs({ period = '30d' }: ExportVolumeKPIsPro
     });
     return Array.from(m.values()).sort((a, b) => b.volume - a.volume);
   }, [topCountryRecords]);
-  const topTons = topCountryRecords.reduce((s, r) => s + r.tons, 0);
 
   const minShipment = records.length > 0 ? records.reduce((a, b) => (b.volume < a.volume ? b : a), records[0]) : undefined;
   const maxShipment = records.length > 0 ? records.reduce((a, b) => (b.volume > a.volume ? b : a), records[0]) : undefined;
@@ -411,8 +386,8 @@ export default function ExportVolumeKPIs({ period = '30d' }: ExportVolumeKPIsPro
                       <p className="text-sm font-extrabold">{formatShipmentsAr(top.shipments)}</p>
                     </div>
                     <div className="bg-slate-50 rounded-xl p-3 text-center">
-                      <p className="text-[11px] text-slate-500">إجمالي الأطنان</p>
-                      <p className="text-sm font-extrabold">{topTons} طن</p>
+                      <p className="text-[11px] text-slate-500">متوسط قيمة الشحنة</p>
+                      <p className="text-sm font-extrabold" dir="ltr">{formatUSD(top.shipments > 0 ? top.volume / top.shipments : 0)}</p>
                     </div>
                   </div>
 
@@ -433,7 +408,7 @@ export default function ExportVolumeKPIs({ period = '30d' }: ExportVolumeKPIsPro
                     <div className="space-y-2">
                       {topCountryRecords.map((r) => (
                         <div key={r.id} className="flex items-center justify-between text-xs border-b border-slate-100 pb-2">
-                          <span><span className="font-bold" dir="ltr">{r.id}</span> <span className="text-slate-500">· {r.product_ar} · {r.tons} طن</span></span>
+                          <span><span className="font-bold" dir="ltr">{r.id}</span> <span className="text-slate-500">· {r.product_ar}{r.tons > 0 ? ` · ${r.tons} طن` : ''}</span></span>
                           <span className="text-slate-500">{daysAgoLabel(r.daysAgo)}</span>
                         </div>
                       ))}
