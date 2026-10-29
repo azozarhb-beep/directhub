@@ -11,6 +11,7 @@ import { Metadata } from 'next';
 import { OrdersSection, PaymentsSection, SmartServicesSection, ManufacturerBanner } from '@/app/components/DashboardSections';
 
 
+
 // Dashboard sections are loaded via dynamic() below
 
 // Dashboard sections are lazy-loaded via dynamic() below
