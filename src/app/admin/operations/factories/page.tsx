@@ -45,9 +45,31 @@ export default function OperationsFactoriesPage() {
 
   const verifyFactory = async (f: OpsFactory) => {
     setBusyKey(`fa-${f.id}`);
-    const { error: err } = await supabase.from('agent_factory_registrations').update({ registration_status: 'approved', updated_at: new Date().toISOString() }).eq('id', f.id);
+    const nowIso = new Date().toISOString();
+    const { data: updated, error: err } = await supabase
+      .from('agent_factory_registrations')
+      .update({
+        registration_status: 'approved',
+        is_verified: true,
+        verified_by: user?.id || null,
+        verified_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq('id', f.id)
+      .select('factory_user_id, agent_id')
+      .maybeSingle();
+    if (err) { setBusyKey(null); showToast(`فشل الاعتماد: ${err.message}`); return; }
+
+    const factoryUserId = (updated as { factory_user_id?: string | null } | null)?.factory_user_id || null;
+    const agentId = (updated as { agent_id?: string | null } | null)?.agent_id || f.agentId || null;
+    if (factoryUserId) {
+      const audit = { is_verified: true, verified_at: nowIso, verified_by: user?.id || null, onboarded_by_agent_id: agentId };
+      await Promise.all([
+        supabase.from('supplier_profiles').update({ ...audit, updated_at: nowIso }).eq('user_id', factoryUserId),
+        supabase.from('factory_registrations').update(audit).eq('user_id', factoryUserId),
+      ]);
+    }
     setBusyKey(null);
-    if (err) { showToast(`فشل الاعتماد: ${err.message}`); return; }
     setFactories((prev) => prev.map((x) => (x.id === f.id ? { ...x, status: 'approved' } : x)));
     showToast('تم اعتماد وتوثيق المصنع');
   };

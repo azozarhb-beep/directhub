@@ -225,6 +225,7 @@ function RegisterFactoryPageInner() {
         .from('agent_factory_registrations')
         .insert({
           agent_id: user.id,
+          created_by: user.id,
           company_name: form.company_name.trim(),
           factory_type: form.factory_type,
           country: form.country,

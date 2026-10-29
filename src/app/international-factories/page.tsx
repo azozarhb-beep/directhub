@@ -123,6 +123,7 @@ export default function InternationalFactoriesControlRoom() {
         .from('factory_registrations')
         .select('*, user_profiles(full_name, email)')
         .eq('origin_type', 'international')
+        .order('is_verified', { ascending: false })
         .order('submitted_at', { ascending: false });
 
       if (error) throw error;

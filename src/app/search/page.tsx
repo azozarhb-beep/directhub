@@ -1640,26 +1640,29 @@ function SearchResults() {
       if (filters.country !== 'all') q = q.eq('country', filters.country);
       if (filters.supplierType !== 'all') q = q.eq('seller_category', filters.supplierType);
 
-      // Sector / sector-product filter: resolve matching factory owners via factory_registrations
-      if (filters.sectorId && filters.sectorId !== 'all') {
-        let regQ = supabase
-          .from('factory_registrations')
-          .select('user_id')
-          .eq('sector_id', filters.sectorId);
-        if (filters.sectorProduct && filters.sectorProduct !== 'all') {
-          regQ = regQ.contains('main_products', [filters.sectorProduct]);
-        }
-        const { data: regRows } = await regQ.limit(500);
-        const ownerIds = (regRows || []).map((r: any) => r.user_id).filter(Boolean);
-        if (ownerIds.length === 0) {
+      // Local vs international scope + verified-first ranking resolved in the database
+      const { data: rankRows } = await supabase
+        .from('factory_registrations')
+        .select('user_id, is_verified, origin_type')
+        .limit(5000);
+      const rankMap = new Map<string, { verified: boolean; origin: string }>();
+      (rankRows || []).forEach((r: any) => {
+        if (r.user_id) rankMap.set(r.user_id, { verified: Boolean(r.is_verified), origin: String(r.origin_type || 'local') });
+      });
+      if (scopeFilter !== 'all') {
+        const wantOrigin = scopeFilter === 'global' ? 'international' : 'local';
+        const scopedIds = [...rankMap.entries()].filter(([, v]) => v.origin === wantOrigin).map(([id]) => id);
+        if (scopedIds.length === 0) {
           setDbFactories([]);
           setDbLoading(false);
           return;
         }
-        q = q.in('id', ownerIds);
+        q = q.in('id', scopedIds);
       }
 
-      const { data, error } = await q.limit(50);
+      const { data, error } = await q
+        .order('created_at', { ascending: false })
+        .limit(50);
       if (!error && data && data.length > 0) {
         const factoryIds = data.map((f: any) => f.id);
         const { data: productsData } = await supabase
@@ -1673,10 +1676,18 @@ function SearchResults() {
           countMap[p.manufacturer_id] = (countMap[p.manufacturer_id] || 0) + 1;
         });
 
-        const enriched = data.map((factory: any) => ({
-          ...factory,
-          product_count: countMap[factory.id] || 0,
-        }));
+        const enriched = data
+          .map((factory: any) => ({
+            ...factory,
+            product_count: countMap[factory.id] || 0,
+            is_verified: rankMap.get(factory.id)?.verified ?? false,
+            origin_type: rankMap.get(factory.id)?.origin ?? 'local',
+          }))
+          .sort((a: any, b: any) => {
+            if (a.is_verified !== b.is_verified) return a.is_verified ? -1 : 1;
+            if (a.origin_type !== b.origin_type) return a.origin_type === 'local' ? -1 : 1;
+            return 0;
+          });
         setDbFactories(enriched);
       } else if (!error && filters.sectorId && filters.sectorId !== 'all') {
         setDbFactories([]);
@@ -1686,7 +1697,7 @@ function SearchResults() {
     } finally {
       setDbLoading(false);
     }
-  }, [query, filters.country, filters.supplierType, filters.sectorId, filters.sectorProduct]);
+  }, [query, filters.country, filters.supplierType, filters.sectorId, filters.sectorProduct, scopeFilter]);
 
   useEffect(() => {
     if (activeTab === 'products') {
