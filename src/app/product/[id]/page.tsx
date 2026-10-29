@@ -18,6 +18,7 @@ import { useRouter } from 'next/navigation';
 import WishlistButton from '@/components/WishlistButton';
 import { buildProductShareLinkNoPhone } from '@/lib/whatsappOrderLinks';
 import { copyProductShareText, isDomesticCurrency } from '@/lib/productCode';
+import { getOrCreateProductConversation } from '@/lib/startProductConversation';
 
 interface Specification {
   label: string;
@@ -512,6 +513,33 @@ export default function ProductDetailPage() {
   const chatProductRef = isSupplierSeller ? id : product.id;
   const chatSupplierId = product.supplierId && !String(product.supplierId).startsWith('sup-') ? product.supplierId : '';
   const chatHref = `/messaging?${chatSupplierId ? `supplierId=${encodeURIComponent(chatSupplierId)}&` : ''}productId=${encodeURIComponent(chatProductRef)}`;
+  const [startingChat, setStartingChat] = useState(false);
+  const handleStartChat = async () => {
+    if (startingChat) return;
+    if (!user) {
+      requireAuth(() => router.push(chatHref));
+      return;
+    }
+    setStartingChat(true);
+    try {
+      const { conversationId, productId: convProductId } = await getOrCreateProductConversation({
+        supabase: createClient(),
+        buyerId: user.id,
+        productRef: chatProductRef,
+        supplierId: chatSupplierId || null,
+        isAr: isArabic
+      });
+      if (conversationId) {
+        router.push(`/messaging?id=${encodeURIComponent(conversationId)}&productId=${encodeURIComponent(convProductId)}`);
+      } else {
+        router.push(chatHref);
+      }
+    } catch {
+      router.push(chatHref);
+    } finally {
+      setStartingChat(false);
+    }
+  };
 
   useEffect(() => {
     setActiveImage(0);
@@ -1271,12 +1299,14 @@ export default function ProductDetailPage() {
                   <Icon name="LockClosedIcon" size={18} variant="solid" />
                   <span>اطلب الآن والدفع عبر الضمان</span>
                 </button>
-                <Link
-                href={chatHref}
-                className="w-full flex items-center justify-center gap-2.5 py-3 px-5 bg-card text-foreground text-sm font-extrabold rounded-xl border-2 border-primary/30 hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all">
+                <button
+                type="button"
+                onClick={handleStartChat}
+                disabled={startingChat}
+                className="w-full flex items-center justify-center gap-2.5 py-3 px-5 bg-card text-foreground text-sm font-extrabold rounded-xl border-2 border-primary/30 hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all disabled:opacity-60">
                   <Icon name="ChatBubbleLeftRightIcon" size={18} variant="solid" className="text-primary" />
                   <span>تواصل مع المصنع</span>
-                </Link>
+                </button>
               </div>) : (
 
             /* B2C: Add to Cart with quantity selector */
@@ -1482,12 +1512,14 @@ export default function ProductDetailPage() {
                         <span>اطلب الآن والدفع عبر الضمان</span>
                       </button>
 
-                      <Link
-                      href={chatHref}
-                      className="w-full flex items-center justify-center gap-2.5 py-3 px-5 bg-card text-foreground text-sm font-extrabold rounded-xl border-2 border-primary/35 hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all">
+                      <button
+                      type="button"
+                      onClick={handleStartChat}
+                      disabled={startingChat}
+                      className="w-full flex items-center justify-center gap-2.5 py-3 px-5 bg-card text-foreground text-sm font-extrabold rounded-xl border-2 border-primary/35 hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all disabled:opacity-60">
                         <Icon name="ChatBubbleLeftRightIcon" size={18} variant="solid" className="text-primary" />
                         <span>تواصل مع المصنع</span>
-                      </Link>
+                      </button>
                     </>) : (
 
                   /* B2C sidebar: Add to Cart (quantity selector is in the main CTA block) */
@@ -1961,13 +1993,15 @@ export default function ProductDetailPage() {
                   <Icon name="LockClosedIcon" size={20} variant="solid" />
                   <span>اطلب الآن والدفع عبر الضمان</span>
                 </button>
-                <Link
-                href={chatHref}
+                <button
+                type="button"
+                onClick={handleStartChat}
+                disabled={startingChat}
                 aria-label="تواصل مع المصنع"
-                className="flex items-center justify-center gap-2 py-3.5 px-4 bg-card text-foreground text-sm font-extrabold rounded-2xl border-2 border-primary/40 active:opacity-80 transition-all">
+                className="flex items-center justify-center gap-2 py-3.5 px-4 bg-card text-foreground text-sm font-extrabold rounded-2xl border-2 border-primary/40 active:opacity-80 transition-all disabled:opacity-60">
                   <Icon name="ChatBubbleLeftRightIcon" size={20} variant="solid" className="text-primary" />
                   <span className="hidden sm:inline">تواصل مع المصنع</span>
-                </Link>
+                </button>
               </div>) : (
 
             /* B2C fixed bar: quantity selector + Add to Cart */

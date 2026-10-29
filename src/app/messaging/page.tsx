@@ -1568,12 +1568,13 @@ function LiveMessagingContent() {
             };
           }));
           setConversations(withMeta);
-          const targetConvId = searchParams?.get('conv');
+          const targetConvId = searchParams?.get('id') || searchParams?.get('conv');
           const targetProductId = searchParams?.get('productId');
           const targetSupplierId = searchParams?.get('supplierId');
           const isAr = language === 'ar';
           if (targetConvId) {
             setActiveConvId(targetConvId);
+            if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
           } else if (targetProductId) {
             // Resolve product: supplier_products → manufacturer_products → products
             let resolvedProductId = targetProductId;
@@ -1654,6 +1655,7 @@ function LiveMessagingContent() {
             if (existing) {
               if (card) setInquiryCard({ ...card, convId: existing.id });
               setActiveConvId(existing.id);
+              if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
             } else {
               // Create a new negotiation thread (deal_status = open) for this product and open it
               try {
@@ -1734,6 +1736,7 @@ function LiveMessagingContent() {
                   };
                   setConversations(prev => prev.some(c => c.id === created.id) ? prev : [newConv, ...prev]);
                   setActiveConvId(created.id);
+                  if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
                 }
               } catch (convErr) {
                 console.error('Error creating product conversation:', convErr);
@@ -1812,6 +1815,105 @@ function LiveMessagingContent() {
     };
     fetchMsgs();
   }, [activeConvId, user]);
+
+  // ── Pinned product inquiry card for a conversation opened by id ───────────
+  useEffect(() => {
+    if (!activeConvId || !user) return;
+    const conv = conversations.find(c => c.id === activeConvId);
+    if (!conv || !conv.product_id) return;
+    if (inquiryCard && inquiryCard.convId === activeConvId) return;
+    let cancelled = false;
+    const isAr = language === 'ar';
+    const pid = conv.product_id;
+    const urlRef = searchParams?.get('productId') || pid;
+    (async () => {
+      let card: InquiryCardData | null = null;
+      try {
+        const { data: spData } = await supabase.rpc('get_supplier_product_for_inquiry', { p_ref: pid });
+        const sp: any = Array.isArray(spData) ? spData[0] : spData;
+        if (sp?.id) {
+          const moqVal = sp.moq ?? sp.min_order_qty;
+          card = {
+            productId: urlRef,
+            convId: activeConvId,
+            name: sp.name_ar || sp.name || conv.product_name || '',
+            image: sp.image_url || null,
+            priceText: formatInquiryPrice(sp.wholesale_price, sp.currency, isAr),
+            moqText: moqVal ? `${moqVal} ${sp.unit || ''}`.trim() : (isAr ? 'حسب الاتفاق' : 'Negotiable'),
+          };
+        }
+      } catch { /* not a supplier listing */ }
+      if (!card) {
+        try {
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pid);
+          if (isUuid) {
+            const { data: mp } = await supabase.from('manufacturer_products').select('*').or(`id.eq.${pid},agent_product_id.eq.${pid}`).limit(1).maybeSingle();
+            if (mp?.id) {
+              const tiers = Array.isArray(mp.tiered_pricing) ? mp.tiered_pricing : [];
+              const tierMin = tiers.length > 0 ? Number(tiers[0]?.min_qty ?? tiers[0]?.minQty ?? 0) : 0;
+              const moqNum = tierMin || parseInt(String(mp.minimum_order_qty || mp.min_order_quantity || mp.moq || 1)) || 1;
+              const tierPrice = tiers.length > 0 ? Number(tiers[0]?.unit_price ?? tiers[0]?.unitPrice ?? tiers[0]?.price ?? 0) : 0;
+              const unitPrice = tierPrice || parseFloat(String(mp.unit_price || mp.price || 0)) || 0;
+              const origin = String(mp.origin_type || '').toLowerCase();
+              const cur = origin === 'international' ? 'USD' : origin === 'local' ? 'YER' : String(mp.currency || 'YER');
+              card = {
+                productId: urlRef,
+                convId: activeConvId,
+                name: (isAr ? mp.name_ar : null) || mp.name || mp.name_ar || conv.product_name || '',
+                image: firstProductImage(mp),
+                priceText: formatInquiryPrice(unitPrice, cur, isAr),
+                moqText: `${moqNum} ${mp.unit || (isAr ? 'وحدة' : 'units')}`,
+              };
+            }
+          }
+        } catch { /* fall through */ }
+      }
+      if (!card) {
+        try {
+          const { data: pd } = await supabase.from('products').select('*').eq('id', pid).maybeSingle();
+          if (pd?.id) {
+            card = {
+              productId: urlRef,
+              convId: activeConvId,
+              name: pd.name || conv.product_name || '',
+              image: firstProductImage(pd),
+              priceText: formatInquiryPrice(parseFloat(String(pd.unit_price || pd.price || 0)) || 0, pd.currency || 'USD', isAr),
+              moqText: String(pd.moq || pd.minimum_order_qty || pd.min_order_quantity || (isAr ? 'حسب الاتفاق' : 'Negotiable')),
+            };
+          }
+        } catch { /* ignore */ }
+      }
+      if (!card && conv.product_name) {
+        card = {
+          productId: urlRef,
+          convId: activeConvId,
+          name: conv.product_name,
+          image: null,
+          priceText: isAr ? 'تواصل لمعرفة السعر' : 'Contact for price',
+          moqText: isAr ? 'حسب الاتفاق' : 'Negotiable',
+        };
+      }
+      if (card && !cancelled) setInquiryCard(card);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConvId, user, conversations.length]);
+
+  // On mobile, a conversation id in the URL opens that chat full-screen
+  useEffect(() => {
+    const target = searchParams?.get('id') || searchParams?.get('conv');
+    if (target && activeConvId === target && typeof window !== 'undefined' && window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
+  }, [activeConvId, searchParams]);
+
+  // Focus the message input once the targeted conversation has loaded
+  useEffect(() => {
+    const target = searchParams?.get('id') || searchParams?.get('conv');
+    if (!target || activeConvId !== target || loadingMsgs) return;
+    const timer = setTimeout(() => inputRef.current?.focus(), 150);
+    return () => clearTimeout(timer);
+  }, [activeConvId, loadingMsgs, searchParams]);
 
   // ── Stable Realtime messages subscription with auto-reconnect ────────────
   const msgReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
