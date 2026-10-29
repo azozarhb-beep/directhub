@@ -94,30 +94,6 @@ const MASTER_SLUGS = [
   'agriculture-farming',
 ];
 
-// Fallback mock categories shown when Supabase returns empty
-const MOCK_MASTER_CATEGORIES: MasterCategory[] = [
-  { id: 'm1', slug: 'pharmaceuticals-raw-materials', name_en: 'Pharmaceuticals', name_ar: 'أدوية ومستحضرات', description_en: null, image_url: CATEGORY_IMAGES['pharmaceuticals-raw-materials'], icon: 'BeakerIcon', product_count: 450, supplier_count: 120, sort_order: 1 },
-  { id: 'm2', slug: 'raw-materials-chemicals', name_en: 'Raw Materials', name_ar: 'مواد خام وكيماويات', description_en: null, image_url: CATEGORY_IMAGES['raw-materials-chemicals'], icon: 'CubeTransparentIcon', product_count: 2100, supplier_count: 510, sort_order: 2 },
-  { id: 'm3', slug: 'electronics-mobile-phones', name_en: 'Electronics', name_ar: 'إلكترونيات', description_en: null, image_url: CATEGORY_IMAGES['electronics-mobile-phones'], icon: 'DevicePhoneMobileIcon', product_count: 1240, supplier_count: 320, sort_order: 3 },
-  { id: 'm4', slug: 'automotive-vehicles', name_en: 'Automotive', name_ar: 'سيارات وقطع غيار', description_en: null, image_url: CATEGORY_IMAGES['automotive-vehicles'], icon: 'TruckIcon', product_count: 870, supplier_count: 210, sort_order: 4 },
-  { id: 'm5', slug: 'beauty-personal-care', name_en: 'Beauty & Care', name_ar: 'تجميل وعناية', description_en: null, image_url: CATEGORY_IMAGES['beauty-personal-care'], icon: 'SparklesIcon', product_count: 730, supplier_count: 195, sort_order: 5 },
-  { id: 'm6', slug: 'health-medical-equipment', name_en: 'Medical Equipment', name_ar: 'معدات طبية', description_en: null, image_url: CATEGORY_IMAGES['health-medical-equipment'], icon: 'HeartIcon', product_count: 640, supplier_count: 180, sort_order: 6 },
-  { id: 'm7', slug: 'home-appliances-furniture', name_en: 'Home Appliances', name_ar: 'أجهزة منزلية', description_en: null, image_url: CATEGORY_IMAGES['home-appliances-furniture'], icon: 'HomeIcon', product_count: 980, supplier_count: 260, sort_order: 7 },
-  { id: 'm8', slug: 'construction-building-materials', name_en: 'Construction', name_ar: 'مواد البناء', description_en: null, image_url: CATEGORY_IMAGES['construction-building-materials'], icon: 'BuildingOffice2Icon', product_count: 1560, supplier_count: 430, sort_order: 8 },
-  { id: 'm9', slug: 'office-school-supplies', name_en: 'Office & School', name_ar: 'مستلزمات مكتبية', description_en: null, image_url: CATEGORY_IMAGES['office-school-supplies'], icon: 'DocumentTextIcon', product_count: 380, supplier_count: 95, sort_order: 9 },
-  { id: 'm10', slug: 'toys-sports-entertainment', name_en: 'Toys & Sports', name_ar: 'ألعاب ورياضة', description_en: null, image_url: CATEGORY_IMAGES['toys-sports-entertainment'], icon: 'PuzzlePieceIcon', product_count: 520, supplier_count: 140, sort_order: 10 },
-  { id: 'm11', slug: 'food-agriculture', name_en: 'Food & Agriculture', name_ar: 'الغذاء والزراعة', description_en: null, image_url: CATEGORY_IMAGES['food-agriculture'], icon: 'ShoppingBagIcon', product_count: 890, supplier_count: 230, sort_order: 11 },
-  { id: 'm12', slug: 'textiles-apparel', name_en: 'Textiles & Apparel', name_ar: 'المنسوجات والملابس', description_en: null, image_url: CATEGORY_IMAGES['textiles-apparel'], icon: 'SwatchIcon', product_count: 670, supplier_count: 175, sort_order: 12 },
-  { id: 'm13', slug: 'industrial-machinery', name_en: 'Industrial Machinery', name_ar: 'الآلات الصناعية', description_en: null, image_url: CATEGORY_IMAGES['industrial-machinery'], icon: 'WrenchScrewdriverIcon', product_count: 1100, supplier_count: 290, sort_order: 13 },
-  { id: 'm14', slug: 'metals-steel', name_en: 'Metals & Steel', name_ar: 'المعادن والصلب', description_en: null, image_url: CATEGORY_IMAGES['metals-steel'], icon: 'CubeIcon', product_count: 760, supplier_count: 200, sort_order: 14 },
-  { id: 'm15', slug: 'packaging-printing', name_en: 'Packaging & Printing', name_ar: 'التغليف والطباعة', description_en: null, image_url: CATEGORY_IMAGES['packaging-printing'], icon: 'ArchiveBoxIcon', product_count: 430, supplier_count: 115, sort_order: 15 },
-  { id: 'm16', slug: 'energy-power', name_en: 'Energy & Power', name_ar: 'الطاقة والكهرباء', description_en: null, image_url: CATEGORY_IMAGES['energy-power'], icon: 'BoltIcon', product_count: 340, supplier_count: 90, sort_order: 16 },
-  { id: 'm17', slug: 'plastics-rubber', name_en: 'Plastics & Rubber', name_ar: 'البلاستيك والمطاط', description_en: null, image_url: CATEGORY_IMAGES['plastics-rubber'], icon: 'BeakerIcon', product_count: 580, supplier_count: 155, sort_order: 17 },
-  { id: 'm18', slug: 'cleaning-hygiene', name_en: 'Cleaning & Hygiene', name_ar: 'التنظيف والنظافة', description_en: null, image_url: CATEGORY_IMAGES['cleaning-hygiene'], icon: 'SparklesIcon', product_count: 310, supplier_count: 85, sort_order: 18 },
-  { id: 'm19', slug: 'furniture-interiors', name_en: 'Furniture & Interiors', name_ar: 'الأثاث والديكور', description_en: null, image_url: CATEGORY_IMAGES['furniture-interiors'], icon: 'HomeIcon', product_count: 490, supplier_count: 130, sort_order: 19 },
-  { id: 'm20', slug: 'agriculture-farming', name_en: 'Agriculture & Farming', name_ar: 'الزراعة والمزارع', description_en: null, image_url: CATEGORY_IMAGES['agriculture-farming'], icon: 'GlobeAltIcon', product_count: 420, supplier_count: 110, sort_order: 20 },
-];
-
 const LOCAL_COUNTRY_IDENTIFIERS = ['SA', 'Saudi Arabia', 'المملكة العربية السعودية', 'KSA', 'saudi arabia'];
 
 const MasterCategoriesGrid: React.FC = () => {
@@ -150,18 +126,14 @@ const MasterCategoriesGrid: React.FC = () => {
           data.forEach(c => { dbMap[c.slug] = c; });
         }
 
-        // Merge: for each master slug, prefer DB row, fall back to mock
-        const merged = MASTER_SLUGS.map(slug => {
-          if (dbMap[slug]) {
-            return { ...dbMap[slug], image_url: dbMap[slug].image_url || CATEGORY_IMAGES[slug] || null };
-          }
-          // Fall back to mock for this slug
-          return MOCK_MASTER_CATEGORIES.find(m => m.slug === slug) || null;
-        }).filter(Boolean) as MasterCategory[];
+        // Only show categories that exist in the database
+        const merged = MASTER_SLUGS
+          .filter(slug => !!dbMap[slug])
+          .map(slug => ({ ...dbMap[slug], image_url: dbMap[slug].image_url || CATEGORY_IMAGES[slug] || null })) as MasterCategory[];
 
-        setCategories(merged.length > 0 ? merged : MOCK_MASTER_CATEGORIES);
+        setCategories(merged);
       } catch {
-        setCategories(MOCK_MASTER_CATEGORIES);
+        setCategories([]);
       } finally {
         setLoading(false);
       }
@@ -262,6 +234,15 @@ const MasterCategoriesGrid: React.FC = () => {
             <Icon name="ArrowRightIcon" size={12} />
           </Link>
         </div>
+
+        {categories.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-12 text-center bg-muted/30 border border-dashed border-border rounded-2xl">
+            <Icon name="Squares2X2Icon" size={32} className="text-muted-foreground/60 mb-3" />
+            <p className="text-sm font-bold text-foreground">
+              {language === 'ar' ? 'لا توجد فئات متاحة حالياً' : 'No categories available yet'}
+            </p>
+          </div>
+        )}
 
         {/* 20-category grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5 md:gap-3">

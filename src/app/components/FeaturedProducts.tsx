@@ -32,94 +32,6 @@ interface Product {
   supplier_profiles?: {is_verified: boolean;tier: string;};
 }
 
-// ── Mock data shown when Supabase returns no results ──────────────────────────
-const MOCK_PRODUCTS: Product[] = [
-{
-  id: 'p1',
-  name: 'Industrial Hydraulic Pump',
-  name_ar: 'مضخة هيدروليكية صناعية',
-  image_url: "https://img.rocket.new/generatedImages/rocket_gen_img_154853444-1777836354079.png",
-  unit_price: 285,
-  minimum_order_qty: 5,
-  unit: 'units',
-  origin_country: 'China',
-  is_active: true,
-  category: 'machinery',
-  user_profiles: { company_name: 'Zhongshan Heavy Equipment Co.', full_name: 'Zhongshan Heavy', country: 'China', role: 'manufacturer' },
-  supplier_profiles: { is_verified: true, tier: 'gold' }
-},
-{
-  id: 'p2',
-  name: 'Premium Cotton Fabric Roll',
-  name_ar: 'قماش قطني ممتاز',
-  image_url: "https://img.rocket.new/generatedImages/rocket_gen_img_159a1ac03-1785820146465.png",
-  unit_price: 3.2,
-  minimum_order_qty: 500,
-  unit: 'meters',
-  origin_country: 'Turkey',
-  is_active: true,
-  category: 'textiles',
-  user_profiles: { company_name: 'Antalya Textile Mills', full_name: 'Antalya Textile', country: 'Turkey', role: 'manufacturer' },
-  supplier_profiles: { is_verified: true, tier: 'platinum' }
-},
-{
-  id: 'p3',
-  name: 'Monocrystalline Solar Panel 400W',
-  name_ar: 'لوح طاقة شمسية 400 واط',
-  image_url: "https://img.rocket.new/generatedImages/rocket_gen_img_1c4c2811d-1785853988457.png",
-  unit_price: 95,
-  minimum_order_qty: 20,
-  unit: 'pcs',
-  origin_country: 'China',
-  is_active: true,
-  category: 'electronics',
-  user_profiles: { company_name: 'Shenzhen Solar Tech Ltd.', full_name: 'Shenzhen Solar', country: 'China', role: 'manufacturer' },
-  supplier_profiles: { is_verified: true, tier: 'gold' }
-},
-{
-  id: 'p4',
-  name: 'Portland Cement 50kg Bag',
-  name_ar: 'إسمنت بورتلاند 50 كيلو',
-  image_url: 'https://img.rocket.new/generatedImages/rocket_gen_img_1e59a0c95-1772134956918.png',
-  unit_price: 8.5,
-  minimum_order_qty: 100,
-  unit: 'bags',
-  origin_country: 'Saudi Arabia',
-  is_active: true,
-  category: 'building',
-  user_profiles: { company_name: 'Arabian Cement Industries', full_name: 'Arabian Cement', country: 'Saudi Arabia', role: 'manufacturer' },
-  supplier_profiles: { is_verified: true, tier: 'gold' }
-},
-{
-  id: 'p5',
-  name: 'Automatic Packaging Machine',
-  name_ar: 'ماكينة تعبئة أوتوماتيكية',
-  image_url: "https://img.rocket.new/generatedImages/rocket_gen_img_1bdaa0712-1766818385102.png",
-  unit_price: 4200,
-  minimum_order_qty: 1,
-  unit: 'unit',
-  origin_country: 'China',
-  is_active: true,
-  category: 'machinery',
-  user_profiles: { company_name: 'Jinan Packing Solutions', full_name: 'Jinan Packing', country: 'China', role: 'manufacturer' },
-  supplier_profiles: { is_verified: false, tier: 'basic' }
-},
-{
-  id: 'p6',
-  name: 'Stainless Steel Pipe (304 Grade)',
-  name_ar: 'أنبوب ستانلس ستيل درجة 304',
-  image_url: "https://img.rocket.new/generatedImages/rocket_gen_img_140db1042-1769438715946.png",
-  unit_price: 45,
-  minimum_order_qty: 50,
-  unit: 'meters',
-  origin_country: 'India',
-  is_active: true,
-  category: 'building',
-  user_profiles: { company_name: 'Mumbai Steel Exports Pvt.', full_name: 'Mumbai Steel', country: 'India', role: 'manufacturer' },
-  supplier_profiles: { is_verified: true, tier: 'silver' }
-}];
-
-
 const ProductCard: React.FC<{product: Product;index: number;isInternational?: boolean;}> = React.memo(({ product, index, isInternational = false }) => {
   const { t } = useLanguage();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -167,51 +79,6 @@ const ProductCard: React.FC<{product: Product;index: number;isInternational?: bo
 });
 
 ProductCard.displayName = 'ProductCard';
-
-// ── Placeholder card shown when a slot has no product yet ──────────────────
-const PLACEHOLDER_ICONS = [
-'CubeIcon', 'BeakerIcon', 'WrenchScrewdriverIcon', 'TruckIcon', 'SparklesIcon', 'GlobeAltIcon'] as
-const;
-
-const PlaceholderCard: React.FC<{index: number;}> = ({ index }) => {
-  const { t } = useLanguage();
-  const ui = t.featuredProducts;
-  const iconName = PLACEHOLDER_ICONS[index % PLACEHOLDER_ICONS.length];
-  return (
-    <div className="bg-card rounded-2xl overflow-hidden border border-dashed border-border/60 flex flex-col">
-      {/* Image area */}
-      <div className="aspect-square bg-muted/40 flex flex-col items-center justify-center gap-3 relative">
-        <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
-          <Icon name={iconName} size={28} className="text-muted-foreground/50" />
-        </div>
-        {/* Slot number badge */}
-        <span className="absolute top-3 right-3 text-[10px] font-bold text-muted-foreground/50 bg-muted px-2 py-0.5 rounded-full">
-          #{index + 1}
-        </span>
-      </div>
-
-      {/* Content area */}
-      <div className="p-3 md:p-4 flex flex-col flex-1 justify-between">
-        <div className="space-y-2 mb-3">
-          {/* Fake title bar */}
-          <div className="h-3.5 bg-muted/60 rounded-full w-3/4" />
-          <div className="h-3 bg-muted/40 rounded-full w-1/2" />
-        </div>
-
-        {/* Placeholder label */}
-        <div className="flex flex-col items-center justify-center py-3 text-center gap-1.5">
-          <Icon name="PlusCircleIcon" size={20} className="text-muted-foreground/40" />
-          <p className="text-[11px] font-semibold text-muted-foreground/60 leading-snug">
-            {ui.placeholderSlot}
-          </p>
-        </div>
-
-        {/* Fake CTA */}
-        <div className="h-9 bg-muted/40 rounded-xl w-full mt-1" />
-      </div>
-    </div>);
-
-};
 
 // Build the tab label shown above the product grid
 function getTabLabel(tab: SourcingTab, ui: any): string {
@@ -317,9 +184,9 @@ const FeaturedProducts: React.FC = () => {
           result = normalizeProducts(fallbackData || []);
         }
 
-        setProducts(result.length > 0 ? result : MOCK_PRODUCTS);
+        setProducts(result);
       } catch {
-        setProducts(MOCK_PRODUCTS);
+        setProducts([]);
       } finally {
         setLoading(false);
       }
@@ -379,35 +246,26 @@ const FeaturedProducts: React.FC = () => {
           </div> :
 
         <>
-            {/* Always render 6 slots: real products first, then placeholders */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
-              {Array.from({ length: 6 }).map((_, index) => {
-              const product = products[index];
-              return product ?
-              <ProductCard key={product.id} product={product} index={index} isInternational={activeTab === 'global_manufacturers'} /> :
+            {products.length > 0 ?
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+              {products.slice(0, 6).map((product, index) =>
+            <ProductCard key={product.id} product={product} index={index} isInternational={activeTab === 'global_manufacturers'} />
+            )}
+            </div> :
 
-              <PlaceholderCard key={`placeholder-${index}`} index={index} />;
-
-            })}
-            </div>
-
-            {/* Invite-to-upload banner — shown only when there are empty slots */}
-            {products.length < 6 &&
-          <div className="mt-6 flex items-center gap-4 px-5 py-4 bg-muted/40 border border-dashed border-border rounded-2xl">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                  <Icon name="RocketLaunchIcon" size={20} className="text-primary" />
+          <div className="flex flex-col items-center justify-center py-16 text-center bg-muted/30 border border-dashed border-border rounded-2xl">
+                <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
+                  <Icon name="CubeIcon" size={28} className="text-muted-foreground/60" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-foreground">
-                    {ui.areYouManufacturer}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-{ui.slotsAvailable.replace('{count}', String(6 - products.length))}
-                  </p>
-                </div>
+                <p className="text-sm font-bold text-foreground">
+                  {isRTL ? 'لا توجد منتجات متاحة حالياً' : 'No products available yet'}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1 mb-4">
+                  {isRTL ? 'تحقق مرة أخرى قريباً أو جرّب فئة أخرى.' : 'Check back soon or try a different category.'}
+                </p>
                 <Link
               href="/factory/upload"
-              className="shrink-0 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl whitespace-nowrap hover:opacity-90 transition-opacity">
+              className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl whitespace-nowrap hover:opacity-90 transition-opacity">
                   {ui.uploadProduct}
                 </Link>
               </div>

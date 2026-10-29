@@ -922,11 +922,6 @@ export default function AgentDashboardPage() {
   }, [activeTab, user, fetchInspectionTasks]);
 
   const handleGreenLight = async (task: InspectionTask) => {
-    if (task.id.startsWith('mock-')) {
-      setSuccessMsg('✅ تم إرسال الإشارة الخضراء (وضع المحاكاة) — سيتم تفعيل الإجراء الفعلي عند ربط الطلب بنظام الضمان.');
-      setTimeout(() => setSuccessMsg(''), 5000);
-      return;
-    }
     setGreenLightLoading(task.id);
     try {
       const res = await fetch('/api/escrow/green-light', {
@@ -1128,7 +1123,7 @@ export default function AgentDashboardPage() {
               title: 'المصانع والعمليات',
               items: [
                 { id: 'factories', icon: 'BuildingOffice2Icon', label: '🏭 شبكة المصانع والتوثيق (KYC)', sub: 'إدارة المصانع، إضافة مصنع جديد، وتوثيق السجلات الجغرافية', pills: `${statApprovedFactories} معتمد | ${pendingReview} قيد التوثيق`, badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600', cardTint: 'bg-white border-slate-200' },
-                { id: 'order_tracking', icon: 'TruckIcon', label: '📦 العمليات والتفتيش الميداني', sub: 'متابعة خطوط الإنتاج، طلبات الشحن، ومعاينة البليتات', pills: '', badge: inspectionTasks.filter(t => !t.id.startsWith('mock-')).length, badgeColor: 'bg-amber-500', iconColor: 'bg-amber-50 text-amber-600', cardTint: 'bg-white border-slate-200' },
+                { id: 'order_tracking', icon: 'TruckIcon', label: '📦 العمليات والتفتيش الميداني', sub: 'متابعة خطوط الإنتاج، طلبات الشحن، ومعاينة البليتات', pills: '', badge: inspectionTasks.length, badgeColor: 'bg-amber-500', iconColor: 'bg-amber-50 text-amber-600', cardTint: 'bg-white border-slate-200' },
                 { id: 'products', icon: 'CubeIcon', label: '🏷️ كتالوج المنتجات', sub: ad.tabProducts.replace('{count}', String(totalProducts)), pills: '', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600', cardTint: 'bg-white border-slate-200' },
                 { id: 'dispatch_rooms', icon: 'TruckIcon', label: '🚚 غرف التنسيق الميداني', badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600', cardTint: 'bg-white border-slate-200' },
               ],
@@ -1279,7 +1274,7 @@ export default function AgentDashboardPage() {
             {!inspectionLoading && (
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { label: 'إجمالي المهام النشطة', value: inspectionTasks.filter(t => !t.id.startsWith('mock-')).length, color: 'text-blue-600', bg: 'bg-blue-50' },
+                  { label: 'إجمالي المهام النشطة', value: inspectionTasks.length, color: 'text-blue-600', bg: 'bg-blue-50' },
                   { label: 'في انتظار التفتيش', value: inspectionTasks.filter(t => t.escrow_status === 'ready_for_inspection').length, color: 'text-amber-600', bg: 'bg-amber-50' },
                   { label: 'مكتملة هذا الشهر', value: 0, color: 'text-emerald-600', bg: 'bg-emerald-50' },
                 ].map(s => (
@@ -1298,7 +1293,7 @@ export default function AgentDashboardPage() {
                   <p className="text-sm text-muted-foreground">جارٍ تحميل مهام التفتيش...</p>
                 </div>
               </div>
-            ) : inspectionTasks.filter(t => !t.id.startsWith('mock-')).length === 0 ? (
+            ) : inspectionTasks.length === 0 ? (
               <div className="bg-card border border-border rounded-xl p-12 text-center">
                 <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
                   <Icon name="CheckCircleIcon" size={28} className="text-emerald-500" />
@@ -1308,7 +1303,7 @@ export default function AgentDashboardPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {inspectionTasks.filter(t => !t.id.startsWith('mock-')).map(task => {
+                {inspectionTasks.map(task => {
                   const MILESTONE_STAGES = [
                     { key: 'confirmed', label: 'طلب مؤكد' },
                     { key: 'funds_secured', label: 'تمويل محجوز' },
@@ -1491,7 +1486,7 @@ export default function AgentDashboardPage() {
                             {isExpanded ? 'إخفاء' : 'الموقع'}
                           </button>
 
-                          {!task.id.startsWith('mock-') && (
+                          {task.order_id && (
                             <a
                               href={`/order-tracking?order=${task.order_id}`}
                               className="flex items-center gap-1.5 px-3 py-2.5 bg-muted border border-border text-muted-foreground rounded-xl text-xs font-semibold hover:bg-muted/80 transition-colors"

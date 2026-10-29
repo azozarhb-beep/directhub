@@ -1706,8 +1706,7 @@ export default function CheckoutPage() {
                         <Icon name="BuildingLibraryIcon" size={13} className="text-primary" />
                         {paymentGateway.gateway === 'local_wallet' ? C.gatewayLocalWallet :
                          paymentGateway.gateway === 'local_bank_transfer' ? C.gatewayLocalBank :
-                         paymentGateway.gateway === 'international_swift' ? 'SWIFT / IBAN' :
-                         paymentGateway.gateway === 'international_card'? C.gatewayIntlCard : C.gatewayBankTransfer}
+                         paymentGateway.gateway === 'international_swift' ? 'SWIFT / IBAN' : C.gatewayBankTransfer}
                       </span>
                     </div>
                     {paymentGateway.gateway === 'local_wallet' && paymentGateway.localWallet.walletProvider && (

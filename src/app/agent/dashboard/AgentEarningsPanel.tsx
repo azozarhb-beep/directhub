@@ -645,8 +645,8 @@ export default function AgentEarningsPanel({ userId, embedded = false }: Props) 
           </p>
           <div className="bg-muted/50 border border-border rounded-xl px-4 py-3 text-xs text-muted-foreground font-mono break-all">
             {typeof window !== 'undefined'
-              ? `${window.location.origin}/factory/register?agent_id=YOUR_ID`
-              : '/factory/register?agent_id=YOUR_ID'}
+              ? `${window.location.origin}/factory/register?agent_id=${userId}`
+              : `/factory/register?agent_id=${userId}`}
           </div>
         </div>
       ) : null}

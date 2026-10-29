@@ -70,52 +70,6 @@ const B2B_ONLY_CATEGORY_STRINGS = new Set([
   'pharmaceuticals',
 ]);
 
-// ─── Mock fallback categories ─────────────────────────────────────────────────
-const MOCK_CATEGORIES: Category[] = [
-  { id: 'mc1', slug: 'electronics-mobile-phones', name_en: 'Electronics', name_ar: 'إلكترونيات', parent_id: null, depth: 0, icon: null, image_url: CATEGORY_IMAGES['electronics-mobile-phones'], sort_order: 1, product_count: 1240, is_active: true },
-  { id: 'mc2', slug: 'automotive-vehicles', name_en: 'Automotive', name_ar: 'سيارات', parent_id: null, depth: 0, icon: null, image_url: CATEGORY_IMAGES['automotive-vehicles'], sort_order: 2, product_count: 870, is_active: true },
-  { id: 'mc3', slug: 'construction-building-materials', name_en: 'Construction', name_ar: 'بناء', parent_id: null, depth: 0, icon: null, image_url: CATEGORY_IMAGES['construction-building-materials'], sort_order: 3, product_count: 1560, is_active: true },
-  { id: 'mc4', slug: 'health-medical-equipment', name_en: 'Medical', name_ar: 'طبي', parent_id: null, depth: 0, icon: null, image_url: CATEGORY_IMAGES['health-medical-equipment'], sort_order: 4, product_count: 640, is_active: true },
-  { id: 'mc5', slug: 'home-appliances-furniture', name_en: 'Home & Furniture', name_ar: 'أجهزة وأثاث', parent_id: null, depth: 0, icon: null, image_url: CATEGORY_IMAGES['home-appliances-furniture'], sort_order: 5, product_count: 980, is_active: true },
-  { id: 'mc6', slug: 'raw-materials-chemicals', name_en: 'Raw Materials', name_ar: 'مواد خام', parent_id: null, depth: 0, icon: null, image_url: CATEGORY_IMAGES['raw-materials-chemicals'], sort_order: 6, product_count: 2100, is_active: true },
-  { id: 'mc7', slug: 'beauty-personal-care', name_en: 'Beauty', name_ar: 'تجميل', parent_id: null, depth: 0, icon: null, image_url: CATEGORY_IMAGES['beauty-personal-care'], sort_order: 7, product_count: 730, is_active: true },
-  { id: 'mc8', slug: 'food-agriculture', name_en: 'Food & Agri', name_ar: 'غذاء وزراعة', parent_id: null, depth: 0, icon: null, image_url: CATEGORY_IMAGES['food-agriculture'], sort_order: 8, product_count: 890, is_active: true },
-  { id: 'mc9', slug: 'textiles-apparel', name_en: 'Textiles', name_ar: 'منسوجات', parent_id: null, depth: 0, icon: null, image_url: CATEGORY_IMAGES['textiles-apparel'], sort_order: 9, product_count: 670, is_active: true },
-  { id: 'mc10', slug: 'industrial-machinery', name_en: 'Machinery', name_ar: 'آلات', parent_id: null, depth: 0, icon: null, image_url: CATEGORY_IMAGES['industrial-machinery'], sort_order: 10, product_count: 1100, is_active: true },
-  { id: 'mc11', slug: 'metals-steel', name_en: 'Metals & Steel', name_ar: 'معادن وصلب', parent_id: null, depth: 0, icon: null, image_url: CATEGORY_IMAGES['metals-steel'], sort_order: 11, product_count: 760, is_active: true },
-  { id: 'mc12', slug: 'packaging-printing', name_en: 'Packaging', name_ar: 'تغليف', parent_id: null, depth: 0, icon: null, image_url: CATEGORY_IMAGES['packaging-printing'], sort_order: 12, product_count: 430, is_active: true },
-  { id: 'mc13', slug: 'energy-power', name_en: 'Energy', name_ar: 'طاقة', parent_id: null, depth: 0, icon: null, image_url: CATEGORY_IMAGES['energy-power'], sort_order: 13, product_count: 340, is_active: true },
-  { id: 'mc14', slug: 'plastics-rubber', name_en: 'Plastics', name_ar: 'بلاستيك', parent_id: null, depth: 0, icon: null, image_url: CATEGORY_IMAGES['plastics-rubber'], sort_order: 14, product_count: 580, is_active: true },
-];
-
-// ─── Mock products fallback ───────────────────────────────────────────────────
-const MOCK_PRODUCTS: Product[] = [
-  { id: 'p1', name: 'LED Smart Lighting System', name_ar: 'نظام إضاءة LED ذكي', category: 'electronics', category_id: 'mc1', unit_price: 12.00, origin_country: 'CN', image_url: null, minimum_order_qty: 1000, unit: 'units' },
-  { id: 'p2', name: 'Industrial Steel Pipes', name_ar: 'أنابيب فولاذية صناعية', category: 'building', category_id: 'mc3', unit_price: 45.00, origin_country: 'IN', image_url: null, minimum_order_qty: 500, unit: 'pcs' },
-  { id: 'p3', name: 'Solar Panel 400W Monocrystalline', name_ar: 'لوح طاقة شمسية 400 واط', category: 'energy', category_id: 'mc13', unit_price: 89.00, origin_country: 'CN', image_url: null, minimum_order_qty: 50, unit: 'pcs' },
-  { id: 'p4', name: 'Industrial CNC Milling Machine', name_ar: 'ماكينة تفريز CNC صناعية', category: 'machinery', category_id: 'mc10', unit_price: 4500.00, origin_country: 'DE', image_url: null, minimum_order_qty: 1, unit: 'unit' },
-  { id: 'p5', name: 'Stainless Steel Bolts M12', name_ar: 'براغي ستانلس ستيل M12', category: 'metals', category_id: 'mc11', unit_price: 0.85, origin_country: 'CN', image_url: null, minimum_order_qty: 5000, unit: 'pcs' },
-  { id: 'p6', name: 'Cotton Fabric Roll 100%', name_ar: 'رول قماش قطن 100%', category: 'textiles', category_id: 'mc9', unit_price: 3.20, origin_country: 'EG', image_url: null, minimum_order_qty: 200, unit: 'meters' },
-  { id: 'p7', name: 'Pharmaceutical Grade Gelatin', name_ar: 'جيلاتين صيدلاني الدرجة', category: 'pharmaceuticals', category_id: 'mc6', unit_price: 18.50, origin_country: 'FR', image_url: null, minimum_order_qty: 100, unit: 'kg' },
-  { id: 'p8', name: 'Hydraulic Excavator 20T', name_ar: 'حفارة هيدروليكية 20 طن', category: 'construction', category_id: 'mc3', unit_price: 85000.00, origin_country: 'JP', image_url: null, minimum_order_qty: 1, unit: 'unit' },
-  { id: 'p9', name: 'Organic Olive Oil Extra Virgin', name_ar: 'زيت زيتون عضوي بكر ممتاز', category: 'food', category_id: 'mc8', unit_price: 6.50, origin_country: 'TN', image_url: null, minimum_order_qty: 500, unit: 'liters' },
-  { id: 'p10', name: 'Aluminum Alloy Sheet 3mm', name_ar: 'صفيحة ألومنيوم سبيكة 3مم', category: 'metals', category_id: 'mc11', unit_price: 2.80, origin_country: 'CN', image_url: null, minimum_order_qty: 1000, unit: 'sheets' },
-  { id: 'p11', name: 'Industrial Air Compressor 50L', name_ar: 'ضاغط هواء صناعي 50 لتر', category: 'machinery', category_id: 'mc10', unit_price: 320.00, origin_country: 'IT', image_url: null, minimum_order_qty: 5, unit: 'units' },
-  { id: 'p12', name: 'HDPE Plastic Granules', name_ar: 'حبيبات بلاستيك HDPE', category: 'plastics', category_id: 'mc14', unit_price: 1.20, origin_country: 'SA', image_url: null, minimum_order_qty: 2000, unit: 'kg' },
-  { id: 'p13', name: 'Corrugated Cardboard Boxes', name_ar: 'صناديق كرتون مموج', category: 'packaging', category_id: 'mc12', unit_price: 0.45, origin_country: 'CN', image_url: null, minimum_order_qty: 10000, unit: 'pcs' },
-  { id: 'p14', name: 'Surgical Gloves Latex Free', name_ar: 'قفازات جراحية خالية من اللاتكس', category: 'medical', category_id: 'mc4', unit_price: 0.12, origin_country: 'MY', image_url: null, minimum_order_qty: 50000, unit: 'pcs' },
-  { id: 'p15', name: 'Argan Oil Pure Organic', name_ar: 'زيت أرغان نقي عضوي', category: 'beauty', category_id: 'mc7', unit_price: 25.00, origin_country: 'MA', image_url: null, minimum_order_qty: 100, unit: 'liters' },
-  { id: 'p16', name: 'Ceramic Floor Tiles 60x60', name_ar: 'بلاط أرضيات سيراميك 60×60', category: 'building', category_id: 'mc3', unit_price: 8.50, origin_country: 'ES', image_url: null, minimum_order_qty: 500, unit: 'sqm' },
-  { id: 'p17', name: 'Automotive Brake Pads Set', name_ar: 'طقم تيل فرامل سيارات', category: 'auto', category_id: 'mc2', unit_price: 22.00, origin_country: 'DE', image_url: null, minimum_order_qty: 100, unit: 'sets' },
-  { id: 'p18', name: 'Polyester Fabric 150gsm', name_ar: 'قماش بوليستر 150 جرام', category: 'textiles', category_id: 'mc9', unit_price: 1.80, origin_country: 'CN', image_url: null, minimum_order_qty: 1000, unit: 'meters' },
-  { id: 'p19', name: 'Lithium Battery Pack 48V', name_ar: 'حزمة بطارية ليثيوم 48 فولت', category: 'energy', category_id: 'mc13', unit_price: 180.00, origin_country: 'CN', image_url: null, minimum_order_qty: 20, unit: 'pcs' },
-  { id: 'p20', name: 'Stainless Steel Kitchen Sink', name_ar: 'حوض مطبخ ستانلس ستيل', category: 'furniture', category_id: 'mc5', unit_price: 65.00, origin_country: 'TR', image_url: null, minimum_order_qty: 50, unit: 'pcs' },
-  { id: 'p21', name: 'Wheat Flour Premium Grade', name_ar: 'دقيق قمح درجة ممتازة', category: 'food', category_id: 'mc8', unit_price: 0.55, origin_country: 'UA', image_url: null, minimum_order_qty: 5000, unit: 'kg' },
-  { id: 'p22', name: 'PVC Pipes 4 inch', name_ar: 'أنابيب PVC 4 بوصة', category: 'plastics', category_id: 'mc14', unit_price: 3.50, origin_country: 'CN', image_url: null, minimum_order_qty: 500, unit: 'pcs' },
-  { id: 'p23', name: 'Industrial Safety Helmets', name_ar: 'خوذات سلامة صناعية', category: 'construction', category_id: 'mc3', unit_price: 4.20, origin_country: 'CN', image_url: null, minimum_order_qty: 500, unit: 'pcs' },
-  { id: 'p24', name: 'Copper Wire 2.5mm Roll', name_ar: 'سلك نحاس 2.5مم لفة', category: 'electronics', category_id: 'mc1', unit_price: 12.50, origin_country: 'EG', image_url: null, minimum_order_qty: 100, unit: 'rolls' },
-];
-
 // ─── Skeleton Card ────────────────────────────────────────────────────────────
 const SkeletonCard: React.FC = () => (
   <div className="bg-card border border-border rounded-xl overflow-hidden animate-pulse">
@@ -173,12 +127,12 @@ const CategoriesBrowser: React.FC = () => {
         setAllCategories(
           catRes.data && catRes.data.length > 0
             ? catRes.data.map((c: Category) => ({ ...c, image_url: c.image_url || CATEGORY_IMAGES[c.slug] || null }))
-            : MOCK_CATEGORIES
+            : []
         );
-        setAllProducts(prodRes.data && prodRes.data.length > 0 ? prodRes.data : MOCK_PRODUCTS);
+        setAllProducts(prodRes.data && prodRes.data.length > 0 ? prodRes.data : []);
       } catch {
-        setAllCategories(MOCK_CATEGORIES);
-        setAllProducts(MOCK_PRODUCTS);
+        setAllCategories([]);
+        setAllProducts([]);
       } finally {
         setLoading(false);
       }

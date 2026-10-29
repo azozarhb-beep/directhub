@@ -58,7 +58,6 @@ import PendingPaymentApprovalPanel from './PendingPaymentApprovalPanel';
 
 
 import TreasuryPanel from '@/components/admin/TreasuryPanel';
-import RoleSimulationPanel from './RoleSimulationPanel';
 import BroadcastCenterPanel from './BroadcastCenterPanel';
 import SitemapHubPanel from './SitemapHubPanel';
 import PushSchedulerPanel from './PushSchedulerPanel';
@@ -4482,7 +4481,6 @@ export default function AdminControlRoomPage() {
                   { label: 'مدقّق النظام بالذكاء الاصطناعي', icon: 'ShieldCheckIcon', gradient: 'linear-gradient(135deg,#1E293B,#0F172A)', tab: 'ai_auditor' },
                   { label: 'سجلات أمل', icon: 'ChatBubbleLeftEllipsisIcon', gradient: 'linear-gradient(135deg,#F97316,#EA580C)', tab: 'amal_logs' },
                   { label: 'مستكشف قاعدة البيانات', icon: 'CircleStackIcon', gradient: 'linear-gradient(135deg,#334155,#1E293B)', tab: 'db_explorer' },
-                  { label: 'محاكاة الأدوار', icon: 'UserGroupIcon', gradient: 'linear-gradient(135deg,#4F46E5,#6366F1)', tab: 'role_simulation' },
                   { label: 'صحة النظام', icon: 'ServerStackIcon', gradient: 'linear-gradient(135deg,#475569,#334155)', tab: 'system_health' },
                   { label: 'البنية الحية', icon: 'SignalIcon', gradient: 'linear-gradient(135deg,#10B981,#059669)', tab: 'live_infra' },
                   { label: 'بطاقات المشاكل', icon: 'RectangleStackIcon', gradient: 'linear-gradient(135deg,#7C3AED,#6D28D9)', tab: 'issue_cards' },
@@ -4986,7 +4984,6 @@ export default function AdminControlRoomPage() {
                 { key: 'issue_cards', label: ui.tabs.issue_cards, icon: 'RectangleStackIcon', gradient: 'linear-gradient(135deg,#7C3AED,#6D28D9)' },
                 { key: 'idea_generator', label: ui.tabs.idea_generator, icon: 'LightBulbIcon', gradient: 'linear-gradient(135deg,#7C3AED,#6D28D9)' },
                 { key: 'db_explorer', label: ui.tabs.db_explorer, icon: 'CircleStackIcon', gradient: 'linear-gradient(135deg,#334155,#1E293B)' },
-                { key: 'role_simulation', label: 'محاكاة الأدوار', icon: 'UserGroupIcon', gradient: 'linear-gradient(135deg,#4F46E5,#6366F1)' },
                 { key: 'sitemap_hub', label: 'دليل الصفحات', icon: 'MapIcon', gradient: 'linear-gradient(135deg,#E11D48,#BE123C)' },
               ].map(tab => {
                 const isActive = activeTab === tab.key;
@@ -6950,13 +6947,6 @@ export default function AdminControlRoomPage() {
         ══════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'treasury' && (
           <TreasuryPanel />
-        )}
-
-        {/* ══════════════════════════════════════════════════════════════════════
-            TAB: ROLE SIMULATION — محاكاة الأدوار
-        ══════════════════════════════════════════════════════════════════════ */}
-        {activeTab === 'role_simulation' && (
-          <RoleSimulationPanel />
         )}
 
         {/* ══════════════════════════════════════════════════════════════════════
