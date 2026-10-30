@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { createClient } from '@/lib/supabase/client';
+import { whitenProductImage } from '@/lib/whiteBackground';
 import { SUPPLIER_UNIT_OPTIONS } from './supplierUnits';
 import { SUPPLIER_PRODUCT_CATEGORIES, categoryToArabic } from './supplierCategories';
 import SupplierImageUploader, {
@@ -135,15 +136,17 @@ export default function SupplierProductForm({ userId, product, onClose, onSaved 
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  const uploadFile = async (id: string, file: File, onDone: (url: string) => void) => {
-    const preview = URL.createObjectURL(file);
-    setUploading((prev) => ({ ...prev, [id]: { id, file, preview, progress: 0, url: '', error: '' } }));
+  const uploadFile = async (id: string, originalFile: File, onDone: (url: string) => void) => {
+    const preview = URL.createObjectURL(originalFile);
+    setUploading((prev) => ({ ...prev, [id]: { id, file: originalFile, preview, progress: 0, url: '', error: '' } }));
     const patch = (p: Partial<UploadItem>) =>
       setUploading((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], ...p } } : prev));
     try {
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token;
       if (!token) throw new Error('انتهت الجلسة، أعد تسجيل الدخول');
+      const { file, processed } = await whitenProductImage(originalFile);
+      if (!processed) toast('تعذّرت إزالة الخلفية تلقائياً، تم رفع الصورة الأصلية', { icon: 'ℹ️' });
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
       const path = `supplier/${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
       const base = process.env.NEXT_PUBLIC_SUPABASE_URL;

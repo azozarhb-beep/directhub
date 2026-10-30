@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
+import { whitenProductImage } from '@/lib/whiteBackground';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
@@ -391,7 +392,8 @@ export default function FactoryProductUploadPage() {
   }, [handleImageFile]);
 
   // Upload image to Supabase Storage
-  const uploadImageToStorage = async (file: File): Promise<string> => {
+  const uploadImageToStorage = async (originalFile: File): Promise<string> => {
+    const { file } = await whitenProductImage(originalFile);
     const ext = file.name.split('.').pop() || 'jpg';
     const fileName = `product-${user!.id}-${Date.now()}.${ext}`;
     const { data, error: uploadErr } = await supabase.storage
