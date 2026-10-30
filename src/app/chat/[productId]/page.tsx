@@ -14,6 +14,7 @@ import { createClient } from '@/lib/supabase/client';
 import { sanitizeChatMessage } from '@/lib/privacyShield';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { needsChatTranslation } from '@/lib/chatTranslationGate';
+import { getOrCreateProductConversation } from '@/lib/startProductConversation';
 
 
 interface Message {
@@ -201,8 +202,11 @@ function ChatPageLegacyUnused() {
   const params = useParams();
   const router = useRouter();
   const { user, loading, requireAuth } = useAuth();
-  const productId = typeof params?.productId === 'string' ? params.productId : '';
-  const supplier = supplierMap[productId] || defaultSupplier;
+  const productId = typeof params?.productId === 'string' ? decodeURIComponent(params.productId) : '';
+  const baseSupplier = supplierMap[productId] || defaultSupplier;
+  const [sellerInfo, setSellerInfo] = useState<{name: string;country: string;flag: string;product: string;avatar: string;} | null>(null);
+  const [isOwnProduct, setIsOwnProduct] = useState(false);
+  const supplier = { ...baseSupplier, ...(sellerInfo || {}) };
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -264,6 +268,57 @@ function ChatPageLegacyUnused() {
 
     const initConversation = async () => {
       setLoadingChat(true);
+      try {
+        // Get-or-create the buyer ↔ supplier thread (product card is inserted as the FIRST message).
+        // Any logged-in user may chat; only the product owner is blocked from messaging themselves.
+        const started = await getOrCreateProductConversation({
+          supabase,
+          buyerId: user.id,
+          productRef: productId,
+          supplierId: null,
+          isAr: language === 'ar'
+        });
+        if (started.isOwner) {
+          setIsOwnProduct(true);
+          setLoadingChat(false);
+          return;
+        }
+        if (started.conversationId) {
+          const { data: convRow } = await supabase
+            .from('chat_conversations')
+            .select('*')
+            .eq('id', started.conversationId)
+            .maybeSingle();
+          if (convRow) {
+            setSellerInfo({
+              name: convRow.supplier_name || supplier.name,
+              country: convRow.supplier_country || supplier.country,
+              flag: convRow.supplier_flag || supplier.flag,
+              product: convRow.product_name || supplier.product,
+              avatar: convRow.supplier_avatar || supplier.avatar
+            });
+            if (convRow.supplier_country) setCounterpartCountry(convRow.supplier_country);
+            setConversation(convRow);
+            const { data: msgsRow } = await supabase
+              .from('chat_messages')
+              .select('*')
+              .eq('conversation_id', convRow.id)
+              .order('created_at', { ascending: true });
+            setMessages(msgsRow || []);
+            await supabase
+              .from('chat_messages')
+              .update({ is_read: true })
+              .eq('conversation_id', convRow.id)
+              .neq('sender_id', user.id)
+              .eq('is_read', false);
+            setUnreadCount(0);
+            setLoadingChat(false);
+            return;
+          }
+        }
+      } catch (e) {
+        console.error('Chat start error:', e);
+      }
       try {
         // Resolve product manufacturer + seller_category for translation gating
         let manufacturerId: string | null = null;
@@ -790,6 +845,23 @@ function ChatPageLegacyUnused() {
 
   }
 
+  if (isOwnProduct) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col" dir={dir}>
+        <Header />
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-6 gap-4">
+          <Icon name="NoSymbolIcon" size={40} className="text-muted-foreground" />
+          <p className="text-sm font-bold text-foreground">
+            {language === 'ar' ? 'لا يمكنك مراسلة نفسك بخصوص منتجك الخاص' : 'You cannot message yourself about your own product'}
+          </p>
+          <Link href={`/product/${encodeURIComponent(productId)}`} className="px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-bold">
+            {language === 'ar' ? 'العودة للمنتج' : 'Back to product'}
+          </Link>
+        </div>
+        <BottomNav />
+      </div>);
+  }
+
   const isUserMessage = (msg: Message) => {
     if (user && msg.sender_id === user.id && msg.sender_role !== 'manufacturer') return true;
     if (!user && msg.sender_role === 'buyer') return true;
@@ -1265,12 +1337,6 @@ function ChatPageLegacyUnused() {
 
 }
 
-export default function LegacyChatProductPage() {
-  const params = useParams();
-  const router = useRouter();
-  const productId = typeof params?.productId === 'string' ? params.productId : '';
-  useEffect(() => {
-    router.replace(productId ? `/messaging?productId=${encodeURIComponent(productId)}` : '/messaging');
-  }, [router, productId]);
-  return null;
+export default function ChatProductPage() {
+  return <ChatPageLegacyUnused />;
 }

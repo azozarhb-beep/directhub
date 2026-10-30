@@ -512,28 +512,36 @@ export default function ProductDetailPage() {
   const chatSellerLabel = isSupplierSeller && isArabic ? 'مراسلة المورد / الوكيل' : isSupplierSeller ? 'Message Supplier / Agent' : null;
   const chatProductRef = isSupplierSeller ? id : product.id;
   const chatSupplierId = product.supplierId && !String(product.supplierId).startsWith('sup-') ? product.supplierId : '';
-  const chatHref = `/messaging?${chatSupplierId ? `supplierId=${encodeURIComponent(chatSupplierId)}&` : ''}productId=${encodeURIComponent(chatProductRef)}`;
+  const chatHref = `/chat/${encodeURIComponent(chatProductRef)}`;
   const [startingChat, setStartingChat] = useState(false);
+  const [ownProductNotice, setOwnProductNotice] = useState(false);
   const handleStartChat = async () => {
     if (startingChat) return;
     if (!user) {
       requireAuth(() => router.push(chatHref));
       return;
     }
+    // Only restriction: the owner cannot message themselves about their own product
+    if (chatSupplierId && chatSupplierId === user.id) {
+      setOwnProductNotice(true);
+      setTimeout(() => setOwnProductNotice(false), 4000);
+      return;
+    }
     setStartingChat(true);
     try {
-      const { conversationId, productId: convProductId } = await getOrCreateProductConversation({
+      const { conversationId, productId: convProductId, isOwner } = await getOrCreateProductConversation({
         supabase: createClient(),
         buyerId: user.id,
         productRef: chatProductRef,
         supplierId: chatSupplierId || null,
         isAr: isArabic
       });
-      if (conversationId) {
-        router.push(`/messaging?id=${encodeURIComponent(conversationId)}&productId=${encodeURIComponent(convProductId)}`);
-      } else {
-        router.push(chatHref);
+      if (isOwner) {
+        setOwnProductNotice(true);
+        setTimeout(() => setOwnProductNotice(false), 4000);
+        return;
       }
+      router.push(`/chat/${encodeURIComponent(convProductId || chatProductRef)}${conversationId ? `?id=${encodeURIComponent(conversationId)}` : ''}`);
     } catch {
       router.push(chatHref);
     } finally {
@@ -1007,6 +1015,12 @@ export default function ProductDetailPage() {
   return (
     <div className="min-h-screen bg-background" dir={dir}>
       <Header />
+
+      {ownProductNotice &&
+      <div role="status" className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] px-4 py-2.5 bg-foreground text-background text-xs font-bold rounded-xl shadow-lg">
+          {isArabic ? 'لا يمكنك مراسلة نفسك بخصوص منتجك الخاص' : 'You cannot message yourself about your own product'}
+        </div>
+      }
 
       {/* ── Breadcrumb ── */}
       <div className="bg-muted/30 border-b border-border">
