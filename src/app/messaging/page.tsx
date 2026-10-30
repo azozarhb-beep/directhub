@@ -107,7 +107,7 @@ function firstProductImage(row: any): string | null {
 
 function ProductInquiryCard({ data, isAr }: { data: InquiryCardData; isAr: boolean }) {
   return (
-    <div className="mx-3 sm:mx-4 mt-3 mb-1 rounded-2xl border border-primary/30 bg-white shadow-sm overflow-hidden" dir={isAr ? 'rtl' : 'ltr'}>
+    <div className="w-full max-w-[85%] sm:max-w-[320px] rounded-2xl border border-primary/30 bg-white shadow-sm overflow-hidden" dir={isAr ? 'rtl' : 'ltr'}>
       <div className="px-3 py-1.5 bg-primary/10 text-[11px] font-bold text-primary flex items-center gap-1.5">
         <Icon name="TagIcon" size={12} />
         {isAr ? 'استفسار عن منتج' : 'Product Inquiry'}
@@ -2780,13 +2780,14 @@ function LiveMessagingContent() {
                 </div>
               )}
 
-              {/* ── Pinned Product Inquiry Card ───────────────────────────────── */}
-              {inquiryCard && inquiryCard.convId === activeConv.id && (
-                <ProductInquiryCard data={inquiryCard} isAr={language === 'ar'} />
-              )}
-
               {/* ── Messages Area ────────────────────────────────────────────── */}
               <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 sm:px-4 py-3 space-y-3 bg-gray-50">
+                {/* Inline product_card message bubble (first item in the stream, scrolls with history) */}
+                {!loadingMsgs && inquiryCard && inquiryCard.convId === activeConv.id && (
+                  <div className="flex justify-start">
+                    <ProductInquiryCard data={inquiryCard} isAr={language === 'ar'} />
+                  </div>
+                )}
                 {loadingMsgs ? (
                   <div className="flex items-center justify-center py-8">
                     <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
