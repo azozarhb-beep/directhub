@@ -302,11 +302,6 @@ const nextConfig = {
         permanent: false,
       },
       {
-        source: '/chat/:productId',
-        destination: '/messaging?productId=:productId',
-        permanent: false,
-      },
-      {
         source: '/suppliers/:id',
         destination: '/store/:id',
         permanent: true,
