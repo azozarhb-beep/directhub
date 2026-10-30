@@ -9,7 +9,15 @@ export interface UploadItem {
   progress: number;
   url: string;
   error: string;
+  status?: 'queued' | 'uploading' | 'done' | 'error';
 }
+
+const STATUS_LABELS: Record<string, string> = {
+  queued: 'في الانتظار',
+  uploading: 'جارٍ الرفع',
+  done: 'تم الرفع',
+  error: 'فشل الرفع',
+};
 
 interface SupplierImageUploaderProps {
   featuredUrl: string;
@@ -71,12 +79,19 @@ export default function SupplierImageUploader({
             <img src={coverUpload.preview} alt="معاينة الصورة الرئيسية قيد الرفع" className="w-full h-full object-cover opacity-70" />
             {coverUpload.error ? (
               <div className="absolute inset-0 flex items-center justify-center bg-black/60 p-2 text-[11px] text-red-300 text-center">{coverUpload.error}</div>
+            ) : coverUpload.status === 'done' ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-emerald-900/50">
+                <span className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center text-base font-black">✓</span>
+                <p className="text-[11px] text-emerald-100 font-bold mt-1">تم الرفع 100%</p>
+              </div>
             ) : (
               <div className="absolute bottom-0 inset-x-0 bg-black/60 p-1.5">
                 <div className="h-1.5 rounded-full bg-slate-700 overflow-hidden">
-                  <div className="h-full bg-cyan-400 transition-all" style={{ width: `${coverUpload.progress}%` }} />
+                  <div className="h-full bg-cyan-400 transition-all" style={{ width: `${coverUpload.status === 'uploading' ? coverUpload.progress : 0}%` }} />
                 </div>
-                <p className="text-[10px] text-slate-200 text-center mt-1">{coverUpload.progress}%</p>
+                <p className="text-[10px] text-slate-200 text-center mt-1">
+                  {coverUpload.status === 'uploading' ? `${coverUpload.progress}%` : STATUS_LABELS[coverUpload.status || 'queued']}
+                </p>
               </div>
             )}
             <button type="button" onClick={() => onRemoveUpload(coverUpload.id)} className="absolute top-1.5 end-1.5 px-2 py-0.5 rounded-lg bg-red-600 text-white text-[11px] font-bold">إلغاء</button>

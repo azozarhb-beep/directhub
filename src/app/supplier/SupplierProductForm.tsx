@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { createClient } from '@/lib/supabase/client';
-import { whitenProductImage } from '@/lib/whiteBackground';
+import { whitenProductImage, compressImage } from '@/lib/whiteBackground';
 import { SUPPLIER_UNIT_OPTIONS } from './supplierUnits';
 import { SUPPLIER_PRODUCT_CATEGORIES, categoryToArabic } from './supplierCategories';
 import SupplierImageUploader, {
@@ -133,20 +133,29 @@ export default function SupplierProductForm({ userId, product, onClose, onSaved 
   const [uploading, setUploading] = useState<Record<string, UploadItem>>({});
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const queueRef = useRef<Promise<void>>(Promise.resolve());
+  const cancelledRef = useRef<Set<string>>(new Set());
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  const uploadFile = async (id: string, originalFile: File, onDone: (url: string) => void) => {
-    const preview = URL.createObjectURL(originalFile);
-    setUploading((prev) => ({ ...prev, [id]: { id, file: originalFile, preview, progress: 0, url: '', error: '' } }));
+  const uploadFile = async (id: string, originalFile: File, preview: string, onDone: (url: string) => void) => {
     const patch = (p: Partial<UploadItem>) =>
       setUploading((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], ...p } } : prev));
     try {
+      if (cancelledRef.current.has(id)) return;
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token;
       if (!token) throw new Error('انتهت الجلسة، أعد تسجيل الدخول');
-      const { file, processed } = await whitenProductImage(originalFile);
-      if (!processed) toast('تعذّرت إزالة الخلفية تلقائياً، تم رفع الصورة الأصلية', { icon: 'ℹ️' });
+
+      patch({ status: 'compressing', progress: 0 });
+      const compressed = await compressImage(originalFile);
+      if (cancelledRef.current.has(id)) return;
+
+      patch({ status: 'processing' });
+      const { file } = await whitenProductImage(compressed);
+      if (cancelledRef.current.has(id)) return;
+
+      patch({ status: 'uploading', progress: 0 });
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
       const path = `supplier/${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
       const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -159,23 +168,39 @@ export default function SupplierProductForm({ userId, product, onClose, onSaved 
         xhr.setRequestHeader('x-upsert', 'false');
         xhr.setRequestHeader('Content-Type', file.type);
         xhr.upload.onprogress = (ev) => {
-          if (ev.lengthComputable) patch({ progress: Math.round((ev.loaded / ev.total) * 100) });
+          if (ev.lengthComputable) patch({ progress: Math.min(99, Math.round((ev.loaded / ev.total) * 100)) });
         };
         xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error('فشل رفع الصورة')));
         xhr.onerror = () => reject(new Error('فشل الاتصال أثناء الرفع'));
         xhr.send(file);
       });
       const { data: pub } = supabase.storage.from('product-images').getPublicUrl(path);
+      if (cancelledRef.current.has(id)) return;
       onDone(pub.publicUrl);
-      setUploading((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      URL.revokeObjectURL(preview);
+      patch({ progress: 100, status: 'done', url: pub.publicUrl });
+      setTimeout(() => {
+        setUploading((prev) => {
+          if (!prev[id]) return prev;
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        URL.revokeObjectURL(preview);
+      }, 1200);
     } catch (err: any) {
-      patch({ error: err?.message || 'فشل رفع الصورة' });
+      patch({ error: err?.message || 'فشل رفع الصورة', status: 'error' });
     }
+  };
+
+  const enqueueUpload = (id: string, file: File, onDone: (url: string) => void) => {
+    const preview = URL.createObjectURL(file);
+    setUploading((prev) => ({
+      ...prev,
+      [id]: { id, file, preview, progress: 0, url: '', error: '', status: 'queued' },
+    }));
+    queueRef.current = queueRef.current
+      .catch(() => undefined)
+      .then(() => uploadFile(id, file, preview, onDone));
   };
 
   const validateImage = (file: File): string | null => {
@@ -191,7 +216,7 @@ export default function SupplierProductForm({ userId, product, onClose, onSaved 
       return;
     }
     setFormError('');
-    uploadFile(`cover-${Date.now()}`, file, (url) => setFeaturedUrl(url));
+    enqueueUpload(`cover-${Date.now()}`, file, (url) => setFeaturedUrl(url));
   };
 
   const pickGallery = (files: File[]) => {
@@ -208,19 +233,21 @@ export default function SupplierProductForm({ userId, product, onClose, onSaved 
         continue;
       }
       remaining -= 1;
-      uploadFile(`gal-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, f, (url) =>
+      enqueueUpload(`gal-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, f, (url) =>
         setGalleryUrls((prev) => (prev.length < SUPPLIER_MAX_GALLERY ? [...prev, url] : prev))
       );
     }
   };
 
-  const removeUpload = (id: string) =>
+  const removeUpload = (id: string) => {
+    cancelledRef.current.add(id);
     setUploading((prev) => {
       const next = { ...prev };
       if (next[id]) URL.revokeObjectURL(next[id].preview);
       delete next[id];
       return next;
     });
+  };
 
   const updateTier = (i: number, key: keyof PriceTier, value: string) =>
     setTiers((prev) => prev.map((t, idx) => (idx === i ? { ...t, [key]: value } : t)));
@@ -228,7 +255,7 @@ export default function SupplierProductForm({ userId, product, onClose, onSaved 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
-    if (Object.values(uploading).some((u) => !u.error)) {
+    if (Object.values(uploading).some((u) => !u.error && u.status !== 'done')) {
       setFormError('انتظر اكتمال رفع الصور قبل الحفظ.');
       return;
     }
