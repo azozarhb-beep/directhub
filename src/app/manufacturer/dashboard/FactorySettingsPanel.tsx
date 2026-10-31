@@ -4,9 +4,11 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Icon from '@/components/ui/AppIcon';
 import { createClient } from '@/lib/supabase/client';
+import { resolvePlatformRole } from '@/lib/roomIsolation';
 
 interface FactorySettingsPanelProps {
   userId?: string | null;
+  onRoleResolved?: (isSupplier: boolean) => void;
 }
 
 const YEMEN_GOVERNORATES = [
@@ -46,7 +48,7 @@ function normalizePhone(value: string): string {
   return (value ?? '').replace(/[\s-]/g, '');
 }
 
-export default function FactorySettingsPanel({ userId }: FactorySettingsPanelProps) {
+export default function FactorySettingsPanel({ userId, onRoleResolved }: FactorySettingsPanelProps) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -59,6 +61,7 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
   const [phone, setPhone] = useState('');
   const [taxId, setTaxId] = useState('');
   const [registration, setRegistration] = useState<RegistrationInfo | null>(null);
+  const [isSupplier, setIsSupplier] = useState(false);
 
   const [repId, setRepId] = useState<string | null>(null);
   const [repCode, setRepCode] = useState('');
@@ -131,7 +134,7 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
       setLoadError('');
       try {
         const supabase = createClient();
-        const [profileRes, regRes] = await Promise.all([
+        const [profileRes, regRes, authRes, roleRes] = await Promise.all([
           supabase
             .from('user_profiles')
             .select('company_name, full_name, description, city, phone')
@@ -142,8 +145,37 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
             .select('trade_license_url, manufacturing_license_url, tax_id')
             .eq('user_id', userId)
             .maybeSingle(),
+          supabase.auth.getUser(),
+          supabase
+            .from('user_profiles')
+            .select('role, account_type, seller_category')
+            .eq('id', userId)
+            .maybeSingle(),
         ]);
         if (cancelled) return;
+
+        const meta = (authRes?.data?.user?.user_metadata ?? {}) as Record<string, any>;
+        const roleRow = (roleRes?.data ?? null) as Record<string, any> | null;
+        const SUPPLIER_VALUES = ['commercial_supplier', 'local_supplier'];
+        const candidates = [
+          meta.account_role,
+          meta.user_role,
+          meta.seller_category,
+          roleRow?.seller_category,
+          roleRow?.account_type,
+        ].map((v) => String(v ?? '').toLowerCase().trim());
+        const isAdminRole = String(roleRow?.role ?? '').toLowerCase().trim() === 'admin';
+        const supplierResolved =
+          !isAdminRole &&
+          (candidates.some((v) => SUPPLIER_VALUES.includes(v)) ||
+            resolvePlatformRole({
+              role: roleRow?.role ?? null,
+              account_type: roleRow?.account_type ?? meta.account_type ?? null,
+              seller_category: roleRow?.seller_category ?? meta.seller_category ?? null,
+              metadataRole: meta.account_role ?? meta.user_role ?? null,
+            }) === 'commercial_supplier');
+        setIsSupplier(supplierResolved);
+        onRoleResolved?.(supplierResolved);
 
         let profile: Record<string, any> | null = (profileRes?.data as Record<string, any>) ?? null;
         if (profileRes?.error && !profile) {
@@ -165,7 +197,7 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
         setRegistration(reg);
         setTaxId(reg?.tax_id || '');
       } catch (err) {
-        if (!cancelled) setLoadError('تعذر تحميل بيانات المصنع. حاول مرة أخرى.');
+        if (!cancelled) setLoadError(isSupplier ? 'تعذر تحميل بيانات المنشأة. حاول مرة أخرى.' : 'تعذر تحميل بيانات المصنع. حاول مرة أخرى.');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -178,7 +210,11 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
 
   const hasCommercial = !!registration?.trade_license_url;
   const hasIndustrial = !!registration?.manufacturing_license_url;
-  const trustPct = (hasCommercial ? 50 : 0) + (hasIndustrial ? 50 : 0);
+  const trustPct = isSupplier
+    ? hasCommercial
+      ? 100
+      : 0
+    : (hasCommercial ? 50 : 0) + (hasIndustrial ? 50 : 0);
   const isVerified = trustPct === 100;
 
   const handleSave = async (e: React.FormEvent) => {
@@ -190,7 +226,7 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
       return;
     }
     if (!name.trim()) {
-      setSaveError('اسم المصنع (بالعربية) مطلوب.');
+      setSaveError(isSupplier ? 'اسم المنشأة التجارية مطلوب.' : 'اسم المصنع (بالعربية) مطلوب.');
       return;
     }
     const cleanPhone = normalizePhone(phone);
@@ -239,7 +275,7 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
   if (!userId) {
     return (
       <div className="bg-card border border-border rounded-2xl p-6 text-center text-sm text-muted-foreground" dir="rtl">
-        يرجى تسجيل الدخول لعرض إعدادات المصنع.
+        {isSupplier ? 'يرجى تسجيل الدخول لعرض إعدادات المورد.' : 'يرجى تسجيل الدخول لعرض إعدادات المصنع.'}
       </div>
     );
   }
@@ -253,10 +289,12 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
     );
   }
 
-  const docRows = [
-    { key: 'cr', label: 'السجل التجاري', done: hasCommercial },
-    { key: 'il', label: 'الترخيص الصناعي', done: hasIndustrial },
-  ];
+  const docRows = isSupplier
+    ? [{ key: 'cr', label: 'السجل التجاري', done: hasCommercial, pct: 100 }]
+    : [
+        { key: 'cr', label: 'السجل التجاري', done: hasCommercial, pct: 50 },
+        { key: 'il', label: 'الترخيص الصناعي', done: hasIndustrial, pct: 50 },
+      ];
 
   return (
     <div className="flex flex-col gap-5" dir="rtl">
@@ -285,14 +323,14 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
                 className={isVerified ? 'text-emerald-600' : 'text-amber-600'}
               />
             </span>
-            حالة توثيق المصنع
+            {isSupplier ? 'حالة توثيق المورد' : 'حالة توثيق المصنع'}
           </h3>
           <span
             className={`inline-flex items-center text-[11px] font-bold px-2.5 py-1 rounded-full ${
               isVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
             }`}
           >
-            {isVerified ? '✅ مصنع موثق' : `${trustPct}% من التوثيق`}
+            {isVerified ? (isSupplier ? '✅ مورد موثق' : '✅ مصنع موثق') : `${trustPct}% من التوثيق`}
           </span>
         </div>
 
@@ -303,7 +341,7 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
           />
         </div>
 
-        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        <ul className={`grid grid-cols-1 ${isSupplier ? '' : 'sm:grid-cols-2'} gap-3 mb-4`}>
           {docRows.map((row) => (
             <li
               key={row.key}
@@ -325,7 +363,7 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-extrabold text-foreground">{row.label}</p>
                 <p className="text-[11px] text-muted-foreground">
-                  {row.done ? 'تم الرفع (50%)' : 'لم يتم الرفع بعد (50%)'}
+                  {row.done ? `تم الرفع (${row.pct}%)` : `لم يتم الرفع بعد (${row.pct}%)`}
                 </p>
               </div>
             </li>
@@ -334,7 +372,9 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
 
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-[11px] text-muted-foreground leading-relaxed flex-1 min-w-[200px]">
-            ارفع السجل التجاري والترخيص الصناعي للحصول على شارة «مصنع موثق» (100%).
+            {isSupplier
+              ? 'ارفع السجل التجاري للحصول على شارة «مورد موثق» (100%).'
+              : 'ارفع السجل التجاري والترخيص الصناعي للحصول على شارة «مصنع موثق» (100%).'}
           </p>
           {!isVerified && (
             <Link
@@ -354,33 +394,33 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
           <span className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center">
             <Icon name="BuildingOffice2Icon" size={14} className="text-blue-600" />
           </span>
-          بيانات المصنع
+          {isSupplier ? 'بيانات المنشأة التجارية' : 'بيانات المصنع'}
         </h3>
 
         <div>
           <label htmlFor="factory-name" className="block text-xs font-bold text-foreground mb-1.5">
-            اسم المصنع (بالعربية) <span className="text-red-500">*</span>
+            {isSupplier ? 'اسم المنشأة التجارية' : 'اسم المصنع (بالعربية)'} <span className="text-red-500">*</span>
           </label>
           <input
             id="factory-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="مثال: مصنع الأمل للصناعات الغذائية"
+            placeholder={isSupplier ? 'مثال: مؤسسة الأمل للتجارة والتوريدات' : 'مثال: مصنع الأمل للصناعات الغذائية'}
             className="w-full h-11 px-3 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
 
         <div>
           <label htmlFor="factory-description" className="block text-xs font-bold text-foreground mb-1.5">
-            وصف المصنع / نبذة تعريفية
+            {isSupplier ? 'وصف المنشأة / نبذة تعريفية' : 'وصف المصنع / نبذة تعريفية'}
           </label>
           <textarea
             id="factory-description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={4}
-            placeholder="اكتب نبذة مختصرة عن مصنعك ومنتجاتك وطاقتك الإنتاجية"
+            placeholder={isSupplier ? 'اكتب نبذة مختصرة عن منشأتك ومنتجاتك التي تورّدها' : 'اكتب نبذة مختصرة عن مصنعك ومنتجاتك وطاقتك الإنتاجية'}
             className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-y"
           />
         </div>
@@ -434,11 +474,13 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
             value={taxId}
             onChange={(e) => setTaxId(e.target.value)}
             disabled={!registration}
-            placeholder={registration ? 'الرقم الضريبي' : 'متاح بعد تسجيل المصنع'}
+            placeholder={registration ? 'الرقم الضريبي' : isSupplier ? 'متاح بعد رفع السجل التجاري' : 'متاح بعد تسجيل المصنع'}
             className="w-full h-11 px-3 rounded-xl border border-border bg-background text-sm text-foreground text-left focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
           />
           <p className="text-[11px] text-muted-foreground mt-1">
-            لا يؤثر الرقم الضريبي على الحصول على شارة «مصنع موثق».
+            {isSupplier
+              ? 'لا يؤثر الرقم الضريبي (البطاقة الضريبية) على الحصول على شارة «مورد موثق».'
+              : 'لا يؤثر الرقم الضريبي على الحصول على شارة «مصنع موثق».'}
           </p>
         </div>
 
@@ -502,7 +544,7 @@ export default function FactorySettingsPanel({ userId }: FactorySettingsPanelPro
               </button>
             </div>
             <p className="text-[11px] text-muted-foreground mt-1">
-              حقل اختياري — إن لم يكن لديك كود، ستقوم الإدارة بتعيين مندوب لمصنعك.
+              حقل اختياري — إن لم يكن لديك كود، ستقوم الإدارة بتعيين مندوب {isSupplier ? 'لمنشأتك' : 'لمصنعك'}.
             </p>
           </div>
           {repError && (

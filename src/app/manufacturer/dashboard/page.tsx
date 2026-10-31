@@ -497,6 +497,8 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   const [repActionLoading, setRepActionLoading] = useState<string | null>(null);
   /** Local ERP room link — hidden for international / non-local entities */
   const [canShowLocalErp, setCanShowLocalErp] = useState(false);
+  /** Whether the factory settings panel resolved the account as a supplier (vs factory) */
+  const [isSupplierSettings, setIsSupplierSettings] = useState(false);
 
   const fetchFinanceRecords = useCallback(async () => {
     if (!user) return;
@@ -2086,7 +2088,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
               <span>رجوع إلى لوحة التحكم</span>
             </Link>
             <h1 className={`order-2 flex-1 min-w-0 text-sm sm:text-lg font-black text-foreground truncate ${moduleTab === 'seller_fulfillment' ? 'hidden sm:block' : ''}`}>
-              {moduleMeta?.title}
+              {moduleTab === 'factory_settings' && isSupplierSettings ? 'إعدادات وتوثيق المورد' : moduleMeta?.title}
             </h1>
             <div className={`order-3 flex items-center gap-2 ${moduleTab === 'seller_fulfillment' ? 'w-full sm:w-auto sm:shrink-0' : 'shrink-0'}`}>
               {moduleTab === 'financial_hub' && !isSalesRep && (
@@ -2420,7 +2422,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
           </div>
         )}
         {activeTab === 'factory_settings' && !isSalesRep && (
-          <FactorySettingsPanel userId={user?.id ?? null} />
+          <FactorySettingsPanel userId={user?.id ?? null} onRoleResolved={setIsSupplierSettings} />
         )}
         {activeTab === 'products' && (
           <ProductsPanel

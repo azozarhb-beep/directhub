@@ -43,6 +43,7 @@ export default function SupplierProfilePage({ backPath = '/my-account' }: { back
 
   const [profile, setProfile] = useState<SupplierProfileData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isSupplier, setIsSupplier] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -83,6 +84,13 @@ export default function SupplierProfilePage({ backPath = '/my-account' }: { back
         console.error('supplier profile fetch:', error.message);
       }
       if (data) {
+        const meta = ((user as any)?.user_metadata ?? {}) as Record<string, any>;
+        const supplierValues = ['commercial_supplier', 'local_supplier'];
+        setIsSupplier(
+          [meta.account_role, meta.user_role, meta.seller_category, data.seller_category]
+            .map((v) => String(v ?? '').toLowerCase().trim())
+            .some((v) => supplierValues.includes(v))
+        );
         const cover = data.cover_url || data.cover_photo_url || null;
         setProfile({
           id: data.id,
@@ -150,7 +158,7 @@ export default function SupplierProfilePage({ backPath = '/my-account' }: { back
   const handleSave = async () => {
     if (!user || !profile) return;
     if (!form.company_name.trim()) {
-      setError('اسم الشركة / المصنع مطلوب');
+      setError(isSupplier ? 'اسم المنشأة التجارية مطلوب' : 'اسم الشركة / المصنع مطلوب');
       return;
     }
     const yearVal = form.year_established.trim();
@@ -225,7 +233,7 @@ export default function SupplierProfilePage({ backPath = '/my-account' }: { back
       setProfile((prev) => prev ? { ...prev, ...updates } : prev);
       setLogoFile(null);
       setCoverFile(null);
-      setSuccessMsg('تم حفظ ملف المصنع بنجاح ✓');
+      setSuccessMsg(isSupplier ? 'تم حفظ ملف المورد بنجاح ✓' : 'تم حفظ ملف المصنع بنجاح ✓');
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (err: any) {
       setUploadingLogo(false);
@@ -272,8 +280,8 @@ export default function SupplierProfilePage({ backPath = '/my-account' }: { back
                 <Icon name="ArrowRightIcon" size={18} className="text-white" />
               </button>
               <div>
-                <h1 className="text-xl font-extrabold text-white">ملف المصنع / المورد</h1>
-                <p className="text-sm text-white/60 mt-0.5">تحديث بيانات مصنعك، الشعار وصورة الغلاف</p>
+                <h1 className="text-xl font-extrabold text-white">{isSupplier ? 'إعدادات وتوثيق المورد' : 'ملف المصنع / المورد'}</h1>
+                <p className="text-sm text-white/60 mt-0.5">{isSupplier ? 'تحديث بيانات منشأتك التجارية، الشعار وصورة الغلاف' : 'تحديث بيانات مصنعك، الشعار وصورة الغلاف'}</p>
               </div>
             </div>
           </div>
@@ -318,7 +326,7 @@ export default function SupplierProfilePage({ backPath = '/my-account' }: { back
               <div className="bg-card border border-border rounded-2xl p-5">
                 <p className="text-sm font-extrabold text-foreground mb-4 flex items-center gap-2">
                   <Icon name="BuildingStorefrontIcon" size={16} className="text-orange-500" />
-                  شعار المصنع
+                  {isSupplier ? 'شعار المنشأة' : 'شعار المصنع'}
                 </p>
                 <div className="flex flex-col items-center gap-4">
                   <div className="relative">
@@ -370,7 +378,7 @@ export default function SupplierProfilePage({ backPath = '/my-account' }: { back
                   <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
                     <Icon name="PencilSquareIcon" size={15} className="text-orange-600" />
                   </div>
-                  بيانات المصنع / المورد
+                  {isSupplier ? 'بيانات المنشأة التجارية' : 'بيانات المصنع / المورد'}
                 </h2>
 
                 {error && (
@@ -385,13 +393,13 @@ export default function SupplierProfilePage({ backPath = '/my-account' }: { back
                   {/* Company Name */}
                   <div>
                     <label className="block text-xs font-bold text-muted-foreground mb-1.5">
-                      اسم الشركة / المصنع <span className="text-red-500">*</span>
+                      {isSupplier ? 'اسم المنشأة التجارية' : 'اسم الشركة / المصنع'} <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={form.company_name}
                       onChange={(e) => setForm((p) => ({ ...p, company_name: e.target.value }))}
-                      placeholder="مثال: مصنع النور للصناعات"
+                      placeholder={isSupplier ? 'مثال: مؤسسة النور للتجارة والتوريدات' : 'مثال: مصنع النور للصناعات'}
                       className="w-full px-4 py-3 border border-border rounded-xl bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors placeholder:text-muted-foreground/50"
                     />
                   </div>
@@ -413,12 +421,12 @@ export default function SupplierProfilePage({ backPath = '/my-account' }: { back
                   {/* Description */}
                   <div>
                     <label className="block text-xs font-bold text-muted-foreground mb-1.5">
-                      وصف المصنع / نبذة تعريفية
+                      {isSupplier ? 'وصف المنشأة / نبذة تعريفية' : 'وصف المصنع / نبذة تعريفية'}
                     </label>
                     <textarea
                       value={form.description}
                       onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-                      placeholder="اكتب نبذة عن مصنعك، منتجاتك، وخبرتك في الصناعة..."
+                      placeholder={isSupplier ? 'اكتب نبذة عن منشأتك التجارية والمنتجات التي تورّدها...' : 'اكتب نبذة عن مصنعك، منتجاتك، وخبرتك في الصناعة...'}
                       rows={4}
                       className="w-full px-4 py-3 border border-border rounded-xl bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors placeholder:text-muted-foreground/50 resize-none"
                     />
@@ -480,26 +488,30 @@ export default function SupplierProfilePage({ backPath = '/my-account' }: { back
                         className="w-full px-4 py-3 border border-border rounded-xl bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors placeholder:text-muted-foreground/50"
                       />
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold text-muted-foreground mb-1.5">أقرب ميناء تصدير / Nearest FOB Export Port</label>
-                      <input
-                        type="text"
-                        value={form.nearest_fob_port}
-                        onChange={(e) => setForm((p) => ({ ...p, nearest_fob_port: e.target.value }))}
-                        placeholder="مثال: Mersin, Aden, Ningbo"
-                        className="w-full px-4 py-3 border border-border rounded-xl bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors placeholder:text-muted-foreground/50"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-muted-foreground mb-1.5">الطاقة الإنتاجية السنوية / Annual Production Capacity</label>
-                      <input
-                        type="text"
-                        value={form.annual_production_capacity}
-                        onChange={(e) => setForm((p) => ({ ...p, annual_production_capacity: e.target.value }))}
-                        placeholder="مثال: 5000 طن / سنة"
-                        className="w-full px-4 py-3 border border-border rounded-xl bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors placeholder:text-muted-foreground/50"
-                      />
-                    </div>
+                    {!isSupplier && (
+                      <div>
+                        <label className="block text-xs font-bold text-muted-foreground mb-1.5">أقرب ميناء تصدير / Nearest FOB Export Port</label>
+                        <input
+                          type="text"
+                          value={form.nearest_fob_port}
+                          onChange={(e) => setForm((p) => ({ ...p, nearest_fob_port: e.target.value }))}
+                          placeholder="مثال: Mersin, Aden, Ningbo"
+                          className="w-full px-4 py-3 border border-border rounded-xl bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors placeholder:text-muted-foreground/50"
+                        />
+                      </div>
+                    )}
+                    {!isSupplier && (
+                      <div>
+                        <label className="block text-xs font-bold text-muted-foreground mb-1.5">الطاقة الإنتاجية السنوية / Annual Production Capacity</label>
+                        <input
+                          type="text"
+                          value={form.annual_production_capacity}
+                          onChange={(e) => setForm((p) => ({ ...p, annual_production_capacity: e.target.value }))}
+                          placeholder="مثال: 5000 طن / سنة"
+                          className="w-full px-4 py-3 border border-border rounded-xl bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors placeholder:text-muted-foreground/50"
+                        />
+                      </div>
+                    )}
                     <div>
                       <label className="block text-xs font-bold text-muted-foreground mb-1.5">
                         الموقع الإلكتروني للمنشأة / Official Website URL <span className="text-muted-foreground/60 font-medium">(اختياري)</span>
