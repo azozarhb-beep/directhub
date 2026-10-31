@@ -4,13 +4,14 @@ export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
 import Icon from '@/components/ui/AppIcon';
-import AppLogo from '@/components/ui/AppLogo';
 import FactoryAdminMessaging from './FactoryAdminMessaging';
+import DashboardChrome from './DashboardChrome';
+import DashboardHub from './DashboardHub';
+import { useFactoryOperationsData } from './useFactoryOperationsData';
 
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -20,7 +21,6 @@ import AIContractAssistant from '@/components/AIContractAssistant';
 import ManufacturerAdvancedModules from '@/components/manufacturer/ManufacturerAdvancedModules';
 import FactoryTeamManagement from '@/components/manufacturer/FactoryTeamManagement';
 import TieredPricingManager from '@/components/international-factory/TieredPricingManager';
-import ChatImageAttachment, { uploadChatImage, isImageAttachment, type AttachmentState } from '@/components/ChatImageAttachment';
 
 
 
@@ -56,7 +56,7 @@ import type {
   DashboardTab,
   ManufacturerDashboardProps,
 } from './dashboardTypes';
-import { EMPTY_BANK_ACCOUNT, EMPTY_FORM, EMPTY_PAYMENT_SETTINGS, MODULE_ROUTES } from './dashboardConfig';
+import { EMPTY_BANK_ACCOUNT, EMPTY_FORM, EMPTY_PAYMENT_SETTINGS } from './dashboardConfig';
 import ProductFormModal from '@/app/manufacturer/dashboard/ProductFormModal';
 import DeleteProductModal from '@/app/manufacturer/dashboard/DeleteProductModal';
 
@@ -183,41 +183,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [paymentError, setPaymentError] = useState('');
 
-  // Escrow orders state
-  const [escrowOrders, setEscrowOrders] = useState<any[]>([]);
-  const [escrowOrdersLoading, setEscrowOrdersLoading] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState('');
-
-  // ── Factory Self-Service Order Queue state ──────────────────────────────
-  const [factoryOrders, setFactoryOrders] = useState<any[]>([]);
-  const [factoryOrdersLoading, setFactoryOrdersLoading] = useState(false);
-  const [selectedFactoryOrder, setSelectedFactoryOrder] = useState<any | null>(null);
-  const [factoryOrderStatusFilter, setFactoryOrderStatusFilter] = useState<string>('all');
-  const [factoryOrderStatusUpdating, setFactoryOrderStatusUpdating] = useState(false);
-  const [factoryOrderStatusMsg, setFactoryOrderStatusMsg] = useState('');
-  const [factoryOrderStatusSuccess, setFactoryOrderStatusSuccess] = useState(false);
-  const [factoryOrderNoteInput, setFactoryOrderNoteInput] = useState('');
-
-  // Delivery PIN state (factory side)
-  const [selectedEscrowOrder, setSelectedEscrowOrder] = useState<any | null>(null);
-  const [deliveryPinInput, setDeliveryPinInput] = useState('');
-  const [deliveryPinVerifying, setDeliveryPinVerifying] = useState(false);
-  // Mark Ready state
-  const [markReadyLoading, setMarkReadyLoading] = useState(false);
-  const [markReadyNote, setMarkReadyNote] = useState('');
-  const [markReadyMsg, setMarkReadyMsg] = useState('');
-  const [markReadySuccess, setMarkReadySuccess] = useState(false);
-  const [deliveryPinMsg, setDeliveryPinMsg] = useState('');
-  const [deliveryPinSuccess, setDeliveryPinSuccess] = useState(false);
-
-  // Factory disputes state (Level 1 — incoming complaints)
-  const [factoryDisputes, setFactoryDisputes] = useState<any[]>([]);
-  const [factoryDisputesLoading, setFactoryDisputesLoading] = useState(false);
-  const [selectedFactoryDispute, setSelectedFactoryDispute] = useState<any | null>(null);
-  const [factoryResolutionType, setFactoryResolutionType] = useState('');
-  const [factoryResolutionNote, setFactoryResolutionNote] = useState('');
-  const [factoryResolveLoading, setFactoryResolveLoading] = useState(false);
-  const [factoryResolveMsg, setFactoryResolveMsg] = useState('');
 
   // Bank accounts state
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
@@ -229,28 +195,8 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   const [bankFormSuccess, setBankFormSuccess] = useState('');
   const [deletingBankId, setDeletingBankId] = useState<string | null>(null);
 
-  // Analytics state
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [analyticsData, setAnalyticsData] = useState<any[]>([]);
-  const [analyticsStats, setAnalyticsStats] = useState({
-    totalViews: 0,
-    totalOrders: 0,
-    totalRfqs: 0,
-    avgRating: 0,
-    reviewCount: 0,
-    activeProducts: 0,
-    totalRevenue: 0,
-  });
+  // Analytics period (data lives in useFactoryOperationsData)
   const [analyticsPeriod, setAnalyticsPeriod] = useState<'7d' | '30d' | '90d'>('30d');
-
-  // Admin messaging state (factory side)
-  const [adminConv, setAdminConv] = useState<any | null>(null);
-  const [adminConvLoading, setAdminConvLoading] = useState(false);
-  const [adminMessages, setAdminMessages] = useState<any[]>([]);
-  const [adminMsgsLoading, setAdminMsgsLoading] = useState(false);
-  const [adminMsgInput, setAdminMsgInput] = useState('');
-  const [adminMsgSending, setAdminMsgSending] = useState(false);
-  const [adminMsgAttachment, setAdminMsgAttachment] = useState<AttachmentState | null>(null);
   const adminMsgsEndRef = React.useRef<HTMLDivElement>(null);
 
   // Accreditation inquiry state
@@ -263,14 +209,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   const [verifiedTier, setVerifiedTier] = useState<'unverified' | 'partial' | 'verified'>('unverified');
   const [missingDocuments, setMissingDocuments] = useState<string[]>([]);
 
-  // Finance tab state
-  const [financeRecords, setFinanceRecords] = useState<any[]>([]);
-  const [financeLoading, setFinanceLoading] = useState(false);
-  const [financeFilter, setFinanceFilter] = useState<'all' | 'received' | 'sent'>('all');
-
-  // Inventory tab state
-  const [inventoryItems, setInventoryItems] = useState<any[]>([]);
-  const [inventoryLoading, setInventoryLoading] = useState(false);
+  // Inventory modal state
   const [showAddInventoryModal, setShowAddInventoryModal] = useState(false);
   const [inventoryForm, setInventoryForm] = useState({
     material_name: '', material_name_ar: '', category: 'raw_material', unit: 'kg',
@@ -278,11 +217,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   });
   const [inventoryFormLoading, setInventoryFormLoading] = useState(false);
   const [inventoryFormError, setInventoryFormError] = useState('');
-
-  // Archive tab state
-  const [archiveRecords, setArchiveRecords] = useState<any[]>([]);
-  const [archiveLoading, setArchiveLoading] = useState(false);
-  const [archiveType, setArchiveType] = useState<'all' | 'sales' | 'purchases' | 'shipments'>('all');
 
   // ── Sales Rep / Enterprise Multi-User state ──────────────────────────────
   const [isSalesRep, setIsSalesRep] = useState(false);
@@ -311,59 +245,44 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   /** Whether the factory settings panel resolved the account as a supplier (vs factory) */
   const [isSupplierSettings, setIsSupplierSettings] = useState(false);
 
-  const fetchFinanceRecords = useCallback(async () => {
-    if (!user) return;
-    setFinanceLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('finance_records')
-        .select('*')
-        .eq('manufacturer_id', user.id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      setFinanceRecords(data || []);
-    } catch (err) {
-      console.error('Failed to fetch finance records:', err);
-    } finally {
-      setFinanceLoading(false);
-    }
-  }, [user, supabase]);
-
-  const fetchInventoryItems = useCallback(async () => {
-    if (!user) return;
-    setInventoryLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('inventory_items')
-        .select('*')
-        .eq('manufacturer_id', user.id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      setInventoryItems(data || []);
-    } catch (err) {
-      console.error('Failed to fetch inventory items:', err);
-    } finally {
-      setInventoryLoading(false);
-    }
-  }, [user, supabase]);
-
-  const fetchArchiveRecords = useCallback(async () => {
-    if (!user) return;
-    setArchiveLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('archive_records')
-        .select('*')
-        .eq('manufacturer_id', user.id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      setArchiveRecords(data || []);
-    } catch (err) {
-      console.error('Failed to fetch archive records:', err);
-    } finally {
-      setArchiveLoading(false);
-    }
-  }, [user, supabase]);
+  // Orders / escrow / disputes / analytics / finance / inventory / archive / admin messaging
+  const {
+    escrowOrders, escrowOrdersLoading, fetchEscrowOrders,
+    selectedEscrowOrder, setSelectedEscrowOrder,
+    deliveryPinInput, setDeliveryPinInput, deliveryPinVerifying,
+    deliveryPinMsg, setDeliveryPinMsg, deliveryPinSuccess, setDeliveryPinSuccess,
+    markReadyLoading, markReadyNote, setMarkReadyNote,
+    markReadyMsg, setMarkReadyMsg, markReadySuccess, setMarkReadySuccess,
+    handleDeliveryPinVerify, handleMarkReady,
+    factoryOrders, factoryOrdersLoading, fetchFactoryOrders,
+    selectedFactoryOrder, setSelectedFactoryOrder,
+    factoryOrderStatusFilter, setFactoryOrderStatusFilter,
+    factoryOrderStatusUpdating, factoryOrderStatusMsg, setFactoryOrderStatusMsg,
+    factoryOrderStatusSuccess, setFactoryOrderStatusSuccess,
+    factoryOrderNoteInput, setFactoryOrderNoteInput,
+    handleFactoryOrderStatusUpdate,
+    factoryDisputes, factoryDisputesLoading, fetchFactoryDisputes,
+    selectedFactoryDispute, setSelectedFactoryDispute,
+    factoryResolutionType, setFactoryResolutionType,
+    factoryResolutionNote, setFactoryResolutionNote,
+    factoryResolveLoading, factoryResolveMsg, setFactoryResolveMsg,
+    handleFactoryResolve,
+    analyticsLoading, analyticsData, analyticsStats, fetchAnalytics,
+    financeRecords, financeLoading, financeFilter, setFinanceFilter, fetchFinanceRecords,
+    inventoryItems, inventoryLoading, fetchInventoryItems,
+    archiveRecords, archiveLoading, archiveType, setArchiveType, fetchArchiveRecords,
+    adminConv, adminConvLoading, adminMessages, setAdminMessages, adminMsgsLoading,
+    adminMsgInput, setAdminMsgInput, adminMsgSending,
+    adminMsgAttachment, setAdminMsgAttachment,
+    sendAdminMessage, fetchAdminConversation,
+  } = useFactoryOperationsData({
+    user,
+    supabase,
+    md,
+    isSalesRep,
+    salesRepLoading,
+    analyticsPeriod,
+  });
 
   // ── Detect if current user is a sales rep (not factory owner) ────────────
   const detectSalesRepRole = useCallback(async () => {
@@ -626,488 +545,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     },
     enabled: !!user,
   });
-
-  const fetchEscrowOrders = async () => {
-    if (!user) return;
-    if (salesRepLoading) return;
-    if (isSalesRep) { setEscrowOrders([]); return; }
-    setEscrowOrdersLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*, user_profiles!orders_user_id_fkey(full_name, email, company_name, phone, country)')
-        .eq('factory_user_id', user.id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      setEscrowOrders(data || []);
-    } catch (err: any) {
-      console.error('Failed to fetch escrow orders:', err);
-    } finally {
-      setEscrowOrdersLoading(false);
-    }
-  };
-
-  // ── Factory Self-Service Order Queue ────────────────────────────────────
-  const fetchFactoryOrders = async () => {
-    if (!user) return;
-    // Never fetch unmasked buyer data until the sales-rep role has been resolved.
-    if (salesRepLoading) return;
-    setFactoryOrdersLoading(true);
-    try {
-      if (isSalesRep) {
-        const { data: masked, error: maskedError } = await supabase.rpc('get_agent_factory_orders');
-        if (maskedError) throw maskedError;
-        setFactoryOrders((masked as any[]) || []);
-        return;
-      }
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*, user_profiles!orders_user_id_fkey(full_name, email, company_name, phone, country)')
-        .eq('factory_user_id', user.id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      setFactoryOrders(data || []);
-    } catch (err: any) {
-      console.error('Failed to fetch factory orders:', err);
-    } finally {
-      setFactoryOrdersLoading(false);
-    }
-  };
-
-  const handleFactoryOrderStatusUpdate = async (orderId: string, newStatus: string) => {
-    if (!user || !orderId) return;
-    setFactoryOrderStatusUpdating(true);
-    setFactoryOrderStatusMsg('');
-    setFactoryOrderStatusSuccess(false);
-    try {
-      const updatePayload: any = {
-        status: newStatus,
-        updated_at: new Date().toISOString(),
-      };
-      if (newStatus === 'processing' && !selectedFactoryOrder?.factory_accepted_at) {
-        updatePayload.factory_accepted_at = new Date().toISOString();
-        updatePayload.factory_status = 'accepted';
-      } else if (newStatus === 'shipped') {
-        updatePayload.factory_status = 'shipped';
-      } else if (newStatus === 'cancelled') {
-        updatePayload.factory_status = 'cancelled';
-      } else if (newStatus === 'ready_for_dispatch') {
-        updatePayload.factory_status = 'ready_for_dispatch';
-      }
-      if (factoryOrderNoteInput.trim()) {
-        updatePayload.factory_notes = factoryOrderNoteInput.trim();
-      }
-      const { error } = await supabase
-        .from('orders')
-        .update(updatePayload)
-        .eq('id', orderId)
-        .eq('factory_user_id', user.id);
-      if (error) throw error;
-
-      // Insert status history record (server RLS: only the owning factory / buyer may write)
-      const { error: historyError } = await supabase.from('order_status_history').insert({
-        order_id: orderId,
-        status: newStatus,
-        note: factoryOrderNoteInput.trim() || `Status updated to ${newStatus} by factory`,
-      });
-      if (historyError) throw historyError;
-
-      // ── Auto-create dispatch room when status → ready_for_dispatch ──────────
-      if (newStatus === 'ready_for_dispatch') {
-        const orderData = factoryOrders.find((o: any) => o.id === orderId);
-        const { data: existingRoom } = await supabase
-          .from('order_dispatch_rooms')
-          .select('id')
-          .eq('order_id', orderId)
-          .maybeSingle();
-
-        if (!existingRoom) {
-          const { data: newRoom } = await supabase
-            .from('order_dispatch_rooms')
-            .insert({
-              order_id: orderId,
-              factory_id: user.id,
-              agent_id: orderData?.agent_id ?? null,
-              logistics_id: orderData?.logistics_partner_id ?? null,
-              status: 'active',
-            })
-            .select()
-            .single();
-
-          // Notify the dispatch-room parties via the guarded server RPC.
-          // Recipients are resolved in the database from the room — never supplied by the browser.
-          if (newRoom) {
-            const { error: notifyError } = await supabase.rpc('notify_order_parties', {
-              p_order_id: orderId,
-              p_title: md.dispatchRoomNotifTitle,
-              p_message: (md.dispatchRoomNotifBody || '').replace('{order}', String(orderData?.order_number ?? orderId)),
-              p_type: 'order_update',
-            });
-            if (notifyError) console.error('Dispatch notification failed:', notifyError.message);
-          }
-        }
-      }
-
-      setFactoryOrderStatusMsg(`✅ تم تحديث حالة الطلب إلى "${newStatus}" بنجاح.`);
-      setFactoryOrderStatusSuccess(true);
-      setFactoryOrderNoteInput('');
-      await fetchFactoryOrders();
-      setSelectedFactoryOrder((prev: any) =>
-        prev ? { ...prev, status: newStatus, ...updatePayload } : prev
-      );
-    } catch (err: any) {
-      setFactoryOrderStatusMsg(`❌ ${err.message || 'Failed to update order status.'}`);
-      setFactoryOrderStatusSuccess(false);
-    } finally {
-      setFactoryOrderStatusUpdating(false);
-    }
-  };
-
-  // ── Admin Messaging (factory side) ─────────────────────────────────────────
-  const fetchAdminConversation = useCallback(async () => {
-    if (!user) return;
-    setAdminConvLoading(true);
-    try {
-      // Find or create conversation for this factory with admin
-      const { data: convData } = await supabase
-        .from('admin_factory_conversations')
-        .select('*')
-        .eq('factory_id', user.id)
-        .maybeSingle();
-      if (convData) {
-        setAdminConv(convData);
-        // Fetch messages
-        setAdminMsgsLoading(true);
-        const { data: msgsData } = await supabase
-          .from('admin_factory_messages')
-          .select('*')
-          .eq('conversation_id', convData.id)
-          .order('created_at', { ascending: true });
-        setAdminMessages(msgsData || []);
-        // Mark as read by factory
-        await supabase
-          .from('admin_factory_conversations')
-          .update({ unread_by_factory: 0 })
-          .eq('id', convData.id);
-        setAdminMsgsLoading(false);
-      } else {
-        setAdminConv(null);
-      }
-    } catch (err) {
-      console.error('fetchAdminConversation error:', err);
-    } finally {
-      setAdminConvLoading(false);
-    }
-  }, [user, supabase]);
-
-  const sendAdminMessage = async () => {
-    const text = adminMsgInput.trim();
-    if ((!text && !adminMsgAttachment) || adminMsgSending || !adminConv || !user) return;
-    setAdminMsgSending(true);
-    const optimisticId = `opt-${Date.now()}`;
-    const optimisticMsg = {
-      id: optimisticId,
-      conversation_id: adminConv.id,
-      sender_id: user.id,
-      sender_role: 'factory',
-      message: text || (adminMsgAttachment ? `📎 ${adminMsgAttachment.name}` : ''),
-      msg_type: 'text',
-      priority: 'normal',
-      created_at: new Date().toISOString(),
-      is_read_by_admin: false,
-      attachment_url: adminMsgAttachment?.previewUrl,
-      attachment_name: adminMsgAttachment?.name,
-    };
-    setAdminMessages(prev => [...prev, optimisticMsg]);
-    setAdminMsgInput('');
-
-    // Capture and clear attachment before async work
-    const currentAttachment = adminMsgAttachment;
-    setAdminMsgAttachment(null);
-
-    try {
-      let attachmentUrl: string | undefined;
-      let attachmentName: string | undefined;
-
-      if (currentAttachment) {
-        const result = await uploadChatImage(currentAttachment.file, user.id, 'factory-chat');
-        if (result) {
-          attachmentUrl = result.publicUrl;
-          attachmentName = result.fileName;
-          // Update optimistic message with real URL
-          setAdminMessages(prev => prev.map(m =>
-            m.id === optimisticId ? { ...m, attachment_url: attachmentUrl, attachment_name: attachmentName } : m
-          ));
-        }
-        if (currentAttachment.previewUrl) URL.revokeObjectURL(currentAttachment.previewUrl);
-      }
-
-      const { data: inserted, error } = await supabase
-        .from('admin_factory_messages')
-        .insert({
-          conversation_id: adminConv.id,
-          sender_id: user.id,
-          sender_role: 'factory',
-          message: text || (attachmentName ? `📎 ${attachmentName}` : ''),
-          msg_type: 'text',
-          priority: 'normal',
-          is_read_by_factory: true,
-          is_read_by_admin: false,
-          attachment_url: attachmentUrl,
-          attachment_name: attachmentName,
-        })
-        .select()
-        .single();
-      if (!error && inserted) {
-        setAdminMessages(prev => prev.map(m => m.id === optimisticId ? inserted : m));
-      } else if (error) {
-        setAdminMessages(prev => prev.filter(m => m.id !== optimisticId));
-      }
-    } catch (err) {
-      console.error('sendAdminMessage error:', err);
-      setAdminMessages(prev => prev.filter(m => m.id !== optimisticId));
-    } finally {
-      setAdminMsgSending(false);
-    }
-  };
-
-  const fetchAnalytics = useCallback(async () => {
-    if (!user) return;
-    setAnalyticsLoading(true);
-    try {
-      const daysMap = { '7d': 7, '30d': 30, '90d': 90 };
-      const days = daysMap[analyticsPeriod];
-      const fromDate = new Date();
-      fromDate.setDate(fromDate.getDate() - days);
-      const fromISO = fromDate.toISOString();
-
-      // Run all analytics queries in parallel
-      const [viewsRes, ordersRes, rfqsRes, reviewsRes, countRes] = await Promise.all([
-        supabase
-          .from('product_views')
-          .select('viewed_at, product_id')
-          .eq('factory_id', user.id)
-          .gte('viewed_at', fromISO),
-        supabase
-          .from('orders')
-          .select('created_at, total, status, items')
-          .eq('factory_user_id', user.id)
-          .gte('created_at', fromISO),
-        supabase
-          .from('rfq_requests')
-          .select('created_at')
-          .eq('factory_id', user.id)
-          .gte('created_at', fromISO),
-        supabase
-          .from('product_reviews')
-          .select('rating, created_at')
-          .eq('factory_id', user.id),
-        supabase
-          .from('manufacturer_products')
-          .select('*', { count: 'exact', head: true })
-          .eq('manufacturer_id', user.id)
-          .eq('is_active', true),
-      ]);
-
-      const viewsData = viewsRes.data || [];
-      const ordersData = ordersRes.data || [];
-      const rfqsData = rfqsRes.data || [];
-      const reviewsData = reviewsRes.data || [];
-      const activeProductsCount = countRes.count || 0;
-
-      // Wholesale (B2B) vs retail (B2C) classification: an order is wholesale when any line
-      // reaches the product's B2B minimum quantity, otherwise it is a retail (consumer) sale.
-      const { data: moqRows } = await supabase
-        .from('manufacturer_products')
-        .select('id, b2b_min_quantity')
-        .eq('manufacturer_id', user.id);
-      const moqById: Record<string, number> = {};
-      (moqRows || []).forEach((p: any) => {
-        moqById[String(p.id)] = Number(p.b2b_min_quantity) || 10;
-      });
-      const isWholesaleOrder = (o: any): boolean => {
-        const lines = Array.isArray(o?.items) ? o.items : [];
-        if (lines.length === 0) return true;
-        return lines.some((li: any) => {
-          const qty = Number(li?.quantity) || 0;
-          const pid = String(li?.productId ?? li?.product_id ?? li?.id ?? '');
-          const moq = moqById[pid] ?? Number(li?.moqNumber) ?? 10;
-          return qty >= (Number.isFinite(moq) && moq > 0 ? moq : 10);
-        });
-      };
-
-      // Build daily chart data (key = YYYY-MM-DD; localized at render time)
-      const dayKey = (d: Date) =>
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      type DayBucket = {
-        views: number; orders: number; revenue: number;
-        ordersB2B: number; revenueB2B: number; ordersB2C: number; revenueB2C: number;
-      };
-      const dailyMap: Record<string, DayBucket> = {};
-      for (let i = days - 1; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        dailyMap[dayKey(d)] = { views: 0, orders: 0, revenue: 0, ordersB2B: 0, revenueB2B: 0, ordersB2C: 0, revenueB2C: 0 };
-      }
-
-      viewsData.forEach((v: any) => {
-        const key = dayKey(new Date(v.viewed_at));
-        if (dailyMap[key]) dailyMap[key].views++;
-      });
-
-      ordersData.forEach((o: any) => {
-        const key = dayKey(new Date(o.created_at));
-        if (dailyMap[key]) {
-          const amt = Number(o.total) || 0;
-          dailyMap[key].orders++;
-          dailyMap[key].revenue += amt;
-          if (isWholesaleOrder(o)) {
-            dailyMap[key].ordersB2B++;
-            dailyMap[key].revenueB2B += amt;
-          } else {
-            dailyMap[key].ordersB2C++;
-            dailyMap[key].revenueB2C += amt;
-          }
-        }
-      });
-
-      const chartData = Object.entries(dailyMap).map(([date, vals]) => ({ date, ...vals }));
-      setAnalyticsData(chartData);
-
-      const totalRevenue = ordersData.reduce((s: number, o: any) => s + (Number(o.total) || 0), 0);
-      const avgRating = reviewsData.length > 0
-        ? reviewsData.reduce((s: number, r: any) => s + r.rating, 0) / reviewsData.length
-        : 0;
-
-      setAnalyticsStats({
-        totalViews: viewsData.length,
-        totalOrders: ordersData.length,
-        totalRevenue,
-        totalRfqs: rfqsData.length,
-        avgRating,
-        reviewCount: reviewsData.length,
-        activeProducts: activeProductsCount,
-      });
-    } catch {
-      // silently fail
-    } finally {
-      setAnalyticsLoading(false);
-    }
-  }, [user, analyticsPeriod, supabase]);
-
-  const fetchFactoryDisputes = async () => {
-    if (!user) return;
-    setFactoryDisputesLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*, user_profiles!orders_user_id_fkey(full_name, email, company_name)')
-        .eq('factory_user_id', user.id)
-        .not('dispute_status', 'is', null)
-        .order('dispute_opened_at', { ascending: false });
-      if (error) throw error;
-      setFactoryDisputes((data || []).filter((o: any) => o.dispute_status && o.dispute_status !== 'none'));
-    } catch (err: any) {
-      console.error('Failed to fetch factory disputes:', err);
-    } finally {
-      setFactoryDisputesLoading(false);
-    }
-  };
-
-  const handleDeliveryPinVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedEscrowOrder || !deliveryPinInput.trim()) return;
-    setDeliveryPinVerifying(true);
-    setDeliveryPinMsg('');
-    setDeliveryPinSuccess(false);
-    try {
-      const res = await fetch('/api/escrow/delivery-pin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'verify',
-          order_id: selectedEscrowOrder.id,
-          pin: deliveryPinInput.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || md.pinVerifyFailed);
-      setDeliveryPinMsg(data.message || md.pinVerifySuccess);
-      setDeliveryPinSuccess(true);
-      setDeliveryPinInput('');
-      // Refresh escrow orders
-      await fetchEscrowOrders();
-      // Update selected order
-      setSelectedEscrowOrder((prev: any) => prev ? { ...prev, escrow_status: 'funds_released', status: 'delivered' } : prev);
-    } catch (err: any) {
-      setDeliveryPinMsg(err.message || md.pinVerifyFailed);
-      setDeliveryPinSuccess(false);
-    } finally {
-      setDeliveryPinVerifying(false);
-    }
-  };
-
-  const handleMarkReady = async (orderId: string) => {
-    if (!orderId) return;
-    setMarkReadyLoading(true);
-    setMarkReadyMsg('');
-    setMarkReadySuccess(false);
-    try {
-      const res = await fetch('/api/escrow/mark-ready', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          order_id: orderId,
-          note: markReadyNote.trim() || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || md.statusUpdateFailed);
-      setMarkReadyMsg(data.message || md.buyerNotifiedReady);
-      setMarkReadySuccess(true);
-      setMarkReadyNote('');
-      await fetchEscrowOrders();
-      setSelectedEscrowOrder((prev: any) =>
-        prev ? { ...prev, escrow_status: 'ready_for_inspection' } : prev
-      );
-    } catch (err: any) {
-      setMarkReadyMsg(`❌ ${err.message}`);
-      setMarkReadySuccess(false);
-    } finally {
-      setMarkReadyLoading(false);
-    }
-  };
-
-  const handleFactoryResolve = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedFactoryDispute || !user) return;
-    if (!factoryResolutionType || !factoryResolutionNote.trim()) return;
-    setFactoryResolveLoading(true);
-    setFactoryResolveMsg('');
-    try {
-      const res = await fetch('/api/escrow/dispute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'factory_resolve',
-          order_id: selectedFactoryDispute.id,
-          resolution_type: factoryResolutionType,
-          resolution_note: factoryResolutionNote,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to submit resolution');
-      setFactoryResolveMsg(data.message || md.resolutionSentOk);
-      setFactoryResolutionType('');
-      setFactoryResolutionNote('');
-      await fetchFactoryDisputes();
-      setSelectedFactoryDispute((prev: any) => (prev ? { ...prev, dispute_status: 'factory_resolved' } : prev));
-    } catch (err: any) {
-      setFactoryResolveMsg(`❌ ${err.message}`);
-    } finally {
-      setFactoryResolveLoading(false);
-    }
-  };
 
   const fetchFactoryRegistration = async () => {
     if (!user) return;
@@ -1660,8 +1097,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleTab, moduleView]);
 
-  const moduleMeta = moduleTab ? MODULE_ROUTES[moduleTab] : undefined;
-
   // ── Hard RBAC: sub-accounts can never reach restricted modules ───────────
   const SALES_REP_RESTRICTED_TABS: string[] = [
     'financial_hub', 'finance', 'escrow_orders', 'factory_settings', 'sales_team',
@@ -1692,385 +1127,52 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     <div className={`min-h-screen ${isModuleMode ? 'bg-background' : 'bg-slate-950 pb-16'}`} dir={isRTL ? 'rtl' : 'ltr'}>
       <Toaster position={isRTL ? 'top-left' : 'top-right'} />
 
-      {/* ── Admin Impersonation Sticky Banner ── */}
-      {impersonatedFactoryId && (
-        <div className="sticky top-0 z-[60] w-full bg-amber-400 border-b-2 border-amber-500 shadow-md">
-          <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2.5">
-              <span className="text-xl">🔍</span>
-              <div>
-                <p className="text-sm font-bold text-amber-900">
-                  وضع المحاكاة الإدارية نشط
-                </p>
-                <p className="text-xs text-amber-800">
-                  أنت تشاهد لوحة تحكم المصنع: <strong>{impersonatedFactoryName || impersonatedFactoryId}</strong> — Admin Simulation Mode Active
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleEndImpersonation}
-              className="flex items-center gap-2 px-4 py-2 bg-amber-900 text-amber-100 rounded-xl text-xs font-bold hover:bg-amber-800 transition-colors whitespace-nowrap shrink-0"
-            >
-              <Icon name="XMarkIcon" size={14} />
-              إنهاء المحاكاة والعودة لغرفة التحكم
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Top Nav — Ultra-Luxurious */}
-      <header className={`sticky top-0 z-50 backdrop-blur-md border-b shadow-sm ${isModuleMode ? 'bg-card/95 border-border/60' : 'bg-slate-900/95 border-slate-800'}`}>
-        <div className="max-w-7xl mx-auto px-4 md:px-6 flex items-center gap-3 h-14">
-          <Link href="/" className="flex items-center gap-2 shrink-0">
-            <AppLogo size={28} />
-            <div className="flex flex-col leading-none">
-              <span className={`font-bold text-sm tracking-tight ${isModuleMode ? 'text-foreground' : 'text-white'}`} translate="no">Direct Hub</span>
-              <span className={`text-[9px] font-medium hidden sm:block ${isModuleMode ? 'text-muted-foreground' : 'text-cyan-300'}`}>{t.manufacturerDashboard.title}</span>
-            </div>
-          </Link>
-
-          <div className="flex-1" />
-
-          {/* Sales Rep Badge */}
-          {isSalesRep && salesRepRecord && (
-            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs font-semibold text-blue-700">
-              <Icon name="UserGroupIcon" size={13} />
-              {md.salesRep}
-            </div>
-          )}
-
-          <div className="flex items-center gap-2">
-            <div className="relative" ref={userMenuRef}>
-              <button
-                type="button"
-                onClick={() => setUserMenuOpen(!userMenuOpen)}
-                aria-haspopup="menu"
-                aria-expanded={userMenuOpen}
-                aria-label={userName}
-                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${isModuleMode ? 'text-muted-foreground hover:text-foreground hover:bg-muted' : 'text-slate-300 hover:text-white hover:bg-slate-800'}`}
-              >
-                <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
-                  {userName.charAt(0).toUpperCase()}
-                </div>
-                <span className="hidden sm:block max-w-[120px] truncate">{userName}</span>
-                <Icon name="ChevronDownIcon" size={14} />
-              </button>
-              {userMenuOpen && (
-                <div role="menu" className="absolute end-0 top-full mt-1 w-52 bg-card border border-border rounded-xl shadow-lg py-1 z-50">
-                  <div className="px-4 py-2 border-b border-border">
-                    <p className="text-xs font-semibold text-foreground truncate">{userName}</p>
-                    {companyName && <p className="text-xs text-muted-foreground truncate">{companyName}</p>}
-                    <p className="text-xs text-primary font-medium mt-0.5">
-                      {isSalesRep ? md.salesRep : t.manufacturerDashboard.manufacturer}
-                    </p>
-                  </div>
-                  <Link href="/" role="menuitem" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors">
-                    <Icon name="HomeIcon" size={16} /> {t.manufacturerDashboard.backToMarketplace}
-                  </Link>
-                  <button type="button" role="menuitem" onClick={handleSignOut} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors text-start">
-                    <Icon name="ArrowRightOnRectangleIcon" size={16} /> {t.manufacturerDashboard.signOut}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* ── Module (full-screen) sticky header ── */}
-      {isModuleMode && (
-        <div className="sticky top-14 z-40 bg-card/95 backdrop-blur-md border-b border-border/60 shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 md:px-6 py-2 sm:py-0 sm:h-14 flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3">
-            <Link
-              href="/manufacturer/dashboard"
-              className={`order-1 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/10 text-primary text-xs sm:text-sm font-bold hover:bg-primary/20 active:scale-95 transition-all whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${moduleTab === 'seller_fulfillment' ? 'w-full sm:w-auto justify-start' : ''}`}
-            >
-              <span aria-hidden="true">{isRTL ? '→' : '←'}</span>
-              <span>رجوع إلى لوحة التحكم</span>
-            </Link>
-            <h1 className={`order-2 flex-1 min-w-0 text-sm sm:text-lg font-black text-foreground truncate ${moduleTab === 'seller_fulfillment' ? 'hidden sm:block' : ''}`}>
-              {moduleTab === 'factory_settings' && isSupplierSettings ? 'إعدادات وتوثيق المورد' : moduleMeta?.title}
-            </h1>
-            <div className={`order-3 flex items-center gap-2 ${moduleTab === 'seller_fulfillment' ? 'w-full sm:w-auto sm:shrink-0' : 'shrink-0'}`}>
-              {moduleTab === 'financial_hub' && !isSalesRep && (
-                <div className="flex sm:inline-flex rounded-lg border border-border overflow-hidden text-xs sm:text-sm font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('finance')}
-                    className={`px-3 py-2 transition-colors ${activeTab === 'finance' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
-                  >
-                    المحفظة والأرباح
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('financial_hub')}
-                    className={`px-3 py-2 transition-colors ${activeTab === 'financial_hub' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
-                  >
-                    الحسابات البنكية والأمان
-                  </button>
-                </div>
-              )}
-              {moduleTab === 'factory_orders' && (
-                <button
-                  type="button"
-                  onClick={() => fetchFactoryOrders()}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs sm:text-sm font-semibold text-foreground hover:bg-muted transition-colors"
-                >
-                  <Icon name="ArrowPathIcon" size={14} />
-                  <span className="hidden sm:inline">تحديث</span>
-                </button>
-              )}
-              {moduleTab === 'seller_fulfillment' && (
-                <div className="flex w-full sm:w-auto sm:inline-flex rounded-lg border border-border overflow-hidden text-xs sm:text-sm font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('seller_fulfillment')}
-                    className={`flex-1 sm:flex-none px-3 py-2 transition-colors ${activeTab === 'seller_fulfillment' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
-                  >
-                    الشحن الذاتي
-                  </button>
-                  {!isSalesRep && (
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('freight_bids')}
-                      className={`flex-1 sm:flex-none px-3 py-2 transition-colors ${activeTab === 'freight_bids' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
-                    >
-                      عروض الشحن
-                    </button>
-                  )}
-                </div>
-              )}
-              {moduleTab === 'products' && !isSalesRep && (
-                <button
-                  type="button"
-                  onClick={() => handleOpenAddModal()}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs sm:text-sm font-semibold hover:opacity-90 transition-opacity"
-                >
-                  <Icon name="PlusIcon" size={14} />
-                  <span className="hidden sm:inline">إضافة منتج</span>
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <DashboardChrome
+        isModuleMode={isModuleMode}
+        isRTL={isRTL}
+        moduleTab={moduleTab}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        isSalesRep={isSalesRep}
+        salesRepRecord={salesRepRecord}
+        isSupplierSettings={isSupplierSettings}
+        impersonatedFactoryId={impersonatedFactoryId}
+        impersonatedFactoryName={impersonatedFactoryName}
+        onEndImpersonation={handleEndImpersonation}
+        userName={userName}
+        companyName={companyName}
+        userMenuOpen={userMenuOpen}
+        setUserMenuOpen={setUserMenuOpen}
+        userMenuRef={userMenuRef}
+        onSignOut={handleSignOut}
+        onRefreshFactoryOrders={() => fetchFactoryOrders()}
+        onOpenAddProduct={() => handleOpenAddModal()}
+        t={t}
+        md={md}
+      />
 
       <main className="max-w-7xl mx-auto px-4 md:px-6 py-6">
-        {/* Page title — Ultra-Luxurious */}
         {!isModuleMode && (
-        <div className="rounded-3xl bg-gradient-to-l from-cyan-900/40 via-slate-900 to-slate-900 border border-cyan-500/20 p-6 mb-8 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-xs text-cyan-300 font-bold mb-1">Local Factory Room</p>
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">{t.manufacturerDashboard.title}</h1>
-            <p className="text-sm text-slate-400 mt-1 font-medium">
-              {companyName ? `${companyName} — ` : ''}{isSalesRep ? md.salesRepLimited : t.manufacturerDashboard.subtitle}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {!isSalesRep && (
-              <>
-                <Link
-                  href="/factory/register"
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-slate-700 bg-slate-800/80 rounded-lg text-sm font-medium text-slate-200 hover:bg-slate-700 transition-colors"
-                >
-                  <Icon name="BuildingOffice2Icon" size={15} /> {t.manufacturerDashboard.factoryProfile}
-                </Link>
-                <Link
-                  href="/invoices"
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-slate-700 bg-slate-800/80 rounded-lg text-sm font-medium text-slate-200 hover:bg-slate-700 transition-colors"
-                >
-                  <Icon name="DocumentTextIcon" size={15} /> {t.nav.invoices}
-                </Link>
-                <Link
-                  href={`/storefront/${user?.id || ''}`}
-                  target="_blank"
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 rounded-lg text-sm font-semibold hover:bg-emerald-500/20 transition-colors"
-                >
-                  <Icon name="GlobeAltIcon" size={15} /> {md.publicStorefront}
-                </Link>
-                {canShowLocalErp && (
-                  <Link
-                    href="/manufacturer/erp"
-                    className="hidden sm:flex items-center gap-2 px-3 py-2 border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 rounded-lg text-sm font-semibold hover:bg-cyan-500/20 transition-colors"
-                    title="Industrial ERP Dashboard"
-                  >
-                    <Icon name="ChartBarSquareIcon" size={15} />
-                    <span className="hidden lg:inline">{(t as any).erp?.erpTitle || 'ERP'}</span>
-                    <span className="lg:hidden">ERP</span>
-                  </Link>
-                )}
-                <Link
-                  href="/manufacturer/international-dashboard"
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 rounded-lg text-sm font-semibold hover:bg-cyan-500/20 transition-colors"
-                  title="International Factory Control Room"
-                >
-                  <Icon name="GlobeAltIcon" size={15} />
-                  <span className="hidden lg:inline">الدولي</span>
-                  <span className="lg:hidden">🌐</span>
-                </Link>
-                <Link
-                  href="/manufacturer/b2b"
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-indigo-500/40 bg-indigo-500/10 text-indigo-300 rounded-lg text-sm font-semibold hover:bg-indigo-500/20 transition-colors"
-                  title="B2B Sales System"
-                >
-                  <Icon name="BuildingOffice2Icon" size={15} />
-                  <span className="hidden lg:inline">B2B</span>
-                  <span className="lg:hidden">B2B</span>
-                </Link>
-                <Link
-                  href="/manufacturer/b2c"
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-rose-500/40 bg-rose-500/10 text-rose-300 rounded-lg text-sm font-semibold hover:bg-rose-500/20 transition-colors"
-                  title="B2C Sales System"
-                >
-                  <Icon name="ShoppingBagIcon" size={15} />
-                  <span className="hidden lg:inline">B2C</span>
-                  <span className="lg:hidden">B2C</span>
-                </Link>
-                {user && (
-                  <Link
-                    href={`/store/${user.id}`}
-                    target="_blank"
-                    className="hidden sm:flex items-center gap-2 px-3 py-2 border border-green-500/40 bg-green-500/10 text-green-300 rounded-lg text-sm font-semibold hover:bg-green-500/20 transition-colors"
-                    title="Public Storefront"
-                  >
-                    <Icon name="ArrowTopRightOnSquareIcon" size={15} />
-                    <span className="hidden lg:inline">{(t as any).erp?.publicStore || 'Public Store'}</span>
-                    <span className="lg:hidden">Store</span>
-                  </Link>
-                )}
-              </>
-            )}
-            {!isSalesRep && (
-              <button
-                type="button"
-                onClick={() => setShowDealLinkModal(true)}
-                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 rounded-lg text-xs sm:text-sm font-semibold hover:bg-emerald-500/20 transition-colors"
-                aria-label="إنشاء رابط صفقة"
-              >
-                <Icon name="LinkIcon" size={15} />
-                <span className="sm:hidden">رابط صفقة</span>
-                <span className="hidden sm:inline">إنشاء رابط صفقة مخصصة</span>
-              </button>
-            )}
-            {!isSalesRep && (
-              <Link
-                href="/seller/products"
-                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 rounded-lg text-xs sm:text-sm font-semibold hover:bg-cyan-500/20 transition-colors"
-                aria-label="إدارة المنتجات"
-              >
-                <Icon name="ArrowTopRightOnSquareIcon" size={15} />
-                <span className="sm:hidden">إدارة المنتجات</span>
-                <span className="hidden sm:inline">{t.manufacturerDashboard.productManager}</span>
-              </Link>
-            )}
-          </div>
-        </div>
+          <DashboardHub
+            userId={user?.id ?? null}
+            companyName={companyName}
+            isSalesRep={isSalesRep}
+            canShowLocalErp={canShowLocalErp}
+            salesReps={salesReps}
+            factoryOrders={factoryOrders}
+            escrowOrders={escrowOrders}
+            factoryDisputes={factoryDisputes}
+            onOpenDealLink={() => setShowDealLinkModal(true)}
+            onSelectTab={setActiveTab}
+            onLoadFinance={fetchFinanceRecords}
+            onLoadEscrow={fetchEscrowOrders}
+            onLoadAdminConversation={fetchAdminConversation}
+            onLoadArchive={fetchArchiveRecords}
+            t={t}
+            md={md}
+          />
         )}
         <DealLinkGeneratorModal open={showDealLinkModal} onClose={() => setShowDealLinkModal(false)} />
-
-        {/* Sales Rep Permission Banner */}
-        {isSalesRep && !isModuleMode && (
-          <div className="mb-5 flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
-            <Icon name="ShieldCheckIcon" size={18} className="text-blue-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-bold text-blue-800">{md.salesRepMode}</p>
-              <p className="text-xs text-blue-700 mt-0.5">
-                {md.salesRepMode}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Dashboard Tabs */}
-        {!isModuleMode && (
-        <div>
-          {(() => {
-            type HubCard = { key: string; label: string; icon: string; accent: string; hint: string; show: boolean; badge?: number | string };
-            const hubCards: HubCard[] = [
-              { key: 'products', label: t.manufacturerDashboard.productsAndInventory, icon: '🛍️', accent: 'from-teal-600/30 to-teal-900/20 border-teal-500/30', hint: 'منتجات المصنع المعروضة للبيع', show: true },
-              { key: 'inventory', label: md.tabInventory, icon: '📦', accent: 'from-cyan-600/30 to-cyan-900/20 border-cyan-500/30', hint: 'المواد الخام ومخزون الإنتاج', show: true },
-              { key: 'all_sales', label: 'صفقات وقنوات البيع', icon: '🤝', accent: 'from-amber-600/30 to-amber-900/20 border-amber-500/30', hint: 'قنوات البيع وصفقات الجملة والتجزئة', show: !isSalesRep },
-              { key: 'contracts', label: 'العقود والاتفاقيات', icon: '📜', accent: 'from-purple-600/30 to-purple-900/20 border-purple-500/30', hint: 'عقود التوريد والاتفاقيات التجارية', show: !isSalesRep },
-              { key: 'factory_orders', label: 'إدارة الطلبات', icon: '🧾', accent: 'from-orange-600/30 to-orange-900/20 border-orange-500/30', hint: 'طلبات المصنع وحالاتها', show: true, badge: factoryOrders.filter((o: any) => o.status === 'pending').length || undefined },
-              { key: 'seller_fulfillment', label: 'الشحن والخدمات اللوجستية', icon: '🚛', accent: 'from-indigo-600/30 to-indigo-900/20 border-indigo-500/30', hint: 'الشحن الذاتي وعروض الشحن وتتبع التوصيل', show: true },
-              { key: 'production', label: 'خطوط الإنتاج والجودة', icon: '⚙️', accent: 'from-slate-600/30 to-slate-900/20 border-slate-500/30', hint: 'الطاقة الإنتاجية وفحص الجودة', show: !isSalesRep },
-              { key: 'sales_team', label: md.tabSalesTeam, icon: '👥', accent: 'from-pink-600/30 to-pink-900/20 border-pink-500/30', hint: 'مندوبو المبيعات وصلاحياتهم', show: !isSalesRep, badge: salesReps.filter(r => r.status === 'active').length || undefined },
-              { key: 'financial_hub', label: 'المالية والأرباح', icon: '💵', accent: 'from-lime-600/30 to-lime-900/20 border-lime-500/30', hint: 'المحفظة والأرباح والحسابات البنكية', show: !isSalesRep },
-              { key: 'escrow_orders', label: t.manufacturerDashboard.escrowOrders, icon: '🔒', accent: 'from-blue-600/30 to-blue-900/20 border-blue-500/30', hint: 'حالة الضمان المالي ورمز التسليم', show: !isSalesRep, badge: escrowOrders.filter((o: any) => o.escrow_status === 'funds_secured').length || undefined },
-              { key: 'invoicing', label: 'فوترة التصدير الدولية', icon: '🧮', accent: 'from-emerald-600/30 to-emerald-900/20 border-emerald-500/30', hint: 'الفواتير والمستندات المالية', show: !isSalesRep },
-              { key: 'analytics', label: t.manufacturerDashboard.analytics, icon: '📊', accent: 'from-violet-600/30 to-violet-900/20 border-violet-500/30', hint: 'مؤشرات الأداء والمبيعات', show: true },
-              { key: 'factory_settings', label: 'إعدادات وتوثيق المصنع', icon: '🛡️', accent: 'from-sky-600/30 to-sky-900/20 border-sky-500/30', hint: 'السجل التجاري والترخيص الصناعي', show: !isSalesRep },
-              { key: 'disputes', label: t.manufacturerDashboard.disputesAndComplaints, icon: '⚖️', accent: 'from-red-600/30 to-red-900/20 border-red-500/30', hint: 'متابعة الشكاوى والنزاعات', show: true, badge: factoryDisputes.filter((o: any) => ['open', 'factory_reviewing'].includes(o.dispute_status)).length || undefined },
-              { key: 'admin_messaging', label: t.manufacturerDashboard.adminMessaging, icon: '💬', accent: 'from-rose-600/30 to-rose-900/20 border-rose-500/30', hint: 'مراسلة إدارة المنصة', show: true },
-              { key: 'archive', label: md.tabArchive, icon: '🗂️', accent: 'from-zinc-600/30 to-zinc-900/20 border-zinc-500/30', hint: 'السجلات والعمليات المؤرشفة', show: true },
-            ];
-            const hubSections: Array<{ title: string; subtitle: string; keys: string[] }> = [
-              { title: 'المنتجات والتوريدات', subtitle: 'Products & Supply', keys: ['products', 'inventory', 'all_sales', 'contracts'] },
-              { title: 'الطلبات والعمليات', subtitle: 'Orders & Operations', keys: ['factory_orders', 'seller_fulfillment', 'production', 'sales_team'] },
-              { title: 'المالية والضمان والحسابات', subtitle: 'Financials & Escrow', keys: ['financial_hub', 'escrow_orders', 'invoicing'] },
-              { title: 'التحليلات والتوثيق والمراسلات', subtitle: 'Analytics & Compliance', keys: ['analytics', 'factory_settings', 'disputes', 'admin_messaging', 'archive'] },
-            ];
-            return hubSections.map((section) => {
-              const cards = section.keys
-                .map((k) => hubCards.find((c) => c.key === k))
-                .filter((c): c is HubCard => !!c && c.show);
-              if (cards.length === 0) return null;
-              return (
-                <section key={section.title} className="mb-8">
-                  <div className="flex items-baseline gap-2 mb-3">
-                    <h2 className="text-base font-black text-white">{section.title}</h2>
-                    <span className="text-[11px] text-slate-500">{section.subtitle}</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {cards.map((tab) => {
-                      const routed = MODULE_ROUTES[tab.key as DashboardTab];
-                      const cardClass = `group relative text-start rounded-2xl border bg-gradient-to-br ${tab.accent} p-4 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400`;
-                      const cardInner = (
-                        <>
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="text-2xl" aria-hidden="true">{tab.icon}</span>
-                            {tab.badge !== undefined && tab.badge !== 0 && (
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full text-white ${tab.key === 'disputes' ? 'bg-red-500 animate-pulse' : 'bg-white/10'}`}>
-                                {tab.badge}
-                              </span>
-                            )}
-                          </div>
-                          <h3 className="text-sm font-black text-white mt-3">{tab.label}</h3>
-                          <p className="text-xs text-slate-400 mt-1 leading-relaxed">{tab.hint}</p>
-                        </>
-                      );
-                      if (routed) {
-                        return (
-                          <Link key={tab.key} href={routed.href} prefetch className={`block ${cardClass}`}>
-                            {cardInner}
-                          </Link>
-                        );
-                      }
-                      return (
-                        <button
-                          key={tab.key}
-                          onClick={() => {
-                            if (tab.key === 'products') setActiveTab('products');
-                            else if (tab.key === 'finance') { setActiveTab('finance'); fetchFinanceRecords(); }
-                            else if (tab.key === 'escrow_orders') { setActiveTab('escrow_orders'); fetchEscrowOrders(); }
-                            else if (tab.key === 'admin_messaging') { setActiveTab('admin_messaging'); fetchAdminConversation(); }
-                            else if (tab.key === 'archive') { setActiveTab('archive'); fetchArchiveRecords(); }
-                            else if (tab.key === 'all_sales') { setActiveTab('all_sales'); }
-                            else if (tab.key === 'contracts') { setActiveTab('contracts'); }
-                          }}
-                          className={`block w-full ${cardClass}`}
-                        >
-                          {cardInner}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-              );
-            });
-          })()}
-        </div>
-        )}
 
         {/* ── FINANCIAL ACCESS GUARD — shown if sales rep tries to access financial tabs ── */}
         {isSalesRep && (activeTab === 'financial_hub' || activeTab === 'finance') && (
