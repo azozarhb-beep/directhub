@@ -155,15 +155,18 @@ export default function FactoryOrdersPanel({
     return () => { cancelled = true; };
   }, [orderIdsKey]);
 
-  const minRemaining = (orderId: string): number => {
-    const list = portShipments[orderId] || [];
-    const vals = list.map(s => computeFreeTime(s)?.remainingDays).filter((v): v is number => v !== undefined);
-    return vals.length ? Math.min(...vals) : Number.POSITIVE_INFINITY;
-  };
-
   const sortedFactoryOrders = useMemo(() => {
-    return [...factoryOrders].sort((a: any, b: any) => minRemaining(a.id) - minRemaining(b.id));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const remainingFor = (orderId: string): number => {
+      const list = portShipments[orderId] || [];
+      const vals = list.map(s => computeFreeTime(s)?.remainingDays).filter((v): v is number => v !== undefined);
+      return vals.length ? Math.min(...vals) : Number.POSITIVE_INFINITY;
+    };
+    return [...factoryOrders].sort((a: any, b: any) => {
+      const ra = remainingFor(a.id);
+      const rb = remainingFor(b.id);
+      if (ra === rb) return 0;
+      return ra < rb ? -1 : 1;
+    });
   }, [factoryOrders, portShipments]);
 
   const matchesLocalFilters = (o: any): boolean => {
