@@ -317,13 +317,32 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   const [impersonatedFactoryName, setImpersonatedFactoryName] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const id = localStorage.getItem('impersonated_factory_id');
-      const name = localStorage.getItem('impersonated_factory_name');
-      if (id) setImpersonatedFactoryId(id);
-      if (name) setImpersonatedFactoryName(name);
-    }
-  }, []);
+    if (typeof window === 'undefined' || authLoading || !user) return;
+    const id = localStorage.getItem('impersonated_factory_id');
+    const name = localStorage.getItem('impersonated_factory_name');
+    if (!id) return;
+    // Only real admins may keep an impersonation session; stale keys are purged for everyone else.
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      if ((data as { role?: string | null } | null)?.role === 'admin') {
+        setImpersonatedFactoryId(id);
+        if (name) setImpersonatedFactoryName(name);
+      } else {
+        localStorage.removeItem('impersonated_factory_id');
+        localStorage.removeItem('impersonated_factory_name');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user?.id]);
 
   const handleEndImpersonation = () => {
     localStorage.removeItem('impersonated_factory_id');
@@ -348,6 +367,26 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   const [filterSource, setFilterSource] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = React.useRef<HTMLDivElement>(null);
+
+  // Close the user menu on outside click / Escape
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const onPointer = (ev: MouseEvent | TouchEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(ev.target as Node)) setUserMenuOpen(false);
+    };
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setUserMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointer);
+    document.addEventListener('touchstart', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('touchstart', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [userMenuOpen]);
 
   // Bulk selection
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
@@ -607,14 +646,15 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
 
   // ── Bulk Actions ────────────────────────────────────────────────────────────
   const handleBulkToggleActive = async (isActive: boolean) => {
-    if (selectedProducts.size === 0) return;
+    if (selectedProducts.size === 0 || !user || isSalesRep) return;
     setBulkActionLoading(true);
     try {
       const ids = Array.from(selectedProducts);
       const { error } = await supabase
         .from('manufacturer_products')
         .update({ is_active: isActive, updated_at: new Date().toISOString() })
-        .in('id', ids);
+        .in('id', ids)
+        .eq('manufacturer_id', user.id);
       if (error) throw error;
       setProducts(prev => prev.map(p => selectedProducts.has(p.id) ? { ...p, is_active: isActive } : p));
       setSelectedProducts(new Set());
@@ -626,12 +666,16 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   };
 
   const handleBulkDelete = async () => {
-    if (selectedProducts.size === 0) return;
-    if (!confirm(`Delete ${selectedProducts.size} products?`)) return;
+    if (selectedProducts.size === 0 || !user || isSalesRep) return;
+    if (!confirm(`هل تريد حذف ${selectedProducts.size} منتج؟ لا يمكن التراجع عن هذا الإجراء.`)) return;
     setBulkActionLoading(true);
     try {
       const ids = Array.from(selectedProducts);
-      const { error } = await supabase.from('manufacturer_products').delete().in('id', ids);
+      const { error } = await supabase
+        .from('manufacturer_products')
+        .delete()
+        .in('id', ids)
+        .eq('manufacturer_id', user.id);
       if (error) throw error;
       setProducts(prev => prev.filter(p => !selectedProducts.has(p.id)));
       setSelectedProducts(new Set());
@@ -903,6 +947,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
 
   const fetchEscrowOrders = async () => {
     if (!user) return;
+    if (salesRepLoading) return;
     if (isSalesRep) { setEscrowOrders([]); return; }
     setEscrowOrdersLoading(true);
     try {
@@ -923,6 +968,8 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   // ── Factory Self-Service Order Queue ────────────────────────────────────
   const fetchFactoryOrders = async () => {
     if (!user) return;
+    // Never fetch unmasked buyer data until the sales-rep role has been resolved.
+    if (salesRepLoading) return;
     setFactoryOrdersLoading(true);
     try {
       if (isSalesRep) {
@@ -1169,7 +1216,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         supabase
           .from('orders')
           .select('created_at, total, status, items')
-          .eq('factory_id', user.id)
+          .eq('factory_user_id', user.id)
           .gte('created_at', fromISO),
         supabase
           .from('rfq_requests')
@@ -1379,8 +1426,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       setFactoryResolutionType('');
       setFactoryResolutionNote('');
       await fetchFactoryDisputes();
-      const updated = factoryDisputes.find((d: any) => d.id === selectedFactoryDispute.id);
-      if (updated) setSelectedFactoryDispute({ ...updated, dispute_status: 'factory_resolved' });
+      setSelectedFactoryDispute((prev: any) => (prev ? { ...prev, dispute_status: 'factory_resolved' } : prev));
     } catch (err: any) {
       setFactoryResolveMsg(`❌ ${err.message}`);
     } finally {
@@ -1728,7 +1774,14 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
-    if (!formData.name.trim()) { setFormError('Product name is required.'); return; }
+    if (!user || isSalesRep) { setFormError('غير مصرح لك بإدارة المنتجات.'); return; }
+    if (!formData.name.trim()) { setFormError('اسم المنتج مطلوب.'); return; }
+    const priceNum = parseFloat(formData.unit_price);
+    const moqNum = parseInt(formData.minimum_order_qty);
+    const stockNum = parseFloat(formData.stock_quantity);
+    if (formData.unit_price.trim() && (!Number.isFinite(priceNum) || priceNum < 0)) { setFormError('سعر الوحدة يجب أن يكون رقماً صحيحاً غير سالب.'); return; }
+    if (formData.minimum_order_qty.trim() && (!Number.isFinite(moqNum) || moqNum < 1)) { setFormError('الحد الأدنى للطلب يجب أن يكون 1 على الأقل.'); return; }
+    if (formData.stock_quantity.trim() && (!Number.isFinite(stockNum) || stockNum < 0)) { setFormError('كمية المخزون يجب ألا تكون سالبة.'); return; }
     setFormLoading(true);
     try {
       const payload = {
@@ -1779,6 +1832,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   };
 
   const handleDelete = async (id: string) => {
+    if (!user || isSalesRep) return;
     try {
       const { error } = await supabase
         .from('manufacturer_products')
@@ -1794,6 +1848,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   };
 
   const handleApproveProduct = async (product: Product) => {
+    if (!user || isSalesRep) return;
     try {
       const { error } = await supabase
         .from('manufacturer_products')
@@ -1808,6 +1863,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   };
 
   const handleToggleActive = async (product: Product) => {
+    if (!user || isSalesRep) return;
     try {
       const { error } = await supabase
         .from('manufacturer_products')
@@ -1845,7 +1901,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
 
       // Insert notification for each admin
       if (admins && admins.length > 0) {
-        await Promise.all(
+        const results = await Promise.all(
           admins.map(admin =>
             supabase.from('notifications').insert({
               user_id: admin.id,
@@ -1864,6 +1920,8 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
             })
           )
         );
+        const failed = results.find((r: any) => r?.error);
+        if (failed?.error) throw failed.error;
       }
 
       // Also insert into admin_notifications table if it exists (fallback)
@@ -1921,7 +1979,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
 
   // ── Module (full-screen) mode: load only the data this module needs ──────────
   useEffect(() => {
-    if (!moduleTab || !user) return;
+    if (!moduleTab || !user || salesRepLoading) return;
     switch (moduleTab) {
       case 'financial_hub': fetchBankAccounts(); fetchPaymentSettings(); break;
       case 'finance': fetchFinanceRecords(); break;
@@ -1944,7 +2002,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       default: break;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleTab, user?.id]);
+  }, [moduleTab, user?.id, salesRepLoading]);
 
   // Logistics merges two cards: ?view=bids selects the shipment-bids sub-view
   useEffect(() => {
@@ -1993,7 +2051,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
 
   return (
     <div className={`min-h-screen ${isModuleMode ? 'bg-background' : 'bg-slate-950 pb-16'}`} dir={isRTL ? 'rtl' : 'ltr'}>
-      <Toaster position="top-right" />
+      <Toaster position={isRTL ? 'top-left' : 'top-right'} />
 
       {/* ── Admin Impersonation Sticky Banner ── */}
       {impersonatedFactoryId && (
@@ -2043,10 +2101,14 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
           )}
 
           <div className="flex items-center gap-2">
-            <div className="relative">
+            <div className="relative" ref={userMenuRef}>
               <button
+                type="button"
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors rounded-lg ${isModuleMode ? 'text-muted-foreground hover:text-foreground hover:bg-muted' : 'text-slate-300 hover:text-white hover:bg-slate-800'}`}
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+                aria-label={userName}
+                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${isModuleMode ? 'text-muted-foreground hover:text-foreground hover:bg-muted' : 'text-slate-300 hover:text-white hover:bg-slate-800'}`}
               >
                 <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
                   {userName.charAt(0).toUpperCase()}
@@ -2055,7 +2117,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
                 <Icon name="ChevronDownIcon" size={14} />
               </button>
               {userMenuOpen && (
-                <div className="absolute right-0 top-full mt-1 w-52 bg-card border border-border rounded-xl shadow-lg py-1 z-50">
+                <div role="menu" className="absolute end-0 top-full mt-1 w-52 bg-card border border-border rounded-xl shadow-lg py-1 z-50">
                   <div className="px-4 py-2 border-b border-border">
                     <p className="text-xs font-semibold text-foreground truncate">{userName}</p>
                     {companyName && <p className="text-xs text-muted-foreground truncate">{companyName}</p>}
@@ -2063,10 +2125,10 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
                       {isSalesRep ? md.salesRep : t.manufacturerDashboard.manufacturer}
                     </p>
                   </div>
-                  <Link href="/" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors">
+                  <Link href="/" role="menuitem" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors">
                     <Icon name="HomeIcon" size={16} /> {t.manufacturerDashboard.backToMarketplace}
                   </Link>
-                  <button onClick={handleSignOut} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
+                  <button type="button" role="menuitem" onClick={handleSignOut} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors text-start">
                     <Icon name="ArrowRightOnRectangleIcon" size={16} /> {t.manufacturerDashboard.signOut}
                   </button>
                 </div>
@@ -2629,14 +2691,14 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 px-4 pb-4 sm:pb-0">
           <div className="w-full max-w-lg bg-card rounded-2xl border border-border shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-card z-10">
-              <h2 className="font-bold text-foreground">{editingProduct ? 'Edit Product' : 'Add New Product'}</h2>
+              <h2 className="font-bold text-foreground">{editingProduct ? 'تعديل المنتج' : 'إضافة منتج جديد'}</h2>
               <div className="flex items-center gap-2">
                 <AIProductAssistant
                   categorySlug={formData.category}
                   categoryName={CATEGORIES.find((c) => c.value === formData.category)?.label}
                   productName={formData.name}
                 />
-                <button onClick={() => setShowAddModal(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground">
+                <button type="button" aria-label="إغلاق" onClick={() => setShowAddModal(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                   <Icon name="XMarkIcon" size={18} />
                 </button>
               </div>
@@ -2669,46 +2731,46 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Category *</label>
+                  <label className="block text-xs font-medium text-foreground mb-1">الفئة *</label>
                   <select value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
                     {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">SKU / Code</label>
+                  <label className="block text-xs font-medium text-foreground mb-1">رمز المنتج (SKU)</label>
                   <input type="text" value={formData.sku} onChange={(e) => setFormData({ ...formData, sku: e.target.value })} placeholder="e.g. STL-001" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Unit</label>
+                  <label className="block text-xs font-medium text-foreground mb-1">الوحدة</label>
                   <select value={formData.unit} onChange={(e) => setFormData({ ...formData, unit: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
                     {['kg', 'ton', 'liter', 'piece', 'meter', 'sheet', 'roll', 'box', 'pallet'].map((u) => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Unit Price ($)</label>
+                  <label className="block text-xs font-medium text-foreground mb-1">سعر الوحدة</label>
                   <input type="number" min="0" step="0.01" value={formData.unit_price} onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })} placeholder="0.00" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Min. Order</label>
+                  <label className="block text-xs font-medium text-foreground mb-1">الحد الأدنى للطلب</label>
                   <input type="number" min="1" value={formData.minimum_order_qty} onChange={(e) => setFormData({ ...formData, minimum_order_qty: e.target.value })} placeholder="1" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Stock Quantity</label>
+                  <label className="block text-xs font-medium text-foreground mb-1">كمية المخزون</label>
                   <input type="number" min="0" step="0.01" value={formData.stock_quantity} onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })} placeholder="0" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Inventory Status</label>
+                  <label className="block text-xs font-medium text-foreground mb-1">حالة المخزون</label>
                   <select value={formData.inventory_status} onChange={(e) => setFormData({ ...formData, inventory_status: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
-                    <option value="in_stock">In Stock</option>
-                    <option value="low_stock">Low Stock</option>
-                    <option value="out_of_stock">Out of Stock</option>
-                    <option value="discontinued">Discontinued</option>
+                    <option value="in_stock">متوفر</option>
+                    <option value="low_stock">مخزون منخفض</option>
+                    <option value="out_of_stock">نفد المخزون</option>
+                    <option value="discontinued">متوقف</option>
                   </select>
                 </div>
               </div>
@@ -2719,7 +2781,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
                   {formData.origin_country && <SupplierLanguageBadge originCountry={formData.origin_country} size="sm" />}
                 </label>
                 <select value={formData.origin_country} onChange={(e) => setFormData({ ...formData, origin_country: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
-                  <option value="">Select country</option>
+                  <option value="">اختر الدولة</option>
                   <optgroup label="🌏 Asia">
                     <option value="China">🇨🇳 China</option>
                     <option value="India">🇮🇳 India</option>
@@ -2778,10 +2840,10 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
 
               <div className="flex gap-3 pt-1">
                 <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 h-10 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-                  Cancel
+                  إلغاء
                 </button>
                 <button type="submit" disabled={formLoading} className="flex-1 h-10 bg-primary text-primary-foreground rounded-lg text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2 transition-opacity active:opacity-80">
-                  {formLoading ? <><Icon name="ArrowPathIcon" size={15} className="animate-spin" /> Saving...</> : (editingProduct ? 'Save Changes' : 'Add Product')}
+                  {formLoading ? <><Icon name="ArrowPathIcon" size={15} className="animate-spin" /> جارٍ الحفظ...</> : (editingProduct ? 'حفظ التعديلات' : 'إضافة المنتج')}
                 </button>
               </div>
             </form>
@@ -2796,14 +2858,14 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
             <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
               <Icon name="TrashIcon" size={22} className="text-red-600" />
             </div>
-            <h3 className="text-center font-bold text-foreground mb-1">Delete Product?</h3>
-            <p className="text-center text-sm text-muted-foreground mb-5">This action cannot be undone. The product will be permanently removed.</p>
+            <h3 className="text-center font-bold text-foreground mb-1">حذف المنتج؟</h3>
+            <p className="text-center text-sm text-muted-foreground mb-5">لا يمكن التراجع عن هذا الإجراء. سيتم حذف المنتج نهائياً.</p>
             <div className="flex gap-3">
-              <button onClick={() => setDeleteId(null)} className="flex-1 h-10 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">
-                Cancel
+              <button type="button" onClick={() => setDeleteId(null)} className="flex-1 h-10 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">
+                إلغاء
               </button>
-              <button onClick={() => handleDelete(deleteId)} className="flex-1 h-10 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors">
-                Delete
+              <button type="button" onClick={() => handleDelete(deleteId)} className="flex-1 h-10 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors">
+                حذف
               </button>
             </div>
           </div>
@@ -3083,7 +3145,7 @@ function FactoryAdminMessaging({
                         </span>
                       )}
                       <span className="text-[9px] text-muted-foreground">
-                        {new Date(msg.created_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(msg.created_at).toLocaleTimeString(isRTL ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
                     {/* Bubble */}
