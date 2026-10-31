@@ -1992,7 +1992,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   }
 
   return (
-    <div className="min-h-screen bg-background" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className={`min-h-screen ${isModuleMode ? 'bg-background' : 'bg-slate-950 pb-16'}`} dir={isRTL ? 'rtl' : 'ltr'}>
       <Toaster position="top-right" />
 
       {/* ── Admin Impersonation Sticky Banner ── */}
@@ -2022,13 +2022,13 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       )}
 
       {/* Top Nav — Ultra-Luxurious */}
-      <header className="sticky top-0 z-50 bg-card/95 backdrop-blur-md border-b border-border/60 shadow-sm">
+      <header className={`sticky top-0 z-50 backdrop-blur-md border-b shadow-sm ${isModuleMode ? 'bg-card/95 border-border/60' : 'bg-slate-900/95 border-slate-800'}`}>
         <div className="max-w-7xl mx-auto px-4 md:px-6 flex items-center gap-3 h-14">
           <Link href="/" className="flex items-center gap-2 shrink-0">
             <AppLogo size={28} />
             <div className="flex flex-col leading-none">
-              <span className="font-bold text-sm text-foreground tracking-tight" translate="no">Direct Hub</span>
-              <span className="text-[9px] text-muted-foreground font-medium hidden sm:block">{t.manufacturerDashboard.title}</span>
+              <span className={`font-bold text-sm tracking-tight ${isModuleMode ? 'text-foreground' : 'text-white'}`} translate="no">Direct Hub</span>
+              <span className={`text-[9px] font-medium hidden sm:block ${isModuleMode ? 'text-muted-foreground' : 'text-cyan-300'}`}>{t.manufacturerDashboard.title}</span>
             </div>
           </Link>
 
@@ -2046,7 +2046,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
             <div className="relative">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-muted"
+                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors rounded-lg ${isModuleMode ? 'text-muted-foreground hover:text-foreground hover:bg-muted' : 'text-slate-300 hover:text-white hover:bg-slate-800'}`}
               >
                 <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
                   {userName.charAt(0).toUpperCase()}
@@ -2157,39 +2157,40 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       <main className="max-w-7xl mx-auto px-4 md:px-6 py-6">
         {/* Page title — Ultra-Luxurious */}
         {!isModuleMode && (
-        <div className="flex items-center justify-between mb-7">
+        <div className="rounded-3xl bg-gradient-to-l from-cyan-900/40 via-slate-900 to-slate-900 border border-cyan-500/20 p-6 mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-black text-foreground tracking-tight">{t.manufacturerDashboard.title}</h1>
-            <p className="text-sm text-muted-foreground mt-0.5 font-medium">
+            <p className="text-xs text-cyan-300 font-bold mb-1">Local Factory Room</p>
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">{t.manufacturerDashboard.title}</h1>
+            <p className="text-sm text-slate-400 mt-1 font-medium">
               {companyName ? `${companyName} — ` : ''}{isSalesRep ? md.salesRepLimited : t.manufacturerDashboard.subtitle}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {!isSalesRep && (
               <>
                 <Link
                   href="/factory/register"
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-slate-700 bg-slate-800/80 rounded-lg text-sm font-medium text-slate-200 hover:bg-slate-700 transition-colors"
                 >
                   <Icon name="BuildingOffice2Icon" size={15} /> {t.manufacturerDashboard.factoryProfile}
                 </Link>
                 <Link
                   href="/invoices"
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-slate-700 bg-slate-800/80 rounded-lg text-sm font-medium text-slate-200 hover:bg-slate-700 transition-colors"
                 >
                   <Icon name="DocumentTextIcon" size={15} /> {t.nav.invoices}
                 </Link>
                 <Link
                   href={`/storefront/${user?.id || ''}`}
                   target="_blank"
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-emerald-300 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-semibold hover:bg-emerald-100 transition-colors"
+                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 rounded-lg text-sm font-semibold hover:bg-emerald-500/20 transition-colors"
                 >
                   <Icon name="GlobeAltIcon" size={15} /> {md.publicStorefront}
                 </Link>
                 {canShowLocalErp && (
                   <Link
                     href="/manufacturer/erp"
-                    className="hidden sm:flex items-center gap-2 px-3 py-2 border border-primary/30 bg-primary/5 text-primary rounded-lg text-sm font-semibold hover:bg-primary/10 transition-colors"
+                    className="hidden sm:flex items-center gap-2 px-3 py-2 border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 rounded-lg text-sm font-semibold hover:bg-cyan-500/20 transition-colors"
                     title="Industrial ERP Dashboard"
                   >
                     <Icon name="ChartBarSquareIcon" size={15} />
@@ -2199,7 +2200,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
                 )}
                 <Link
                   href="/manufacturer/international-dashboard"
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-cyan-300 bg-cyan-50 text-cyan-700 rounded-lg text-sm font-semibold hover:bg-cyan-100 transition-colors"
+                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 rounded-lg text-sm font-semibold hover:bg-cyan-500/20 transition-colors"
                   title="International Factory Control Room"
                 >
                   <Icon name="GlobeAltIcon" size={15} />
@@ -2208,7 +2209,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
                 </Link>
                 <Link
                   href="/manufacturer/b2b"
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-indigo-300 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-semibold hover:bg-indigo-100 transition-colors"
+                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-indigo-500/40 bg-indigo-500/10 text-indigo-300 rounded-lg text-sm font-semibold hover:bg-indigo-500/20 transition-colors"
                   title="B2B Sales System"
                 >
                   <Icon name="BuildingOffice2Icon" size={15} />
@@ -2217,7 +2218,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
                 </Link>
                 <Link
                   href="/manufacturer/b2c"
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-rose-300 bg-rose-50 text-rose-700 rounded-lg text-sm font-semibold hover:bg-rose-100 transition-colors"
+                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-rose-500/40 bg-rose-500/10 text-rose-300 rounded-lg text-sm font-semibold hover:bg-rose-500/20 transition-colors"
                   title="B2C Sales System"
                 >
                   <Icon name="ShoppingBagIcon" size={15} />
@@ -2228,7 +2229,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
                   <Link
                     href={`/store/${user.id}`}
                     target="_blank"
-                    className="hidden sm:flex items-center gap-2 px-3 py-2 border border-green-300 bg-green-50 text-green-700 rounded-lg text-sm font-semibold hover:bg-green-100 transition-colors"
+                    className="hidden sm:flex items-center gap-2 px-3 py-2 border border-green-500/40 bg-green-500/10 text-green-300 rounded-lg text-sm font-semibold hover:bg-green-500/20 transition-colors"
                     title="Public Storefront"
                   >
                     <Icon name="ArrowTopRightOnSquareIcon" size={15} />
@@ -2242,7 +2243,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
               <button
                 type="button"
                 onClick={() => setShowDealLinkModal(true)}
-                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 border border-emerald-300 bg-emerald-50 text-emerald-700 rounded-lg text-xs sm:text-sm font-semibold hover:bg-emerald-100 transition-colors"
+                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 rounded-lg text-xs sm:text-sm font-semibold hover:bg-emerald-500/20 transition-colors"
                 aria-label="إنشاء رابط صفقة"
               >
                 <Icon name="LinkIcon" size={15} />
@@ -2253,7 +2254,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
             {!isSalesRep && (
               <Link
                 href="/seller/products"
-                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 border border-primary/30 bg-primary/5 text-primary rounded-lg text-xs sm:text-sm font-semibold hover:bg-primary/10 transition-colors"
+                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 rounded-lg text-xs sm:text-sm font-semibold hover:bg-cyan-500/20 transition-colors"
                 aria-label="إدارة المنتجات"
               >
                 <Icon name="ArrowTopRightOnSquareIcon" size={15} />
@@ -2281,89 +2282,92 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
 
         {/* Dashboard Tabs */}
         {!isModuleMode && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
-          {([
-            { key: 'products', label: t.manufacturerDashboard.productsAndInventory, icon: 'CubeIcon', gradient: 'linear-gradient(135deg,#3B82F6,#2563EB)', shadow: 'shadow-blue-100', show: true },
-            { key: 'financial_hub', label: 'المالية والأرباح', icon: 'BanknotesIcon', gradient: 'linear-gradient(135deg,#10B981,#059669)', shadow: 'shadow-emerald-100', show: !isSalesRep },
-            { key: 'factory_settings', label: 'إعدادات وتوثيق المصنع', icon: 'IdentificationIcon', gradient: 'linear-gradient(135deg,#0D9488,#0F766E)', shadow: 'shadow-teal-100', show: !isSalesRep },
-            { key: 'escrow_orders', label: t.manufacturerDashboard.escrowOrders, icon: 'ShieldCheckIcon', gradient: 'linear-gradient(135deg,#6366F1,#4F46E5)', shadow: 'shadow-indigo-100', show: !isSalesRep, badge: escrowOrders.filter((o: any) => o.escrow_status === 'funds_secured').length || undefined },
-            { key: 'seller_fulfillment', label: 'الشحن والخدمات اللوجستية', icon: 'TruckIcon', gradient: 'linear-gradient(135deg,#059669,#047857)', shadow: 'shadow-emerald-100', show: true },
-            { key: 'factory_orders', label: 'إدارة الطلبات', icon: 'ClipboardDocumentListIcon', gradient: 'linear-gradient(135deg,#0EA5E9,#0284C7)', shadow: 'shadow-sky-100', show: true, badge: factoryOrders.filter((o: any) => o.status === 'pending').length || undefined },
-            { key: 'disputes', label: t.manufacturerDashboard.disputesAndComplaints, icon: 'FlagIcon', gradient: 'linear-gradient(135deg,#EF4444,#DC2626)', shadow: 'shadow-red-100', show: true, badge: factoryDisputes.filter((o: any) => ['open', 'factory_reviewing'].includes(o.dispute_status)).length || undefined },
-            { key: 'analytics', label: t.manufacturerDashboard.analytics, icon: 'PresentationChartLineIcon', gradient: 'linear-gradient(135deg,#F97316,#EA580C)', shadow: 'shadow-orange-100', show: true },
-            { key: 'admin_messaging', label: t.manufacturerDashboard.adminMessaging, icon: 'ChatBubbleLeftRightIcon', gradient: 'linear-gradient(135deg,#8B5CF6,#7C3AED)', shadow: 'shadow-violet-100', show: true },
-            { key: 'inventory', label: md.tabInventory, icon: 'ArchiveBoxIcon', gradient: 'linear-gradient(135deg,#F59E0B,#D97706)', shadow: 'shadow-amber-100', show: true },
-            { key: 'archive', label: md.tabArchive, icon: 'FolderOpenIcon', gradient: 'linear-gradient(135deg,#64748B,#475569)', shadow: 'shadow-slate-100', show: true },
-            { key: 'sales_team', label: md.tabSalesTeam, icon: 'UserGroupIcon', gradient: 'linear-gradient(135deg,#06B6D4,#0891B2)', shadow: 'shadow-cyan-100', show: !isSalesRep, badge: salesReps.filter(r => r.status === 'active').length || undefined },
-            { key: 'all_sales', label: 'صفقات وقنوات البيع', icon: 'CurrencyDollarIcon', gradient: 'linear-gradient(135deg,#059669,#047857)', shadow: 'shadow-emerald-100', show: !isSalesRep },
-            { key: 'contracts', label: 'العقود والاتفاقيات', icon: 'DocumentCheckIcon', gradient: 'linear-gradient(135deg,#D97706,#EA580C)', shadow: 'shadow-amber-100', show: !isSalesRep },
-            { key: 'invoicing', label: 'فوترة التصدير الدولية', icon: 'DocumentTextIcon', gradient: 'linear-gradient(135deg,#0891B2,#0E7490)', shadow: 'shadow-cyan-100', show: !isSalesRep },
-            { key: 'production', label: 'خطوط الإنتاج والجودة', icon: 'Cog6ToothIcon', gradient: 'linear-gradient(135deg,#475569,#334155)', shadow: 'shadow-slate-100', show: !isSalesRep },
-          ] as Array<{ key: string; label: string; icon: string; gradient: string; shadow: string; show: boolean; badge?: number | string }>)
-            .filter(tab => tab.show)
-            .map(tab => {
-              const isActive = activeTab === tab.key;
-              const routed = MODULE_ROUTES[tab.key as DashboardTab];
-              const cardClass = `relative flex flex-col items-center gap-2.5 p-4 rounded-2xl border transition-all duration-200 text-center overflow-hidden ${
-                isActive
-                  ? 'border-transparent shadow-lg scale-[1.03]'
-                  : 'bg-card border-border/60 text-muted-foreground hover:shadow-md hover:-translate-y-0.5 hover:border-border'
-              }`;
-              const cardInner = (
-                <>
-                  {/* Subtle shimmer for active */}
-                  {isActive && <div className="absolute inset-0 opacity-20" style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.3) 0%, transparent 60%)' }} />}
-                  {/* Icon circle */}
-                  <div
-                    className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm transition-all"
-                    style={isActive ? { background: 'rgba(255,255,255,0.25)' } : { background: tab.gradient }}
-                  >
-                    <Icon name={tab.icon as any} size={20} className="text-white" />
-                  </div>
-                  {/* Label */}
-                  <span className={`text-xs font-bold leading-tight ${isActive ? 'text-white' : ''}`}>{tab.label}</span>
-                  {/* Badge */}
-                  {tab.badge !== undefined && tab.badge !== 0 && (
-                    <span className={`absolute top-2 ${isRTL ? 'left-2' : 'right-2'} min-w-[20px] h-5 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1.5 ${
-                      tab.key === 'disputes' ? 'bg-red-500 animate-pulse' : 'bg-white/30'
-                    } ${isActive ? '' : 'bg-primary'}`}>
-                      {tab.badge}
-                    </span>
-                  )}
-                </>
-              );
-              if (routed) {
-                return (
-                  <Link
-                    key={tab.key}
-                    href={routed.href}
-                    prefetch
-                    className={cardClass}
-                    style={isActive ? { background: tab.gradient, boxShadow: `0 8px 24px -4px rgba(0,0,0,0.18)` } : {}}
-                  >
-                    {cardInner}
-                  </Link>
-                );
-              }
+        <div>
+          {(() => {
+            type HubCard = { key: string; label: string; icon: string; accent: string; hint: string; show: boolean; badge?: number | string };
+            const hubCards: HubCard[] = [
+              { key: 'products', label: t.manufacturerDashboard.productsAndInventory, icon: '🛍️', accent: 'from-teal-600/30 to-teal-900/20 border-teal-500/30', hint: 'منتجات المصنع المعروضة للبيع', show: true },
+              { key: 'inventory', label: md.tabInventory, icon: '📦', accent: 'from-cyan-600/30 to-cyan-900/20 border-cyan-500/30', hint: 'المواد الخام ومخزون الإنتاج', show: true },
+              { key: 'all_sales', label: 'صفقات وقنوات البيع', icon: '🤝', accent: 'from-amber-600/30 to-amber-900/20 border-amber-500/30', hint: 'قنوات البيع وصفقات الجملة والتجزئة', show: !isSalesRep },
+              { key: 'contracts', label: 'العقود والاتفاقيات', icon: '📜', accent: 'from-purple-600/30 to-purple-900/20 border-purple-500/30', hint: 'عقود التوريد والاتفاقيات التجارية', show: !isSalesRep },
+              { key: 'factory_orders', label: 'إدارة الطلبات', icon: '🧾', accent: 'from-orange-600/30 to-orange-900/20 border-orange-500/30', hint: 'طلبات المصنع وحالاتها', show: true, badge: factoryOrders.filter((o: any) => o.status === 'pending').length || undefined },
+              { key: 'seller_fulfillment', label: 'الشحن والخدمات اللوجستية', icon: '🚛', accent: 'from-indigo-600/30 to-indigo-900/20 border-indigo-500/30', hint: 'الشحن الذاتي وعروض الشحن وتتبع التوصيل', show: true },
+              { key: 'production', label: 'خطوط الإنتاج والجودة', icon: '⚙️', accent: 'from-slate-600/30 to-slate-900/20 border-slate-500/30', hint: 'الطاقة الإنتاجية وفحص الجودة', show: !isSalesRep },
+              { key: 'sales_team', label: md.tabSalesTeam, icon: '👥', accent: 'from-pink-600/30 to-pink-900/20 border-pink-500/30', hint: 'مندوبو المبيعات وصلاحياتهم', show: !isSalesRep, badge: salesReps.filter(r => r.status === 'active').length || undefined },
+              { key: 'financial_hub', label: 'المالية والأرباح', icon: '💵', accent: 'from-lime-600/30 to-lime-900/20 border-lime-500/30', hint: 'المحفظة والأرباح والحسابات البنكية', show: !isSalesRep },
+              { key: 'escrow_orders', label: t.manufacturerDashboard.escrowOrders, icon: '🔒', accent: 'from-blue-600/30 to-blue-900/20 border-blue-500/30', hint: 'حالة الضمان المالي ورمز التسليم', show: !isSalesRep, badge: escrowOrders.filter((o: any) => o.escrow_status === 'funds_secured').length || undefined },
+              { key: 'invoicing', label: 'فوترة التصدير الدولية', icon: '🧮', accent: 'from-emerald-600/30 to-emerald-900/20 border-emerald-500/30', hint: 'الفواتير والمستندات المالية', show: !isSalesRep },
+              { key: 'analytics', label: t.manufacturerDashboard.analytics, icon: '📊', accent: 'from-violet-600/30 to-violet-900/20 border-violet-500/30', hint: 'مؤشرات الأداء والمبيعات', show: true },
+              { key: 'factory_settings', label: 'إعدادات وتوثيق المصنع', icon: '🛡️', accent: 'from-sky-600/30 to-sky-900/20 border-sky-500/30', hint: 'السجل التجاري والترخيص الصناعي', show: !isSalesRep },
+              { key: 'disputes', label: t.manufacturerDashboard.disputesAndComplaints, icon: '⚖️', accent: 'from-red-600/30 to-red-900/20 border-red-500/30', hint: 'متابعة الشكاوى والنزاعات', show: true, badge: factoryDisputes.filter((o: any) => ['open', 'factory_reviewing'].includes(o.dispute_status)).length || undefined },
+              { key: 'admin_messaging', label: t.manufacturerDashboard.adminMessaging, icon: '💬', accent: 'from-rose-600/30 to-rose-900/20 border-rose-500/30', hint: 'مراسلة إدارة المنصة', show: true },
+              { key: 'archive', label: md.tabArchive, icon: '🗂️', accent: 'from-zinc-600/30 to-zinc-900/20 border-zinc-500/30', hint: 'السجلات والعمليات المؤرشفة', show: true },
+            ];
+            const hubSections: Array<{ title: string; subtitle: string; keys: string[] }> = [
+              { title: 'المنتجات والتوريدات', subtitle: 'Products & Supply', keys: ['products', 'inventory', 'all_sales', 'contracts'] },
+              { title: 'الطلبات والعمليات', subtitle: 'Orders & Operations', keys: ['factory_orders', 'seller_fulfillment', 'production', 'sales_team'] },
+              { title: 'المالية والضمان والحسابات', subtitle: 'Financials & Escrow', keys: ['financial_hub', 'escrow_orders', 'invoicing'] },
+              { title: 'التحليلات والتوثيق والمراسلات', subtitle: 'Analytics & Compliance', keys: ['analytics', 'factory_settings', 'disputes', 'admin_messaging', 'archive'] },
+            ];
+            return hubSections.map((section) => {
+              const cards = section.keys
+                .map((k) => hubCards.find((c) => c.key === k))
+                .filter((c): c is HubCard => !!c && c.show);
+              if (cards.length === 0) return null;
               return (
-                <button
-                  key={tab.key}
-                  onClick={() => {
-                    if (tab.key === 'products') setActiveTab('products');
-                    else if (tab.key === 'finance') { setActiveTab('finance'); fetchFinanceRecords(); }
-                    else if (tab.key === 'escrow_orders') { setActiveTab('escrow_orders'); fetchEscrowOrders(); }
-                    else if (tab.key === 'admin_messaging') { setActiveTab('admin_messaging'); fetchAdminConversation(); }
-                    else if (tab.key === 'archive') { setActiveTab('archive'); fetchArchiveRecords(); }
-                    else if (tab.key === 'all_sales') { setActiveTab('all_sales'); }
-                    else if (tab.key === 'contracts') { setActiveTab('contracts'); }
-                  }}
-                  className={cardClass}
-                  style={isActive ? { background: tab.gradient, boxShadow: `0 8px 24px -4px rgba(0,0,0,0.18)` } : {}}
-                >
-                  {cardInner}
-                </button>
+                <section key={section.title} className="mb-8">
+                  <div className="flex items-baseline gap-2 mb-3">
+                    <h2 className="text-base font-black text-white">{section.title}</h2>
+                    <span className="text-[11px] text-slate-500">{section.subtitle}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {cards.map((tab) => {
+                      const routed = MODULE_ROUTES[tab.key as DashboardTab];
+                      const cardClass = `group relative text-start rounded-2xl border bg-gradient-to-br ${tab.accent} p-4 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400`;
+                      const cardInner = (
+                        <>
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-2xl" aria-hidden="true">{tab.icon}</span>
+                            {tab.badge !== undefined && tab.badge !== 0 && (
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full text-white ${tab.key === 'disputes' ? 'bg-red-500 animate-pulse' : 'bg-white/10'}`}>
+                                {tab.badge}
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="text-sm font-black text-white mt-3">{tab.label}</h3>
+                          <p className="text-xs text-slate-400 mt-1 leading-relaxed">{tab.hint}</p>
+                        </>
+                      );
+                      if (routed) {
+                        return (
+                          <Link key={tab.key} href={routed.href} prefetch className={`block ${cardClass}`}>
+                            {cardInner}
+                          </Link>
+                        );
+                      }
+                      return (
+                        <button
+                          key={tab.key}
+                          onClick={() => {
+                            if (tab.key === 'products') setActiveTab('products');
+                            else if (tab.key === 'finance') { setActiveTab('finance'); fetchFinanceRecords(); }
+                            else if (tab.key === 'escrow_orders') { setActiveTab('escrow_orders'); fetchEscrowOrders(); }
+                            else if (tab.key === 'admin_messaging') { setActiveTab('admin_messaging'); fetchAdminConversation(); }
+                            else if (tab.key === 'archive') { setActiveTab('archive'); fetchArchiveRecords(); }
+                            else if (tab.key === 'all_sales') { setActiveTab('all_sales'); }
+                            else if (tab.key === 'contracts') { setActiveTab('contracts'); }
+                          }}
+                          className={`block w-full ${cardClass}`}
+                        >
+                          {cardInner}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
               );
-            })}
+            });
+          })()}
         </div>
         )}
 
