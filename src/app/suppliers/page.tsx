@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -24,12 +24,17 @@ interface SupplierProfile {
   logo_url: string;
   tier: 'standard' | 'verified' | 'premium';
   is_verified: boolean;
+  origin_type: 'local' | 'international';
   response_rate: number;
   avg_response_time: string;
   total_rfqs_received: number;
   rating: number;
   review_count: number;
 }
+
+const PAGE_SIZE = 24;
+
+type ScopeFilter = 'all' | 'local' | 'international';
 
 const CATEGORY_KEYS = [
   { id: 'All', labelKey: 'catAll' },
@@ -79,6 +84,7 @@ function normalizeSupplier(row: Record<string, unknown>): SupplierProfile {
     logo_url: String(row.logo_url || ''),
     tier,
     is_verified: Boolean(row.is_verified),
+    origin_type: String(row.origin_type || 'local') === 'international' ? 'international' : 'local',
     response_rate: Number(row.response_rate) || 0,
     avg_response_time: String(row.avg_response_time || '—'),
     total_rfqs_received: Number(row.total_rfqs_received) || 0,
@@ -109,9 +115,7 @@ function SupplierCard({ supplier }: { supplier: SupplierProfile }) {
   const rfqHref = supplier.user_id
     ? `/rfq/new?supplier=${supplier.user_id}`
     : `/rfq/new`;
-  const chatHref = supplier.user_id
-    ? `/chat/${supplier.user_id}`
-    : `/messaging`;
+  const chatHref = '/messaging';
 
   return (
     <div className="bg-card border border-border rounded-2xl p-5 hover:shadow-md hover:border-primary/30 transition-all duration-200 flex flex-col gap-4">
@@ -219,72 +223,79 @@ function SupplierCard({ supplier }: { supplier: SupplierProfile }) {
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<SupplierProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedCountry, setSelectedCountry] = useState('__all__');
   const [selectedTier, setSelectedTier] = useState('all');
+  const [scope, setScope] = useState<ScopeFilter>('all');
   const [sortBy, setSortBy] = useState<'rating' | 'response_rate' | 'total_rfqs_received'>('rating');
   const { t, isRTL } = useLanguage();
   const sp = t.suppliers as Record<string, string>;
 
-  const supabase = createClient();
-
-  const fetchSuppliers = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Prefer full column set already present on supplier_profiles (no schema changes).
-      // Fall back to a smaller select if the broader query is rejected by the API.
-      let rows: Record<string, unknown>[] | null = null;
-
-      const fullSelect =
-        'id, user_id, company_name, description, country, city, tier, rating, response_rate, avg_response_time, total_rfqs_received, main_categories, certifications, is_verified, logo_url, review_count, is_active, created_at';
-
-      const { data, error } = await supabase
-        .from('supplier_profiles')
-        .select(fullSelect)
-        .eq('is_active', true)
-        .order(sortBy, { ascending: false })
-        .limit(100);
-
-      if (error) {
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('supplier_profiles')
-          .select('id, company_name, description, country, tier, rating, response_rate, total_rfqs_received, main_categories, is_verified, logo_url, is_active, created_at')
-          .eq('is_active', true)
-          .order(sortBy, { ascending: false })
-          .limit(100);
-        if (fallbackError) throw fallbackError;
-        rows = (fallbackData || []) as Record<string, unknown>[];
-      } else {
-        rows = (data || []) as Record<string, unknown>[];
-      }
-
-      setSuppliers((rows || []).map(normalizeSupplier));
-    } catch {
-      setSuppliers([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [sortBy]);
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
-    fetchSuppliers();
+    const id = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(id);
+  }, [search]);
+
+  const fetchSuppliers = useCallback(async (offset: number, append: boolean) => {
+    if (append) setLoadingMore(true); else setLoading(true);
+    try {
+      const fullSelect =
+        'id, user_id, company_name, description, country, city, tier, rating, response_rate, avg_response_time, total_rfqs_received, main_categories, certifications, is_verified, origin_type, logo_url, review_count, is_active, created_at';
+
+      const safeTerm = debouncedSearch.replace(/[%,()]/g, ' ').trim();
+
+      let q = supabase
+        .from('supplier_profiles')
+        .select(fullSelect, { count: 'exact' })
+        .eq('is_active', true);
+
+      if (safeTerm) {
+        q = q.or(`company_name.ilike.%${safeTerm}%,description.ilike.%${safeTerm}%,country.ilike.%${safeTerm}%,city.ilike.%${safeTerm}%`);
+      }
+      if (selectedCategory !== 'All') q = q.contains('main_categories', [selectedCategory]);
+      if (selectedCountry !== '__all__') q = q.eq('country', selectedCountry);
+      if (selectedTier !== 'all') q = q.eq('tier', selectedTier);
+      if (scope !== 'all') q = q.eq('origin_type', scope);
+
+      // Verified-first ranking, then local before international (when showing all), then chosen metric
+      q = q
+        .order('is_verified', { ascending: false })
+        .order('origin_type', { ascending: true })
+        .order(sortBy, { ascending: false })
+        .order('created_at', { ascending: false })
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      const { data, error, count } = await q;
+      if (error) throw error;
+
+      const mapped = ((data || []) as Record<string, unknown>[]).map(normalizeSupplier);
+      setSuppliers(prev => (append ? [...prev, ...mapped] : mapped));
+      setTotalCount(typeof count === 'number' ? count : null);
+      setHasMore(mapped.length === PAGE_SIZE && (typeof count !== 'number' || offset + mapped.length < count));
+    } catch {
+      if (!append) {
+        setSuppliers([]);
+        setTotalCount(0);
+      }
+      setHasMore(false);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [supabase, debouncedSearch, selectedCategory, selectedCountry, selectedTier, scope, sortBy]);
+
+  useEffect(() => {
+    fetchSuppliers(0, false);
   }, [fetchSuppliers]);
 
-  const filtered = suppliers.filter(s => {
-    const name = (s.company_name || '').toLowerCase();
-    const desc = (s.description || '').toLowerCase();
-    const country = (s.country || '').toLowerCase();
-    const q = search.toLowerCase();
-    const matchSearch = !search || name.includes(q) || desc.includes(q) || country.includes(q);
-    const cats = s.main_categories || [];
-    const matchCat = selectedCategory === 'All' || cats.some(c =>
-      (c || '').toLowerCase().includes(selectedCategory.toLowerCase())
-    );
-    const matchCountry = selectedCountry === '__all__' || s.country === selectedCountry;
-    const matchTier = selectedTier === 'all' || s.tier === selectedTier;
-    return matchSearch && matchCat && matchCountry && matchTier;
-  });
+  const filtered = suppliers;
 
   return (
     <div className="min-h-screen bg-background flex flex-col" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -342,6 +353,28 @@ export default function SuppliersPage() {
                 ))}
               </div>
 
+              {/* Scope: local vs international */}
+              <div className="flex rounded-lg border border-border overflow-hidden text-xs font-medium">
+                {([
+                  { id: 'all', label: sp.scopeAll || 'All' },
+                  { id: 'local', label: sp.scopeLocal || 'Local' },
+                  { id: 'international', label: sp.scopeInternational || 'International' },
+                ] as { id: ScopeFilter; label: string }[]).map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setScope(opt.id)}
+                    className={`px-3 py-1.5 transition-colors ${
+                      scope === opt.id
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-background text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
               {/* Country select */}
               <select
                 value={selectedCountry}
@@ -380,7 +413,7 @@ export default function SuppliersPage() {
           {/* Results count */}
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-muted-foreground">
-              <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
+              <span className="font-semibold text-foreground">{totalCount ?? filtered.length}</span>{' '}
               {sp.suppliersFound}
             </p>
           </div>
@@ -416,18 +449,32 @@ export default function SuppliersPage() {
                 {sp.noSuppliersDesc}
               </p>
               <button
-                onClick={() => { setSearch(''); setSelectedCategory('All'); setSelectedCountry('__all__'); setSelectedTier('all'); }}
+                onClick={() => { setSearch(''); setSelectedCategory('All'); setSelectedCountry('__all__'); setSelectedTier('all'); setScope('all'); }}
                 className="mt-4 px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg"
               >
                 {sp.clearFilters}
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filtered.map(supplier => (
-                <SupplierCard key={supplier.id} supplier={supplier} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filtered.map(supplier => (
+                  <SupplierCard key={supplier.id} supplier={supplier} />
+                ))}
+              </div>
+              {hasMore && (
+                <div className="flex justify-center mt-6">
+                  <button
+                    type="button"
+                    disabled={loadingMore}
+                    onClick={() => fetchSuppliers(suppliers.length, true)}
+                    className="px-6 py-2.5 bg-primary text-primary-foreground text-sm font-semibold rounded-lg disabled:opacity-50"
+                  >
+                    {loadingMore ? '...' : (sp.loadMore || 'Load more')}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </main>

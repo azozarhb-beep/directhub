@@ -28,6 +28,9 @@ const envHostOrigins = [
   process.env.VERCEL_BRANCH_URL,
   process.env.NEXT_PUBLIC_VERCEL_URL,
   process.env.HOSTNAME,
+  process.env.HOST,
+  process.env.PUBLIC_HOST,
+  process.env.NEXT_PUBLIC_HOST,
 ]
   .filter(Boolean)
   .map((o) => {
@@ -57,6 +60,11 @@ const previewEnvHosts = [
   process.env.NEXT_PUBLIC_APP_URL,
   process.env.APP_URL,
   process.env.PUBLIC_URL,
+  process.env.DEV_ORIGIN,
+  process.env.NEXT_PUBLIC_DEV_ORIGIN,
+  process.env.WEBSITE_HOSTNAME,
+  process.env.REPLIT_DEV_DOMAIN,
+  process.env.GITPOD_WORKSPACE_URL,
   process.env.CODESPACE_NAME && process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN
     ? `${process.env.CODESPACE_NAME}-3000.${process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}`
     : null,
@@ -72,91 +80,208 @@ const previewEnvHosts = [
   });
 
 /** @type {import('next').NextConfig} */
+const baseDevOrigins = [
+  'localhost',
+  '127.0.0.1',
+  '0.0.0.0',
+  '[::1]',
+  '::1',
+  '*.localhost',
+  'direct-hub.net',
+  'www.direct-hub.net',
+  '*.direct-hub.net',
+  '**.direct-hub.net',
+  'dhiwise.com',
+  '*.dhiwise.com',
+  '**.dhiwise.com',
+  'dhiwise.dev',
+  '**.dhiwise.dev',
+  'dhiwise.net',
+  '**.dhiwise.net',
+  'rocket.new',
+  '**.rocket.new',
+  'builtwithrocket.new',
+  '**.builtwithrocket.new',
+  'rocketcdn.com',
+  '**.rocketcdn.com',
+  'rocketcdn.net',
+  '**.rocketcdn.net',
+  'rocket.dev',
+  '**.rocket.dev',
+  'rocketapp.dev',
+  '**.rocketapp.dev',
+  'rocketapp.io',
+  '**.rocketapp.io',
+  '*.vercel.app',
+  '**.vercel.app',
+  '*.vercel.run',
+  '**.vercel.run',
+  '*.vusercontent.net',
+  '**.vusercontent.net',
+  '*.e2b.dev',
+  '**.e2b.dev',
+  '*.e2b.app',
+  '**.e2b.app',
+  '**.app.github.dev',
+  '**.githubpreview.dev',
+  '**.gitpod.io',
+  '**.codesandbox.io',
+  '**.csb.app',
+  '**.stackblitz.io',
+  '**.webcontainer.io',
+  '**.webcontainer-api.io',
+  '**.ngrok-free.app',
+  '**.ngrok.io',
+  '**.trycloudflare.com',
+  '**.loca.lt',
+  '**.fly.dev',
+  '**.netlify.app',
+  '**.onrender.com',
+  '**.railway.app',
+  '**.replit.dev',
+  '**.repl.co',
+  '**.glitch.me',
+  '*.rocket.new',
+  '*.builtwithrocket.new',
+  '*.rocketcdn.com',
+  '*.rocketcdn.net',
+  '*.rocketapp.dev',
+  '*.rocketapp.io',
+  '*.github.dev',
+  '**.github.dev',
+  '*.csb.app',
+  '*.gitpod.io',
+  '**.local',
+  '**.lan',
+  '**.internal',
+  '**.com',
+  '**.net',
+  '**.org',
+  '**.io',
+  '**.dev',
+  '**.app',
+  '**.new',
+  '**.run',
+  '**.co',
+  '**.ai',
+  '**.cloud',
+  '**.page',
+  '**.site',
+  '**.online',
+  '**.me',
+  '**.xyz',
+  '**.tech',
+  '**.sh',
+  '**.so',
+  '**.build',
+  '**.pub',
+  '**.studio',
+  '**.systems',
+  '**.software',
+  '**.work',
+  '**.live',
+  '**.link',
+  '**.pro',
+  '**.top',
+  '**.vercel.sh',
+  '**.rocketsandbox.com',
+  '**.rocketsandbox.dev',
+  '**.rocketsandbox.io',
+  '**.rocketsandbox.app',
+  '**.rocketsandbox.new',
+  '**.rocket.run',
+  '**.rocket.page',
+  '**.rocket.site',
+  '**.rocket.cloud',
+  '**.rocket.live',
+  '**.dhiwise.io',
+  '**.dhiwise.app',
+  '**.dhiwise.cloud',
+  '**.dhiwise.run',
+  '**.rocketcdn.me',
+  '**.rocket-sandbox.com',
+  '**.rocket-sandbox.dev',
+  '**.sandbox.rocket.new',
+  '**.preview.rocket.new',
+  '**.vercel.run',
+  '**.vusercontent.net',
+  '**.lovable.app',
+  '**.lovableproject.com',
+  '**.direct-hub.com',
+  '**.direct-hub.app',
+  '**.rocketcdn.me',
+  '*.rocketcdn.me',
+  '**.rocket.me',
+  '**.rocketsandbox.me',
+  '**.dhiwise.me',
+  '**.dhiwise.ai',
+  '**.rocket.ai',
+  '**.builtwithrocket.com',
+  '**.builtwithrocket.dev',
+  '**.builtwithrocket.app',
+  '**.vercel.com',
+  '**.vercel.dev',
+  '**.vercel.live',
+  '**.github.io',
+  '**.pages.dev',
+  '**.workers.dev',
+  '**.localhost',
+  '**.localdomain',
+  '**.test',
+  '192.168.*.*',
+  '10.*.*.*',
+  '172.*.*.*',
+  ...localNetworkHosts,
+  ...previewEnvHosts,
+  ...(siteUrlHost ? [siteUrlHost, `**.${siteUrlHost}`] : []),
+  ...envHostOrigins,
+  ...extraDevOrigins,
+];
+
+const allDevOriginCandidates = [
+  ...baseDevOrigins,
+];
+
+const isValidDevOriginPattern = (h) => {
+  if (!h || /[\s/]/.test(h)) return false;
+  if (h.includes('**') && !h.startsWith('**.')) return false;
+  const labels = h.split('.');
+  // Single-label wildcard on a bare TLD ("*.com") is meaningless; multi-label ("**.com") is allowed
+  if (labels.length === 2 && labels[0] === '*') return false;
+  // Partial label replacement (e.g. "team-*.example.com") is unsupported
+  if (labels.some((l) => l.includes('*') && l !== '*' && l !== '**')) return false;
+  // Always allow IPv4 literals and IPv4 wildcard ranges (e.g. 192.168.*.*)
+  if (/^(\d{1,3}|\*)(\.(\d{1,3}|\*)){3}$/.test(h)) return true;
+  return true;
+};
+
+const allowedDevOrigins = Array.from(
+  new Set(
+    allDevOriginCandidates
+      .map((h) => {
+        const v = String(h).trim();
+        // Keep IPv6 literals intact (port-stripping would mangle "::1")
+        if (v.includes('::') || (v.match(/:/g) || []).length > 1) {
+          return v.replace(/^\[|\]$/g, '');
+        }
+        return v.replace(/^\[|\]$/g, '').replace(/:\d+$/, '');
+      })
+      .filter((h) => h && h !== ':')
+      .filter(isValidDevOriginPattern)
+  )
+);
+
+// Next 15 dev server: when `allowedDevOrigins` is defined, cross-site `no-cors`
+// requests to /_next/* (e.g. <script> chunks loaded by the preview iframe, which
+// carry no Origin header) are rejected with 403 regardless of the host list.
+// When it is left undefined, Next only logs a warning and serves the request.
+// Therefore the strict allow-list is opt-in via STRICT_DEV_ORIGINS=true.
+const strictDevOrigins = process.env.STRICT_DEV_ORIGINS === 'true';
+
 const nextConfig = {
   productionBrowserSourceMaps: true,
   distDir: process.env.DIST_DIR || '.next',
-  allowedDevOrigins: Array.from(
-    new Set([
-      'localhost',
-      '127.0.0.1',
-      '0.0.0.0',
-      '[::1]',
-      '::1',
-      '*.localhost',
-      'direct-hub.net',
-      'www.direct-hub.net',
-      '*.direct-hub.net',
-      '**.direct-hub.net',
-      'dhiwise.com',
-      '*.dhiwise.com',
-      '**.dhiwise.com',
-      'dhiwise.dev',
-      '**.dhiwise.dev',
-      'dhiwise.net',
-      '**.dhiwise.net',
-      'rocket.new',
-      '**.rocket.new',
-      'builtwithrocket.new',
-      '**.builtwithrocket.new',
-      'rocketcdn.com',
-      '**.rocketcdn.com',
-      'rocketcdn.net',
-      '**.rocketcdn.net',
-      'rocket.dev',
-      '**.rocket.dev',
-      'rocketapp.dev',
-      '**.rocketapp.dev',
-      'rocketapp.io',
-      '**.rocketapp.io',
-      '*.vercel.app',
-      '**.vercel.app',
-      '*.vercel.run',
-      '**.vercel.run',
-      '*.vusercontent.net',
-      '**.vusercontent.net',
-      '*.e2b.dev',
-      '**.e2b.dev',
-      '*.e2b.app',
-      '**.e2b.app',
-      '**.app.github.dev',
-      '**.githubpreview.dev',
-      '**.gitpod.io',
-      '**.codesandbox.io',
-      '**.csb.app',
-      '**.stackblitz.io',
-      '**.webcontainer.io',
-      '**.webcontainer-api.io',
-      '**.ngrok-free.app',
-      '**.ngrok.io',
-      '**.trycloudflare.com',
-      '**.loca.lt',
-      '**.fly.dev',
-      '**.netlify.app',
-      '**.onrender.com',
-      '**.railway.app',
-      '**.replit.dev',
-      '**.repl.co',
-      '**.glitch.me',
-      '*.rocket.new',
-      '*.builtwithrocket.new',
-      '*.rocketcdn.com',
-      '*.rocketcdn.net',
-      '*.rocketapp.dev',
-      '*.rocketapp.io',
-      '*.github.dev',
-      '**.github.dev',
-      '*.csb.app',
-      '*.gitpod.io',
-      '**.local',
-      '**.lan',
-      '**.internal',
-      ...localNetworkHosts,
-      ...previewEnvHosts,
-      ...(siteUrlHost ? [siteUrlHost, `**.${siteUrlHost}`] : []),
-      ...envHostOrigins,
-      ...extraDevOrigins,
-    ])
-  ),
+  ...(strictDevOrigins ? { allowedDevOrigins } : {}),
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -166,6 +291,17 @@ const nextConfig = {
   async redirects() {
     return [
       {
+        source: '/chat',
+        has: [{ type: 'query', key: 'conv', value: '(?<conv>.*)' }],
+        destination: '/messaging?conv=:conv',
+        permanent: false,
+      },
+      {
+        source: '/chat',
+        destination: '/messaging',
+        permanent: false,
+      },
+      {
         source: '/suppliers/:id',
         destination: '/store/:id',
         permanent: true,
@@ -174,6 +310,21 @@ const nextConfig = {
         source: '/storefront/:id',
         destination: '/store/:id',
         permanent: true,
+      },
+      {
+        source: '/agent/kyc',
+        destination: '/agent/dashboard?tab=factories',
+        permanent: false,
+      },
+      {
+        source: '/agent/products',
+        destination: '/agent/dashboard?tab=products',
+        permanent: false,
+      },
+      {
+        source: '/agent/operations',
+        destination: '/agent/dashboard?tab=orders',
+        permanent: false,
       },
     ];
   },
@@ -185,12 +336,7 @@ const nextConfig = {
   experimental: {
     optimisticClientCache: true,
   },
-  webpack(
-    config,
-    {
-      dev: dev
-    }
-  ) {
+  webpack(config, { dev }) {
     if (dev) {
       config.module.rules.push({
         test: /\.(jsx|tsx)$/,

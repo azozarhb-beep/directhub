@@ -13,6 +13,7 @@ import {
 
 export interface PortFreeTimeFormValues {
   container_number: string;
+  seal_number?: string;
   container_type: string;
   shipping_line: string;
   port_country: string;
@@ -57,16 +58,71 @@ export function portFreeTimePayload(v: PortFreeTimeFormValues) {
 interface Props {
   values: PortFreeTimeFormValues;
   onChange: (next: PortFreeTimeFormValues) => void;
+  mode?: 'ocean' | 'air';
+  syncedCarrier?: string;
+  syncedPort?: string;
 }
 
 const inputCls =
   'w-full h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary';
 const labelCls = 'block text-xs font-semibold text-muted-foreground mb-1';
 
-export default function PortFreeTimeFields({ values, onChange }: Props) {
+export default function PortFreeTimeFields({ values, onChange, mode = 'ocean', syncedCarrier, syncedPort }: Props) {
   const uid = useId();
   const set = (patch: Partial<PortFreeTimeFormValues>) => onChange({ ...values, ...patch });
   const ports = getPortsForCountry(values.port_country);
+  const hasSync = syncedCarrier !== undefined || syncedPort !== undefined;
+
+  if (mode === 'air') {
+    return (
+      <div className="space-y-3 border border-dashed border-primary/30 rounded-2xl p-3 bg-primary/5" dir="rtl">
+        <p className="text-xs font-bold text-primary">✈️ مهلة التخزين المجاني في مستودع المطار (Airport Free-Storage Days)</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>مهلة التخزين المجاني (أيام)</label>
+            <input
+              type="number"
+              min={0}
+              value={values.free_days_limit}
+              onChange={e => set({ free_days_limit: e.target.value })}
+              placeholder="3, 5, 7"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>تاريخ وصول الشحنة للمطار</label>
+            <input
+              type="date"
+              value={values.discharge_date}
+              onChange={e => set({ discharge_date: e.target.value })}
+              className={inputCls}
+            />
+          </div>
+        </div>
+        <div>
+          <label className={labelCls}>غرامة التخزين اليومية</label>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={values.daily_demurrage_rate}
+              onChange={e => set({ daily_demurrage_rate: e.target.value })}
+              placeholder="0.00"
+              className={`${inputCls} flex-1`}
+            />
+            <select
+              value={values.demurrage_currency}
+              onChange={e => set({ demurrage_currency: e.target.value })}
+              className="h-10 px-3 rounded-xl border border-border bg-background text-sm w-28"
+            >
+              {DEMURRAGE_CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3 border border-dashed border-primary/30 rounded-2xl p-3 bg-primary/5" dir="rtl">
@@ -74,7 +130,7 @@ export default function PortFreeTimeFields({ values, onChange }: Props) {
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>رقم الحاوية</label>
+          <label className={labelCls}>رقم الحاوية (Container No)</label>
           <input
             dir="ltr"
             value={values.container_number}
@@ -83,60 +139,82 @@ export default function PortFreeTimeFields({ values, onChange }: Props) {
             className={`${inputCls} font-mono`}
           />
         </div>
-        <div>
-          <label className={labelCls}>حجم / نوع الحاوية</label>
-          <select value={values.container_type} onChange={e => set({ container_type: e.target.value })} className={inputCls}>
-            <option value="">— اختر —</option>
-            {CONTAINER_TYPES.map(c => (
-              <option key={c.value} value={c.value}>{c.label}</option>
-            ))}
-          </select>
-        </div>
+        {values.seal_number !== undefined ? (
+          <div>
+            <label className={labelCls}>رقم الرصاص / الختم الملاحي (Seal No)</label>
+            <input
+              dir="ltr"
+              value={values.seal_number}
+              onChange={e => set({ seal_number: e.target.value.toUpperCase() })}
+              placeholder="SL-001234"
+              className={`${inputCls} font-mono`}
+            />
+          </div>
+        ) : null}
       </div>
 
       <div>
-        <label className={labelCls}>خط الملاحة (Shipping Line)</label>
-        <input
-          dir="ltr"
-          list={`${uid}-lines`}
-          value={values.shipping_line}
-          onChange={e => set({ shipping_line: e.target.value })}
-          placeholder="Maersk, MSC, CMA CGM..."
-          className={inputCls}
-        />
-        <datalist id={`${uid}-lines`}>
-          {SHIPPING_LINES.map(l => <option key={l} value={l} />)}
-        </datalist>
+        <label className={labelCls}>حجم / نوع الحاوية</label>
+        <select value={values.container_type} onChange={e => set({ container_type: e.target.value })} className={inputCls}>
+          <option value="">— اختر —</option>
+          {CONTAINER_TYPES.map(c => (
+            <option key={c.value} value={c.value}>{c.label}</option>
+          ))}
+        </select>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      {!hasSync && (
         <div>
-          <label className={labelCls}>دولة الميناء (ابحث أو اكتب)</label>
+          <label className={labelCls}>خط الملاحة (Shipping Line)</label>
           <input
-            list={`${uid}-countries`}
-            value={values.port_country}
-            onChange={e => set({ port_country: e.target.value })}
-            placeholder="Yemen, Egypt, China..."
+            dir="ltr"
+            list={`${uid}-lines`}
+            value={values.shipping_line}
+            onChange={e => set({ shipping_line: e.target.value })}
+            placeholder="Maersk, MSC, CMA CGM..."
             className={inputCls}
           />
-          <datalist id={`${uid}-countries`}>
-            {PORT_COUNTRIES.map(c => <option key={c} value={c} />)}
+          <datalist id={`${uid}-lines`}>
+            {SHIPPING_LINES.map(l => <option key={l} value={l} />)}
           </datalist>
         </div>
-        <div>
-          <label className={labelCls}>اسم الميناء (ابحث أو اكتب)</label>
-          <input
-            list={`${uid}-ports`}
-            value={values.port_name}
-            onChange={e => set({ port_name: e.target.value })}
-            placeholder="Hodeidah Port..."
-            className={inputCls}
-          />
-          <datalist id={`${uid}-ports`}>
-            {ports.map(p => <option key={p} value={p} />)}
-          </datalist>
+      )}
+
+      {hasSync ? (
+        <div className="rounded-xl bg-background/70 border border-border px-3 py-2 text-xs text-muted-foreground space-y-1">
+          <p>خط الملاحة: <span className="font-semibold text-foreground">{syncedCarrier || '— (يُؤخذ من الناقل / شركة الشحن)'}</span></p>
+          <p>الميناء: <span className="font-semibold text-foreground">{syncedPort || '— (يُؤخذ من ميناء الوجهة)'}</span></p>
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>دولة الميناء (ابحث أو اكتب)</label>
+            <input
+              list={`${uid}-countries`}
+              value={values.port_country}
+              onChange={e => set({ port_country: e.target.value })}
+              placeholder="Yemen, Egypt, China..."
+              className={inputCls}
+            />
+            <datalist id={`${uid}-countries`}>
+              {PORT_COUNTRIES.map(c => <option key={c} value={c} />)}
+            </datalist>
+          </div>
+          <div>
+            <label className={labelCls}>اسم الميناء (ابحث أو اكتب)</label>
+            <input
+              list={`${uid}-ports`}
+              value={values.port_name}
+              onChange={e => set({ port_name: e.target.value })}
+              placeholder="Hodeidah Port..."
+              className={inputCls}
+            />
+            <datalist id={`${uid}-ports`}>
+              {ports.map(p => <option key={p} value={p} />)}
+            </datalist>
+          </div>
+        </div>
+      )}
 
       <div>
         <label className={labelCls}>وظيفة الميناء / المرحلة</label>

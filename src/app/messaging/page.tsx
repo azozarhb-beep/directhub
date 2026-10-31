@@ -4,6 +4,9 @@ import React, { useState, useRef, useEffect, useCallback, Suspense } from 'react
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
+
+import ChatAttachmentView from '@/components/ChatAttachmentView';
+import { getChatMediaSignedUrl } from '@/lib/chatMedia';
 import Icon from '@/components/ui/AppIcon';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
@@ -73,6 +76,65 @@ interface ProposalData {
 }
 
 type SupportedLang = 'ar' | 'en' | 'zh' | 'tr';
+
+interface InquiryCardData {
+  productId: string;
+  convId?: string;
+  name: string;
+  image: string | null;
+  priceText: string;
+  moqText: string;
+}
+
+function formatInquiryPrice(price: number | null | undefined, currency: string | null | undefined, isAr: boolean): string {
+  const n = Number(price || 0);
+  if (!n || n <= 0) return isAr ? 'تواصل لمعرفة السعر' : 'Contact for price';
+  const cur = String(currency || 'YER').toUpperCase();
+  const num = n.toFixed(2).replace(/\.00$/, '');
+  return cur === 'USD' ? `$${num}` : `${num} ${isAr ? 'ر.ي' : 'YER'}`;
+}
+
+function firstProductImage(row: any): string | null {
+  const arr = Array.isArray(row?.images) && row.images.length > 0
+    ? row.images
+    : Array.isArray(row?.product_images) && row.product_images.length > 0
+      ? row.product_images
+      : [];
+  const first = arr[0];
+  const src = typeof first === 'string' ? first : first?.src || first?.url;
+  return src || row?.image_url || null;
+}
+
+function ProductInquiryCard({ data, isAr }: { data: InquiryCardData; isAr: boolean }) {
+  return (
+    <div className="w-full max-w-[85%] sm:max-w-[320px] rounded-2xl border border-primary/30 bg-white shadow-sm overflow-hidden" dir={isAr ? 'rtl' : 'ltr'}>
+      <div className="px-3 py-1.5 bg-primary/10 text-[11px] font-bold text-primary flex items-center gap-1.5">
+        <Icon name="TagIcon" size={12} />
+        {isAr ? 'استفسار عن منتج' : 'Product Inquiry'}
+      </div>
+      <Link href={`/product/${encodeURIComponent(data.productId)}`} className="flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors">
+        <div className="w-16 h-16 rounded-xl bg-gray-100 overflow-hidden shrink-0 flex items-center justify-center">
+          {data.image ? (
+            <AppImage src={data.image} alt={data.name} width={64} height={64} className="w-16 h-16 object-cover" />
+          ) : (
+            <Icon name="CubeIcon" size={24} className="text-gray-400" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-gray-900 truncate">{data.name}</p>
+          <p className="text-xs text-gray-600 mt-0.5">
+            <span className="font-semibold">{isAr ? 'سعر الوحدة: ' : 'Unit price: '}</span>
+            <span className="font-extrabold text-primary">{data.priceText}</span>
+          </p>
+          <p className="text-xs text-gray-600">
+            <span className="font-semibold">{isAr ? 'الحد الأدنى للطلب: ' : 'MOQ: '}</span>
+            {data.moqText}
+          </p>
+        </div>
+      </Link>
+    </div>
+  );
+}
 
 const LANG_OPTIONS: { value: SupportedLang; label: string; flag: string; nativeName: string }[] = [
   { value: 'ar', label: 'Arabic', flag: '🇸🇦', nativeName: 'العربية' },
@@ -324,10 +386,20 @@ function AudioMessageBubble({
     audio.addEventListener('pause', onPause);
     audio.addEventListener('play', onPlay);
 
-    audio.src = audioUrl;
-    audio.load();
+    let cancelled = false;
+    if (audioUrl.startsWith('blob:') || audioUrl.startsWith('data:')) {
+      audio.src = audioUrl;
+      audio.load();
+    } else {
+      getChatMediaSignedUrl(audioUrl).then((signed) => {
+        if (cancelled || !signed) return;
+        audio.src = signed;
+        audio.load();
+      });
+    }
 
     return () => {
+      cancelled = true;
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('ended', onEnded);
@@ -1135,7 +1207,9 @@ function LiveMessagingContent() {
   const [acceptingQuoteId, setAcceptingQuoteId] = useState<string | null>(null);
   const [quoteAcceptMsg, setQuoteAcceptMsg] = useState<{ success: boolean; text: string } | null>(null);
   const [dealStatusUpdating, setDealStatusUpdating] = useState(false);
+  const [dealToken, setDealToken] = useState<string | null>(null);
   const [newMessageAlert, setNewMessageAlert] = useState<{ convId: string; senderName: string } | null>(null);
+  const [inquiryCard, setInquiryCard] = useState<InquiryCardData | null>(null);
 
   // ── Chat header extra state ────────────────────────────────────────────────
   const [showAvatarSettings, setShowAvatarSettings] = useState(false);
@@ -1495,38 +1569,128 @@ function LiveMessagingContent() {
             };
           }));
           setConversations(withMeta);
-          const targetConvId = searchParams?.get('conv');
+          const targetConvId = searchParams?.get('id') || searchParams?.get('conv');
           const targetProductId = searchParams?.get('productId');
+          const targetSupplierId = searchParams?.get('supplierId');
+          const isAr = language === 'ar';
           if (targetConvId) {
             setActiveConvId(targetConvId);
+            if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
           } else if (targetProductId) {
-            // Find existing conversation for this product
-            const existing = withMeta.find(c => c.product_id === targetProductId);
-            if (existing) {
-              setActiveConvId(existing.id);
-            } else {
-              // Create a new conversation for this product and open it
-              try {
-                // Fetch product info from Supabase if available
-                const { data: productData } = await supabase
-                  .from('products')
-                  .select('id, name, manufacturer_id, manufacturer_name, country_of_origin')
-                  .eq('id', targetProductId)
-                  .single();
+            // Resolve product: supplier_products → manufacturer_products → products
+            let resolvedProductId = targetProductId;
+            let productName = 'Product Inquiry';
+            let supplierName = 'DirectHub Supplier';
+            let supplierCountry = 'Global';
+            let supplierFlag = '🏭';
+            let manufacturerId: string | null = targetSupplierId || null;
+            let supplierListing: { id: string; supplier_id: string; name: string; name_ar: string | null; sku: string | null; supplier_name: string; wholesale_price?: number; currency?: string; image_url?: string | null; unit?: string; moq?: number; min_order_qty?: number } | null = null;
+            let card: InquiryCardData | null = null;
+            try {
+              const { data: spData } = await supabase.rpc('get_supplier_product_for_inquiry', { p_ref: targetProductId });
+              const spRow = (Array.isArray(spData) ? spData[0] : spData) as typeof supplierListing | undefined;
+              if (spRow?.id) {
+                supplierListing = spRow;
+                resolvedProductId = spRow.id;
+                manufacturerId = spRow.supplier_id;
+                productName = spRow.name_ar || spRow.name || productName;
+                supplierName = spRow.supplier_name || supplierName;
+                supplierCountry = 'اليمن';
+                supplierFlag = '🏪';
+                const moqVal = spRow.moq ?? spRow.min_order_qty;
+                card = {
+                  productId: targetProductId,
+                  name: productName,
+                  image: spRow.image_url || null,
+                  priceText: formatInquiryPrice(spRow.wholesale_price, spRow.currency, isAr),
+                  moqText: moqVal ? `${moqVal} ${spRow.unit || ''}`.trim() : (isAr ? 'حسب الاتفاق' : 'Negotiable'),
+                };
+              }
+            } catch { /* not a supplier-listed product */ }
 
-                const productName = productData?.name || 'Product Inquiry';
-                const supplierName = productData?.manufacturer_name || 'DirectHub Supplier';
-                const supplierCountry = productData?.country_of_origin || 'Global';
-                const manufacturerId = productData?.manufacturer_id || null;
+            // Factory catalogue (manufacturer_products): resolves factory + card data
+            if (!supplierListing) {
+              try {
+                const safeRef = targetProductId.replace(/[^A-Za-z0-9_-]/g, '');
+                const isUuidRef = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetProductId);
+                const mpQuery = supabase.from('manufacturer_products').select('*');
+                const { data: mp } = isUuidRef
+                  ? await mpQuery.or(`id.eq.${targetProductId},agent_product_id.eq.${targetProductId}`).limit(1).maybeSingle()
+                  : await mpQuery.or(`short_id.eq.${safeRef},slug.ilike.${safeRef.toLowerCase()},sku.ilike.${safeRef}`).limit(1).maybeSingle();
+                if (mp?.id) {
+                  resolvedProductId = mp.id;
+                  const sellerRef: string | null = mp.registered_factory_id || mp.facility_id || mp.manufacturer_id || null;
+                  manufacturerId = targetSupplierId || sellerRef;
+                  productName = (isAr ? mp.name_ar : null) || mp.name || mp.name_ar || productName;
+                  if (sellerRef) {
+                    try {
+                      const { data: fp } = await supabase.rpc('get_public_factory_profile', { p_ref: sellerRef });
+                      const f = Array.isArray(fp) ? fp[0] : fp;
+                      if (f?.company_name) supplierName = f.company_name;
+                      if (f?.country_code === 'YE') { supplierCountry = 'اليمن'; }
+                    } catch { /* optional */ }
+                  }
+                  const tiers = Array.isArray(mp.tiered_pricing) ? mp.tiered_pricing : [];
+                  const tierMin = tiers.length > 0 ? Number(tiers[0]?.min_qty ?? tiers[0]?.minQty ?? 0) : 0;
+                  const moqNum = tierMin || parseInt(String(mp.minimum_order_qty || mp.min_order_quantity || mp.moq || 1)) || 1;
+                  const tierPrice = tiers.length > 0 ? Number(tiers[0]?.unit_price ?? tiers[0]?.unitPrice ?? tiers[0]?.price ?? 0) : 0;
+                  const unitPrice = tierPrice || parseFloat(String(mp.unit_price || mp.price || 0)) || 0;
+                  const origin = String(mp.origin_type || '').toLowerCase();
+                  const cur = origin === 'international' ? 'USD' : origin === 'local' ? 'YER' : String(mp.currency || 'YER');
+                  card = {
+                    productId: targetProductId,
+                    name: productName,
+                    image: firstProductImage(mp),
+                    priceText: formatInquiryPrice(unitPrice, cur, isAr),
+                    moqText: `${moqNum} ${mp.unit || (isAr ? 'وحدة' : 'units')}`,
+                  };
+                }
+              } catch { /* fall through to products table */ }
+            }
+
+            // Find existing conversation for this buyer + product (+ supplier when provided)
+            const sameProduct = (c: Conversation) => c.product_id === resolvedProductId || c.product_id === targetProductId;
+            const sameSupplier = (c: Conversation) => !manufacturerId || !c.manufacturer_id || c.manufacturer_id === manufacturerId;
+            const existing = withMeta.find(c => sameProduct(c) && sameSupplier(c) && c.buyer_id === user.id)
+              || withMeta.find(c => sameProduct(c) && sameSupplier(c));
+            if (existing) {
+              if (card) setInquiryCard({ ...card, convId: existing.id });
+              setActiveConvId(existing.id);
+              if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
+            } else {
+              // Create a new negotiation thread (deal_status = open) for this product and open it
+              try {
+                if (!supplierListing && !card) {
+                  const { data: productData } = await supabase
+                    .from('products')
+                    .select('*')
+                    .eq('id', targetProductId)
+                    .maybeSingle();
+                  productName = productData?.name || productName;
+                  supplierName = productData?.manufacturer_name || supplierName;
+                  supplierCountry = productData?.country_of_origin || productData?.origin_country || supplierCountry;
+                  manufacturerId = targetSupplierId || productData?.manufacturer_id || null;
+                  if (productData?.id) {
+                    card = {
+                      productId: targetProductId,
+                      name: productName,
+                      image: firstProductImage(productData),
+                      priceText: formatInquiryPrice(parseFloat(String(productData.unit_price || productData.price || 0)) || 0, productData.currency || 'USD', isAr),
+                      moqText: String(productData.moq || productData.minimum_order_qty || productData.min_order_quantity || (isAr ? 'حسب الاتفاق' : 'Negotiable')),
+                    };
+                  }
+                }
+
                 let newSellerCategory: string | null = null;
                 if (manufacturerId) {
                   try {
                     const { data: mfrProfile } = await supabase
                       .from('user_profiles')
-                      .select('seller_category')
+                      .select('seller_category, country')
                       .eq('id', manufacturerId)
                       .maybeSingle();
                     newSellerCategory = mfrProfile?.seller_category ?? null;
+                    if (mfrProfile?.country) supplierCountry = mfrProfile.country;
                   } catch { /* ignore */ }
                 }
 
@@ -1535,27 +1699,45 @@ function LiveMessagingContent() {
                   .insert({
                     buyer_id: user.id,
                     manufacturer_id: manufacturerId,
-                    product_id: targetProductId,
+                    product_id: resolvedProductId,
                     product_name: productName,
                     supplier_name: supplierName,
                     supplier_country: supplierCountry,
-                    supplier_flag: '🏭',
+                    supplier_flag: supplierFlag,
                     supplier_avatar: '',
                     last_message: '',
+                    deal_status: 'open',
                   })
                   .select()
                   .single();
 
                 if (!createErr && created) {
+                  const inquiryText = isAr
+                    ? `مرحباً، أرغب في الاستفسار عن المنتج: ${productName}${card ? ` — سعر الوحدة: ${card.priceText} — الحد الأدنى للطلب: ${card.moqText}` : ''}${supplierListing?.sku ? ` (SKU: ${supplierListing.sku})` : ''}. هل يمكنكم تزويدي بالتفاصيل وأفضل عرض سعر؟`
+                    : `Hello, I'm interested in: ${productName}${card ? ` — Unit price: ${card.priceText} — MOQ: ${card.moqText}` : ''}${supplierListing?.sku ? ` (SKU: ${supplierListing.sku})` : ''}. Could you share details and your best quote?`;
+                  await supabase.from('chat_messages').insert({
+                    conversation_id: created.id,
+                    sender_id: user.id,
+                    sender_role: 'buyer',
+                    message: inquiryText,
+                    is_read: false,
+                  });
+                  await supabase.from('chat_conversations').update({ last_message: inquiryText, last_message_at: new Date().toISOString() }).eq('id', created.id);
+                  if (supplierListing) {
+                    try { await supabase.rpc('notify_supplier_product_inquiry', { p_conversation_id: created.id }); } catch { /* non-blocking */ }
+                  }
+                  if (card) setInquiryCard({ ...card, convId: created.id });
                   const newConv = {
                     ...created,
+                    last_message: inquiryText,
                     unread_count: 0,
                     thread_type: inferThreadType(created),
                     deal_status: 'open' as const,
                     seller_category: newSellerCategory,
                   };
-                  setConversations(prev => [newConv, ...prev]);
+                  setConversations(prev => prev.some(c => c.id === created.id) ? prev : [newConv, ...prev]);
                   setActiveConvId(created.id);
+                  if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
                 }
               } catch (convErr) {
                 console.error('Error creating product conversation:', convErr);
@@ -1578,7 +1760,7 @@ function LiveMessagingContent() {
         if (payload.eventType === 'INSERT') {
           const conv = payload.new as Conversation;
           if (conv.buyer_id === user.id || conv.manufacturer_id === user.id) {
-            setConversations(prev => [{ ...conv, unread_count: 0, thread_type: inferThreadType(conv), deal_status: 'open' }, ...prev]);
+            setConversations(prev => prev.some(c => c.id === conv.id) ? prev : [{ ...conv, unread_count: 0, thread_type: inferThreadType(conv), deal_status: 'open' }, ...prev]);
           }
         } else if (payload.eventType === 'UPDATE') {
           const updated = payload.new as Conversation;
@@ -1634,6 +1816,105 @@ function LiveMessagingContent() {
     };
     fetchMsgs();
   }, [activeConvId, user]);
+
+  // ── Pinned product inquiry card for a conversation opened by id ───────────
+  useEffect(() => {
+    if (!activeConvId || !user) return;
+    const conv = conversations.find(c => c.id === activeConvId);
+    if (!conv || !conv.product_id) return;
+    if (inquiryCard && inquiryCard.convId === activeConvId) return;
+    let cancelled = false;
+    const isAr = language === 'ar';
+    const pid = conv.product_id;
+    const urlRef = searchParams?.get('productId') || pid;
+    (async () => {
+      let card: InquiryCardData | null = null;
+      try {
+        const { data: spData } = await supabase.rpc('get_supplier_product_for_inquiry', { p_ref: pid });
+        const sp: any = Array.isArray(spData) ? spData[0] : spData;
+        if (sp?.id) {
+          const moqVal = sp.moq ?? sp.min_order_qty;
+          card = {
+            productId: urlRef,
+            convId: activeConvId,
+            name: sp.name_ar || sp.name || conv.product_name || '',
+            image: sp.image_url || null,
+            priceText: formatInquiryPrice(sp.wholesale_price, sp.currency, isAr),
+            moqText: moqVal ? `${moqVal} ${sp.unit || ''}`.trim() : (isAr ? 'حسب الاتفاق' : 'Negotiable'),
+          };
+        }
+      } catch { /* not a supplier listing */ }
+      if (!card) {
+        try {
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pid);
+          if (isUuid) {
+            const { data: mp } = await supabase.from('manufacturer_products').select('*').or(`id.eq.${pid},agent_product_id.eq.${pid}`).limit(1).maybeSingle();
+            if (mp?.id) {
+              const tiers = Array.isArray(mp.tiered_pricing) ? mp.tiered_pricing : [];
+              const tierMin = tiers.length > 0 ? Number(tiers[0]?.min_qty ?? tiers[0]?.minQty ?? 0) : 0;
+              const moqNum = tierMin || parseInt(String(mp.minimum_order_qty || mp.min_order_quantity || mp.moq || 1)) || 1;
+              const tierPrice = tiers.length > 0 ? Number(tiers[0]?.unit_price ?? tiers[0]?.unitPrice ?? tiers[0]?.price ?? 0) : 0;
+              const unitPrice = tierPrice || parseFloat(String(mp.unit_price || mp.price || 0)) || 0;
+              const origin = String(mp.origin_type || '').toLowerCase();
+              const cur = origin === 'international' ? 'USD' : origin === 'local' ? 'YER' : String(mp.currency || 'YER');
+              card = {
+                productId: urlRef,
+                convId: activeConvId,
+                name: (isAr ? mp.name_ar : null) || mp.name || mp.name_ar || conv.product_name || '',
+                image: firstProductImage(mp),
+                priceText: formatInquiryPrice(unitPrice, cur, isAr),
+                moqText: `${moqNum} ${mp.unit || (isAr ? 'وحدة' : 'units')}`,
+              };
+            }
+          }
+        } catch { /* fall through */ }
+      }
+      if (!card) {
+        try {
+          const { data: pd } = await supabase.from('products').select('*').eq('id', pid).maybeSingle();
+          if (pd?.id) {
+            card = {
+              productId: urlRef,
+              convId: activeConvId,
+              name: pd.name || conv.product_name || '',
+              image: firstProductImage(pd),
+              priceText: formatInquiryPrice(parseFloat(String(pd.unit_price || pd.price || 0)) || 0, pd.currency || 'USD', isAr),
+              moqText: String(pd.moq || pd.minimum_order_qty || pd.min_order_quantity || (isAr ? 'حسب الاتفاق' : 'Negotiable')),
+            };
+          }
+        } catch { /* ignore */ }
+      }
+      if (!card && conv.product_name) {
+        card = {
+          productId: urlRef,
+          convId: activeConvId,
+          name: conv.product_name,
+          image: null,
+          priceText: isAr ? 'تواصل لمعرفة السعر' : 'Contact for price',
+          moqText: isAr ? 'حسب الاتفاق' : 'Negotiable',
+        };
+      }
+      if (card && !cancelled) setInquiryCard(card);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConvId, user, conversations.length]);
+
+  // On mobile, a conversation id in the URL opens that chat full-screen
+  useEffect(() => {
+    const target = searchParams?.get('id') || searchParams?.get('conv');
+    if (target && activeConvId === target && typeof window !== 'undefined' && window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
+  }, [activeConvId, searchParams]);
+
+  // Focus the message input once the targeted conversation has loaded
+  useEffect(() => {
+    const target = searchParams?.get('id') || searchParams?.get('conv');
+    if (!target || activeConvId !== target || loadingMsgs) return;
+    const timer = setTimeout(() => inputRef.current?.focus(), 150);
+    return () => clearTimeout(timer);
+  }, [activeConvId, loadingMsgs, searchParams]);
 
   // ── Stable Realtime messages subscription with auto-reconnect ────────────
   const msgReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1825,8 +2106,8 @@ function LiveMessagingContent() {
         const filePath = `chat-attachments/${user.id}/${Date.now()}.${ext}`;
         const { data: uploadData, error: uploadError } = await supabase.storage.from('chat-media').upload(filePath, fileWithResolvedType(attachment.file, attachment.type), { contentType: attachment.type, upsert: false });
         if (!uploadError && uploadData) {
-          const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(filePath);
-          attachmentUrl = urlData?.publicUrl; attachmentType = attachment.type; attachmentName = attachment.file.name;
+          // Private bucket: store a "bucket/path" reference; it is signed at render time
+          attachmentUrl = `chat-media/${filePath}`; attachmentType = attachment.type; attachmentName = attachment.file.name;
           // Update optimistic message with real public URL before revoking blob URL
           setMessages(prev => prev.map(msg => msg.id === optimisticId
             ? { ...msg, attachment_url: attachmentUrl, attachment_type: attachmentType, attachment_name: attachmentName }
@@ -1901,8 +2182,7 @@ function LiveMessagingContent() {
       const { data: uploadData, error: uploadError } = await supabase.storage.from('chat-media').upload(filePath, file, { contentType: file.type, upsert: false });
       let attachmentUrl: string | undefined;
       if (!uploadError && uploadData) {
-        const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(filePath);
-        attachmentUrl = urlData?.publicUrl;
+        attachmentUrl = `chat-media/${filePath}`;
       }
       const msgPayload: any = {
         conversation_id: activeConvId, sender_id: user.id, sender_role: user.user_metadata?.role || 'buyer',
@@ -2265,10 +2545,7 @@ function LiveMessagingContent() {
                   <Icon name="ChatBubbleLeftRightIcon" size={28} className="text-gray-400" />
                 </div>
                 <p className="text-sm font-semibold text-gray-700 mb-1">{m.noConversations}</p>
-                <p className="text-xs text-gray-400 mb-5">{m.noConversationsHint}</p>
-                <Link href="/rfq-board" className="px-5 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:opacity-90 transition-opacity">
-                  {m.submitRfq}
-                </Link>
+                <p className="text-xs text-gray-400">{m.noConversationsSubtitle}</p>
               </div>
             ) : filteredConvs.map(conv => {
               const threadInfo = THREAD_LABELS[conv.thread_type || 'negotiation'];
@@ -2334,17 +2611,6 @@ function LiveMessagingContent() {
                 </button>
               );
             })}
-          </div>
-
-          {/* ── Bottom: New RFQ button ─────────────────────────────────────── */}
-          <div className="p-3 border-t border-gray-100 bg-white shrink-0 mb-16 md:mb-0">
-            <Link
-              href="/rfq-board"
-              className="flex items-center justify-center gap-2 w-full py-2.5 bg-primary text-white text-sm font-bold rounded-xl hover:opacity-90 transition-opacity"
-            >
-              <Icon name="PlusIcon" size={16} />
-              {m.newRfqRequest}
-            </Link>
           </div>
         </div>
 
@@ -2484,7 +2750,7 @@ function LiveMessagingContent() {
 
                     {/* Place Order */}
                     {activeConv.deal_status === 'agreed' && (
-                      <Link href="/checkout" className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 transition-colors">
+                      <Link href={dealToken ? `/pay/deal/${dealToken}` : '/checkout'} className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 transition-colors">
                         <Icon name="ShoppingBagIcon" size={12} />
                         {m.placeOrder}
                       </Link>
@@ -2516,6 +2782,12 @@ function LiveMessagingContent() {
 
               {/* ── Messages Area ────────────────────────────────────────────── */}
               <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 sm:px-4 py-3 space-y-3 bg-gray-50">
+                {/* Inline product_card message bubble (first item in the stream, scrolls with history) */}
+                {!loadingMsgs && inquiryCard && inquiryCard.convId === activeConv.id && (
+                  <div className="flex justify-start">
+                    <ProductInquiryCard data={inquiryCard} isAr={language === 'ar'} />
+                  </div>
+                )}
                 {loadingMsgs ? (
                   <div className="flex items-center justify-center py-8">
                     <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -2583,13 +2855,12 @@ function LiveMessagingContent() {
                             })()}
                             {msg.attachment_url && !msg.attachment_type?.startsWith('audio/') && !(msg.message?.includes('🎙️') || msg.message?.includes('رسالة صوتية')) && (
                               <div className="mb-1">
-                                {msg.attachment_type?.startsWith('image/') ? (
-                                  <AppImage src={msg.attachment_url} alt={m.attachment} width={200} height={150} className="rounded-xl max-w-full" />
-                                ) : (
-                                  <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs underline text-primary">
-                                    <Icon name="PaperClipIcon" size={13} />{msg.attachment_name || m.attachment}
-                                  </a>
-                                )}
+                                <ChatAttachmentView
+                                  url={msg.attachment_url}
+                                  name={msg.attachment_name || m.attachment}
+                                  type={msg.attachment_type}
+                                  tone="dark"
+                                />
                               </div>
                             )}
                             {text && !(msg.local_audio_url || (msg.attachment_url && msg.attachment_type?.startsWith('audio/')) || (msg.attachment_url && (msg.message?.includes('🎙️') || msg.message?.includes('رسالة صوتية')))) && !(msg.message?.includes('🎙️') && msg.message?.includes('رسالة صوتية')) && (

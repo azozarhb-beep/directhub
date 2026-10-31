@@ -1083,7 +1083,12 @@ export default function RFQManagementPage() {
       });
       if (error) throw error;
 
-      await supabase.from('rfq_requests').update({ status: 'responded' }).eq('id', selectedRFQ.id);
+      // Status sync is secondary: never let it fail an already-saved quote
+      try {
+        await supabase.from('rfq_requests').update({ status: 'responded' }).eq('id', selectedRFQ.id);
+      } catch (statusErr) {
+        console.warn('RFQ status update skipped:', statusErr);
+      }
 
       setShowSubmitQuote(false);
       setSelectedRFQ(null);

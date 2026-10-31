@@ -5,6 +5,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
+import { SignedChatImage, SignedChatLink } from '@/components/SignedChatMedia';
 
 interface AgentFactory {
   id: string;
@@ -235,8 +236,8 @@ export default function AgentMessagingHub({ userId, factories }: AgentMessagingH
         return;
       }
       if (uploadData) {
-        const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(filePath);
-        attachmentUrl = urlData?.publicUrl || '';
+        // Private bucket: store the object reference; it is signed at render time
+        attachmentUrl = `chat-media/${filePath}`;
         attachmentName = pendingAttachment.file.name;
         attachmentType = pendingAttachment.file.type;
       }
@@ -455,7 +456,7 @@ export default function AgentMessagingHub({ userId, factories }: AgentMessagingH
                           )}
                           {msg.attachment_url && msg.attachment_type?.startsWith('image/') && (
                             <div className="rounded-xl overflow-hidden mb-1.5 max-w-[200px]">
-                              <img
+                              <SignedChatImage
                                 src={msg.attachment_url}
                                 alt={msg.attachment_name || 'صورة مرفقة'}
                                 className="w-full h-auto object-cover max-h-40"
@@ -463,15 +464,13 @@ export default function AgentMessagingHub({ userId, factories }: AgentMessagingH
                             </div>
                           )}
                           {msg.attachment_url && !msg.attachment_type?.startsWith('image/') && (
-                            <a
+                            <SignedChatLink
                               href={msg.attachment_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
                               className={`flex items-center gap-1.5 text-xs mb-1.5 underline ${isAgent ? 'text-white/90' : 'text-primary'}`}
                             >
                               <Icon name="DocumentTextIcon" size={12} />
                               {msg.attachment_name || 'مرفق'}
-                            </a>
+                            </SignedChatLink>
                           )}
                           <p className="text-sm leading-relaxed">{msg.message}</p>
                           <p className={`text-[10px] mt-1 ${isAgent ? 'text-white/60' : 'text-muted-foreground'}`}>

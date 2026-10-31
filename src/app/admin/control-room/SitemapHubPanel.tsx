@@ -70,7 +70,6 @@ const pages: PageEntry[] = [
   { path: '/admin/control-room', label: 'Admin Control Room', labelAr: 'غرفة التحكم الإدارية', category: 'الإدارة', priority: 0.1, changeFreq: 'monthly', access: 'admin' },
   { path: '/management', label: 'Management', labelAr: 'الإدارة', category: 'الإدارة', priority: 0.3, changeFreq: 'weekly', access: 'admin' },
   { path: '/operations', label: 'Operations', labelAr: 'العمليات', category: 'الإدارة', priority: 0.3, changeFreq: 'weekly', access: 'admin' },
-  { path: '/simulation', label: 'Simulation', labelAr: 'المحاكاة', category: 'الإدارة', priority: 0.2, changeFreq: 'monthly', access: 'admin' },
   // Messaging & Communication
   { path: '/messaging', label: 'Messaging', labelAr: 'المراسلة', category: 'التواصل', priority: 0.6, changeFreq: 'daily', access: 'auth' },
   { path: '/chat', label: 'Chat', labelAr: 'المحادثة', category: 'التواصل', priority: 0.6, changeFreq: 'daily', access: 'auth' },

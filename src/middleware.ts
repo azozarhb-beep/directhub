@@ -99,6 +99,7 @@ const PROTECTED_PAGE_ROUTES = [
   '/order-confirmation',
   '/disputes',
   '/checkout',
+  '/pay',
   '/cart',
   '/rfq-management',
   '/notifications',
@@ -107,17 +108,50 @@ const PROTECTED_PAGE_ROUTES = [
   '/factory/upload',
   '/factory/products',
   '/factory/local-dashboard',
+  '/supplier',
   '/supplier/local-dashboard',
   '/agent/dashboard',
   '/agent/upload-license',
   '/agent/register-factory',
   '/agent/register-facility',
   '/agent/add-product',
+  '/agent/messages',
   '/buyer-dashboard',
+  '/driver',
   '/logistics/dashboard',
+  '/logistics/load-board',
+  '/logistics/shipments',
+  '/logistics/calculator',
+  '/logistics/analytics',
+  '/logistics/international',
+  '/logistics/customs',
   '/manufacturer/international-dashboard',
+  '/manufacturer/sales',
+  '/manufacturer/finance',
   '/manufacturer/b2b',
   '/manufacturer/b2c',
+  '/manufacturer/products',
+  '/manufacturer/inventory',
+  '/manufacturer/rfq',
+  '/manufacturer/orders',
+  '/manufacturer/production',
+  '/manufacturer/logistics',
+  '/manufacturer/escrow',
+  '/manufacturer/bank-accounts',
+  '/manufacturer/analytics',
+  '/manufacturer/documents',
+  '/manufacturer/messages',
+  '/manufacturer/raw-materials',
+  '/manufacturer/sales-team',
+  '/manufacturer/disputes',
+  '/manufacturer/revenue',
+  '/manufacturer/archive',
+  '/manufacturer/all-sales',
+  '/manufacturer/sales-channels',
+  '/manufacturer/materials',
+  '/manufacturer/team',
+  '/manufacturer/contracts',
+  '/manufacturer/settings',
   '/api/escrow',
   '/api/payment',
   '/api/invoices',
@@ -149,7 +183,11 @@ function isAIBot(userAgent: string): boolean {
   return AI_BOT_PATTERNS.some(pattern => ua.includes(pattern));
 }
 
+const PUBLIC_FACTORY_PROFILE_RE = /^\/supplier\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/?$/i;
+
 function isProtectedPage(pathname: string): boolean {
+  // /supplier/<factory uuid> is the public factory profile (buyer-facing)
+  if (PUBLIC_FACTORY_PROFILE_RE.test(normalizePath(pathname))) return false;
   return PROTECTED_PAGE_ROUTES.some(route => matchesRoute(pathname, route));
 }
 
@@ -241,8 +279,10 @@ export async function middleware(request: NextRequest) {
       decodeCookie(request.cookies.get('dh_account_role')?.value) ||
       decodeCookie(request.cookies.get('account_role')?.value) ||
       null;
+    const cookieActiveRole = decodeCookie(request.cookies.get('dh_active_role')?.value) || null;
 
     const platformRole = resolvePlatformRole({
+      activeRole: cookieActiveRole,
       role:
         (meta.role as string | undefined) ||
         (app.role as string | undefined) ||

@@ -48,7 +48,6 @@ export const PLATFORM_ROUTES: PlatformRoute[] = [
   { id: 'rfq-board',          path: '/rfq-board',               nameAr: 'لوحة طلبات الأسعار',       nameEn: 'RFQ Board',             category: 'core',    roles: ['public'], icon: 'ClipboardDocumentListIcon', description: 'لوحة طلبات عروض الأسعار' },
   { id: 'logistics',          path: '/logistics',               nameAr: 'اللوجستيات',               nameEn: 'Logistics',             category: 'core',    roles: ['public'], icon: 'TruckIcon',             description: 'منصة شركاء الشحن' },
   { id: 'ai-features',        path: '/ai-features',             nameAr: 'ميزات الذكاء الاصطناعي',   nameEn: 'AI Features',           category: 'core',    roles: ['public'], icon: 'SparklesIcon',          description: 'مركز ميزات الذكاء الاصطناعي' },
-  { id: 'simulation',         path: '/simulation',              nameAr: 'مركز المحاكاة',             nameEn: 'Simulation Hub',        category: 'core',    roles: ['public'], icon: 'BeakerIcon',            description: 'مركز المحاكاة الشاملة' },
   { id: 'analytics',          path: '/analytics',               nameAr: 'التحليلات',                nameEn: 'Analytics',             category: 'core',    roles: ['admin'],  icon: 'ChartBarIcon',          description: 'لوحة التحليلات والإحصاءات' },
   // ── Buyer / Consumer ──
   { id: 'cart',               path: '/cart',                    nameAr: 'سلة التسوق',               nameEn: 'Cart',                  category: 'buyer',   roles: ['buyer', 'consumer'], icon: 'ShoppingCartIcon',      description: 'سلة التسوق' },

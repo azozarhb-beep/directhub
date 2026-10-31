@@ -407,8 +407,12 @@ export default function RFQBoardPage() {
       });
       if (error) throw error;
 
-      // Update RFQ status to responded
-      await supabase.from('rfq_requests').update({ status: 'responded' }).eq('id', respondingTo.id);
+      // Status sync is secondary: never let it fail an already-saved quote
+      try {
+        await supabase.from('rfq_requests').update({ status: 'responded' }).eq('id', respondingTo.id);
+      } catch (statusErr) {
+        console.warn('RFQ status update skipped:', statusErr);
+      }
 
       setRespondingTo(null);
       setSuccessMsg(isRTL ? 'تم إرسال عرض السعر بنجاح!' : 'Quote submitted successfully!');

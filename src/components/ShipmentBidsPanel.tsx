@@ -4,10 +4,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import toast from 'react-hot-toast';
 import { createClient } from '@/lib/supabase/client';
+import FreightQuoteRequestModal from '@/components/manufacturer/FreightQuoteRequestModal';
 
 interface ShipmentBidsPanelProps {
   /** 'admin' loads every open/assigned load; 'shipper' relies on RLS to scope to own loads */
   mode: 'admin' | 'shipper';
+  /** Local Yemeni manufacturer workspace only: enables the "Request Freight Quote" CTA */
+  yemenLocal?: boolean;
 }
 
 interface BidRow {
@@ -61,12 +64,13 @@ function fmtDate(iso: string | null) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
-export default function ShipmentBidsPanel({ mode }: ShipmentBidsPanelProps) {
+export default function ShipmentBidsPanel({ mode, yemenLocal = false }: ShipmentBidsPanelProps) {
   const supabase = createClient();
   const [loads, setLoads] = useState<LoadRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [confirmBid, setConfirmBid] = useState<{ bid: BidRow; load: LoadRow } | null>(null);
+  const [requestOpen, setRequestOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -176,13 +180,30 @@ export default function ShipmentBidsPanel({ mode }: ShipmentBidsPanelProps) {
         <h3 className="font-bold text-foreground text-sm">عروض أسعار الشحن (Freight Bids)</h3>
       </div>
 
+      {yemenLocal && (
+        <FreightQuoteRequestModal
+          open={requestOpen}
+          onClose={() => setRequestOpen(false)}
+          onCreated={fetchData}
+        />
+      )}
+
       {loading ? (
         <div className="flex justify-center py-10">
           <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
       ) : loads.length === 0 ? (
-        <div className="bg-card border border-border rounded-xl p-8 text-center text-sm text-muted-foreground">
-          لا توجد طلبات شحن مفتوحة أو عروض أسعار حالياً
+        <div className="bg-card border border-border rounded-xl p-8 text-center text-sm text-muted-foreground space-y-4">
+          <p>لا توجد طلبات شحن مفتوحة أو عروض أسعار حالياً</p>
+          {yemenLocal && (
+            <button
+              type="button"
+              onClick={() => setRequestOpen(true)}
+              className="inline-flex items-center justify-center h-10 px-5 rounded-xl bg-primary hover:opacity-90 text-primary-foreground text-sm font-semibold"
+            >
+              + طلب عرض سعر شحن / نقل بضاعة
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-4">

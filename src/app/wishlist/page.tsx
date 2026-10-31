@@ -599,7 +599,7 @@ export default function WishlistPage() {
                               {w.viewProfile}
                             </Link>
                             <Link
-                              href={`/chat?sellerId=${seller.id}`}
+                              href="/messaging"
                               className="flex-1 py-2 border border-border text-foreground text-xs font-bold rounded-xl text-center hover:bg-muted transition-colors"
                             >
                               {w.message}

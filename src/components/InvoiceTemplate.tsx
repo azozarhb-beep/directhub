@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useCallback } from 'react';
 
 interface InvoiceItem {
   description: string;
@@ -93,6 +93,8 @@ interface InvoiceTemplateProps {
   };
   /** Optional order number to display alongside invoice number */
   orderNumber?: string;
+  /** Show a built-in Print / Save as PDF button (Proforma & Commercial invoices) */
+  showPrintButton?: boolean;
 }
 
 const PAYMENT_TERMS_LABELS: Record<string, string> = {
@@ -154,7 +156,37 @@ function InfoRow({ label, value }: { label: string; value?: string | number | nu
   );
 }
 
-export default function InvoiceTemplate({ invoice, orderNumber }: InvoiceTemplateProps) {
+export default function InvoiceTemplate({ invoice, orderNumber, showPrintButton = false }: InvoiceTemplateProps) {
+  const rootRef = React.useRef<HTMLDivElement>(null);
+
+  const handlePrintPdf = React.useCallback(() => {
+    const node = rootRef.current;
+    if (!node) return;
+    const w = window.open('', '_blank', 'width=900,height=1000');
+    if (!w) {
+      window.print();
+      return;
+    }
+    const styleTags = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map((n) => n.outerHTML)
+      .join('\n');
+    const clone = node.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('[data-no-print]').forEach((el) => el.remove());
+    w.document.open();
+    w.document.write(
+      `<!DOCTYPE html><html><head><meta charset="utf-8" /><title>${invoice.invoice_number}</title>${styleTags}<style>@page{size:A4;margin:10mm}body{margin:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}</style></head><body>${clone.outerHTML}</body></html>`
+    );
+    w.document.close();
+    w.focus();
+    setTimeout(() => {
+      try {
+        w.print();
+      } catch {
+        // user can print manually
+      }
+    }, 500);
+  }, [invoice.invoice_number]);
+
   const {
     invoice_number, invoice_type = 'standard', issue_date, due_date, status,
     seller_name, seller_address, seller_vat, seller_cr,
@@ -185,7 +217,22 @@ export default function InvoiceTemplate({ invoice, orderNumber }: InvoiceTemplat
   const incotermsInfo = effectiveIncoterms ? INCOTERMS_LABELS[effectiveIncoterms] : null;
 
   return (
-    <div className="bg-white text-gray-900 font-sans" style={{ fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif" }}>
+    <div ref={rootRef} className="bg-white text-gray-900 font-sans" style={{ fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif" }}>
+
+      {showPrintButton && (
+        <div data-no-print className="px-8 py-3 flex justify-end bg-gray-50 border-b border-gray-200 print:hidden">
+          <button
+            type="button"
+            onClick={handlePrintPdf}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-900 hover:bg-gray-700 text-white text-xs font-semibold transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z" />
+            </svg>
+            {isCommercial ? 'Print / Save Commercial Invoice PDF' : 'Print / Save Proforma Invoice PDF'}
+          </button>
+        </div>
+      )}
 
       {/* ── TOP HEADER BAR ─────────────────────────────────────── */}
       <div className={`px-8 py-6 flex items-center justify-between ${isCommercial ? 'bg-slate-900' : 'bg-gray-900'}`}>

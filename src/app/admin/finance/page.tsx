@@ -5,9 +5,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import Icon from '@/components/ui/AppIcon';
+import AdminSupplierPayoutsPanel from './AdminSupplierPayoutsPanel';
 
-type TabKey = 'escrow' | 'milestones' | 'deposits' | 'commissions' | 'vault';
+type TabKey = 'escrow' | 'milestones' | 'deposits' | 'commissions' | 'vault' | 'supplier_payouts';
 type CurrencyCode = 'USD' | 'SAR' | 'YER';
 type StageKey = 'held' | 'inspection' | 'pod' | 'ready';
 
@@ -141,6 +143,7 @@ export default function AdminFinancePage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const { user, loading: authLoading } = useAuth();
+  const { dir } = useLanguage();
 
   const role = (user?.user_metadata?.role || user?.app_metadata?.role || '') as string;
   const staffRole = (user?.user_metadata?.staff_role || user?.app_metadata?.staff_role || '') as string;
@@ -156,7 +159,7 @@ export default function AdminFinancePage() {
   const [tab, setTab] = useState<TabKey>('escrow');
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get('tab') as TabKey | null;
-    if (q && ['escrow', 'milestones', 'deposits', 'commissions', 'vault'].includes(q)) setTab(q);
+    if (q && ['escrow', 'milestones', 'deposits', 'commissions', 'vault', 'supplier_payouts'].includes(q)) setTab(q);
   }, []);
   const [orders, setOrders] = useState<EscrowOrder[]>([]);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
@@ -198,7 +201,7 @@ export default function AdminFinancePage() {
       const [ordersRes, subsRes, commRes, relRes] = await Promise.all([
         supabase
           .from('orders')
-          .select('id, order_number, user_id, factory_user_id, total, currency, order_category, escrow_status, status, platform_commission, quality_check_at, delivery_pin_verified_at, delivery_otp_verified_at, buyer_confirmed_at, admin_payout_reviewed_at, payout_note, funds_released_at, payment_verified, receipt_url, payment_method, created_at, tracking_code, bill_of_lading_url, dispatched_at')
+          .select('id, order_number, user_id, factory_user_id, total, currency, order_category, escrow_status, status, platform_commission, platform_fee, net_factory_payout, quality_check_at, delivery_pin_verified_at, delivery_otp_verified_at, buyer_confirmed_at, admin_payout_reviewed_at, payout_note, funds_released_at, payment_verified, receipt_url, payment_method, created_at, tracking_code, bill_of_lading_url, dispatched_at')
           .in('escrow_status', ['pending_verification', 'funds_secured', 'shipped', 'pending_otp_confirmation', 'pending_admin_payout', 'funds_released'])
           .order('created_at', { ascending: false })
           .limit(300),
@@ -319,7 +322,7 @@ export default function AdminFinancePage() {
             inspectionPassed,
             deliveryConfirmed,
             queuedForRelease: queued,
-            platformFee: Number(o.platform_commission || 0),
+            platformFee: Number(o.platform_fee || o.platform_commission || 0),
             stage,
             createdAt: o.created_at,
             shipped: ['shipped', 'pending_otp_confirmation', 'pending_admin_payout'].includes(o.escrow_status),
@@ -681,6 +684,7 @@ export default function AdminFinancePage() {
     { key: 'deposits', label: 'مراجعة وتدقيق سندات الإيداع — Bank Deposit Slip Queue' },
     { key: 'commissions', label: 'محرك العمولات ومستحقات الميدان — Agent Commission Clearing Engine' },
     { key: 'vault', label: 'سجل التسويات والتحويلات المكتملة — Settlement & Audit Vault' },
+    { key: 'supplier_payouts', label: 'طلبات سحب أرباح الموردين (YER) — Supplier Payouts' },
   ];
 
   const only = displayCurrency === 'ALL' ? undefined : displayCurrency;
@@ -698,7 +702,7 @@ export default function AdminFinancePage() {
   ];
 
   return (
-    <div dir="rtl" className="fixed inset-0 w-full h-[100dvh] bg-slate-950 text-white flex flex-col z-50 overflow-hidden">
+    <div dir={dir} className="fixed inset-0 w-full h-[100dvh] bg-slate-950 text-white flex flex-col z-50 overflow-hidden">
       {/* Sticky top executive bar */}
       <header className="sticky top-0 z-20 shrink-0 bg-slate-900 border-b border-slate-800 px-4 py-3 flex flex-wrap items-center gap-3">
         <Link
@@ -1070,6 +1074,8 @@ export default function AdminFinancePage() {
             </div>
           </div>
         )}
+
+        {tab === 'supplier_payouts' && <AdminSupplierPayoutsPanel onToast={showToast} />}
 
         {/* Tab D */}
         {!loading && tab === 'vault' && (

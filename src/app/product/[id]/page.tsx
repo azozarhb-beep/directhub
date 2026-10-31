@@ -2,7 +2,7 @@
 
 import { useLanguage } from '@/contexts/LanguageContext';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
@@ -17,6 +17,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import WishlistButton from '@/components/WishlistButton';
 import { buildProductShareLinkNoPhone } from '@/lib/whatsappOrderLinks';
+import { copyProductShareText, isDomesticCurrency } from '@/lib/productCode';
+import { getOrCreateProductConversation } from '@/lib/startProductConversation';
 
 interface Specification {
   label: string;
@@ -29,8 +31,54 @@ interface PriceTier {
   price: string;
 }
 
+interface TierRow {
+  min_qty: number;
+  max_qty: number | null;
+  unit_price: number;
+}
+
+function normalizeTiers(raw: any): TierRow[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.
+  map((t: any) => {
+    const minQty = Number(t?.min_qty ?? t?.minQty ?? t?.min ?? 0);
+    const maxRaw = t?.max_qty ?? t?.maxQty ?? t?.max ?? null;
+    const maxQty = maxRaw === null || maxRaw === undefined || maxRaw === '' || maxRaw === '+' ? null : Number(maxRaw);
+    const unitPrice = Number(t?.unit_price ?? t?.unitPrice ?? t?.price ?? 0);
+    return {
+      min_qty: isNaN(minQty) ? 0 : minQty,
+      max_qty: maxQty !== null && isNaN(maxQty) ? null : maxQty,
+      unit_price: isNaN(unitPrice) ? 0 : unitPrice
+    } as TierRow;
+  }).
+  filter((t: TierRow) => t.min_qty > 0 && t.unit_price > 0).
+  sort((a: TierRow, b: TierRow) => a.min_qty - b.min_qty);
+}
+
+function getTierPriceBounds(tiers: TierRow[]): {min: number;max: number;} | null {
+  if (!tiers || tiers.length === 0) return null;
+  const prices = tiers.map((t) => t.unit_price);
+  return { min: Math.min(...prices), max: Math.max(...prices) };
+}
+
+function findTierForQty(tiers: TierRow[], qty: number): TierRow | null {
+  if (!tiers || tiers.length === 0) return null;
+  let match: TierRow | null = null;
+  for (const t of tiers) {
+    if (qty >= t.min_qty && (t.max_qty === null || qty <= t.max_qty)) {
+      match = t;
+    }
+  }
+  if (!match && qty >= tiers[0].min_qty) {
+    match = tiers[tiers.length - 1];
+  }
+  return match;
+}
+
 interface ProductDetail {
   id: string;
+  shortId?: string;
+  slug?: string;
   name: string;
   nameAr: string;
   images: {src: string;alt: string;}[];
@@ -61,6 +109,8 @@ interface ProductDetail {
   agentListed?: boolean;
   certifications?: string[];
   priceTiers?: PriceTier[];
+  rawTiers?: TierRow[];
+  moqNumber?: number;
   packagingDetails?: string;
   supplyAbility?: string;
   factoryArea?: string;
@@ -72,6 +122,9 @@ interface ProductDetail {
   samplePrice?: number;
   sellerBadge?: 'certified_factory' | 'local_supplier' | null;
   videoUrl?: string;
+  productCode?: string;
+  incoterms?: string[];
+  portOfLoading?: string;
 }
 
 const productDatabase: Record<string, ProductDetail> = {
@@ -339,7 +392,7 @@ const CATEGORY_AR: Record<string, string> = {
 // ── Helper: extract unit label from a price tier string ───────────────────────
 // e.g. "$420/unit" → "unit", "$5.80/m" → "م", "$72/m" → "م"
 function extractUnitFromPrice(priceStr: string): string {
-  const match = priceStr.match(/\/(.+)$/);
+  let match = priceStr.match(/\/(.+)$/);
   return match ? match[1].trim() : 'unit';
 }
 
@@ -413,6 +466,9 @@ export default function ProductDetailPage() {
 
   const [product, setProduct] = useState<ProductDetail>(productDatabase[id] || fallbackProduct);
   const [activeImage, setActiveImage] = useState(0);
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const thumbsRef = useRef<HTMLDivElement | null>(null);
   const [activeTab, setActiveTab] = useState<'description' | 'specs' | 'pricing' | 'shipping' | 'reviews'>('description');
   const [relatedProducts, setRelatedProducts] = useState<ProductDetail[]>([]);
   const [addedToCart, setAddedToCart] = useState(false);
@@ -423,11 +479,112 @@ export default function ProductDetailPage() {
   const [confirmationSubmitted, setConfirmationSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(!productDatabase[id]);
   const [notFound, setNotFound] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
   // Derived B2B flag — true when product has wholesale pricing tiers or sales_model indicates B2B
   const [isB2B, setIsB2B] = useState<boolean>(() => {
     const p = productDatabase[id];
     return !!(p && p.priceTiers && p.priceTiers.length > 0);
   });
+  // Supplier-listed product (supplier_products) → chat button reads "مراسلة المورد / الوكيل"
+  const [isSupplierSeller, setIsSupplierSeller] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const ref = decodeURIComponent(id || '').trim();
+    if (!ref || productDatabase[ref]) {
+      setIsSupplierSeller(false);
+      return;
+    }
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase.rpc('get_supplier_product_for_inquiry', { p_ref: ref });
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!cancelled) setIsSupplierSeller(!!row?.id);
+      } catch {
+        if (!cancelled) setIsSupplierSeller(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+  const chatSellerLabel = isSupplierSeller && isArabic ? 'مراسلة المورد / الوكيل' : isSupplierSeller ? 'Message Supplier / Agent' : null;
+  const chatProductRef = isSupplierSeller ? id : product.id;
+  const chatSupplierId = product.supplierId && !String(product.supplierId).startsWith('sup-') ? product.supplierId : '';
+  const chatHref = `/chat/${encodeURIComponent(chatProductRef)}`;
+  const [startingChat, setStartingChat] = useState(false);
+  const [ownProductNotice, setOwnProductNotice] = useState(false);
+  const handleStartChat = async () => {
+    if (startingChat) return;
+    if (!user) {
+      requireAuth(() => router.push(chatHref));
+      return;
+    }
+    // Only restriction: the owner cannot message themselves about their own product
+    if (chatSupplierId && chatSupplierId === user.id) {
+      setOwnProductNotice(true);
+      setTimeout(() => setOwnProductNotice(false), 4000);
+      return;
+    }
+    setStartingChat(true);
+    try {
+      const { conversationId, productId: convProductId, isOwner } = await getOrCreateProductConversation({
+        supabase: createClient(),
+        buyerId: user.id,
+        productRef: chatProductRef,
+        supplierId: chatSupplierId || null,
+        isAr: isArabic
+      });
+      if (isOwner) {
+        setOwnProductNotice(true);
+        setTimeout(() => setOwnProductNotice(false), 4000);
+        return;
+      }
+      router.push(`/chat/${encodeURIComponent(convProductId || chatProductRef)}${conversationId ? `?id=${encodeURIComponent(conversationId)}` : ''}`);
+    } catch {
+      router.push(chatHref);
+    } finally {
+      setStartingChat(false);
+    }
+  };
+
+  useEffect(() => {
+    setActiveImage(0);
+  }, [product.id]);
+
+  useEffect(() => {
+    const container = thumbsRef.current;
+    const el = container?.children?.[activeImage] as HTMLElement | undefined;
+    if (container && el) {
+      container.scrollTo({
+        left: el.offsetLeft - container.clientWidth / 2 + el.clientWidth / 2,
+        behavior: 'smooth'
+      });
+    }
+  }, [activeImage]);
+
+  const goToImage = (index: number) => {
+    const total = product.images?.length || 0;
+    if (total <= 1) return;
+    setActiveImage((index % total + total) % total);
+  };
+
+  const handleGalleryTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0]?.clientX ?? null;
+    touchStartY.current = e.touches[0]?.clientY ?? null;
+  };
+
+  const handleGalleryTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const dx = (e.changedTouches[0]?.clientX ?? 0) - touchStartX.current;
+    const dy = (e.changedTouches[0]?.clientY ?? 0) - touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+    if (dx < 0) goToImage(activeImage + 1);else
+    goToImage(activeImage - 1);
+  };
 
   useEffect(() => {
     const current = productDatabase[id] || fallbackProduct;
@@ -439,12 +596,84 @@ export default function ProductDetailPage() {
     const fetchFromSupabase = async () => {
       try {
         const supabase = createClient();
-        const { data } = await supabase.
-        from('manufacturer_products').
-        select('*, user_profiles!manufacturer_products_manufacturer_id_fkey(full_name, company_name, country, is_verified, supplier_profiles(id, rating, review_count, response_rate, avg_response_time, tier, is_verified))').
-        eq('id', id).
-        eq('is_active', true).
-        single();
+        const rawRef = decodeURIComponent(id || '').trim();
+        const isUuidRef = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawRef);
+        // Only allow safe characters inside the PostgREST filter (prevents filter injection / parse errors).
+        const safeRef = rawRef.replace(/[^A-Za-z0-9_-]/g, '');
+        const selectCols = '*, user_profiles!manufacturer_products_manufacturer_id_fkey(full_name, company_name, country, is_verified, supplier_profiles(id, rating, review_count, response_rate, avg_response_time, tier, is_verified))';
+
+        let data: any = null;
+        if (isUuidRef) {
+          // QR posters / shared links may carry either manufacturer_products.id or the
+          // originating agent_products.id (stored as manufacturer_products.agent_product_id).
+          const res = await supabase.
+          from('manufacturer_products').
+          select(selectCols).
+          or(`id.eq.${rawRef},agent_product_id.eq.${rawRef}`).
+          eq('is_active', true).
+          order('created_at', { ascending: false }).
+          limit(1).
+          maybeSingle();
+          data = res.data;
+
+          if (!data) {
+            // Retry without the embedded profile join in case the joined tables are not readable by guests.
+            const plain = await supabase.
+            from('manufacturer_products').
+            select('*').
+            or(`id.eq.${rawRef},agent_product_id.eq.${rawRef}`).
+            eq('is_active', true).
+            order('created_at', { ascending: false }).
+            limit(1).
+            maybeSingle();
+            data = plain.data;
+          }
+        } else if (safeRef) {
+          // short_id is case-sensitive; slug/sku are matched case-insensitively (e.g. /p/ya35 or /p/DH-YE-1000).
+          const lowered = safeRef.toLowerCase();
+          const bySlugOrSku = await supabase.
+          from('manufacturer_products').
+          select(selectCols).
+          or(`short_id.eq.${safeRef},slug.ilike.${lowered},sku.ilike.${safeRef}`).
+          eq('is_active', true).
+          limit(1).
+          maybeSingle();
+          data = bySlugOrSku.data;
+
+          if (!data) {
+            const plain = await supabase.
+            from('manufacturer_products').
+            select('*').
+            or(`short_id.eq.${safeRef},slug.ilike.${lowered},sku.ilike.${safeRef}`).
+            eq('is_active', true).
+            limit(1).
+            maybeSingle();
+            data = plain.data;
+          }
+        }
+
+        // Public view: factory/facility is the only seller. Strip internal agent attribution.
+        let factoryPublic: any = null;
+        if (data) {
+          const {
+            attributed_agent_id: _attributedAgent,
+            created_by_id: _createdById,
+            created_by_name: _createdByName,
+            created_by_role: _createdByRole,
+            ...publicData
+          } = data;
+          // Seller = registered factory only (never created_by / onboarded agent / agent-owned manufacturer_id)
+          const sellerRef: string | null = data.registered_factory_id || data.facility_id || null;
+          data = { ...publicData, manufacturer_id: sellerRef };
+          if (sellerRef) {
+            try {
+              const { data: fp } = await supabase.rpc('get_public_factory_profile', { p_ref: sellerRef });
+              factoryPublic = Array.isArray(fp) ? fp[0] : fp;
+            } catch {
+              factoryPublic = null;
+            }
+          }
+        }
 
         if (data) {
           const images =
@@ -470,9 +699,29 @@ export default function ProductDetailPage() {
           const supplierRaw = userProfileRaw?.supplier_profiles;
           const supplierProfile = Array.isArray(supplierRaw) ? supplierRaw[0] : supplierRaw;
           const userProfile = userProfileRaw as any;
-          const supplierName = userProfile?.company_name || userProfile?.full_name || 'DirectHub Supplier';
-          const supplierCountry = data.origin_country || userProfile?.country || 'Global';
-          const isVerified = userProfile?.is_verified || supplierProfile?.is_verified || false;
+          // Only trust the joined user profile when it belongs to the resolved factory (not an agent)
+          const joinedProfileIsFactory = !!factoryPublic ? false : !data.registered_factory_id;
+          const supplierName =
+          factoryPublic?.company_name || (
+          joinedProfileIsFactory ? userProfile?.company_name || userProfile?.full_name : null) || (
+          language === 'ar' ? 'مصنع مسجل' : 'Registered Factory');
+          const factoryCountryCode: string = factoryPublic?.country_code || '';
+          const factoryCity: string = factoryPublic?.city || '';
+          const COUNTRY_LABELS: Record<string, {ar: string;en: string;}> = {
+            YE: { ar: 'اليمن', en: 'Yemen' },
+            SA: { ar: 'السعودية', en: 'Saudi Arabia' },
+            CN: { ar: 'الصين', en: 'China' },
+            TR: { ar: 'تركيا', en: 'Turkey' },
+            IN: { ar: 'الهند', en: 'India' },
+            EG: { ar: 'مصر', en: 'Egypt' },
+            AE: { ar: 'الإمارات', en: 'UAE' },
+            OM: { ar: 'عمان', en: 'Oman' }
+          };
+          const factoryCountryName = COUNTRY_LABELS[factoryCountryCode]?.[language === 'ar' ? 'ar' : 'en'] || factoryCountryCode;
+          const supplierCountry = factoryCountryCode ?
+          `${factoryCity ? `${factoryCity}، ` : ''}${factoryCountryName} (${factoryCountryCode})` :
+          data.origin_country || (joinedProfileIsFactory ? userProfile?.country : null) || 'Global';
+          const isVerified = true;
           const rating = supplierProfile?.rating || 4.5;
           const reviewCount = supplierProfile?.review_count || 0;
           const responseRate = supplierProfile?.response_rate ? `${supplierProfile.response_rate}%` : undefined;
@@ -487,33 +736,44 @@ export default function ProductDetailPage() {
           const inventoryStatus = data.inventory_status || 'in_stock';
 
           const unitPriceNum = parseFloat(String(data.unit_price || data.price || 0)) || 0;
-          const moqNum = parseInt(String(data.moq || data.min_order_quantity || 1)) || 1;
+          const dbTiers = normalizeTiers(data.tiered_pricing);
+          const moqNum = dbTiers.length > 0 ?
+          dbTiers[0].min_qty :
+          parseInt(String(data.minimum_order_qty || data.min_order_quantity || data.moq || 1)) || 1;
+          const tierUnit = data.unit || 'unit';
+          const rowCurrency = String(data.origin_type || factoryPublic?.origin_type || '').toLowerCase() === 'international' ?
+          'USD' : String(data.origin_type || '').toLowerCase() === 'local' ?
+          'YER' : String(data.currency || 'YER').toUpperCase() === 'USD' ? 'USD' : 'YER';
+          const curSym = rowCurrency === 'YER' ? '' : '$';
+          const curSuffix = rowCurrency === 'YER' ? ' ر.ي' : '';
+          const fmtCur = (n: number) => `${curSym}${n.toFixed(2)}${curSuffix}`;
           let finalPriceTiers: PriceTier[] = [];
-          if (Array.isArray(data.tiered_pricing) && data.tiered_pricing.length > 0) {
-            finalPriceTiers = data.tiered_pricing.map((tier: any) => ({
-              minQty: String(tier.min_qty || tier.minQty || ''),
-              maxQty: tier.max_qty != null ? String(tier.max_qty) : tier.maxQty != null ? String(tier.maxQty) : '+',
-              price: `$${parseFloat(String(tier.price)).toFixed(2)}/${data.unit || 'unit'}`
+          if (dbTiers.length > 0) {
+            finalPriceTiers = dbTiers.map((tier) => ({
+              minQty: String(tier.min_qty),
+              maxQty: tier.max_qty !== null ? String(tier.max_qty) : '+',
+              price: `${fmtCur(tier.unit_price)}/${tierUnit}`
             }));
           } else if (unitPriceNum > 0) {
             finalPriceTiers = [
-            { minQty: String(moqNum), maxQty: String(moqNum * 4), price: `$${(unitPriceNum * 1.15).toFixed(2)}/${data.unit || 'unit'}` },
-            { minQty: String(moqNum * 5), maxQty: String(moqNum * 19), price: `$${(unitPriceNum * 1.05).toFixed(2)}/${data.unit || 'unit'}` },
-            { minQty: String(moqNum * 20), maxQty: '+', price: `$${unitPriceNum.toFixed(2)}/${data.unit || 'unit'}` }];
+            { minQty: String(moqNum), maxQty: '+', price: `${fmtCur(unitPriceNum)}/${tierUnit}` }];
 
           }
+          const tierBounds = getTierPriceBounds(dbTiers);
+          const rangeMin = tierBounds ? tierBounds.min : unitPriceNum;
+          const rangeMax = tierBounds ? tierBounds.max : unitPriceNum;
 
           setProduct({
             id: data.id,
             name: data.name,
             nameAr: data.name_ar || data.name,
             images,
-            price: String(unitPriceNum),
-            priceRange: unitPriceNum > 0 ? `$${(unitPriceNum * 1.15).toFixed(2)} – $${unitPriceNum.toFixed(2)}` : language === 'ar' ? 'تواصل لمعرفة السعر' : 'Contact for pricing',
-            currency: 'USD',
+            price: String(tierBounds ? tierBounds.min : unitPriceNum),
+            priceRange: rangeMin > 0 ? rangeMin === rangeMax ? fmtCur(rangeMin) : `${fmtCur(rangeMin)} – ${fmtCur(rangeMax)}` : language === 'ar' ? 'تواصل لمعرفة السعر' : 'Contact for pricing',
+            currency: rowCurrency === 'YER' ? 'YER' : 'USD',
             moq: `${moqNum} ${data.unit || (language === 'ar' ? 'وحدة' : 'units')}`,
             supplier: supplierName,
-            supplierId: supplierProfile?.id || data.manufacturer_id,
+            supplierId: factoryPublic?.factory_id || data.manufacturer_id || undefined,
             supplierCountry,
             countryFlag: '🏭',
             verified: isVerified,
@@ -525,12 +785,14 @@ export default function ProductDetailPage() {
             descriptionAr: data.description_ar || data.description || '',
             specifications: specs,
             leadTime: leadTimeStr,
-            paymentTerms: 'T/T, L/C',
-            port: data.shipping_port || supplierCountry,
+            paymentTerms: language === 'ar' ? 'دفع عبر الضمان / تحويل بنكي / محفظة' : 'Escrow / Bank transfer / Wallet',
+            port: data.shipping_port === 'YEMEN_ALL' ? language === 'ar' ? 'كافة المحافظات اليمنية' : 'All Yemeni governorates' : data.shipping_port === 'FACTORY_GOVERNORATE' ? language === 'ar' ? 'نطاق محافظة المصنع فقط' : 'Factory governorate only' : data.shipping_port || factoryPublic?.shipping_port || supplierCountry,
             shippingTerms: (['DELIVERY_INCLUDED', 'EX_FACTORY', 'CALCULATED_SHIPPING'].includes(data.shipping_terms) ? data.shipping_terms : 'CALCULATED_SHIPPING') as 'DELIVERY_INCLUDED' | 'EX_FACTORY' | 'CALCULATED_SHIPPING',
             agentListed: !!data.agent_product_id,
             certifications: certs.length > 0 ? certs : undefined,
             priceTiers: finalPriceTiers,
+            rawTiers: dbTiers,
+            moqNumber: moqNum,
             supplyAbility: stockQty > 0 ? `${stockQty} ${data.unit || (language === 'ar' ? 'وحدة' : 'units')}` : undefined,
             hsCode: data.hs_code || undefined,
             qualityControl: data.quality_control || undefined,
@@ -540,12 +802,17 @@ export default function ProductDetailPage() {
             sampleAvailable: data.sample_available || false,
             samplePrice: data.sample_price ? parseFloat(data.sample_price) : undefined,
             sellerBadge: data.seller_badge || null,
-            videoUrl: data.video_url || undefined
+            videoUrl: data.video_url || undefined,
+            productCode: data.sku || undefined,
+            shortId: data.short_id || undefined,
+            slug: data.slug || undefined,
+            incoterms: Array.isArray(data.supported_incoterms) ? data.supported_incoterms.filter(Boolean) : [],
+            portOfLoading: data.port_of_loading || factoryPublic?.shipping_port || undefined
           });
           // Determine B2B: sales_model field, b2b_enabled flag, or has tiered pricing
           const salesModel = (data.sales_model || '').toLowerCase();
           const b2bEnabled = data.b2b_enabled === true || data.is_wholesale === true;
-          const hasTiers = finalPriceTiers.length > 0;
+          const hasTiers = dbTiers.length > 0;
           setIsB2B(b2bEnabled || salesModel === 'b2b' || salesModel === 'wholesale' || hasTiers);
           setNotFound(false);
         } else if (!productDatabase[id]) {
@@ -576,7 +843,7 @@ export default function ProductDetailPage() {
       price: parseFloat(String(product.price ?? '').replace(/,/g, '')) || 0,
       currency: product.currency,
       moq: product.moq,
-      quantity: 1,
+      quantity: Math.max(1, orderQty),
       supplier: product.supplier,
       countryFlag: product.countryFlag,
       verified: product.verified,
@@ -607,16 +874,20 @@ export default function ProductDetailPage() {
     setShowCheckoutPanel(true);
   };
 
-  const unitPrice = parseFloat(String(product.price ?? '').replace(/,/g, '')) || 0;
-  const subtotal = unitPrice * orderQty;
+  const activeTier = findTierForQty(product.rawTiers || [], orderQty);
+  const unitPrice = activeTier ? activeTier.unit_price : parseFloat(String(product.price ?? '').replace(/,/g, '')) || 0;
+  const subtotal = parseFloat((unitPrice * orderQty).toFixed(2));
   const isDeliveryIncluded = product.shippingTerms === 'DELIVERY_INCLUDED';
-  // Shipping is strictly 0 when the price already includes delivery; otherwise it is arranged after order confirmation
-  const shippingCost = 0;
-  const escrowFee = parseFloat((subtotal * 0.015).toFixed(2));
-  const buyerReserve = parseFloat((subtotal * 0.30).toFixed(2));
-  const supplierAdvance = parseFloat((subtotal * 0.70).toFixed(2));
-  const totalEscrow = parseFloat((subtotal + escrowFee + shippingCost).toFixed(2));
-
+  const isDomestic = isDomesticCurrency(product.currency);
+  const money = (n: number, opts?: Intl.NumberFormatOptions) => {
+    const s = n.toLocaleString('en-US', opts);
+    return isDomestic ? `${s} ر.ي` : `$${s}`;
+  };
+  // Escrow calculations
+  const escrowFee = parseFloat((subtotal * 0.02).toFixed(2));
+  const totalEscrow = parseFloat((subtotal + escrowFee).toFixed(2));
+  const buyerReserve = parseFloat((totalEscrow * 0.3).toFixed(2));
+  const supplierAdvance = parseFloat((totalEscrow * 0.7).toFixed(2));
   const handleConfirmOrder = () => {
     setShowConfirmation(false);
     setConfirmationSubmitted(true);
@@ -624,11 +895,26 @@ export default function ProductDetailPage() {
       setConfirmationSubmitted(false);
       setShowCheckoutPanel(false);
       if (checkoutMode === 'escrow') {
-        router.push(`/checkout/rfq?productId=${product.id}&type=escrow&qty=${orderQty}`);
+        router.push('/orders');
       } else {
-        router.push(`/rfq/${product.id}?qty=${orderQty}`);
+        router.push(`/rfq/create?productId=${product.id}&qty=${orderQty}`);
       }
     }, 1800);
+  };
+  const handleCopyCode = async () => {
+    const ok = await copyProductShareText({
+      id: product.id,
+      name: product.name,
+      name_ar: product.nameAr,
+      sku: product.productCode,
+      short_id: product.shortId,
+      slug: product.slug,
+      currency: product.currency
+    });
+    if (ok) {
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2500);
+    }
   };
 
   const inventoryBadge = () => {
@@ -730,6 +1016,12 @@ export default function ProductDetailPage() {
     <div className="min-h-screen bg-background" dir={dir}>
       <Header />
 
+      {ownProductNotice &&
+      <div role="status" className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] px-4 py-2.5 bg-foreground text-background text-xs font-bold rounded-xl shadow-lg">
+          {isArabic ? 'لا يمكنك مراسلة نفسك بخصوص منتجك الخاص' : 'You cannot message yourself about your own product'}
+        </div>
+      }
+
       {/* ── Breadcrumb ── */}
       <div className="bg-muted/30 border-b border-border">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-2.5 flex items-center gap-2 text-xs text-muted-foreground overflow-x-auto hide-scrollbar">
@@ -752,15 +1044,37 @@ export default function ProductDetailPage() {
           {/* ── Column 1: Image Gallery ── */}
           <div className="space-y-3">
             {/* Main Image */}
-            <div className="relative aspect-square rounded-2xl overflow-hidden bg-muted border border-border group">
+            <div
+              className="relative aspect-square rounded-2xl overflow-hidden bg-muted border border-border group touch-pan-y select-none"
+              onTouchStart={handleGalleryTouchStart}
+              onTouchEnd={handleGalleryTouchEnd}>
               <AppImage
+                key={`main-${activeImage}-${product.images[activeImage]?.src || product.images[0]?.src}`}
                 src={product.images[activeImage]?.src || product.images[0]?.src}
                 alt={product.images[activeImage]?.alt || product.name}
                 fill
-                className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                className="object-contain transition-opacity duration-300"
+                style={{ objectFit: 'contain' }}
                 sizes="(max-width: 768px) 100vw, 33vw"
                 priority />
-              
+              {product.images.length > 1 &&
+              <>
+                  <button
+                  type="button"
+                  onClick={() => goToImage(activeImage - 1)}
+                  aria-label="Previous image"
+                  className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 items-center justify-center rounded-full bg-black/40 hover:bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <Icon name="ChevronLeftIcon" size={18} />
+                  </button>
+                  <button
+                  type="button"
+                  onClick={() => goToImage(activeImage + 1)}
+                  aria-label="Next image"
+                  className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 items-center justify-center rounded-full bg-black/40 hover:bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <Icon name="ChevronRightIcon" size={18} />
+                  </button>
+                </>
+              }
               {/* Top-left badges */}
               <div className="absolute top-3 left-3 flex flex-col gap-1.5">
                 {product.verified &&
@@ -784,23 +1098,25 @@ export default function ProductDetailPage() {
               </div>
               {/* Image counter */}
               {product.images.length > 1 &&
-              <div className="absolute bottom-3 right-3 px-2 py-1 bg-black/50 backdrop-blur-sm text-white text-[10px] font-bold rounded-full">
-                  {activeImage + 1} / {product.images.length}
+              <div className="absolute bottom-3 right-3 px-2 py-1 bg-black/50 backdrop-blur-sm text-white text-[10px] font-bold rounded-full" dir="ltr">
+                  {`${activeImage + 1} / ${product.images.length}`}
                 </div>
               }
             </div>
 
             {/* Thumbnails */}
             {product.images.length > 1 &&
-            <div className="flex gap-2 overflow-x-auto hide-scrollbar">
+            <div ref={thumbsRef} className="flex gap-2 overflow-x-auto hide-scrollbar">
                 {product.images.map((img, i) =>
               <button
                 key={i}
+                type="button"
                 onClick={() => setActiveImage(i)}
                 className={`relative shrink-0 w-16 h-16 md:w-18 md:h-18 rounded-xl overflow-hidden border-2 transition-all duration-200 ${
-                activeImage === i ? 'border-primary shadow-md shadow-primary/20 scale-105' : 'border-border hover:border-primary/50'}`
+                activeImage === i ? 'border-primary ring-2 ring-primary/40 shadow-md shadow-primary/20 scale-105' : 'border-border hover:border-primary/50'}`
                 }
-                aria-label={`View image ${i + 1}`}>
+                aria-label={`View image ${i + 1}`}
+                aria-current={activeImage === i}>
                 
                     <AppImage src={img.src} alt={img.alt} fill className="object-cover" sizes="72px" />
                   </button>
@@ -851,47 +1167,54 @@ export default function ProductDetailPage() {
               {inventoryBadge()}
             </div>
 
-            {/* Sample badge */}
-            {product.sampleAvailable &&
-            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/8 text-primary text-xs font-bold rounded-full border border-primary/20 w-fit">
-                <Icon name="BeakerIcon" size={12} variant="solid" />
-                {pp.sampleAvailable}{product.samplePrice ? ` · $${product.samplePrice}` : ''}
-              </div>
-            }
-
-            {/* ── Price Block ── */}
-            <div className="rounded-2xl border border-primary/25 overflow-hidden">
-              <div className="bg-gradient-to-br from-primary/8 via-primary/5 to-transparent px-5 py-5">
-                <p className="text-[10px] font-extrabold text-primary/70 uppercase tracking-widest mb-2">{pp.priceRange}</p>
-                <p className="text-3xl font-extrabold text-foreground tracking-tight leading-tight min-h-[2.5rem] flex items-center" dir="ltr">{product.priceRange}</p>
-                <p className="text-xs text-muted-foreground mt-2">{pp.perUnitByQty}</p>
-              </div>
-              <div className="px-5 py-3 bg-muted/30 border-t border-primary/15 flex items-center gap-4 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Icon name="CubeIcon" size={14} className="text-primary" />
+            {/* ── Product Code + Adaptive Trade Terms ── */}
+            {product.productCode &&
+            <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 space-y-2.5">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Icon name="TagIcon" size={14} className="text-primary" />
+                    <span className="text-[11px] text-muted-foreground font-semibold">{isArabic ? 'كود المنتج' : 'Product Code'}</span>
+                    <span className="text-sm font-extrabold text-foreground font-mono" dir="ltr">{product.productCode}</span>
                   </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">{pp.moq}</p>
-                    <p className="text-sm font-extrabold text-foreground">{product.moq}</p>
-                  </div>
+                  <button
+                  type="button"
+                  onClick={handleCopyCode}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/30 text-primary text-xs font-bold hover:bg-primary/5 transition-colors">
+                    {codeCopied ? isArabic ? '✓ تم النسخ' : '✓ Copied' : '🔗 نسخ رابط وكود المنتج'}
+                  </button>
                 </div>
-                {product.supplyAbility &&
-                <>
-                    <div className="w-px h-8 bg-border" />
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center">
-                        <Icon name="BuildingStorefrontIcon" size={14} className="text-muted-foreground" />
+                {isDomestic ?
+              <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                    <Icon name="TruckIcon" size={14} className="text-green-600" />
+                    <span>
+                      {isDeliveryIncluded ? 'شامل التوصيل' : 'استلام من باب المصنع'}
+                    </span>
+                    <span className="text-[10px] font-semibold text-muted-foreground">
+                      {isArabic ? '· دفع عبر الضمان بوسائل الدفع اليمنية' : '· Escrow with Yemeni payment methods'}
+                    </span>
+                  </div> :
+
+              <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap text-xs font-bold text-foreground">
+                      <Icon name="GlobeAltIcon" size={14} className="text-primary" />
+                      <span>{isArabic ? 'شروط التجارة الدولية (Incoterms):' : 'International trade terms (Incoterms):'}</span>
+                      <span dir="ltr" className="font-mono">{product.incoterms && product.incoterms.length > 0 ? product.incoterms.join(' / ') : 'FOB / CIF'}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div className="px-2.5 py-1.5 rounded-lg bg-background border border-border">
+                        <p className="text-muted-foreground font-semibold">{isArabic ? 'ميناء الشحن' : 'Port of loading'}</p>
+                        <p className="font-bold text-foreground" dir="ltr">{product.portOfLoading || product.port || '—'}</p>
                       </div>
-                      <div>
-                        <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">{pp.supplyCapacity}</p>
-                        <p className="text-sm font-bold text-foreground">{product.supplyAbility}</p>
+                      <div className="px-2.5 py-1.5 rounded-lg bg-background border border-border">
+                        <p className="text-muted-foreground font-semibold">{isArabic ? 'ميناء التفريغ' : 'Port of discharge'}</p>
+                        <p className="font-bold text-foreground">{isArabic ? 'يُحدد عند الطلب' : 'Set at order / inquiry'}</p>
                       </div>
                     </div>
-                  </>
-                }
+                    <p className="text-[10px] text-muted-foreground">{isArabic ? 'ضمان B2B دولي وطلب استفسار' : 'B2B international escrow & inquiry checkout'}</p>
+                  </div>
+              }
               </div>
-            </div>
+            }
 
             {/* ── MOQ Pricing Tiers (B2B Volume Discounts) — only for B2B products ── */}
             {isB2B && product.priceTiers && product.priceTiers.length > 0 &&
@@ -916,9 +1239,6 @@ export default function ProductDetailPage() {
               </div>
               <div className="divide-y divide-border">
                 {product.priceTiers.map((tier, i) => {
-                  const tierLabels = isArabic ?
-                  ['الطلب الأساسي', 'خصم الجملة', 'أفضل سعر'] :
-                  ['Standard Order', 'Bulk Discount', 'Best Price'];
                   const tierColors = [
                   'bg-muted/20',
                   'bg-primary/3',
@@ -927,19 +1247,22 @@ export default function ProductDetailPage() {
                   const dotColors = ['bg-muted-foreground', 'bg-primary/60', 'bg-accent'];
                   const basePrice = parseFloat(product.priceTiers![0].price.replace(/[^0-9.]/g, ''));
                   const thisPrice = parseFloat(tier.price.replace(/[^0-9.]/g, ''));
-                  const savingPct = basePrice > 0 && i > 0 ? Math.round((1 - thisPrice / basePrice) * 100) : 0;
+                  const savingPct = basePrice > 0 && i > 0 && thisPrice < basePrice ? Math.round((1 - thisPrice / basePrice) * 100) : 0;
+                  const isActiveTier = !!activeTier && product.rawTiers?.[i]?.min_qty === activeTier.min_qty;
                   // Determine unit label from price tier string
                   const tierUnit = extractUnitFromPrice(tier.price);
                   const unitLabel = isArabic ? getArabicUnit(tierUnit) : tierUnit;
                   return (
-                    <div key={i} className={`flex items-center justify-between px-4 py-3.5 ${tierColors[i] || 'bg-muted/10'} transition-colors`}>
+                    <div key={i} className={`flex items-center justify-between px-4 py-3.5 ${isActiveTier ? 'bg-primary/10 ring-1 ring-inset ring-primary/40' : tierColors[i] || 'bg-muted/10'} transition-colors`}>
                       <div className="flex items-center gap-3">
                         <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dotColors[i] || 'bg-muted-foreground'}`} />
                         <div>
                           <p className="text-xs font-bold text-foreground">
                             {tier.maxQty === '+' ? `≥ ${tier.minQty} ${unitLabel}` : `${tier.minQty} – ${tier.maxQty} ${unitLabel}`}
                           </p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5">{tierLabels[i] || ''}</p>
+                          {isActiveTier &&
+                          <p className="text-[10px] text-primary font-bold mt-0.5">{isArabic ? 'الشريحة المطبّقة على كميتك' : 'Applied to your quantity'}</p>
+                          }
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -956,60 +1279,81 @@ export default function ProductDetailPage() {
 
                 })}
               </div>
+              {/* Live total for buyer's entered quantity */}
+              {activeTier &&
+              <div className="px-4 py-3 bg-muted/30 border-t border-border space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <label htmlFor="tier-calc-qty" className="text-xs font-bold text-foreground">{isArabic ? 'الكمية المطلوبة' : 'Your quantity'}</label>
+                    <input
+                    id="tier-calc-qty"
+                    type="number"
+                    min={1}
+                    value={orderQty}
+                    onChange={(e) => setOrderQty(Math.max(1, parseInt(e.target.value) || 1))}
+                    dir="ltr"
+                    className="w-28 text-center py-1.5 border border-border rounded-lg bg-background text-foreground font-bold text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground" dir="ltr">
+                    <span>{orderQty} × {money(activeTier.unit_price, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-base font-extrabold text-primary">{isArabic ? 'الإجمالي: ' : 'Total: '}{money(subtotal, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              }
               {/* Note: no duplicate RFQ shortcut here — primary CTA is in sidebar and sticky bar */}
             </div>
             }
 
             {/* ── PRIMARY CTA BLOCK — conditional on B2B vs B2C ── */}
             {isB2B ? (
-            /* B2B: secondary actions only (Chat + Sample/Cart) — RFQ is in sidebar & sticky bar */
-            <div className="rounded-2xl border border-border bg-muted/20 p-4">
-                <div className="grid grid-cols-2 gap-2">
-                  <Link
-                  href={`/chat/${product.id}`}
-                  className="flex items-center justify-center gap-2 py-2.5 bg-card text-foreground text-xs font-extrabold rounded-xl border-2 border-primary/30 hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all">
-                    <Icon name="ChatBubbleLeftRightIcon" size={14} variant="solid" className="text-primary" />
-                    <span>{isArabic ? 'تواصل مع المصنع' : 'Chat with Factory'}</span>
-                  </Link>
-                  {product.sampleAvailable ?
-                <Link
-                  href={`/rfq/create?productId=${product.id}&type=sample`}
-                  className="flex items-center justify-center gap-2 py-2.5 bg-card text-foreground text-xs font-extrabold rounded-xl border-2 border-border hover:border-accent/50 hover:bg-accent/5 active:scale-[0.98] transition-all">
-                      <Icon name="BeakerIcon" size={14} className="text-accent" />
-                      <span>{isArabic ? 'طلب عينة' : 'Request Sample'}</span>
-                    </Link> :
-
-                <button
-                  onClick={handleAddToCart}
-                  className={`flex items-center justify-center gap-2 py-2.5 text-xs font-extrabold rounded-xl border-2 active:scale-[0.98] transition-all ${
-                  isInCart(product.id) ?
-                  'bg-accent text-accent-foreground border-accent' :
-                  'bg-card text-foreground border-border hover:bg-muted/80'}`
-                  }>
-                      <Icon name={isInCart(product.id) ? 'CheckIcon' : 'ShoppingCartIcon'} size={14} />
-                      <span>{addedToCart ? pp.added : isInCart(product.id) ? pp.inCart : pp.addToCart}</span>
-                    </button>
-                }
-                </div>
-              </div>) : (
-
-            /* B2C: Standard retail Add to Cart + Buy Now */
+            /* B2B: Primary Escrow order + secondary factory chat */
             <div className="space-y-2.5">
                 <button
                 onClick={handleEscrowOrder}
                 className="w-full flex items-center justify-center gap-2.5 py-3.5 px-5 bg-primary text-primary-foreground text-sm font-extrabold rounded-xl shadow-md shadow-primary/20 hover:bg-primary/90 active:scale-[0.98] transition-all">
-                  <Icon name="ShoppingBagIcon" size={18} variant="solid" />
-                  <span>{pp.orderNow}</span>
+                  <Icon name="LockClosedIcon" size={18} variant="solid" />
+                  <span>اطلب الآن والدفع عبر الضمان</span>
                 </button>
                 <button
+                type="button"
+                onClick={handleStartChat}
+                disabled={startingChat}
+                className="w-full flex items-center justify-center gap-2.5 py-3 px-5 bg-card text-foreground text-sm font-extrabold rounded-xl border-2 border-primary/30 hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all disabled:opacity-60">
+                  <Icon name="ChatBubbleLeftRightIcon" size={18} variant="solid" className="text-primary" />
+                  <span>تواصل مع المصنع</span>
+                </button>
+              </div>) : (
+
+            /* B2C: Add to Cart with quantity selector */
+            <div className="space-y-2.5">
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/20 px-3 py-2">
+                  <span className="text-xs font-bold text-foreground">الكمية</span>
+                  <div className="flex items-center gap-2" dir="ltr">
+                    <button
+                    type="button"
+                    aria-label="إنقاص الكمية"
+                    onClick={() => setOrderQty((q) => Math.max(1, q - 1))}
+                    className="w-9 h-9 rounded-lg border border-border bg-card flex items-center justify-center font-bold text-foreground hover:bg-muted transition-colors">
+                      −
+                    </button>
+                    <span className="min-w-[2.5rem] text-center text-sm font-extrabold text-foreground">{orderQty}</span>
+                    <button
+                    type="button"
+                    aria-label="زيادة الكمية"
+                    onClick={() => setOrderQty((q) => q + 1)}
+                    className="w-9 h-9 rounded-lg border border-border bg-card flex items-center justify-center font-bold text-foreground hover:bg-muted transition-colors">
+                      +
+                    </button>
+                  </div>
+                </div>
+                <button
                 onClick={handleAddToCart}
-                className={`w-full flex items-center justify-center gap-2.5 py-3 px-5 text-sm font-extrabold rounded-xl border-2 active:scale-[0.98] transition-all ${
+                className={`w-full flex items-center justify-center gap-2.5 py-3.5 px-5 text-sm font-extrabold rounded-xl active:scale-[0.98] transition-all ${
                 isInCart(product.id) ?
-                'bg-accent text-accent-foreground border-accent' :
-                'bg-card text-foreground border-primary/30 hover:border-primary hover:bg-primary/5'}`
+                'bg-accent text-accent-foreground' :
+                'bg-primary text-primary-foreground shadow-md shadow-primary/20 hover:bg-primary/90'}`
                 }>
                   <Icon name={isInCart(product.id) ? 'CheckIcon' : 'ShoppingCartIcon'} size={18} />
-                  <span>{addedToCart ? pp.added : isInCart(product.id) ? pp.inCart : pp.addToCart}</span>
+                  <span>{addedToCart ? 'تمت الإضافة' : 'إضافة إلى السلة'}</span>
                 </button>
               </div>)
             }
@@ -1065,7 +1409,7 @@ export default function ProductDetailPage() {
                     <p className={`text-sm font-extrabold ${product.verified ? 'text-emerald-700' : 'text-muted-foreground'}`}>
                       {product.verified ?
                       isArabic ? '✓ مصنع موثق — Verified Factory' : '✓ Verified Factory' :
-                      isArabic ? 'مورد غير موثق' : 'Unverified Supplier'}
+                      isArabic ? 'مصنع مسجل' : 'Registered Factory'}
                     </p>
                     {product.verifiedSince &&
                     <p className="text-[10px] text-muted-foreground">{isArabic ? `موثق منذ ${product.verifiedSince}` : `Verified since ${product.verifiedSince}`}</p>
@@ -1106,11 +1450,13 @@ export default function ProductDetailPage() {
                   <p className="text-[10px] text-muted-foreground mt-0.5">{pp.factory}: {product.factoryArea}</p>
                   }
                 </div>
+                {product.supplierId ?
                 <Link
-                  href={`/seller/${product.supplierId || product.id}`}
+                  href={`/supplier/${product.supplierId}`}
                   className="shrink-0 px-3 py-1.5 border border-border rounded-lg text-xs font-semibold text-foreground hover:bg-muted hover:border-primary/40 transition-colors">
                   {pp.viewProfile}
-                </Link>
+                </Link> :
+                null}
               </div>
 
               {/* Trust signals: Rating + Response Rate + Response Time */}
@@ -1151,85 +1497,9 @@ export default function ProductDetailPage() {
                 )}
                 </div>
               }
-              {!product.verified &&
-              <div className="px-4 py-3 border-t border-border/50">
-                  <p className="text-xs text-muted-foreground">{pp.unverifiedWarning}</p>
-                </div>
-              }
-
-              {/* Chat with Factory CTA */}
-              <div className="px-4 py-3 border-t border-border/50 bg-muted/20">
-                <Link
-                  href={`/chat/${product.id}`}
-                  className="w-full flex items-center justify-center gap-2.5 py-3 px-4 bg-card text-foreground text-sm font-extrabold rounded-xl border-2 border-primary/35 hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all">
-                  <Icon name="ChatBubbleLeftRightIcon" size={18} variant="solid" className="text-primary" />
-                  <span>{isArabic ? 'تواصل مع المصنع الآن' : 'Chat with Factory Now'}</span>
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-1" />
-                </Link>
-              </div>
             </div>
 
-            {/* Mobile CTA — shown only on mobile/tablet, hidden on lg+ */}
-            <div className="flex flex-col gap-3 lg:hidden">
-              {isB2B ? (
-              /* B2B mobile: primary RFQ + secondary Chat & Sample */
-              <>
-                  <Link
-                  href={`/rfq/create?productId=${product.id}`}
-                  className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-primary text-primary-foreground text-base font-extrabold rounded-2xl shadow-lg shadow-primary/25 hover:bg-primary/90 active:scale-[0.98] transition-all">
-                    <Icon name="DocumentTextIcon" size={20} variant="solid" />
-                    <span>{isArabic ? 'طلب تسعير كميات' : 'Request Custom RFQ'}</span>
-                  </Link>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Link
-                    href={`/chat/${product.id}`}
-                    className="flex items-center justify-center gap-2 py-3 bg-card text-foreground text-sm font-extrabold rounded-2xl border-2 border-primary/35 hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all">
-                      <Icon name="ChatBubbleLeftRightIcon" size={18} variant="solid" className="text-primary" />
-                      <span>{isArabic ? 'تواصل مع المصنع' : 'Chat Factory'}</span>
-                    </Link>
-                    {product.sampleAvailable ?
-                  <Link
-                    href={`/rfq/create?productId=${product.id}&type=sample`}
-                    className="flex items-center justify-center gap-2 py-3 bg-card text-foreground text-sm font-extrabold rounded-2xl border-2 border-border hover:border-accent/50 active:scale-[0.98] transition-all">
-                        <Icon name="BeakerIcon" size={18} className="text-accent" />
-                        <span>{isArabic ? 'طلب عينة' : 'Request Sample'}</span>
-                      </Link> :
-
-                  <button
-                    onClick={handleAddToCart}
-                    className={`flex items-center justify-center gap-2 py-3 text-sm font-extrabold rounded-2xl border-2 active:scale-[0.98] transition-all ${
-                    isInCart(product.id) ?
-                    'bg-accent text-accent-foreground border-accent' :
-                    'bg-card text-foreground border-border hover:bg-muted/80'}`
-                    }>
-                        <Icon name={isInCart(product.id) ? 'CheckIcon' : 'ShoppingCartIcon'} size={18} />
-                        <span>{addedToCart ? pp.added : isInCart(product.id) ? pp.inCart : pp.addToCart}</span>
-                      </button>
-                  }
-                  </div>
-                </>) : (
-
-              /* B2C mobile: Buy Now + Add to Cart */
-              <>
-                  <button
-                  onClick={handleEscrowOrder}
-                  className="w-full flex items-center justify-center gap-3 py-4 px-6 bg-primary text-primary-foreground text-base font-extrabold rounded-2xl shadow-lg shadow-primary/25 hover:bg-primary/90 active:scale-[0.98] transition-all">
-                    <Icon name="ShoppingBagIcon" size={20} variant="solid" />
-                    <span>{pp.orderNow}</span>
-                  </button>
-                  <button
-                  onClick={handleAddToCart}
-                  className={`w-full flex items-center justify-center gap-3 py-3.5 px-6 text-base font-extrabold rounded-2xl border-2 active:scale-[0.98] transition-all ${
-                  isInCart(product.id) ?
-                  'bg-accent text-accent-foreground border-accent' :
-                  'bg-card text-foreground border-primary/35 hover:border-primary hover:bg-primary/5'}`
-                  }>
-                    <Icon name={isInCart(product.id) ? 'CheckIcon' : 'ShoppingCartIcon'} size={20} />
-                    <span>{addedToCart ? pp.added : isInCart(product.id) ? pp.inCart : pp.addToCart}</span>
-                  </button>
-                </>)
-              }
-            </div>
+            {/* Mobile CTA lives in the fixed bottom bar below */}
           </div>
 
           {/* ── Column 3: Sticky Sidebar (Desktop only) ── */}
@@ -1247,57 +1517,36 @@ export default function ProductDetailPage() {
                 </div>
                 <div className="p-4 space-y-2.5">
                   {isB2B ? (
-                  /* B2B sidebar: primary RFQ + secondary Chat + optional Sample */
-                  <>
-                      <Link
-                      href={`/rfq/create?productId=${product.id}`}
-                      className="w-full flex items-center justify-center gap-2.5 py-3.5 px-5 bg-primary text-primary-foreground text-sm font-extrabold rounded-xl shadow-md shadow-primary/25 hover:bg-primary/90 active:scale-[0.98] transition-all">
-                        <Icon name="DocumentTextIcon" size={18} variant="solid" />
-                        <span>{isArabic ? 'طلب تسعير كميات' : 'Request Custom RFQ'}</span>
-                      </Link>
-
-                      <Link
-                      href={`/chat/${product.id}`}
-                      className="w-full flex items-center justify-center gap-2.5 py-3 px-5 bg-card text-foreground text-sm font-extrabold rounded-xl border-2 border-primary/35 hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all">
-                        <Icon name="ChatBubbleLeftRightIcon" size={18} variant="solid" className="text-primary" />
-                        <span>{isArabic ? 'تواصل مع المصنع' : 'Chat with Factory'}</span>
-                      </Link>
-
-                      {product.sampleAvailable &&
-                    <Link
-                      href={`/rfq/create?productId=${product.id}&type=sample`}
-                      className="w-full flex items-center justify-center gap-2.5 py-3 px-5 bg-card text-foreground text-sm font-extrabold rounded-xl border-2 border-border hover:border-accent/50 hover:bg-accent/5 active:scale-[0.98] transition-all">
-                          <Icon name="BeakerIcon" size={16} className="text-accent" />
-                          <span>{isArabic ? 'طلب عينة' : 'Request Sample'}{product.samplePrice ? ` · $${product.samplePrice}` : ''}</span>
-                        </Link>
-                    }
-                    </>) : (
-
-                  /* B2C sidebar: Buy Now + Add to Cart */
+                  /* B2B sidebar: Escrow order + factory chat */
                   <>
                       <button
                       onClick={handleEscrowOrder}
                       className="w-full flex items-center justify-center gap-2.5 py-3.5 px-5 bg-primary text-primary-foreground text-sm font-extrabold rounded-xl shadow-md shadow-primary/25 hover:bg-primary/90 active:scale-[0.98] transition-all">
-                        <Icon name="ShoppingBagIcon" size={18} variant="solid" />
-                        <span>{pp.orderNow}</span>
+                        <Icon name="LockClosedIcon" size={18} variant="solid" />
+                        <span>اطلب الآن والدفع عبر الضمان</span>
                       </button>
 
-                      <Link
-                      href={`/chat/${product.id}`}
-                      className="w-full flex items-center justify-center gap-2.5 py-3 px-5 bg-card text-foreground text-sm font-extrabold rounded-xl border-2 border-primary/35 hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all">
+                      <button
+                      type="button"
+                      onClick={handleStartChat}
+                      disabled={startingChat}
+                      className="w-full flex items-center justify-center gap-2.5 py-3 px-5 bg-card text-foreground text-sm font-extrabold rounded-xl border-2 border-primary/35 hover:border-primary hover:bg-primary/5 active:scale-[0.98] transition-all disabled:opacity-60">
                         <Icon name="ChatBubbleLeftRightIcon" size={18} variant="solid" className="text-primary" />
-                        <span>{isArabic ? 'تواصل مع المصنع' : 'Chat with Factory'}</span>
-                      </Link>
+                        <span>تواصل مع المصنع</span>
+                      </button>
+                    </>) : (
 
+                  /* B2C sidebar: Add to Cart (quantity selector is in the main CTA block) */
+                  <>
                       <button
                       onClick={handleAddToCart}
-                      className={`w-full flex items-center justify-center gap-2.5 py-3 text-sm font-bold rounded-xl border transition-all ${
+                      className={`w-full flex items-center justify-center gap-2.5 py-3.5 px-5 text-sm font-extrabold rounded-xl active:scale-[0.98] transition-all ${
                       isInCart(product.id) ?
-                      'bg-accent text-accent-foreground border-accent' :
-                      'bg-muted text-foreground border-border hover:bg-muted/80'}`
+                      'bg-accent text-accent-foreground' :
+                      'bg-primary text-primary-foreground shadow-md shadow-primary/25 hover:bg-primary/90'}`
                       }>
-                        <Icon name={isInCart(product.id) ? 'CheckIcon' : 'ShoppingCartIcon'} size={16} />
-                        <span>{addedToCart ? pp.added : isInCart(product.id) ? pp.inCart : pp.addToCart}</span>
+                        <Icon name={isInCart(product.id) ? 'CheckIcon' : 'ShoppingCartIcon'} size={18} />
+                        <span>{addedToCart ? 'تمت الإضافة' : 'إضافة إلى السلة'}</span>
                       </button>
                     </>)
                   }
@@ -1750,78 +1999,55 @@ export default function ProductDetailPage() {
         <div className="fixed bottom-20 md:bottom-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-md border-t border-border px-4 py-3 lg:hidden">
           <div className="max-w-7xl mx-auto flex flex-col gap-2">
             {isB2B ? (
-            /* B2B fixed bar: primary RFQ + Chat */
+            /* B2B fixed bar: Escrow order + factory chat */
             <div className="flex gap-2">
-                <Link
-                href={`/rfq/create?productId=${product.id}`}
+                <button
+                onClick={handleEscrowOrder}
                 className="flex-1 flex items-center justify-center gap-2 py-3.5 bg-primary text-primary-foreground text-sm font-extrabold rounded-2xl shadow-md shadow-primary/25 active:opacity-80 transition-all">
-                  <Icon name="DocumentTextIcon" size={20} variant="solid" />
-                  <span>{isArabic ? 'طلب تسعير كميات' : 'Request Custom RFQ'}</span>
-                </Link>
-                <Link
-                href={`/chat/${product.id}`}
-                className="flex items-center justify-center gap-2 py-3.5 px-4 bg-card text-foreground text-sm font-extrabold rounded-2xl border-2 border-primary/40 active:opacity-80 transition-all">
+                  <Icon name="LockClosedIcon" size={20} variant="solid" />
+                  <span>اطلب الآن والدفع عبر الضمان</span>
+                </button>
+                <button
+                type="button"
+                onClick={handleStartChat}
+                disabled={startingChat}
+                aria-label="تواصل مع المصنع"
+                className="flex items-center justify-center gap-2 py-3.5 px-4 bg-card text-foreground text-sm font-extrabold rounded-2xl border-2 border-primary/40 active:opacity-80 transition-all disabled:opacity-60">
                   <Icon name="ChatBubbleLeftRightIcon" size={20} variant="solid" className="text-primary" />
-                </Link>
-                <WishlistButton itemType="product" productId={product.id} size="sm" />
-                <a
-                href={buildProductShareLinkNoPhone(
-                  `${process.env.NEXT_PUBLIC_SITE_URL || 'https://direct-hub.net'}/product/${product.id}`,
-                  isArabic
-                )}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-[#25D366]/10 text-[#128C7E] text-xs font-bold rounded-xl border border-[#25D366]/30 active:opacity-80 transition-all"
-                title={isArabic ? 'مشاركة عبر واتساب' : 'Share on WhatsApp'}>
-                  <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 shrink-0">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-                  </svg>
-                </a>
+                  <span className="hidden sm:inline">تواصل مع المصنع</span>
+                </button>
               </div>) : (
 
-            /* B2C fixed bar: Buy Now + Chat + Cart + Wishlist + Share */
-            <>
-                <div className="flex gap-2">
+            /* B2C fixed bar: quantity selector + Add to Cart */
+            <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 shrink-0" dir="ltr">
                   <button
-                  onClick={handleEscrowOrder}
-                  className="flex-1 flex items-center justify-center gap-2 py-3.5 bg-primary text-primary-foreground text-sm font-extrabold rounded-2xl shadow-md shadow-primary/25 active:opacity-80 transition-all">
-                    <Icon name="ShoppingBagIcon" size={20} variant="solid" />
-                    <span>{pp.orderNow}</span>
+                  type="button"
+                  aria-label="إنقاص الكمية"
+                  onClick={() => setOrderQty((q) => Math.max(1, q - 1))}
+                  className="w-10 h-11 rounded-xl border border-border bg-muted flex items-center justify-center font-bold text-foreground">
+                    −
                   </button>
-                  <Link
-                  href={`/messaging?productId=${product.id}`}
-                  className="flex-1 flex items-center justify-center gap-2 py-3.5 bg-card text-foreground text-sm font-extrabold rounded-2xl border-2 border-primary/40 active:opacity-80 transition-all">
-                    <Icon name="ChatBubbleLeftRightIcon" size={20} variant="solid" className="text-primary" />
-                    <span>{pp.chatFactory}</span>
-                  </Link>
-                </div>
-                <div className="flex gap-2">
+                  <span className="min-w-[2rem] text-center text-sm font-extrabold text-foreground">{orderQty}</span>
                   <button
-                  onClick={handleAddToCart}
-                  className={`flex items-center justify-center gap-1.5 py-2.5 px-3 text-xs font-bold rounded-xl active:opacity-80 transition-all border flex-1 ${
-                  isInCart(product.id) ?
-                  'bg-accent text-accent-foreground border-accent' :
-                  'bg-muted text-foreground border-border hover:bg-muted/80'}`
-                  }>
-                    <Icon name={isInCart(product.id) ? 'CheckIcon' : 'ShoppingCartIcon'} size={15} />
-                    <span>{addedToCart ? pp.added : isInCart(product.id) ? pp.inCart : pp.addToCart}</span>
+                  type="button"
+                  aria-label="زيادة الكمية"
+                  onClick={() => setOrderQty((q) => q + 1)}
+                  className="w-10 h-11 rounded-xl border border-border bg-muted flex items-center justify-center font-bold text-foreground">
+                    +
                   </button>
-                  <WishlistButton itemType="product" productId={product.id} size="sm" />
-                  <a
-                  href={buildProductShareLinkNoPhone(
-                    `${process.env.NEXT_PUBLIC_SITE_URL || 'https://direct-hub.net'}/product/${product.id}`,
-                    isArabic
-                  )}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-[#25D366]/10 text-[#128C7E] text-xs font-bold rounded-xl border border-[#25D366]/30 active:opacity-80 transition-all"
-                  title={isArabic ? 'مشاركة عبر واتساب' : 'Share on WhatsApp'}>
-                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 shrink-0">
-                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-                    </svg>
-                  </a>
                 </div>
-              </>)
+                <button
+                onClick={handleAddToCart}
+                className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-extrabold rounded-2xl active:opacity-80 transition-all ${
+                isInCart(product.id) ?
+                'bg-accent text-accent-foreground' :
+                'bg-primary text-primary-foreground shadow-md shadow-primary/25'}`
+                }>
+                  <Icon name={isInCart(product.id) ? 'CheckIcon' : 'ShoppingCartIcon'} size={20} />
+                  <span>{addedToCart ? 'تمت الإضافة' : 'إضافة إلى السلة'}</span>
+                </button>
+              </div>)
             }
           </div>
         </div>
@@ -1900,9 +2126,9 @@ export default function ProductDetailPage() {
                   <div className="flex items-center justify-between px-4 py-3">
                     <div className="flex items-center gap-2">
                       <Icon name="CubeIcon" size={13} className="text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground">Subtotal ({orderQty} × ${unitPrice})</span>
+                      <span className="text-xs text-muted-foreground">Subtotal ({orderQty} × {money(unitPrice)})</span>
                     </div>
-                    <span className="text-sm font-bold text-foreground">${subtotal.toLocaleString()}</span>
+                    <span className="text-sm font-bold text-foreground">{money(subtotal)}</span>
                   </div>
                   {isDeliveryIncluded &&
               <div className="flex items-center justify-between px-4 py-3">
@@ -1910,7 +2136,7 @@ export default function ProductDetailPage() {
                       <Icon name="TruckIcon" size={13} className="text-green-600" />
                       <span className="text-xs text-muted-foreground">{pp.shippingLabel}</span>
                     </div>
-                    <span className="text-sm font-bold text-green-600">{pp.shippingFree} · $0</span>
+                    <span className="text-sm font-bold text-green-600">{pp.shippingFree} · {money(0)}</span>
                   </div>
               }
                   <div className="flex items-center justify-between px-4 py-3">
@@ -1918,26 +2144,26 @@ export default function ProductDetailPage() {
                       <Icon name="ShieldCheckIcon" size={13} className="text-muted-foreground" />
                       <span className="text-xs text-muted-foreground">{pp.escrowServiceFee}</span>
                     </div>
-                    <span className="text-sm font-bold text-foreground">${escrowFee.toLocaleString()}</span>
+                    <span className="text-sm font-bold text-foreground">{money(escrowFee)}</span>
                   </div>
                   <div className="px-4 py-3 bg-muted/40">
                     <div className="flex items-center justify-between mb-2.5">
                       <span className="text-xs font-extrabold text-foreground">{pp.totalHeldInEscrow}</span>
-                      <span className="text-base font-extrabold text-primary">${totalEscrow.toLocaleString()}</span>
+                      <span className="text-base font-extrabold text-primary">{money(totalEscrow)}</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 mt-2">
                       <div className="flex items-center gap-1.5 p-2 bg-primary/10 rounded-lg border border-primary/20">
                         <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
                         <div>
                           <p className="text-[10px] text-muted-foreground font-semibold">{pp.buyerReserve}</p>
-                          <p className="text-xs font-extrabold text-primary">${buyerReserve.toLocaleString()}</p>
+                          <p className="text-xs font-extrabold text-primary">{money(buyerReserve)}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 p-2 bg-accent/10 rounded-lg border border-accent/20">
                         <div className="w-2 h-2 rounded-full bg-accent shrink-0" />
                         <div>
                           <p className="text-[10px] text-muted-foreground font-semibold">{pp.supplierAdvance}</p>
-                          <p className="text-xs font-extrabold text-accent">${supplierAdvance.toLocaleString()}</p>
+                          <p className="text-xs font-extrabold text-accent">{money(supplierAdvance)}</p>
                         </div>
                       </div>
                     </div>
@@ -2009,7 +2235,7 @@ export default function ProductDetailPage() {
             
               <Icon name={checkoutMode === 'escrow' ? 'LockClosedIcon' : 'PaperAirplaneIcon'} size={18} variant="solid" />
               {checkoutMode === 'escrow' ?
-            `${pp.initiateEscrowOrder} · $${totalEscrow.toLocaleString()}` :
+            `${pp.initiateEscrowOrder} · ${money(totalEscrow)}` :
             pp.sendRfqUnits.replace('{qty}', String(orderQty))}
             </button>
 
@@ -2067,15 +2293,15 @@ export default function ProductDetailPage() {
                 <>
                       <div className="border-t border-border pt-2 flex items-center justify-between">
                         <span className="text-xs text-muted-foreground">{pp.subtotal}</span>
-                        <span className="text-xs font-bold text-foreground">${subtotal.toLocaleString()}</span>
+                        <span className="text-xs font-bold text-foreground">{money(subtotal)}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-muted-foreground">{pp.escrowServiceFee}</span>
-                        <span className="text-xs font-bold text-foreground">${escrowFee.toLocaleString()}</span>
+                        <span className="text-xs font-bold text-foreground">{money(escrowFee)}</span>
                       </div>
                       <div className="border-t border-border pt-2 flex items-center justify-between">
                         <span className="text-sm font-extrabold text-foreground">{pp.total}</span>
-                        <span className="text-sm font-extrabold text-primary">${totalEscrow.toLocaleString()}</span>
+                        <span className="text-sm font-extrabold text-primary">{money(totalEscrow)}</span>
                       </div>
                     </>
                 }

@@ -39,6 +39,7 @@ export const PROTECTED_ROUTE_PREFIXES: string[] = [
   '/api/payment',
   '/api/ai/admin-analysis',
   '/management',
+  '/driver',
   '/operations',
   '/analytics',
   '/invoices',

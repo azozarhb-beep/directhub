@@ -112,7 +112,7 @@ function MobileProductCard({ product }: { product: Product }) {
         <div className="flex items-center justify-between mt-auto pt-2 border-t border-border">
           <div>
             <p className="text-base font-extrabold text-primary">
-              {product.unit_price.toLocaleString()} <span className="text-xs font-medium">{product.currency || 'SAR'}</span>
+              {product.unit_price.toLocaleString()} <span className="text-xs font-medium">{String(product.currency || 'YER').toUpperCase() === 'USD' ? '$' : 'ر.ي'}</span>
             </p>
             <p className="text-[10px] text-muted-foreground">{sp.per} {product.unit} · {sp.moq} {product.minimum_order_qty}</p>
           </div>
@@ -161,7 +161,9 @@ export default function SellerPublicProfilePage() {
           .select('established_year')
           .eq('user_id', id)
           .maybeSingle();
-        setSeller({ ...profileData, established_year: regData?.established_year ?? null });
+        const rawYear = Number(regData?.established_year);
+        const validYear = Number.isInteger(rawYear) && rawYear >= 1900 && rawYear <= new Date().getFullYear() ? rawYear : null;
+        setSeller({ ...profileData, established_year: validYear });
       }
 
       const { data: productsData } = await supabase
@@ -330,7 +332,7 @@ export default function SellerPublicProfilePage() {
             {/* Desktop action buttons — hidden on mobile (shown in sticky bar) */}
             <div className="hidden sm:flex gap-3 mt-5">
               <Link
-                href={`/chat/${seller.id}`}
+                href="/messaging"
                 className="flex-1 flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity"
               >
                 <Icon name="ChatBubbleLeftRightIcon" size={16} />
@@ -466,7 +468,7 @@ export default function SellerPublicProfilePage() {
       {/* ── Mobile Sticky CTA Bar ── */}
       <div className="sm:hidden fixed bottom-16 left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-t border-border px-4 py-3 flex gap-3 shadow-lg">
         <Link
-          href={`/chat/${seller.id}`}
+          href="/messaging"
           className="flex-1 flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground text-sm font-bold rounded-xl active:opacity-80 transition-opacity"
         >
           <Icon name="ChatBubbleLeftRightIcon" size={16} />

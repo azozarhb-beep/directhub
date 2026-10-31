@@ -61,9 +61,15 @@ export async function POST(req: NextRequest) {
       ? imageBase64
       : `data:${mimeType};base64,${imageBase64}`;
 
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 400 });
+    }
+
     // Call Gemini Vision via llm-sdk
+    // NOTE: `provider` / `parameters` are NOT valid for Gemini — temperature and
+    // max_tokens must be top-level, and dropParams silently discards unsupported keys.
     const response = await completion({
-      provider: 'GEMINI',
       model: 'gemini/gemini-3.5-flash-lite',
       messages: [
         {
@@ -84,13 +90,14 @@ export async function POST(req: NextRequest) {
           ],
         },
       ],
-      parameters: {
-        temperature: 0.1,
-        max_tokens: 1000,
-      },
-    });
+      stream: false,
+      api_key: apiKey,
+      temperature: 0.1,
+      max_tokens: 1000,
+      dropParams: true,
+    } as any);
 
-    const rawContent = response.choices?.[0]?.message?.content || '{}';
+    const rawContent = (response as any)?.choices?.[0]?.message?.content || '{}';
 
     // Parse JSON from Gemini response
     let ocrResult: Record<string, any> = {};

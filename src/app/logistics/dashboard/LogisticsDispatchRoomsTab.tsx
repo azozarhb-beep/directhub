@@ -11,6 +11,7 @@ interface DispatchRoom {
   factory_id: string | null;
   agent_id: string | null;
   logistics_id: string | null;
+  buyer_id?: string | null;
   status: 'active' | 'closed';
   created_at: string;
   closed_at: string | null;
@@ -33,6 +34,10 @@ export default function LogisticsDispatchRoomsTab({ userId, partnerId }: Logisti
   const fetchRooms = useCallback(async () => {
     setLoading(true);
     try {
+      // Open rooms for newly assigned shipments & archive delivered ones (POD / PIN verified)
+      const { error: syncError } = await supabase.rpc('sync_logistics_dispatch_rooms');
+      if (syncError) console.error('sync_logistics_dispatch_rooms error:', syncError);
+
       const { data, error } = await supabase
         .from('order_dispatch_rooms')
         .select(`
@@ -71,7 +76,7 @@ export default function LogisticsDispatchRoomsTab({ userId, partnerId }: Logisti
           <div className="flex-1">
             <h2 className="text-lg font-bold">غرف التنسيق الميداني</h2>
             <p className="text-sm text-white/80">
-              غرف المحادثة الثلاثية المرتبطة بطلبات "البضاعة جاهزة للشحن"
+              غرف التنسيق المباشر بين المندوب والمصنع وإدارة العمليات للشحنات المسندة
             </p>
           </div>
           <div className="text-right shrink-0">
@@ -130,7 +135,7 @@ export default function LogisticsDispatchRoomsTab({ userId, partnerId }: Logisti
           <p className="text-sm text-muted-foreground">
             لا توجد غرف تنسيق ميداني مسندة إليك بعد.
             <br />
-            ستظهر هنا تلقائياً عند تغيير حالة الطلب إلى "البضاعة جاهزة للشحن".
+            ستظهر هنا تلقائياً فور إسناد الشحنة للتنسيق الفوري مع المصنع حول مواعيد الاستلام وتصاريح التحميل.
           </p>
         </div>
       ) : (
@@ -185,6 +190,7 @@ export default function LogisticsDispatchRoomsTab({ userId, partnerId }: Logisti
                 factoryId={selectedRoom.factory_id}
                 agentId={selectedRoom.agent_id}
                 logisticsId={selectedRoom.logistics_id}
+                buyerId={selectedRoom.buyer_id ?? null}
                 onClose={() => setSelectedRoom(null)}
               />
             ) : (

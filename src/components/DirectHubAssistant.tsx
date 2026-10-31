@@ -386,6 +386,7 @@ PERSONALITY: Warm, confident, knowledgeable. Never robotic. Always feel like a r
       const decoder = new TextDecoder();
       let buffer = '';
       let streamDone = false;
+      let streamErrorMsg: string | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -413,6 +414,7 @@ PERSONALITY: Warm, confident, knowledgeable. Never robotic. Always feel like a r
                 });
               }
             } else if (data.type === 'done') {
+              if (!accumulated.trim()) continue;
               streamDone = true;
               clearStreamGuards();
               // Cache the response for future identical queries (text-only)
@@ -431,7 +433,7 @@ PERSONALITY: Warm, confident, knowledgeable. Never robotic. Always feel like a r
               setIsLoading(false);
               saveConversation(finalMsgs);
             } else if (data.type === 'error') {
-              throw new Error(data.error || 'Assistant error');
+              streamErrorMsg = data.error || 'Assistant error';
             }
           } catch (parseErr) {
             // Skip invalid JSON lines
@@ -439,8 +441,11 @@ PERSONALITY: Warm, confident, knowledgeable. Never robotic. Always feel like a r
         }
       }
 
+      if (streamErrorMsg && !accumulated.trim()) throw new Error(streamErrorMsg);
+
       // If stream ended without explicit 'done' event, finalize anyway
       if (!streamDone) {
+        if (!accumulated.trim()) throw new Error('Empty response from assistant');
         clearStreamGuards();
         if (accumulated.length > 10 && !currentFile) {
           setCachedResponse(apiMessages, accumulated);
@@ -461,7 +466,7 @@ PERSONALITY: Warm, confident, knowledgeable. Never robotic. Always feel like a r
       if ((err as any)?.name === 'AbortError') return; // intentional abort
       clearStreamGuards();
       const errMsg = (err instanceof Error ? err.message : String(err)) || '';
-      const isQuota = errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('temporarily unavailable') || errMsg.includes('غير متاحة') || errMsg.includes('RateLimitError');
+      const isQuota = /quota|RESOURCE_EXHAUSTED|rate limit|temporarily unavailable|غير متاحة|RateLimitError|429/i.test(errMsg);
       const fallback = isQuota
         ? ui.quotaError
         : ui.tempError;
@@ -520,11 +525,11 @@ PERSONALITY: Warm, confident, knowledgeable. Never robotic. Always feel like a r
 
   return (
     <>
-      {/* Floating Button */}
-      {mounted && !isOpen && (
+      {/* Floating Button — mid-screen side edge so it never covers bottom action bars / bottom nav */}
+      {mounted && !isOpen && !(pathname || '').startsWith('/agent/dashboard') && (
         <button
           onClick={handleOpen}
-          className={`fixed bottom-20 z-50 flex items-center gap-2 px-4 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 ${isRTL ? 'left-4' : 'right-4'}`}
+          className={`fixed top-1/2 mt-28 sm:mt-16 -translate-y-1/2 z-40 flex items-center gap-2 p-2.5 sm:px-4 sm:py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 opacity-90 hover:opacity-100 ${isRTL ? 'left-4' : 'right-4'}`}
           aria-label={assistantTitle}
         >
           <div className="relative">
@@ -538,8 +543,8 @@ PERSONALITY: Warm, confident, knowledgeable. Never robotic. Always feel like a r
       {/* Chat Panel */}
       {mounted && isOpen && (
         <div
-          className={`fixed bottom-20 z-50 w-[340px] sm:w-[380px] bg-card border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden ${isRTL ? 'left-4' : 'right-4'}`}
-          style={{ maxHeight: '520px', height: '520px' }}
+          className={`fixed bottom-24 md:bottom-6 z-[60] w-[calc(100vw-2rem)] max-w-[380px] bg-card border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden ${isRTL ? 'left-4' : 'right-4'}`}
+          style={{ maxHeight: 'min(520px, calc(100vh - 8rem))', height: '520px' }}
           dir={dir}
         >
           {/* Header */}

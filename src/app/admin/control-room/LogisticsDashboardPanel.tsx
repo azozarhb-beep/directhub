@@ -842,7 +842,7 @@ export default function LogisticsDashboardPanel() {
   const customsPartners = partners.filter(p => getCategoryGroup(p) === 'customs').length;
 
   const totalShipments = shipments.length;
-  const inTransitShipments = shipments.filter(s => ['shipped', 'in_transit', 'out_for_delivery', 'processing', 'confirmed'].includes(s.status)).length;
+  const inTransitShipments = shipments.filter(s => ['shipped', 'in_transit'].includes(s.status)).length;
   const deliveredShipments = shipments.filter(s => s.status === 'delivered').length;
   const pendingShipments = shipments.filter(s => s.status === 'pending').length;
 

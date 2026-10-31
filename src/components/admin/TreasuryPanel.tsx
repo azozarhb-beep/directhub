@@ -10,6 +10,8 @@ interface TreasurySummary {
   pendingPayouts: number;
   completedOrders: number;
   activeEscrowCount: number;
+  totalPlatformFee: number;
+  totalNetFactoryPayout: number;
 }
 
 interface EscrowRecord {
@@ -23,6 +25,17 @@ interface EscrowRecord {
   seller_id?: string;
 }
 
+interface OrderFeeRecord {
+  id: string;
+  order_number: string;
+  total: number;
+  platform_fee: number;
+  net_factory_payout: number;
+  order_category: string;
+  escrow_status: string;
+  created_at: string;
+}
+
 export default function TreasuryPanel() {
   const supabase = createClient();
   const [summary, setSummary] = useState<TreasurySummary>({
@@ -32,8 +45,11 @@ export default function TreasuryPanel() {
     pendingPayouts: 0,
     completedOrders: 0,
     activeEscrowCount: 0,
+    totalPlatformFee: 0,
+    totalNetFactoryPayout: 0,
   });
   const [recentEscrow, setRecentEscrow] = useState<EscrowRecord[]>([]);
+  const [feeOrders, setFeeOrders] = useState<OrderFeeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,6 +73,23 @@ export default function TreasuryPanel() {
       const records: EscrowRecord[] = escrowData || [];
       setRecentEscrow(records);
 
+      const { data: feeData } = await supabase
+        .from('orders')
+        .select('id, order_number, total, platform_fee, net_factory_payout, order_category, escrow_status, created_at')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      const fees: OrderFeeRecord[] = (feeData || []).map((o: any) => ({
+        id: o.id,
+        order_number: o.order_number || '',
+        total: Number(o.total || 0),
+        platform_fee: Number(o.platform_fee || 0),
+        net_factory_payout: Number(o.net_factory_payout || 0),
+        order_category: o.order_category || '',
+        escrow_status: o.escrow_status || '',
+        created_at: o.created_at,
+      }));
+      setFeeOrders(fees);
+
       // Compute summary
       const held = records.filter(r => r.status === 'held' || r.status === 'pending').reduce((s, r) => s + (r.amount || 0), 0);
       const released = records.filter(r => r.status === 'released' || r.status === 'completed').reduce((s, r) => s + (r.amount || 0), 0);
@@ -70,6 +103,8 @@ export default function TreasuryPanel() {
         pendingPayouts: pendingPayout,
         completedOrders: records.filter(r => r.status === 'released' || r.status === 'completed').length,
         activeEscrowCount: records.filter(r => r.status === 'held' || r.status === 'pending').length,
+        totalPlatformFee: fees.reduce((s, o) => s + o.platform_fee, 0),
+        totalNetFactoryPayout: fees.reduce((s, o) => s + o.net_factory_payout, 0),
       });
     } catch (err: any) {
       setError(err?.message || 'فشل تحميل بيانات الخزينة');
@@ -177,6 +212,22 @@ export default function TreasuryPanel() {
           </p>
           <p className="text-xs text-purple-500 mt-1">كامل دورة الضمان</p>
         </div>
+
+        <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-4">
+          <p className="text-xs text-yellow-700 font-medium mb-1">عمولة المنصة (platform_fee)</p>
+          <p className="text-xl font-bold text-yellow-800">
+            {loading ? '...' : '$' + summary.totalPlatformFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <p className="text-xs text-yellow-600 mt-1">آخر {feeOrders.length} طلب</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-teal-50 to-teal-100 border border-teal-200 rounded-xl p-4">
+          <p className="text-xs text-teal-700 font-medium mb-1">صافي مستحقات المصانع</p>
+          <p className="text-xl font-bold text-teal-800">
+            {loading ? '...' : '$' + summary.totalNetFactoryPayout.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <p className="text-xs text-teal-600 mt-1">net_factory_payout</p>
+        </div>
       </div>
 
       {/* Recent Escrow Transactions Table */}
@@ -227,6 +278,43 @@ export default function TreasuryPanel() {
             </table>
           </div>
         )}
+      </div>
+
+      {/* Order commission ledger (internal accounting) */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="text-base font-semibold text-gray-800">عمولات الطلبات وصافي المصنع</h3>
+          <span className="text-xs text-gray-400">{feeOrders.length} طلب</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[600px]">
+            <thead className="bg-gray-50 text-gray-500 text-xs">
+              <tr>
+                <th className="px-4 py-3 text-right font-medium">رقم الطلب</th>
+                <th className="px-4 py-3 text-right font-medium">الفئة</th>
+                <th className="px-4 py-3 text-right font-medium">إجمالي الطلب</th>
+                <th className="px-4 py-3 text-right font-medium">عمولة المنصة</th>
+                <th className="px-4 py-3 text-right font-medium">صافي المصنع</th>
+                <th className="px-4 py-3 text-right font-medium">التاريخ</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {feeOrders.map((o) => (
+                <tr key={o.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3 font-mono text-xs text-gray-600">{o.order_number || '—'}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">{o.order_category || '—'}</td>
+                  <td className="px-4 py-3 font-semibold text-gray-800">${o.total.toLocaleString('en-US')}</td>
+                  <td className="px-4 py-3 font-semibold text-yellow-700">${o.platform_fee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="px-4 py-3 font-semibold text-teal-700">${o.net_factory_payout.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="px-4 py-3 text-gray-400 text-xs">{formatDate(o.created_at)}</td>
+                </tr>
+              ))}
+              {!loading && feeOrders.length === 0 && (
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400 text-sm">لا توجد طلبات بعد</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

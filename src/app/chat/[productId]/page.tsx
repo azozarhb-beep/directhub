@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import Icon from '@/components/ui/AppIcon';
+import { SignedChatVideo, SignedChatLink } from '@/components/SignedChatMedia';
+import ChatAttachmentView, { isImageAttachmentMeta } from '@/components/ChatAttachmentView';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,6 +14,8 @@ import { createClient } from '@/lib/supabase/client';
 import { sanitizeChatMessage } from '@/lib/privacyShield';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { needsChatTranslation } from '@/lib/chatTranslationGate';
+import { getOrCreateProductConversation } from '@/lib/startProductConversation';
+
 
 interface Message {
   id: string;
@@ -34,6 +38,56 @@ interface Conversation {
   supplier_country: string;
   supplier_flag: string;
   supplier_avatar: string;
+}
+
+interface SupplierInquiryProduct {
+  id: string;
+  supplier_id: string;
+  name: string;
+  name_ar: string | null;
+  sku: string | null;
+  unit: string;
+  wholesale_price: number;
+  currency: string;
+  image_url: string | null;
+  supplier_name: string;
+  moq?: number | null;
+  min_order_qty?: number | null;
+}
+
+const SUPPLIER_UNIT_AR: Record<string, string> = {
+  carton: 'كرتون', bale: 'بالة', bundle: 'بندل', dozen: 'درزن', bag: 'كيس / شوال',
+  roll: 'رول', piece: 'قطعة', kg: 'كجم', ton: 'طن',
+};
+
+// ─── Inline Product Inquiry message (type: 'product_inquiry') ────────────────
+const PRODUCT_INQUIRY_TYPE = 'product_inquiry';
+
+interface ProductInquiryPayload {
+  productId: string;
+  name: string;
+  image: string | null;
+  priceText: string;
+  moqText: string;
+}
+
+function encodeInquiryPayload(p: ProductInquiryPayload): string {
+  return JSON.stringify(p);
+}
+
+function decodeInquiryPayload(raw?: string | null): ProductInquiryPayload | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.name === 'string') return parsed as ProductInquiryPayload;
+  } catch { /* not an inquiry payload */ }
+  return null;
+}
+
+function formatInquiryPrice(price: number, currency: string): string {
+  if (!price || price <= 0) return 'تواصل لمعرفة السعر';
+  const num = price.toFixed(2).replace(/\.00$/, '');
+  return String(currency).toUpperCase() === 'USD' ? `$${num}` : `${num} ر.ي`;
 }
 
 // ─── Translation Types ────────────────────────────────────────────────────────
@@ -142,14 +196,17 @@ async function translateText(text: string, targetLanguage: SupportedLang): Promi
   }
 }
 
-export default function ChatPage() {
+function ChatPageLegacyUnused() {
   const { t, dir, isRTL, language } = useLanguage();
   const M = t.messaging;
   const params = useParams();
   const router = useRouter();
   const { user, loading, requireAuth } = useAuth();
-  const productId = typeof params?.productId === 'string' ? params.productId : '';
-  const supplier = supplierMap[productId] || defaultSupplier;
+  const productId = typeof params?.productId === 'string' ? decodeURIComponent(params.productId) : '';
+  const baseSupplier = supplierMap[productId] || defaultSupplier;
+  const [sellerInfo, setSellerInfo] = useState<{name: string;country: string;flag: string;product: string;avatar: string;} | null>(null);
+  const [isOwnProduct, setIsOwnProduct] = useState(false);
+  const supplier = { ...baseSupplier, ...(sellerInfo || {}) };
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -165,6 +222,7 @@ export default function ChatPage() {
   const [counterpartSellerCategory, setCounterpartSellerCategory] = useState<string | null>(null);
   const [counterpartFactoryType, setCounterpartFactoryType] = useState<string | null>(null);
   const [counterpartCountry, setCounterpartCountry] = useState<string | null>(supplier.country);
+  const [inquiryProduct, setInquiryProduct] = useState<SupplierInquiryProduct | null>(null);
 
   const needsTranslation = needsChatTranslation({
     sellerCategory: counterpartSellerCategory,
@@ -211,13 +269,81 @@ export default function ChatPage() {
     const initConversation = async () => {
       setLoadingChat(true);
       try {
+        // Get-or-create the buyer ↔ supplier thread (product card is inserted as the FIRST message).
+        // Any logged-in user may chat; only the product owner is blocked from messaging themselves.
+        const started = await getOrCreateProductConversation({
+          supabase,
+          buyerId: user.id,
+          productRef: productId,
+          supplierId: null,
+          isAr: language === 'ar'
+        });
+        if (started.isOwner) {
+          setIsOwnProduct(true);
+          setLoadingChat(false);
+          return;
+        }
+        if (started.conversationId) {
+          const { data: convRow } = await supabase
+            .from('chat_conversations')
+            .select('*')
+            .eq('id', started.conversationId)
+            .maybeSingle();
+          if (convRow) {
+            setSellerInfo({
+              name: convRow.supplier_name || supplier.name,
+              country: convRow.supplier_country || supplier.country,
+              flag: convRow.supplier_flag || supplier.flag,
+              product: convRow.product_name || supplier.product,
+              avatar: convRow.supplier_avatar || supplier.avatar
+            });
+            if (convRow.supplier_country) setCounterpartCountry(convRow.supplier_country);
+            setConversation(convRow);
+            const { data: msgsRow } = await supabase
+              .from('chat_messages')
+              .select('*')
+              .eq('conversation_id', convRow.id)
+              .order('created_at', { ascending: true });
+            setMessages(msgsRow || []);
+            await supabase
+              .from('chat_messages')
+              .update({ is_read: true })
+              .eq('conversation_id', convRow.id)
+              .neq('sender_id', user.id)
+              .eq('is_read', false);
+            setUnreadCount(0);
+            setLoadingChat(false);
+            return;
+          }
+        }
+      } catch (e) {
+        console.error('Chat start error:', e);
+      }
+      try {
         // Resolve product manufacturer + seller_category for translation gating
         let manufacturerId: string | null = null;
         let resolvedCountry = supplier.country;
         let resolvedProductName = supplier.product;
         let resolvedSupplierName = supplier.name;
+        let conversationProductId = productId;
+        let supplierListing: SupplierInquiryProduct | null = null;
         try {
-          const { data: productData } = await supabase
+          const { data: spData } = await supabase.rpc('get_supplier_product_for_inquiry', { p_ref: productId });
+          const spRow = (Array.isArray(spData) ? spData[0] : spData) as SupplierInquiryProduct | undefined;
+          if (spRow?.id) {
+            supplierListing = spRow;
+            manufacturerId = spRow.supplier_id;
+            conversationProductId = spRow.id;
+            resolvedProductName = spRow.name_ar || spRow.name || resolvedProductName;
+            resolvedSupplierName = spRow.supplier_name || resolvedSupplierName;
+            resolvedCountry = 'اليمن';
+          }
+        } catch {
+          // Not a supplier-listed product — continue with default resolution
+        }
+        setInquiryProduct(supplierListing);
+        try {
+          const { data: productData } = supplierListing ? { data: null } : await supabase
             .from('products')
             .select('id, name, manufacturer_id, manufacturer_name, country_of_origin, origin_country')
             .eq('id', productId)
@@ -270,8 +396,8 @@ export default function ChatPage() {
         from('chat_conversations').
         select('*').
         eq('buyer_id', user.id).
-        eq('product_id', productId).
-        single();
+        eq('product_id', conversationProductId).
+        maybeSingle();
 
         if (!existing) {
           const { data: created, error } = await supabase.
@@ -279,11 +405,11 @@ export default function ChatPage() {
           insert({
             buyer_id: user.id,
             manufacturer_id: manufacturerId,
-            product_id: productId,
+            product_id: conversationProductId,
             product_name: resolvedProductName,
             supplier_name: resolvedSupplierName,
             supplier_country: resolvedCountry,
-            supplier_flag: supplier.flag,
+            supplier_flag: supplierListing ? '🏪' : supplier.flag,
             supplier_avatar: supplier.avatar,
             last_message: ''
           }).
@@ -293,7 +419,36 @@ export default function ChatPage() {
           if (error) throw error;
           existing = created;
 
-          if (created) {
+          if (created && supplierListing) {
+            const inquiryText = `استفسار عن المنتج: ${resolvedProductName}${supplierListing.sku ? ` (SKU: ${supplierListing.sku})` : ''}`;
+            const moqVal = supplierListing.moq ?? supplierListing.min_order_qty;
+            const inquiryPayload: ProductInquiryPayload = {
+              productId,
+              name: supplierListing.name_ar || supplierListing.name,
+              image: supplierListing.image_url || null,
+              priceText: formatInquiryPrice(Number(supplierListing.wholesale_price || 0), supplierListing.currency || 'YER'),
+              moqText: moqVal
+                ? `${moqVal} ${SUPPLIER_UNIT_AR[supplierListing.unit] || supplierListing.unit || ''}`.trim()
+                : 'حسب الاتفاق'
+            };
+            await supabase.from('chat_messages').insert({
+              conversation_id: created.id,
+              sender_id: user.id,
+              sender_role: 'buyer',
+              message: 'استفسار عن منتج',
+              attachment_type: PRODUCT_INQUIRY_TYPE,
+              attachment_name: encodeInquiryPayload(inquiryPayload),
+              is_read: false
+            });
+            await supabase.from('chat_messages').insert({
+              conversation_id: created.id,
+              sender_id: user.id,
+              sender_role: 'buyer',
+              message: inquiryText,
+              is_read: false
+            });
+            await supabase.rpc('notify_supplier_product_inquiry', { p_conversation_id: created.id });
+          } else if (created) {
             await supabase.from('chat_messages').insert({
               conversation_id: created.id,
               sender_id: user.id,
@@ -324,11 +479,35 @@ export default function ChatPage() {
         setConversation(existing);
 
         if (existing) {
-          const { data: msgs } = await supabase.
+          let { data: msgs } = await supabase.
           from('chat_messages').
           select('*').
           eq('conversation_id', existing.id).
           order('created_at', { ascending: true });
+
+          // Entering from a product page: make sure the thread has an inline product card
+          if (supplierListing && !(msgs || []).some((m: Message) => m.attachment_type === PRODUCT_INQUIRY_TYPE)) {
+            const moqVal = supplierListing.moq ?? supplierListing.min_order_qty;
+            const cardPayload: ProductInquiryPayload = {
+              productId,
+              name: supplierListing.name_ar || supplierListing.name,
+              image: supplierListing.image_url || null,
+              priceText: formatInquiryPrice(Number(supplierListing.wholesale_price || 0), supplierListing.currency || 'YER'),
+              moqText: moqVal
+                ? `${moqVal} ${SUPPLIER_UNIT_AR[supplierListing.unit] || supplierListing.unit || ''}`.trim()
+                : 'حسب الاتفاق'
+            };
+            const { data: cardMsg } = await supabase.from('chat_messages').insert({
+              conversation_id: existing.id,
+              sender_id: user.id,
+              sender_role: 'buyer',
+              message: 'استفسار عن منتج',
+              attachment_type: PRODUCT_INQUIRY_TYPE,
+              attachment_name: encodeInquiryPayload(cardPayload),
+              is_read: false
+            }).select().single();
+            if (cardMsg) msgs = [...(msgs || []), cardMsg as Message];
+          }
 
           setMessages(msgs || []);
 
@@ -588,8 +767,8 @@ export default function ChatPage() {
         upload(filePath, attachment.file, { contentType: attachment.file.type || 'application/octet-stream', upsert: false });
 
         if (!uploadError && uploadData) {
-          const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(filePath);
-          attachmentUrl = urlData?.publicUrl;
+          // Private bucket: store a "bucket/path" reference; it is signed at render time
+          attachmentUrl = `chat-media/${filePath}`;
           attachmentType = attachment.file.type;
           attachmentName = attachment.file.name;
         }
@@ -617,8 +796,8 @@ export default function ChatPage() {
         if (!error && inserted) {
           setMessages((prev) => prev.map((m) => m.id === optimisticId ? inserted : m));
 
-          // Auto-reply
-          setTimeout(async () => {
+          // Auto-reply (demo only — never for real supplier inquiries)
+          if (!inquiryProduct) setTimeout(async () => {
             const reply = autoReplies[Math.floor(Math.random() * autoReplies.length)];
             await supabase.from('chat_messages').insert({
               conversation_id: conversation.id,
@@ -664,6 +843,23 @@ export default function ChatPage() {
         </div>
       </div>);
 
+  }
+
+  if (isOwnProduct) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col" dir={dir}>
+        <Header />
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-6 gap-4">
+          <Icon name="NoSymbolIcon" size={40} className="text-muted-foreground" />
+          <p className="text-sm font-bold text-foreground">
+            {language === 'ar' ? 'لا يمكنك مراسلة نفسك بخصوص منتجك الخاص' : 'You cannot message yourself about your own product'}
+          </p>
+          <Link href={`/product/${encodeURIComponent(productId)}`} className="px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-bold">
+            {language === 'ar' ? 'العودة للمنتج' : 'Back to product'}
+          </Link>
+        </div>
+        <BottomNav />
+      </div>);
   }
 
   const isUserMessage = (msg: Message) => {
@@ -795,6 +991,42 @@ export default function ChatPage() {
             const showBoth = showBothIds.has(msg.id);
             const hasTranslation = !!cached?.translated && cached.translated !== msg.message;
 
+            if (msg.attachment_type === PRODUCT_INQUIRY_TYPE) {
+              const card = decodeInquiryPayload(msg.attachment_name);
+              if (card) {
+                return (
+                  <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                    <div className="w-full max-w-[85%] sm:max-w-[320px] rounded-2xl border border-primary/30 bg-card shadow-sm overflow-hidden" dir="rtl">
+                      <div className="px-3 py-1.5 bg-primary/10 text-[11px] font-bold text-primary flex items-center gap-1.5">
+                        <Icon name="TagIcon" size={12} />
+                        استفسار عن منتج
+                      </div>
+                      <Link href={`/product/${encodeURIComponent(card.productId)}`} className="flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors">
+                        <div className="w-16 h-16 rounded-xl overflow-hidden bg-muted border border-border shrink-0 flex items-center justify-center">
+                          {card.image ? (
+                            <AppImage src={card.image} alt={card.name} width={64} height={64} className="object-cover w-full h-full" />
+                          ) : (
+                            <Icon name="CubeIcon" size={24} className="text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-extrabold text-foreground truncate">{card.name}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            <span className="font-semibold">سعر الوحدة: </span>
+                            <span className="font-extrabold text-primary">{card.priceText}</span>
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            <span className="font-semibold">الحد الأدنى للطلب: </span>
+                            {card.moqText}
+                          </p>
+                        </div>
+                      </Link>
+                    </div>
+                  </div>
+                );
+              }
+            }
+
             return (
               <div key={msg.id} className={`flex gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
                 {!isUser &&
@@ -809,21 +1041,18 @@ export default function ChatPage() {
                 }
                 <div className={`max-w-[75%] space-y-1 ${isUser ? 'items-end' : 'items-start'} flex flex-col`}>
                   {/* Attachment preview */}
-                  {msg.attachment_url && msg.attachment_type?.startsWith('image/') &&
+                  {msg.attachment_url && isImageAttachmentMeta(msg.attachment_url, msg.attachment_name, msg.attachment_type) &&
                   <div className="rounded-xl overflow-hidden border border-border max-w-[240px]">
-                      <img
-                      src={msg.attachment_url}
-                      alt={msg.attachment_name || 'Attachment'}
-                      className="w-full h-auto object-cover max-h-48" />
+                      <ChatAttachmentView
+                      url={msg.attachment_url}
+                      name={msg.attachment_name}
+                      type={msg.attachment_type}
+                      className="!mb-0" />
                     </div>
                   }
                   {msg.attachment_url && msg.attachment_type?.startsWith('video/') &&
                   <div className="rounded-xl overflow-hidden border border-border max-w-[240px]">
-                      <video
-                      src={msg.attachment_url}
-                      controls
-                      className="w-full max-h-48"
-                      preload="metadata" />
+                      <SignedChatVideo src={msg.attachment_url} className="w-full max-h-48" />
                     </div>
                   }
                   {msg.attachment_url && (
@@ -833,10 +1062,8 @@ export default function ChatPage() {
                     msg.attachment_type === 'application/octet-stream' ||
                     ['xlsx','xls','docx','doc','dwg','dxf'].includes(msg.attachment_name?.split('.').pop()?.toLowerCase() || '')
                   ) &&
-                  <a
+                  <SignedChatLink
                     href={msg.attachment_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
                     className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors ${
                     isUser ?
                     'bg-primary/20 border-primary/30 text-primary-foreground' :
@@ -845,7 +1072,7 @@ export default function ChatPage() {
                       <Icon name={getAttachmentIcon(msg.attachment_type, msg.attachment_name) as any} size={16} className="shrink-0" />
                       <span className="truncate max-w-[160px]">{msg.attachment_name || 'Document'}</span>
                       <Icon name="ArrowTopRightOnSquareIcon" size={12} className="shrink-0 ml-auto" />
-                    </a>
+                    </SignedChatLink>
                   }
                   {/* Non-preview attachment (no URL yet / other types) */}
                   {msg.attachment_name && !msg.attachment_url &&
@@ -1108,4 +1335,8 @@ export default function ChatPage() {
       <BottomNav />
     </div>);
 
+}
+
+export default function ChatProductPage() {
+  return <ChatPageLegacyUnused />;
 }

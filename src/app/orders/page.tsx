@@ -13,6 +13,7 @@ import { PinVerifyModal } from '@/components/PinSecurity';
 import { useLanguage } from '@/contexts/LanguageContext';
 import OrderWhatsAppButton from '@/components/OrderWhatsAppButton';
 import BuyerWarrantyDisplay from '@/components/BuyerWarrantyDisplay';
+import { DISPUTE_REASON_OPTIONS, getDisputeReasonMeta, type DisputeReasonCode } from '@/lib/disputeReasons';
 
 interface Order {
   id: string;
@@ -172,7 +173,7 @@ export default function OrdersPage() {
 
   // Dispute modal state
   const [showDisputeModal, setShowDisputeModal] = useState(false);
-  const [disputeReason, setDisputeReason] = useState<'late_delivery' | 'product_mismatch' | ''>('');
+  const [disputeReason, setDisputeReason] = useState<DisputeReasonCode | ''>('');
   const [disputeDescription, setDisputeDescription] = useState('');
   const [disputeLoading, setDisputeLoading] = useState(false);
   const [disputeSuccess, setDisputeSuccess] = useState('');
@@ -1305,7 +1306,7 @@ export default function OrdersPage() {
                       <div className="flex justify-between text-xs">
                         <span className="text-muted-foreground">{o.complaintReason}</span>
                         <span className="font-semibold text-orange-700">
-                          {selectedOrder.dispute_reason === 'late_delivery' ? `⏰ ${o.lateDelivery}` : `⚠️ ${o.specMismatch}`}
+                          {getDisputeReasonMeta(selectedOrder.dispute_reason) ? `${getDisputeReasonMeta(selectedOrder.dispute_reason)!.emoji} ${language === 'ar' ? getDisputeReasonMeta(selectedOrder.dispute_reason)!.labelAr : getDisputeReasonMeta(selectedOrder.dispute_reason)!.labelEn}` : (selectedOrder.dispute_reason || '—')}
                         </span>
                       </div>
                       {selectedOrder.dispute_opened_at && (
@@ -1416,7 +1417,7 @@ export default function OrdersPage() {
                       <div className="flex justify-between text-xs">
                         <span className="text-muted-foreground">{o.complaintReason}</span>
                         <span className="font-semibold text-red-700">
-                          {selectedOrder.dispute_reason === 'late_delivery' ? `⏰ ${o.lateDelivery}` : `⚠️ ${o.specMismatch}`}
+                          {getDisputeReasonMeta(selectedOrder.dispute_reason) ? `${getDisputeReasonMeta(selectedOrder.dispute_reason)!.emoji} ${language === 'ar' ? getDisputeReasonMeta(selectedOrder.dispute_reason)!.labelAr : getDisputeReasonMeta(selectedOrder.dispute_reason)!.labelEn}` : (selectedOrder.dispute_reason || '—')}
                         </span>
                       </div>
                       {selectedOrder.dispute_escalated_at && (
@@ -1910,35 +1911,26 @@ export default function OrdersPage() {
             <div className="mb-4">
               <label className="block text-xs font-bold text-foreground mb-2">{o.complaintReason} <span className="text-red-500">*</span></label>
               <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={() => setDisputeReason('late_delivery')}
-                  className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all ${disputeReason === 'late_delivery' ? 'border-red-500 bg-red-50' : 'border-border hover:border-red-300'}`}
-                >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${disputeReason === 'late_delivery' ? 'bg-red-100' : 'bg-muted'}`}>
-                    <Icon name="ClockIcon" size={16} className={disputeReason === 'late_delivery' ? 'text-red-600' : 'text-muted-foreground'} />
-                  </div>
-                  <div>
-                    <p className={`text-sm font-semibold ${disputeReason === 'late_delivery' ? 'text-red-800' : 'text-foreground'}`}>{o.lateDelivery}</p>
-                    <p className="text-xs text-muted-foreground">{o.lateDeliveryDesc}</p>
-                  </div>
-                  {disputeReason === 'late_delivery' && <Icon name="CheckCircleIcon" size={18} className="text-red-600 ml-auto shrink-0" />}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setDisputeReason('product_mismatch')}
-                  className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all ${disputeReason === 'product_mismatch' ? 'border-red-500 bg-red-50' : 'border-border hover:border-red-300'}`}
-                >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${disputeReason === 'product_mismatch' ? 'bg-red-100' : 'bg-muted'}`}>
-                    <Icon name="ExclamationTriangleIcon" size={16} className={disputeReason === 'product_mismatch' ? 'text-red-600' : 'text-muted-foreground'} />
-                  </div>
-                  <div>
-                    <p className={`text-sm font-semibold ${disputeReason === 'product_mismatch' ? 'text-red-800' : 'text-foreground'}`}>{o.specMismatchTitle}</p>
-                    <p className="text-xs text-muted-foreground">{o.specMismatchDesc}</p>
-                  </div>
-                  {disputeReason === 'product_mismatch' && <Icon name="CheckCircleIcon" size={18} className="text-red-600 ml-auto shrink-0" />}
-                </button>
+                {DISPUTE_REASON_OPTIONS.map(r => {
+                  const selected = disputeReason === r.value;
+                  return (
+                    <button
+                      key={r.value}
+                      type="button"
+                      onClick={() => setDisputeReason(r.value)}
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all ${selected ? 'border-red-500 bg-red-50' : 'border-border hover:border-red-300'}`}
+                    >
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${selected ? 'bg-red-100' : 'bg-muted'}`}>
+                        <Icon name={r.icon as any} size={16} className={selected ? 'text-red-600' : 'text-muted-foreground'} />
+                      </div>
+                      <div>
+                        <p className={`text-sm font-semibold ${selected ? 'text-red-800' : 'text-foreground'}`}>{language === 'ar' ? r.labelAr : r.labelEn}</p>
+                        {language === 'ar' && <p className="text-xs text-muted-foreground">{r.descAr}</p>}
+                      </div>
+                      {selected && <Icon name="CheckCircleIcon" size={18} className="text-red-600 ml-auto shrink-0" />}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

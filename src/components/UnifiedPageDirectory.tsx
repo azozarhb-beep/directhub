@@ -69,7 +69,6 @@ const ALL_PAGES: PageEntry[] = [
   { path: '/notifications', label: 'Notifications', labelAr: 'الإشعارات', category: 'التواصل', icon: 'BellIcon', access: 'auth' },
   // الإدارة
   { path: '/admin/control-room', label: 'Admin Control Room', labelAr: 'غرفة التحكم', category: 'الإدارة', icon: 'ShieldCheckIcon', access: 'admin' },
-  { path: '/simulation', label: 'Simulation', labelAr: 'المحاكاة', category: 'الإدارة', icon: 'BeakerIcon', access: 'admin' },
   // أخرى
   { path: '/disputes', label: 'Disputes', labelAr: 'النزاعات', category: 'أخرى', icon: 'ScaleIcon', access: 'auth' },
   { path: '/kyc', label: 'KYC', labelAr: 'التحقق من الهوية', category: 'أخرى', icon: 'ShieldCheckIcon', access: 'auth' },

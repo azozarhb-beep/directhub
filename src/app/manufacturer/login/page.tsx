@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 import AppLogo from '@/components/ui/AppLogo';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { resolveManufacturerRoomForUser } from '@/lib/roomIsolation';
 
 type Mode = 'login' | 'register';
 type OtpStep = 'form' | 'otp' | 'done';
@@ -93,7 +94,7 @@ function ManufacturerLoginPageInner() {
           router.replace(redirect);
         } else {
           // Resolve country-based dashboard routing
-          resolveManufacturerDashboard(user.id).then((dest) => {
+          resolveManufacturerDashboard(user.id, user.email).then((dest) => {
             router.replace(dest);
           });
         }
@@ -102,37 +103,14 @@ function ManufacturerLoginPageInner() {
   }, [user, loading, router, searchParams]);
 
   /**
-   * Determines the correct dashboard for a manufacturer based on their country.
-   * Yemen (YE / "اليمن") → /manufacturer/dashboard (local control room)
-   * Any other country → /international-factory/dashboard (global control room)
+   * Determines the correct room for a manufacturer.
+   * International factory (factory_type = 'international' / seller_category = 'international_factory')
+   *   → /manufacturer/international-dashboard (International Factory Control Room)
+   * Local factory → /manufacturer/dashboard (Local Factory Dashboard)
+   * Falls back to country (Yemen = local) when no explicit factory type exists.
    */
-  const resolveManufacturerDashboard = async (userId: string): Promise<string> => {
-    try {
-      // Try user_profiles first
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('country')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (profile?.country) {
-        return isYemen(profile.country) ? '/manufacturer/dashboard' : '/international-factory/dashboard';
-      }
-
-      // Fallback: factory_registrations
-      const { data: reg } = await supabase
-        .from('factory_registrations')
-        .select('country')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (reg?.country) {
-        return isYemen(reg.country) ? '/manufacturer/dashboard' : '/international-factory/dashboard';
-      }
-    } catch { /* silently fall back */ }
-
-    // Default: local dashboard if country is unknown
-    return '/manufacturer/dashboard';
+  const resolveManufacturerDashboard = async (userId: string, email?: string | null): Promise<string> => {
+    return resolveManufacturerRoomForUser(supabase, userId, email);
   };
 
   /** Returns true if the country value represents Yemen. */
@@ -167,7 +145,7 @@ function ManufacturerLoginPageInner() {
       if (redirect) {
         router.push(redirect);
       } else {
-        const dest = await resolveManufacturerDashboard(data.user.id);
+        const dest = await resolveManufacturerDashboard(data.user.id, data.user.email);
         router.push(dest);
       }
     } catch (err: any) {
@@ -374,7 +352,12 @@ function ManufacturerLoginPageInner() {
 {ml.nextStepDesc}
               </p>
               <button
-                onClick={() => router.push('/manufacturer/dashboard')}
+                onClick={async () => {
+                  const dest = user
+                    ? await resolveManufacturerDashboard(user.id, user.email)
+                    : '/manufacturer/dashboard';
+                  router.push(dest);
+                }}
                 className="w-full h-11 bg-primary text-primary-foreground font-semibold rounded-lg text-sm"
               >
                 {ml.goToDashboard}

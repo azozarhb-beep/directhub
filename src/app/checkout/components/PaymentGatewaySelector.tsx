@@ -106,18 +106,38 @@ function FileUploadZone({
   label: string;
   hint?: string;
 }) {
+  const { t, language } = useLanguage();
+  const pg = t?.paymentGateway;
   const [preview, setPreview] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const isAr = language === 'ar';
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    onFileChange(f);
-    if (f.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (ev) => setPreview(ev.target?.result as string);
-      reader.readAsDataURL(f);
-    } else {
-      setPreview(null);
+    try {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      if (f.size > 10 * 1024 * 1024) {
+        setUploadError(isAr ? 'حجم الملف يجب ألا يتجاوز 10MB' : 'File size must be less than 10MB');
+        e.target.value = '';
+        return;
+      }
+      setUploadError(null);
+      onFileChange(f);
+      if (f.type.startsWith('image/')) {
+        try {
+          const reader = new FileReader();
+          reader.onload = (ev) => setPreview((ev.target?.result as string) || null);
+          reader.onerror = () => setPreview(null);
+          reader.readAsDataURL(f);
+        } catch {
+          setPreview(null);
+        }
+      } else {
+        setPreview(null);
+      }
+    } catch (err: any) {
+      console.warn('[FileUploadZone]', err?.message);
+      setUploadError(isAr ? 'تعذر قراءة الملف، حاول مرة أخرى' : 'Could not read the file, please try again');
     }
   };
 
@@ -132,14 +152,14 @@ function FileUploadZone({
               <Icon name="DocumentTextIcon" size={20} className="text-primary" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-foreground">{file.name}</p>
-              <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
+              <p className="text-sm font-semibold text-foreground">{file?.name}</p>
+              <p className="text-xs text-muted-foreground">{((file?.size || 0) / 1024).toFixed(1)} KB</p>
             </div>
           </div>
         )}
         <button
           type="button"
-          onClick={() => { onClear(); setPreview(null); }}
+          onClick={() => { onClear(); setPreview(null); setUploadError(null); }}
           className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-sm"
           aria-label="Remove file"
         >
@@ -147,21 +167,26 @@ function FileUploadZone({
         </button>
         <div className="px-4 pb-3 flex items-center gap-1.5">
           <Icon name="CheckCircleIcon" size={14} className="text-green-600" />
-          <span className="text-xs text-green-700 font-medium">{pg.uploadSuccess}</span>
+          <span className="text-xs text-green-700 font-medium">{pg?.uploadSuccess || (isAr ? 'تم رفع الملف' : 'File attached')}</span>
         </div>
       </div>
     );
   }
 
   return (
-    <label className="flex flex-col items-center justify-center gap-2 h-28 rounded-xl border-2 border-dashed border-border hover:border-primary/50 bg-muted/20 cursor-pointer transition-colors group">
-      <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-        <Icon name="ArrowUpTrayIcon" size={18} className="text-muted-foreground group-hover:text-primary transition-colors" />
-      </div>
-      <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">{label}</span>
-      {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
-      <input type="file" accept="image/*,.pdf" onChange={handleChange} className="sr-only" />
-    </label>
+    <div>
+      <label className="flex flex-col items-center justify-center gap-2 h-28 rounded-xl border-2 border-dashed border-border hover:border-primary/50 bg-muted/20 cursor-pointer transition-colors group">
+        <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center group-hover:bg-primary/10 transition-colors">
+          <Icon name="ArrowUpTrayIcon" size={18} className="text-muted-foreground group-hover:text-primary transition-colors" />
+        </div>
+        <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">{label}</span>
+        {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
+        <input type="file" accept="image/*,.pdf" onChange={handleChange} className="sr-only" />
+      </label>
+      {uploadError && (
+        <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{uploadError}</p>
+      )}
+    </div>
   );
 }
 
@@ -196,8 +221,9 @@ function LocalWalletSection({
   data: LocalWalletData;
   onChange: (d: LocalWalletData) => void;
 }) {
-  const { t, dir } = useLanguage();
+  const { t, dir, language } = useLanguage();
   const pg = t.paymentGateway;
+  const isAr = language === 'ar';
   const walletName = (id: string) => (pg.wallets as Record<string, string>)[id] || id;
   const bankName = (key: string) => (pg.banks as Record<string, string>)[key] || key;
 
@@ -307,7 +333,7 @@ function LocalWalletSection({
             <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
               <Icon name="LinkIcon" size={13} className="text-indigo-600" />
             </div>
-            <label className="text-xs font-bold text-indigo-900">{pg.transferRef}<span className="mr-1 text-red-500">*</span>
+            <label className="text-xs font-bold text-indigo-900">{isAr ? 'رقم عملية المحفظة (Transaction ID)' : pg.transferRef}<span className="mr-1 text-red-500">*</span>
             </label>
             <span className="mr-auto text-[10px] font-semibold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">{pg.mandatory}</span>
           </div>
@@ -328,12 +354,12 @@ function LocalWalletSection({
       {/* Receipt Upload */}
       <div>
         <label className="block text-xs font-semibold text-foreground mb-2 uppercase tracking-wide flex items-center gap-1.5">
-          <Icon name="PhotoIcon" size={13} className="text-primary" />{pg.x7}</label>
+          <Icon name="PhotoIcon" size={13} className="text-primary" />{isAr ? 'إرفاق إشعار المحفظة' : pg.x7}</label>
         <FileUploadZone
           file={data.receiptFile}
           onFileChange={(f) => onChange({ ...data, receiptFile: f })}
           onClear={() => onChange({ ...data, receiptFile: null })}
-          label={pg.clickUploadReceipt}
+          label={isAr ? 'انقر لإرفاق إشعار المحفظة' : pg.clickUploadReceipt}
           hint={pg.x0}
         />
       </div>
@@ -349,8 +375,9 @@ function LocalBankSection({
   data: LocalBankData;
   onChange: (d: LocalBankData) => void;
 }) {
-  const { t, dir } = useLanguage();
+  const { t, dir, language } = useLanguage();
   const pg = t.paymentGateway;
+  const isAr = language === 'ar';
   const bankName = (key: string) => (pg.banks as Record<string, string>)[key] || key;
 
   return (
@@ -447,7 +474,7 @@ function LocalBankSection({
             <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
               <Icon name="LinkIcon" size={13} className="text-indigo-600" />
             </div>
-            <label className="text-xs font-bold text-indigo-900">{pg.transferRef}<span className="mr-1 text-red-500">*</span>
+            <label className="text-xs font-bold text-indigo-900">{isAr ? 'رقم الإيداع / السند البنكي' : pg.transferRef}<span className="mr-1 text-red-500">*</span>
             </label>
             <span className="mr-auto text-[10px] font-semibold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">{pg.mandatory}</span>
           </div>
@@ -468,12 +495,12 @@ function LocalBankSection({
       {/* Receipt Upload */}
       <div>
         <label className="block text-xs font-semibold text-foreground mb-2 uppercase tracking-wide flex items-center gap-1.5">
-          <Icon name="DocumentArrowUpIcon" size={13} className="text-primary" />{pg.x11}</label>
+          <Icon name="DocumentArrowUpIcon" size={13} className="text-primary" />{isAr ? 'إشعار السند البنكي' : pg.x11}</label>
         <FileUploadZone
           file={data.receiptFile}
           onFileChange={(f) => onChange({ ...data, receiptFile: f })}
           onClear={() => onChange({ ...data, receiptFile: null })}
-          label={pg.clickUploadVoucher}
+          label={isAr ? 'انقر لرفع إشعار السند البنكي' : pg.clickUploadVoucher}
           hint={pg.x0}
         />
         <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
@@ -486,17 +513,13 @@ function LocalBankSection({
 // ─── Section: International Payments ─────────────────────────────────────────
 function InternationalSection({
   gateway,
-  cardData,
   swiftData,
   onGatewayChange,
-  onCardChange,
   onSwiftChange,
 }: {
   gateway: PaymentGatewayType | null;
-  cardData: InternationalCardData;
   swiftData: InternationalSwiftData;
   onGatewayChange: (g: PaymentGatewayType) => void;
-  onCardChange: (d: InternationalCardData) => void;
   onSwiftChange: (d: InternationalSwiftData) => void;
 }) {
   const { t, dir } = useLanguage();
@@ -517,31 +540,8 @@ function InternationalSection({
         </div>
       </div>
 
-      {/* Sub-gateway Selection */}
-      <div className="grid grid-cols-2 gap-3">
-        {/* Card / Online Gateway */}
-        <button
-          type="button"
-          onClick={() => onGatewayChange('international_card')}
-          className={`flex flex-col items-center gap-2.5 px-4 py-4 rounded-xl border-2 transition-all text-center ${
-            gateway === 'international_card' ?'border-indigo-500 bg-indigo-50 shadow-sm' :'border-border bg-background hover:border-indigo-300'
-          }`}
-        >
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-            gateway === 'international_card' ? 'bg-indigo-100' : 'bg-muted'
-          }`}>
-            <Icon name="CreditCardIcon" size={20} className={gateway === 'international_card' ? 'text-indigo-600' : 'text-muted-foreground'} />
-          </div>
-          <div>
-            <p className={`text-xs font-bold leading-tight ${gateway === 'international_card' ? 'text-indigo-900' : 'text-foreground'}`}>{pg.x14}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{pg.x15}</p>
-          </div>
-          {gateway === 'international_card' && (
-            <div className="flex items-center gap-1 text-[10px] text-indigo-600 font-semibold">
-              <Icon name="CheckCircleIcon" size={12} />{pg.x16}</div>
-          )}
-        </button>
-
+      {/* Sub-gateway Selection — Wire Transfer only */}
+      <div className="grid grid-cols-1 gap-3">
         {/* SWIFT / Wire Transfer */}
         <button
           type="button"
@@ -568,89 +568,6 @@ function InternationalSection({
           )}
         </button>
       </div>
-
-      {/* ── Card / Online Gateway Form ── */}
-      {gateway === 'international_card' && (
-        <div className="space-y-4 border border-indigo-200 rounded-xl p-4 bg-indigo-50/40">
-          <div className="flex items-center gap-2 mb-1">
-            <Icon name="CreditCardIcon" size={15} className="text-indigo-600" />
-            <p className="text-xs font-bold text-indigo-900 uppercase tracking-wide">{pg.cardDetails}</p>
-          </div>
-
-          {/* Coming Soon Notice */}
-          <div className="flex items-start gap-3 bg-white border border-indigo-200 rounded-xl p-4">
-            <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
-              <Icon name="ClockIcon" size={16} className="text-indigo-600" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-indigo-900 mb-1">{pg.gatewayComingSoon}</p>
-              <p className="text-xs text-indigo-700 leading-relaxed">{pg.x18}</p>
-            </div>
-          </div>
-
-          {/* Placeholder Card Fields */}
-          <div className="space-y-3 opacity-50 pointer-events-none">
-            <div>
-              <label className="block text-xs font-medium text-foreground mb-1.5">{pg.cardholderName}</label>
-              <input
-                type="text"
-                value={cardData.cardholderName}
-                onChange={(e) => onCardChange({ ...cardData, cardholderName: e.target.value })}
-                placeholder={pg.nameOnCard}
-                className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground focus:outline-none transition-colors"
-                disabled
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-foreground mb-1.5">{pg.cardNumber}</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={cardData.cardNumber}
-                  placeholder="XXXX XXXX XXXX XXXX"
-                  className="w-full h-10 px-3 pr-10 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground font-mono focus:outline-none transition-colors"
-                  disabled
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-1">
-                  <span className="text-xs text-muted-foreground">💳</span>
-                </div>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">{pg.expiryDate}</label>
-                <input
-                  type="text"
-                  placeholder="MM / YY"
-                  className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground font-mono focus:outline-none transition-colors"
-                  disabled
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">CVV</label>
-                <input
-                  type="text"
-                  placeholder="•••"
-                  className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground font-mono focus:outline-none transition-colors"
-                  disabled
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Accepted Cards */}
-          <div className="flex items-center gap-2 pt-1">
-            <span className="text-xs text-muted-foreground">{pg.acceptedCards}</span>
-            <div className="flex gap-1.5">
-              {['VISA', 'MC', 'AMEX', 'MADA'].map((card) => (
-                <span key={card} className="text-[10px] font-bold px-2 py-0.5 rounded border border-border bg-muted text-muted-foreground">
-                  {card}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── SWIFT / Wire Transfer Form ── */}
       {gateway === 'international_swift' && (
@@ -761,7 +678,7 @@ export default function PaymentGatewaySelector({ value, onChange }: PaymentGatew
   const bankName = (key: string) => (pg.banks as Record<string, string>)[key] || key;
 
   const GATEWAY_OPTIONS: {
-    id: PaymentGatewayType | 'local_wallet' | 'local_bank_transfer' | 'international';
+    id: PaymentGatewayType | 'local_wallet' | 'local_bank_transfer' | 'international_swift';
     label: string;
     sublabel: string;
     icon: string;
@@ -791,13 +708,13 @@ export default function PaymentGatewaySelector({ value, onChange }: PaymentGatew
       group: 'local',
     },
     {
-      id: 'international_card',
-      label: pg.internationalPayment,
-      sublabel: pg.cardSwiftHint,
-      icon: 'GlobeAltIcon',
-      color: 'text-indigo-700',
-      borderColor: 'border-indigo-400',
-      bgColor: 'bg-indigo-50',
+      id: 'international_swift',
+      label: pg.x17,
+      sublabel: 'SWIFT / IBAN',
+      icon: 'ArrowsRightLeftIcon',
+      color: 'text-purple-700',
+      borderColor: 'border-purple-400',
+      bgColor: 'bg-purple-50',
       group: 'international',
     },
   ];
@@ -806,14 +723,13 @@ export default function PaymentGatewaySelector({ value, onChange }: PaymentGatew
     value.gateway === 'local_wallet'
       ? 'local_wallet'
       : value.gateway === 'local_bank_transfer' ?'local_bank_transfer'
-      : value.gateway === 'international_card' || value.gateway === 'international_swift'
-      ? 'international_card'
+      : value.gateway === 'international_swift' ?'international_swift'
       : null;
 
   const handleTopSelect = (id: string) => {
     if (id === 'local_wallet') onChange({ ...value, gateway: 'local_wallet' });
     else if (id === 'local_bank_transfer') onChange({ ...value, gateway: 'local_bank_transfer' });
-    else if (id === 'international_card') onChange({ ...value, gateway: 'international_card' });
+    else if (id === 'international_swift') onChange({ ...value, gateway: 'international_swift' });
   };
 
   return (
@@ -878,13 +794,11 @@ export default function PaymentGatewaySelector({ value, onChange }: PaymentGatew
       )}
 
       {/* ── Section 3: International Payments ── */}
-      {(value.gateway === 'international_card' || value.gateway === 'international_swift') && (
+      {value.gateway === 'international_swift' && (
         <InternationalSection
           gateway={value.gateway}
-          cardData={value.intlCard}
           swiftData={value.intlSwift}
           onGatewayChange={(g) => onChange({ ...value, gateway: g })}
-          onCardChange={(d) => onChange({ ...value, intlCard: d })}
           onSwiftChange={(d) => onChange({ ...value, intlSwift: d })}
         />
       )}

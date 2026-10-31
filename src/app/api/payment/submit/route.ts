@@ -91,19 +91,25 @@ async function postHandler(req: NextRequest) {
       const arrayBuffer = await receiptFile.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
-      const { error: uploadErr } = await supabase.storage
-        .from('order-receipts')
-        .upload(filePath, buffer, {
-          contentType: receiptFile.type || 'application/octet-stream',
-          upsert: true,
-        });
-
-      if (!uploadErr) {
-        const { data: urlData } = supabase.storage
-          .from('order-receipts')
-          .getPublicUrl(filePath);
-        receiptUrl = urlData?.publicUrl || null;
-        receiptFilename = receiptFile.name;
+      // Try the dedicated payment_receipts bucket first, fall back to order-receipts
+      for (const bucket of ['payment_receipts', 'order-receipts']) {
+        try {
+          const { error: uploadErr } = await supabase.storage
+            .from(bucket)
+            .upload(filePath, buffer, {
+              contentType: receiptFile.type || 'application/octet-stream',
+              upsert: true,
+            });
+          if (!uploadErr) {
+            const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(filePath);
+            receiptUrl = urlData?.publicUrl || null;
+            receiptFilename = receiptFile.name;
+            break;
+          }
+          console.warn(`[Payment Submit] ${bucket} upload failed:`, uploadErr.message);
+        } catch (uploadEx: any) {
+          console.warn(`[Payment Submit] ${bucket} upload exception:`, uploadEx?.message);
+        }
       }
     }
 

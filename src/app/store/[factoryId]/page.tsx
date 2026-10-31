@@ -10,6 +10,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
 import TrustScoreBadge from '@/components/TrustScoreBadge';
+import { BRAND_PLACEHOLDER_IMAGE, currencyForOrigin, formatPriceByOrigin, translateUnitAr } from '@/lib/catalogDisplay';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,7 @@ interface Product {
   stock_quantity: number;
   inventory_status: string;
   origin_country: string;
+  origin_type?: 'local' | 'international' | null;
   is_active: boolean;
   /** Retail / quick-buy unit price (B2C) */
   price: number | null;
@@ -46,6 +48,9 @@ interface Product {
   moq: number | null;
   /** Whether the product is ready to ship immediately */
   is_ready_to_ship: boolean | null;
+  /** Domestic delivery term: EX_FACTORY | DELIVERY_INCLUDED | CALCULATED_SHIPPING */
+  shipping_terms?: string | null;
+  image_url?: string | null;
 }
 
 type SalesMode = 'b2b' | 'b2c';
@@ -72,6 +77,7 @@ export default function FactoryStorePage() {
   const [rfqSubmitting, setRfqSubmitting] = useState(false);
   const [rfqSuccess, setRfqSuccess] = useState(false);
   const [addedToCart, setAddedToCart] = useState<string | null>(null);
+  const [hasVerifiedCert, setHasVerifiedCert] = useState(false);
 
   useEffect(() => {
     if (!factoryId) return;
@@ -119,18 +125,35 @@ export default function FactoryStorePage() {
         trust_percentage: regData.trust_percentage || 0,
         verified_tier: regData.verified_tier || 'unverified',
         registration_status: regData.registration_status || 'pending',
-        established_year: regData.established_year || 0,
+        established_year: Number(regData.established_year) >= 1900 && Number(regData.established_year) <= new Date().getFullYear() ? Number(regData.established_year) : 0,
         user_id: regData.user_id,
       });
 
       const { data: productsData } = await supabase
-        .from('products')
-        .select('id, name, name_ar, category, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, is_active, price, moq, is_ready_to_ship')
-        .eq('supplier_id', regData.user_id)
+        .from('manufacturer_products')
+        .select('id, name, name_ar, category, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, origin_type, is_active, shipping_terms, image_url')
+        .eq('manufacturer_id', regData.user_id)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
-      setProducts(productsData || []);
+      setProducts(
+        (productsData || []).map((p: any) => ({
+          ...p,
+          price: null,
+          moq: null,
+          is_ready_to_ship: null,
+        }))
+      );
+
+      try {
+        const { data: certOk } = await supabase.rpc('factory_has_verified_certificate', {
+          p_factory_ref: regData.id,
+          p_company_name: regData.company_name || null,
+        });
+        setHasVerifiedCert(certOk === true);
+      } catch {
+        setHasVerifiedCert(false);
+      }
     } catch {
       setNotFound(true);
     } finally {
@@ -144,12 +167,13 @@ export default function FactoryStorePage() {
       name: language === 'ar' && product.name_ar ? product.name_ar : product.name,
       nameAr: product.name_ar,
       price: product.unit_price,
-      currency: 'USD',
+      currency: currencyForOrigin(product.origin_type),
       quantity: 1,
-      moq: String(product.minimum_order_qty ?? 1),
+      moq: `${product.minimum_order_qty ?? 1} ${translateUnitAr(product.unit)}`,
+      moqNumber: Math.max(1, Number(product.minimum_order_qty) || 1),
       supplier: profile?.company_name || '',
       countryFlag: profile?.country || '',
-      image: '',
+      image: product.image_url || BRAND_PLACEHOLDER_IMAGE,
       alt: product.name,
       verified: false,
       category: product.category,
@@ -215,7 +239,7 @@ export default function FactoryStorePage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50" dir={dir}>
+    <div className="min-h-screen bg-slate-50 pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-8" dir={dir}>
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
         <div className="max-w-screen-xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
@@ -244,6 +268,12 @@ export default function FactoryStorePage() {
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <h1 className="text-xl font-bold">{profile.company_name}</h1>
                 <TrustScoreBadge score={profile.trust_percentage} tier={profile.verified_tier} size="sm" />
+                {hasVerifiedCert && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[11px] font-bold">
+                    <Icon name="BadgeCheck" size={12} />
+                    شهادة جودة معتمدة ومفحوصة
+                  </span>
+                )}
               </div>
               <p className="text-slate-300 text-sm">{profile.country}{profile.city ? ` · ${profile.city}` : ''}{profile.established_year ? ` · تأسس ${profile.established_year}` : ''}</p>
               {profile.main_products && <p className="text-slate-400 text-xs mt-1">المنتجات الرئيسية: {profile.main_products}</p>}
@@ -259,31 +289,36 @@ export default function FactoryStorePage() {
         </div>
       </div>
 
-      {/* Sales Mode Toggle */}
+      {/* Unified Sticky Filter Row: B2B/B2C toggle + category pills */}
       <div className="bg-white border-b border-slate-200 sticky top-[57px] z-30">
-        <div className="max-w-screen-xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
-            <button
-              onClick={() => setSalesMode('b2c')}
-              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${salesMode === 'b2c' ? 'bg-rose-600 text-white shadow' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              <Icon name="ShoppingBag" size={14} />
-              تجزئة (B2C)
-            </button>
+        <div className="max-w-screen-xl mx-auto px-4 py-2.5 flex items-center gap-2">
+          <div className="flex gap-1 bg-slate-100 rounded-xl p-1 shrink-0">
             <button
               onClick={() => setSalesMode('b2b')}
-              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${salesMode === 'b2b' ? 'bg-indigo-600 text-white shadow' : 'text-slate-600 hover:text-slate-900'}`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${salesMode === 'b2b' ? 'bg-indigo-600 text-white shadow' : 'text-slate-600 hover:text-slate-900'}`}
             >
               <Icon name="Building2" size={14} />
               جملة (B2B)
             </button>
+            <button
+              onClick={() => setSalesMode('b2c')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${salesMode === 'b2c' ? 'bg-rose-600 text-white shadow' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              <Icon name="ShoppingBag" size={14} />
+              تجزئة (B2C)
+            </button>
           </div>
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            {salesMode === 'b2c' ? (
-              <span className="flex items-center gap-1 text-rose-600"><Icon name="Zap" size={12} /> شحن سريع متاح</span>
-            ) : (
-              <span className="flex items-center gap-1 text-indigo-600"><Icon name="Shield" size={12} /> نظام ضمان مالي متاح</span>
-            )}
+          <span className="h-5 w-px bg-slate-200 shrink-0" aria-hidden="true" />
+          <div className="flex-1 flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+            {categories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setFilterCategory(cat)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${filterCategory === cat ? (salesMode === 'b2b' ? 'bg-indigo-600 text-white' : 'bg-rose-600 text-white') : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+              >
+                {cat === 'all' ? 'الكل' : cat}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -319,29 +354,16 @@ export default function FactoryStorePage() {
           </div>
         )}
 
-        {/* Search & Filter */}
-        <div className="flex flex-wrap gap-2">
-          <div className="flex-1 min-w-48 relative">
-            <Icon name="Search" size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="ابحث عن منتج..."
-              className="w-full border border-slate-200 rounded-lg pr-9 pl-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-            />
-          </div>
-          <div className="flex gap-1 overflow-x-auto">
-            {categories.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setFilterCategory(cat)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${filterCategory === cat ? (salesMode === 'b2b' ? 'bg-indigo-600 text-white' : 'bg-rose-600 text-white') : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-              >
-                {cat === 'all' ? 'الكل' : cat}
-              </button>
-            ))}
-          </div>
+        {/* Search */}
+        <div className="relative">
+          <Icon name="Search" size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="ابحث عن منتج..."
+            className="w-full border border-slate-200 rounded-lg pr-9 pl-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+          />
         </div>
 
         {/* Products Grid */}
@@ -357,75 +379,48 @@ export default function FactoryStorePage() {
               const b2cPrice = Math.round(product.unit_price * 1.35 * 100) / 100;
               const displayPrice = salesMode === 'b2c' ? b2cPrice : b2bPrice;
               const isOutOfStock = product.inventory_status === 'out_of_stock';
-
-              // Hybrid B2B/B2C logic
-              const effectivePrice = product.price ?? product.unit_price;
               const effectiveMoq = product.moq ?? product.minimum_order_qty ?? 1;
-              const isReadyToShip = product.is_ready_to_ship ?? (product.inventory_status === 'in_stock');
-
-              const showBuyButton = isReadyToShip && effectivePrice > 0;
-              const showRfqButton = effectiveMoq > 1 || salesMode === 'b2b';
 
               return (
-                <div key={product.id} className={`bg-white border rounded-xl overflow-hidden hover:shadow-md transition-all ${salesMode === 'b2b' ? 'hover:border-indigo-300' : 'hover:border-rose-300'} ${isOutOfStock ? 'opacity-60' : ''}`}>
-                  <div className="bg-slate-100 h-36 flex items-center justify-center relative">
-                    <Icon name="Package" size={40} className="text-slate-300" />
-                    {isReadyToShip && (
-                      <span className="absolute top-2 right-2 flex items-center gap-0.5 bg-emerald-500 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
-                        <Icon name="Zap" size={9} />
-                        جاهز للشحن
-                      </span>
-                    )}
+                <Link
+                  key={product.id}
+                  href={`/product/${product.id}`}
+                  className={`block bg-white border rounded-xl overflow-hidden hover:shadow-md transition-all ${salesMode === 'b2b' ? 'hover:border-indigo-300' : 'hover:border-rose-300'} ${isOutOfStock ? 'opacity-60' : ''}`}
+                >
+                  <div className="bg-slate-100 h-36 relative overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={product.image_url || BRAND_PLACEHOLDER_IMAGE}
+                      alt={language === 'ar' && product.name_ar ? product.name_ar : product.name}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      onError={(e) => {
+                        const img = e.currentTarget;
+                        if (!img.src.endsWith(BRAND_PLACEHOLDER_IMAGE)) img.src = BRAND_PLACEHOLDER_IMAGE;
+                      }}
+                    />
                   </div>
-                  <div className="p-3">
+                  <div className="p-3" dir="rtl">
                     <p className="font-semibold text-slate-900 text-sm line-clamp-2">{language === 'ar' && product.name_ar ? product.name_ar : product.name}</p>
-                    <p className="text-slate-500 text-xs mt-0.5">{product.category}</p>
                     <div className="flex items-center justify-between mt-2">
                       <div>
-                        <p className={`font-bold text-lg ${salesMode === 'b2b' ? 'text-indigo-700' : 'text-rose-700'}`}>${displayPrice}</p>
-                        <p className="text-slate-400 text-xs">/{product.unit}</p>
+                        <p className={`font-bold text-lg ${salesMode === 'b2b' ? 'text-indigo-700' : 'text-rose-700'}`}>{formatPriceByOrigin(displayPrice, product.origin_type)}</p>
+                        <p className="text-slate-400 text-xs">/ {translateUnitAr(product.unit)}</p>
                       </div>
-                      <div className="text-right">
+                      <div className="text-left">
                         <p className="text-slate-500 text-xs">الحد الأدنى</p>
-                        <p className="text-slate-700 text-xs font-medium">{effectiveMoq} {product.unit}</p>
+                        <p className="text-slate-700 text-xs font-medium">{effectiveMoq} {translateUnitAr(product.unit)}</p>
                       </div>
                     </div>
-
-                    {/* Hybrid action buttons */}
-                    <div className="mt-3 flex flex-col gap-1.5">
-                      {showBuyButton && (
-                        <button
-                          onClick={() => handleAddToCart(product)}
-                          disabled={isOutOfStock}
-                          className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-white text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${addedToCart === product.id ? 'bg-emerald-600' : 'bg-rose-600 hover:bg-rose-700'}`}
-                        >
-                          <Icon name={addedToCart === product.id ? 'Check' : 'ShoppingCart'} size={12} />
-                          {addedToCart === product.id ? 'تمت الإضافة!' : isOutOfStock ? 'نفد المخزون' : '🛒 إضافة للسلة / شراء فوري'}
-                        </button>
-                      )}
-                      {showRfqButton && (
-                        <button
-                          onClick={() => { setSelectedProduct(product); setShowRFQModal(true); }}
-                          disabled={isOutOfStock}
-                          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <Icon name="FileQuestion" size={12} />
-                          📋 طلب تسعير (RFQ)
-                        </button>
-                      )}
-                      {!showBuyButton && !showRfqButton && (
-                        <button
-                          onClick={() => handleAddToCart(product)}
-                          disabled={isOutOfStock}
-                          className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-white text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${addedToCart === product.id ? 'bg-emerald-600' : 'bg-rose-600 hover:bg-rose-700'}`}
-                        >
-                          <Icon name={addedToCart === product.id ? 'Check' : 'ShoppingCart'} size={12} />
-                          {addedToCart === product.id ? 'تمت الإضافة!' : isOutOfStock ? 'نفد المخزون' : '🛒 إضافة للسلة'}
-                        </button>
+                    <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-100">
+                      <Icon name="Factory" size={12} className="text-slate-400 shrink-0" />
+                      <span className="text-xs text-slate-600 truncate">{profile?.company_name}</span>
+                      {profile?.verified_tier === 'verified' && (
+                        <Icon name="BadgeCheck" size={13} className="text-blue-500 shrink-0" />
                       )}
                     </div>
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>
@@ -452,7 +447,7 @@ export default function FactoryStorePage() {
               <form onSubmit={handleRFQSubmit} className="space-y-3">
                 <div className="bg-slate-50 rounded-lg p-3 text-sm">
                   <p className="text-slate-500">المنتج: <span className="text-slate-900 font-medium">{selectedProduct.name}</span></p>
-                  <p className="text-slate-500 mt-1">الحد الأدنى: <span className="text-slate-900 font-medium">{selectedProduct.minimum_order_qty} {selectedProduct.unit}</span></p>
+                  <p className="text-slate-500 mt-1">الحد الأدنى: <span className="text-slate-900 font-medium">{selectedProduct.minimum_order_qty} {translateUnitAr(selectedProduct.unit)}</span></p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">الكمية المطلوبة *</label>

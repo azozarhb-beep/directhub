@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { validateContactInfo, getBlockedSubmitMessage } from '@/lib/hooks/useContactInfoValidator';
+import { whitenProductImage } from '@/lib/whiteBackground';
 
 type ProductCategory =
   | 'raw_materials' | 'chemicals' | 'textiles' | 'metals' | 'plastics' |'electronics' | 'food_ingredients' | 'packaging' | 'machinery_parts' | 'other';
@@ -216,14 +217,15 @@ const ProductUploadForm: React.FC<ProductUploadFormProps> = ({ onClose, onSucces
   const removeImage = (idx: number) =>
     setForm((prev) => ({ ...prev, imageUrls: prev.imageUrls.filter((_, i) => i !== idx) }));
 
-  const uploadImageFile = async (file: File) => {
+  const uploadImageFile = async (originalFile: File) => {
     if (form.imageUrls.length >= 6) { setError(pf.maxImagesError); return; }
-    if (!file.type.startsWith('image/')) {
+    if (!originalFile.type.startsWith('image/')) {
       setError(isAr ? 'يرجى اختيار ملف صورة صالح.' : 'Please select a valid image file.');
       return;
     }
     setUploadingImage(true);
     setError('');
+    const { file } = await whitenProductImage(originalFile);
     try {
       const ext = file.name.split('.').pop() || 'jpg';
       const fileName = `product_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;

@@ -4,6 +4,8 @@ import React, { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 const REFERRAL_STORAGE_KEY = 'dh_referral_code';
+const REFERRAL_TTL_DAYS = 180;
+const REFERRAL_EXPIRY_KEY = 'dh_referral_code_expires_at';
 
 function RegisterRedirectInner() {
   const router = useRouter();
@@ -14,7 +16,11 @@ function RegisterRedirectInner() {
     if (ref) {
       try {
         window.localStorage?.setItem(REFERRAL_STORAGE_KEY, ref);
-        document.cookie = `${REFERRAL_STORAGE_KEY}=${encodeURIComponent(ref)}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
+        window.localStorage?.setItem(
+          REFERRAL_EXPIRY_KEY,
+          String(Date.now() + REFERRAL_TTL_DAYS * 24 * 60 * 60 * 1000)
+        );
+        document.cookie = `${REFERRAL_STORAGE_KEY}=${encodeURIComponent(ref)}; path=/; max-age=${60 * 60 * 24 * REFERRAL_TTL_DAYS}; SameSite=Lax`;
       } catch {
         // storage unavailable — query param is still forwarded
       }

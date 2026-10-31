@@ -62,12 +62,9 @@ export async function uploadLogisticsFile(
     throw new Error(`فشل رفع الملف: ${uploadError?.message || 'خطأ غير معروف'}`);
   }
 
-  const { data: urlData } = supabase.storage
-    .from(LOGISTICS_UPLOAD_BUCKET)
-    .getPublicUrl(storagePath);
-
+  // Private bucket: no public URL; callers store the "bucket/path" reference and sign on read
   return {
-    publicUrl: urlData?.publicUrl ?? '',
+    publicUrl: `${LOGISTICS_UPLOAD_BUCKET}/${storagePath}`,
     storagePath,
     fileName: file.name,
     fileSize: file.size,

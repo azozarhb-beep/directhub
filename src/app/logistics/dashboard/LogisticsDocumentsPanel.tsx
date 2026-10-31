@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
+import { SignedChatImage } from '@/components/SignedChatMedia';
+import { getChatMediaSignedUrl } from '@/lib/chatMedia';
 import toast from 'react-hot-toast';
 import {
   uploadLogisticsFile,
@@ -21,9 +23,12 @@ interface LogisticsDocument {
   file_url: string;
   file_size: number;
   tracking_number: string | null;
-  status: 'pending_review' | 'approved' | 'rejected';
+  status: 'pending_review' | 'approved' | 'rejected' | 'expired';
+  expires_at?: string | null;
   created_at: string;
 }
+
+type DocumentsPanelMode = 'customs' | 'licensing';
 
 const DOCUMENT_TYPE_OPTIONS = [
   { value: 'bill_of_lading',        label: 'بوليصة الشحن (Bill of Lading / AWB)' },
@@ -36,15 +41,40 @@ const DOCUMENT_TYPE_OPTIONS = [
   { value: 'customs_declaration',   label: 'البيان الجمركي (Customs Declaration)' },
 ];
 
+const LICENSING_TYPE_OPTIONS = [
+  { value: 'company_commercial_registration', label: 'السجل التجاري للشركة / المؤسسة (Commercial Registration - CR)' },
+  { value: 'company_transport_license',       label: 'ترخيص مزاولة نشاط النقل / الوكالة الملاحية / التخليص (Operating Freight / Transport License)' },
+  { value: 'company_insurance_policy',        label: 'وثيقة التأمين على البضائع / المسؤولية المدنية للأسطول (Cargo & Fleet Insurance Policy)' },
+  { value: 'company_tax_certificate',         label: 'البطاقة الضريبية / شهادة الرقم الضريبي (Tax / VAT Certificate)' },
+  { value: 'company_chamber_certificate',     label: 'شهادة عضوية الغرفة التجارية (Chamber of Commerce Certificate)' },
+  { value: 'company_authorized_signatory_id', label: 'هوية المفوض بالتوقيع / المدير العام (Authorized Signatory National ID / Passport)' },
+];
+
+const LICENSING_TYPE_VALUES = new Set(LICENSING_TYPE_OPTIONS.map(o => o.value));
+
 const DOC_TYPE_LABELS: Record<string, string> = Object.fromEntries(
-  DOCUMENT_TYPE_OPTIONS.map(o => [o.value, o.label])
+  [...DOCUMENT_TYPE_OPTIONS, ...LICENSING_TYPE_OPTIONS].map(o => [o.value, o.label])
 );
 
 const STATUS_META: Record<string, { label: string; color: string; icon: string }> = {
   pending_review: { label: 'قيد المراجعة', color: 'bg-amber-50 text-amber-700 border-amber-200',   icon: 'ClockIcon' },
   approved:       { label: 'معتمد',         color: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: 'CheckBadgeIcon' },
   rejected:       { label: 'مرفوض',         color: 'bg-red-50 text-red-700 border-red-200',         icon: 'XCircleIcon' },
+  expired:        { label: 'منتهي الصلاحية', color: 'bg-red-50 text-red-700 border-red-200',         icon: 'ExclamationCircleIcon' },
 };
+
+const LICENSING_STATUS_META: Record<string, { label: string; color: string; icon: string }> = {
+  pending_review: { label: 'قيد المراجعة والتحقق', color: 'bg-amber-50 text-amber-700 border-amber-200',       icon: 'ClockIcon' },
+  approved:       { label: 'معتمد وموثق',          color: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: 'CheckBadgeIcon' },
+  rejected:       { label: 'مرفوض',                 color: 'bg-red-50 text-red-700 border-red-200',             icon: 'XCircleIcon' },
+  expired:        { label: 'منتهي الصلاحية',        color: 'bg-red-50 text-red-700 border-red-200',             icon: 'ExclamationCircleIcon' },
+};
+
+function resolveDocStatus(doc: { status: string; expires_at?: string | null }): string {
+  if (doc.status === 'expired') return 'expired';
+  if (doc.expires_at && new Date(doc.expires_at).getTime() < Date.now()) return 'expired';
+  return doc.status;
+}
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -74,23 +104,60 @@ function isImageDoc(doc: { file_url: string; file_name: string }): boolean {
 
 function UploadModal({
   userId,
+  mode,
   onClose,
   onUploaded,
 }: {
   userId: string;
+  mode: DocumentsPanelMode;
   onClose: () => void;
   onUploaded: (doc: LogisticsDocument) => void | Promise<void>;
 }) {
   const supabase = createClient();
+  const isLicensing = mode === 'licensing';
+  const typeOptions = isLicensing ? LICENSING_TYPE_OPTIONS : DOCUMENT_TYPE_OPTIONS;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [docType, setDocType] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
+  const [activeShipments, setActiveShipments] = useState<
+    { id: string; tracking_number: string; container_number: string | null }[]
+  >([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    if (isLicensing) return;
+    let cancelled = false;
+    const loadActiveShipments = async () => {
+      try {
+        const { data: partnerRow } = await supabase
+          .from('logistics_partners')
+          .select('id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (!partnerRow?.id) return;
+        const { data } = await supabase
+          .from('logistics_shipments')
+          .select('id, tracking_number, container_number')
+          .eq('logistics_partner_id', partnerRow.id)
+          .in('shipment_status', ['pending', 'picked_up', 'in_transit', 'arrived_at_hub', 'out_for_delivery'])
+          .order('created_at', { ascending: false })
+          .limit(100);
+        if (!cancelled) setActiveShipments((data as any[]) || []);
+      } catch {
+        /* optional suggestions only */
+      }
+    };
+    loadActiveShipments();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, isLicensing]);
 
   useEffect(() => {
     return () => {
@@ -161,7 +228,7 @@ function UploadModal({
           file_url: uploaded.publicUrl,
           storage_path: uploaded.storagePath,
           file_size: uploaded.fileSize,
-          tracking_number: trackingNumber.trim() || null,
+          tracking_number: isLicensing ? null : (trackingNumber.trim() || null),
           status: 'pending_review',
         })
         .select()
@@ -176,7 +243,7 @@ function UploadModal({
       }
 
       setProgress(100);
-      toast.success('تم رفع المستند بنجاح');
+      toast.success(isLicensing ? 'تم رفع الوثيقة وهي الآن قيد المراجعة والتحقق' : 'تم رفع المستند بنجاح');
       // Only now (insert confirmed) update the list and close
       await onUploaded(docData as LogisticsDocument);
       onClose();
@@ -204,7 +271,9 @@ function UploadModal({
             <div className="w-8 h-8 bg-cyan-500/20 rounded-lg flex items-center justify-center">
               <Icon name="ArrowUpTrayIcon" size={16} className="text-cyan-400" />
             </div>
-            <h3 className="text-base font-bold text-white">رفع مستند جمركي</h3>
+            <h3 className="text-base font-bold text-white">
+              {isLicensing ? 'رفع وثيقة أو ترخيص مؤسسي' : 'رفع مستند جمركي'}
+            </h3>
           </div>
           <button
             type="button"
@@ -229,25 +298,42 @@ function UploadModal({
               className="w-full px-3 py-2.5 bg-slate-800 border border-slate-600 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
             >
               <option value="">-- اختر نوع المستند --</option>
-              {DOCUMENT_TYPE_OPTIONS.map(opt => (
+              {typeOptions.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
           </div>
 
-          {/* Tracking Number (optional) */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              رقم الشحنة أو الحاوية المرتبطة (اختياري)
-            </label>
-            <input
-              type="text"
-              value={trackingNumber}
-              onChange={e => setTrackingNumber(e.target.value)}
-              placeholder="مثال: CONT-2024-001234 أو TRK-2024-001"
-              className="w-full px-3 py-2.5 bg-slate-800 border border-slate-600 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-            />
-          </div>
+          {/* Tracking Number (optional) — shipment customs documents only */}
+          {!isLicensing && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                رقم الشحنة أو الحاوية المرتبطة (اختياري)
+              </label>
+              <input
+                type="text"
+                list="active-shipments-options"
+                value={trackingNumber}
+                onChange={e => setTrackingNumber(e.target.value)}
+                placeholder="مثال: TRK-2026-001 أو CONT-2026-001234"
+                className="w-full px-3 py-2.5 bg-slate-800 border border-slate-600 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+              {activeShipments.length > 0 && (
+                <>
+                  <datalist id="active-shipments-options">
+                    {activeShipments.map(s => (
+                      <option key={s.id} value={s.tracking_number}>
+                        {s.container_number ? `حاوية: ${s.container_number}` : 'شحنة نشطة'}
+                      </option>
+                    ))}
+                  </datalist>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    اختر من شحناتك النشطة أو اكتب رقم الحاوية يدويًا
+                  </p>
+                </>
+              )}
+            </div>
+          )}
 
           {/* File Upload — same paperclip button + input pattern as the admin support chat */}
           <div>
@@ -363,7 +449,7 @@ function UploadModal({
             ) : (
               <>
                 <Icon name="ArrowUpTrayIcon" size={15} />
-                رفع المستند
+                {isLicensing ? 'رفع الوثيقة' : 'رفع المستند'}
               </>
             )}
           </button>
@@ -378,8 +464,16 @@ function UploadModal({
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
-export default function LogisticsDocumentsPanel({ userId }: { userId?: string }) {
+export default function LogisticsDocumentsPanel({
+  userId,
+  mode = 'customs',
+}: {
+  userId?: string;
+  mode?: DocumentsPanelMode;
+}) {
   const supabase = createClient();
+  const isLicensing = mode === 'licensing';
+  const statusMetaMap = isLicensing ? LICENSING_STATUS_META : STATUS_META;
   const [documents, setDocuments] = useState<LogisticsDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
@@ -400,10 +494,13 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
     if (fetchErr) {
       setError(`فشل تحميل المستندات: ${fetchErr.message}`);
     } else {
-      setDocuments((data as LogisticsDocument[]) || []);
+      const all = (data as LogisticsDocument[]) || [];
+      setDocuments(
+        all.filter(d => (isLicensing ? LICENSING_TYPE_VALUES.has(d.document_type) : !LICENSING_TYPE_VALUES.has(d.document_type)))
+      );
     }
     setLoading(false);
-  }, [userId, supabase]);
+  }, [userId, supabase, isLicensing]);
 
   useEffect(() => {
     fetchDocuments();
@@ -431,6 +528,8 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
         bucket = 'logistics-documents';
         storagePath = decodeURIComponent(legacyMatch[1]);
       }
+    } else if (doc.file_url.startsWith(`${LOGISTICS_UPLOAD_BUCKET}/`)) {
+      storagePath = doc.file_url.slice(LOGISTICS_UPLOAD_BUCKET.length + 1);
     }
 
     // Delete from storage (best effort)
@@ -454,21 +553,23 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
       return;
     }
 
-    // Extract storage path from file_url or use file_name fallback
-    // The stored URL is a signed URL — open directly
-    if (doc.file_url.startsWith('http')) {
-      window.open(doc.file_url, '_blank');
+    // Legacy private-bucket documents keep their dedicated bucket
+    if (!doc.file_url.startsWith('http') && !doc.file_url.startsWith(`${LOGISTICS_UPLOAD_BUCKET}/`)) {
+      const { data } = await supabase.storage
+        .from('logistics-documents')
+        .createSignedUrl(doc.file_url, 3600);
+      if (data?.signedUrl) {
+        setSignedUrls(prev => ({ ...prev, [doc.id]: data.signedUrl }));
+        window.open(data.signedUrl, '_blank');
+      }
       return;
     }
 
-    // Fallback: generate new signed URL from path
-    const { data } = await supabase.storage
-      .from('logistics-documents')
-      .createSignedUrl(doc.file_url, 3600);
-
-    if (data?.signedUrl) {
-      setSignedUrls(prev => ({ ...prev, [doc.id]: data.signedUrl }));
-      window.open(data.signedUrl, '_blank');
+    // chat-media references / old public URLs: resolve an authenticated signed URL
+    const signed = await getChatMediaSignedUrl(doc.file_url);
+    if (signed) {
+      setSignedUrls(prev => ({ ...prev, [doc.id]: signed }));
+      window.open(signed, '_blank');
     }
   };
 
@@ -486,11 +587,12 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <Icon name="FolderOpenIcon" size={20} className="text-cyan-400" />
-            المستندات الجمركية واللوجستية
+            <Icon name={isLicensing ? 'ShieldCheckIcon' : 'FolderOpenIcon'} size={20} className="text-cyan-400" />
+            {isLicensing ? 'الوثائق والتراخيص المؤسسية (Company Licensing & KYC)' : 'المستندات الجمركية واللوجستية'}
           </h2>
           <p className="text-slate-400 text-sm mt-0.5">
-            رفع وإدارة وثائق التخليص الجمركي والشحن
+            {isLicensing
+              ? 'رفع وثائق تسجيل المنشأة وتراخيص النقل ووثائق التحقق من هوية المنشأة' :'رفع وإدارة وثائق التخليص الجمركي والشحن'}
           </p>
         </div>
         <button
@@ -498,17 +600,20 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
           className="flex items-center gap-2 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-semibold transition-colors"
         >
           <Icon name="PlusIcon" size={16} />
-          + رفع مستند جديد
+          {isLicensing ? '+ رفع وثيقة جديدة' : '+ رفع مستند جديد'}
         </button>
       </div>
 
       {/* Stats Row */}
       {documents.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className={`grid gap-3 ${isLicensing ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
           {[
             { label: 'إجمالي المستندات', value: documents.length, color: 'text-white', bg: 'bg-slate-800 border-slate-700' },
-            { label: 'قيد المراجعة', value: documents.filter(d => d.status === 'pending_review').length, color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30' },
-            { label: 'معتمدة', value: documents.filter(d => d.status === 'approved').length, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30' },
+            { label: isLicensing ? 'قيد المراجعة والتحقق' : 'قيد المراجعة', value: documents.filter(d => resolveDocStatus(d) === 'pending_review').length, color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30' },
+            { label: isLicensing ? 'معتمد وموثق' : 'معتمدة', value: documents.filter(d => resolveDocStatus(d) === 'approved').length, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30' },
+            ...(isLicensing
+              ? [{ label: 'منتهي الصلاحية', value: documents.filter(d => resolveDocStatus(d) === 'expired').length, color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/30' }]
+              : []),
           ].map(stat => (
             <div key={stat.label} className={`rounded-xl border p-3 text-center ${stat.bg}`}>
               <p className={`text-2xl font-black ${stat.color}`}>{stat.value}</p>
@@ -540,26 +645,29 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
           <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <Icon name="DocumentArrowUpIcon" size={32} className="text-slate-500" />
           </div>
-          <h3 className="text-base font-semibold text-white mb-2">لا توجد وثائق جمركية مرفوعة حالياً</h3>
+          <h3 className="text-base font-semibold text-white mb-2">
+            {isLicensing ? 'لا توجد وثائق أو تراخيص مؤسسية مرفوعة حالياً' : 'لا توجد وثائق جمركية مرفوعة حالياً'}
+          </h3>
           <p className="text-sm text-slate-400 mb-6 max-w-sm mx-auto leading-relaxed">
-            اضغط أدناه لرفع مستندات الشحنة والتخليص الجمركي
+            {isLicensing
+              ? 'اضغط أدناه لرفع السجل التجاري وتراخيص النقل ووثائق التحقق من هوية المنشأة' :'اضغط أدناه لرفع مستندات الشحنة والتخليص الجمركي'}
           </p>
           <button
             onClick={() => setShowUpload(true)}
             className="inline-flex items-center gap-2 px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-semibold transition-colors"
           >
             <Icon name="PlusIcon" size={16} />
-            + رفع مستند جديد
+            {isLicensing ? '+ رفع وثيقة جديدة' : '+ رفع مستند جديد'}
           </button>
         </div>
       ) : (
         /* Documents Cards — same visual style as the admin chat media */
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {documents.map(doc => {
-            const statusMeta = STATUS_META[doc.status] || STATUS_META.pending_review;
+            const statusMeta = statusMetaMap[resolveDocStatus(doc)] || statusMetaMap.pending_review;
             const docTypeLabel = DOC_TYPE_LABELS[doc.document_type] || doc.document_type;
             const isImage = isImageDoc(doc);
-            const linkedId = doc.tracking_number || doc.shipment_id;
+            const linkedId = isLicensing ? null : (doc.tracking_number || doc.shipment_id);
 
             return (
               <div
@@ -574,8 +682,7 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
                   title="معاينة / فتح"
                 >
                   {isImage ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <SignedChatImage
                       src={doc.file_url}
                       alt={`${docTypeLabel} - ${doc.file_name}`}
                       className="w-full h-44 object-cover"
@@ -648,6 +755,7 @@ export default function LogisticsDocumentsPanel({ userId }: { userId?: string })
       {showUpload && (
         <UploadModal
           userId={userId}
+          mode={mode}
           onClose={() => setShowUpload(false)}
           onUploaded={handleUploaded}
         />

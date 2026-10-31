@@ -6,6 +6,38 @@ import DispatchChatRoom from '@/components/DispatchChatRoom';
 import PortFreeTimeBadge from '@/components/PortFreeTimeBadge';
 import { createClient } from '@/lib/supabase/client';
 import { computeFreeTime } from '@/lib/portFreeTime';
+import { isB2BOrder } from './EscrowMilestoneTimeline';
+import FactorySelfReleasePanel from './FactorySelfReleasePanel';
+
+type OrderCurrency = 'YER' | 'USD';
+
+/**
+ * Resolve an order's currency from its origin.
+ * Explicit order.currency (YER/USD) wins, then export signals (incoterms / port),
+ * otherwise domestic orders default to YER.
+ */
+function resolveOrderCurrency(order: any): OrderCurrency {
+  const itemCur = Array.isArray(order?.items)
+    ? String(order.items.find((it: any) => it?.currency)?.currency || '').trim().toUpperCase()
+    : '';
+  if (itemCur === 'YER' || itemCur === 'USD') return itemCur as OrderCurrency;
+  const exportSignal = order?.incoterms || order?.incoterm_type || order?.port_of_discharge || order?.bl_document_url || order?.bill_of_lading_url;
+  if (exportSignal) return 'USD';
+  const explicit = String(order?.currency || '').trim().toUpperCase();
+  // orders.currency defaults to 'USD' in the DB, so only YER is trusted without export signals
+  if (explicit === 'YER') return 'YER';
+  const country = String(order?.user_profiles?.country || order?.shipping_address?.country || '').trim().toLowerCase();
+  if (country && !['yemen', 'ye', 'yem', 'اليمن', 'يمني'].includes(country)) return 'USD';
+  return 'YER';
+}
+
+function formatOrderMoney(amount: number, currency: OrderCurrency, withCode = false): string {
+  const n = Number(amount || 0);
+  if (currency === 'USD') {
+    return `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}${withCode ? ' USD' : ''}`;
+  }
+  return `${n.toLocaleString('en-US', { maximumFractionDigits: 0 })} ر.ي${withCode ? ' YER' : ''}`;
+}
 
 interface FactoryOrdersPanelProps {
   factoryOrders: any[];
@@ -25,6 +57,8 @@ interface FactoryOrdersPanelProps {
   fetchFactoryOrders: () => void;
   md: any;
   currentUserId?: string;
+  /** Local Yemeni manufacturer inbox mode (B2B/B2C segments, search, inbox wording). Omitted for International. */
+  localInbox?: boolean;
 }
 
 export default function FactoryOrdersPanel({
@@ -45,9 +79,56 @@ export default function FactoryOrdersPanel({
   fetchFactoryOrders,
   md,
   currentUserId,
+  localInbox = false,
 }: FactoryOrdersPanelProps) {
+  const [segment, setSegment] = useState<'all' | 'b2b' | 'b2c'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [showDispatchChat, setShowDispatchChat] = useState<string | null>(null);
   const [portShipments, setPortShipments] = useState<Record<string, any[]>>({});
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({ productName: '', quantity: '1', unitPrice: '', note: '', currency: 'YER' as OrderCurrency });
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  const handleCreateProductionOrder = async () => {
+    if (!currentUserId) {
+      setCreateError('يجب تسجيل الدخول أولاً');
+      return;
+    }
+    const qty = Math.max(1, Number(createForm.quantity) || 1);
+    const unitPrice = Math.max(0, Number(createForm.unitPrice) || 0);
+    if (!createForm.productName.trim()) {
+      setCreateError('يرجى إدخال اسم المنتج');
+      return;
+    }
+    setCreateSaving(true);
+    setCreateError('');
+    try {
+      const supabase = createClient();
+      const total = qty * unitPrice;
+      const orderNumber = `PO-${Date.now().toString(36).toUpperCase()}`;
+      const { error } = await supabase.from('orders').insert({
+        user_id: currentUserId,
+        factory_user_id: currentUserId,
+        order_number: orderNumber,
+        status: 'pending',
+        items: [{ name: createForm.productName.trim(), quantity: qty, unit_price: unitPrice, currency: createForm.currency }],
+        currency: createForm.currency,
+        subtotal: total,
+        total,
+        notes: createForm.note.trim(),
+      });
+      if (error) throw error;
+      setShowCreateModal(false);
+      setCreateForm({ productName: '', quantity: '1', unitPrice: '', note: '', currency: 'YER' });
+      setFactoryOrderStatusFilter('all');
+      fetchFactoryOrders();
+    } catch (err: any) {
+      setCreateError(err?.message || 'تعذر إنشاء أمر الإنتاج');
+    } finally {
+      setCreateSaving(false);
+    }
+  };
 
   const orderIdsKey = factoryOrders.map((o: any) => o.id).join(',');
   useEffect(() => {
@@ -74,16 +155,65 @@ export default function FactoryOrdersPanel({
     return () => { cancelled = true; };
   }, [orderIdsKey]);
 
-  const minRemaining = (orderId: string): number => {
-    const list = portShipments[orderId] || [];
-    const vals = list.map(s => computeFreeTime(s)?.remainingDays).filter((v): v is number => v !== undefined);
-    return vals.length ? Math.min(...vals) : Number.POSITIVE_INFINITY;
+  const sortedFactoryOrders = useMemo(() => {
+    const remainingFor = (orderId: string): number => {
+      const list = portShipments[orderId] || [];
+      const vals = list.map(s => computeFreeTime(s)?.remainingDays).filter((v): v is number => v !== undefined);
+      return vals.length ? Math.min(...vals) : Number.POSITIVE_INFINITY;
+    };
+    return [...factoryOrders].sort((a: any, b: any) => {
+      const ra = remainingFor(a.id);
+      const rb = remainingFor(b.id);
+      if (ra === rb) return 0;
+      return ra < rb ? -1 : 1;
+    });
+  }, [factoryOrders, portShipments]);
+
+  const matchesLocalFilters = (o: any): boolean => {
+    if (!localInbox) return true;
+    if (segment === 'b2b' && !isB2BOrder(o)) return false;
+    if (segment === 'b2c' && isB2BOrder(o)) return false;
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    const itemNames = Array.isArray(o.items)
+      ? o.items.map((it: any) => `${it?.name || ''} ${it?.product_name || ''}`).join(' ')
+      : '';
+    const haystack = [
+      o.order_number,
+      o.user_profiles?.full_name,
+      o.user_profiles?.company_name,
+      itemNames,
+    ].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(q);
   };
 
-  const sortedFactoryOrders = useMemo(() => {
-    return [...factoryOrders].sort((a: any, b: any) => minRemaining(a.id) - minRemaining(b.id));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [factoryOrders, portShipments]);
+  const visibleOrders = sortedFactoryOrders.filter(
+    (o: any) => (factoryOrderStatusFilter === 'all' || o.status === factoryOrderStatusFilter) && matchesLocalFilters(o)
+  );
+  const hasLocalFilters = localInbox && (segment !== 'all' || searchQuery.trim() !== '');
+
+  // Live bulk (B2B) KPIs computed from the factory's real order rows
+  const bulkKpis = useMemo(() => {
+    const bulk = factoryOrders.filter((o: any) => isB2BOrder(o));
+    const secured = bulk.filter((o: any) =>
+      ['funds_secured', 'shipped', 'ready_for_inspection', 'pending_otp_confirmation', 'pending_admin_payout'].includes(o.escrow_status || '')
+    );
+    const sumBy = (list: any[], cur: OrderCurrency) =>
+      list.filter((o: any) => resolveOrderCurrency(o) === cur).reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+    const securedValue = { YER: sumBy(secured, 'YER'), USD: sumBy(secured, 'USD') };
+    const blAwaiting = bulk.filter(
+      (o: any) => (o.bl_document_url || o.bill_of_lading_url) && !o.milestone_2_paid && o.escrow_status !== 'funds_released'
+    ).length;
+    const bulkValue = { YER: sumBy(bulk, 'YER'), USD: sumBy(bulk, 'USD') };
+    return { count: bulk.length, securedValue, blAwaiting, bulkValue };
+  }, [factoryOrders]);
+
+  const formatDual = (v: { YER: number; USD: number }): string => {
+    const parts: string[] = [];
+    if (v.YER > 0) parts.push(formatOrderMoney(v.YER, 'YER'));
+    if (v.USD > 0) parts.push(formatOrderMoney(v.USD, 'USD'));
+    return parts.length ? parts.join(' + ') : formatOrderMoney(0, localInbox ? 'YER' : 'USD');
+  };
 
   return (
     <div className="space-y-5">
@@ -94,7 +224,7 @@ export default function FactoryOrdersPanel({
             <Icon name="ClipboardDocumentListIcon" size={24} className="text-white" />
           </div>
           <div className="flex-1">
-            <h2 className="text-lg font-bold">قائمة انتظار الطلبات الذاتية</h2>
+            <h2 className="text-lg font-bold">{localInbox ? 'صندوق الطلبات الواردة' : 'قائمة انتظار الطلبات الذاتية'}</h2>
             <p className="text-sm text-white/80">عرض وإدارة جميع الطلبات الواردة المخصصة لمصنعك</p>
           </div>
           <div className="text-right shrink-0">
@@ -104,19 +234,82 @@ export default function FactoryOrdersPanel({
         </div>
       </div>
 
+      {localInbox && (
+        <div className="space-y-3" dir="rtl">
+          <div className="relative">
+            <span className="absolute inset-y-0 start-3 flex items-center pointer-events-none">
+              <Icon name="MagnifyingGlassIcon" size={16} className="text-muted-foreground" />
+            </span>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="ابحث برقم الطلب، اسم المشتري، أو المنتج..."
+              className="w-full ps-10 pe-3 py-2.5 rounded-xl border border-border bg-card text-foreground text-xs focus:outline-none focus:border-sky-500"
+            />
+          </div>
+          <div className="inline-flex flex-wrap items-center gap-1 bg-muted/50 p-1 rounded-xl" role="tablist">
+            {[
+              { value: 'all' as const, label: 'الكل' },
+              { value: 'b2b' as const, label: 'طلبات الجملة والتوريد B2B' },
+              { value: 'b2c' as const, label: 'مبيعات التجزئة B2C' },
+            ].map(s => (
+              <button
+                key={s.value}
+                type="button"
+                role="tab"
+                aria-selected={segment === s.value}
+                onClick={() => setSegment(s.value)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  segment === s.value ? 'bg-sky-600 text-white shadow' : 'text-muted-foreground hover:bg-card'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Live bulk-orders KPI cards (computed from live Supabase order rows) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3" dir="rtl" aria-label="مؤشرات طلبات الجملة">
+        {[
+          { label: 'طلبات الجملة B2B', value: bulkKpis.count.toLocaleString('en-US'), tone: 'bg-sky-50 text-sky-800 border-sky-200' },
+          { label: 'قيمة طلبات الجملة', value: formatDual(bulkKpis.bulkValue), tone: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
+          { label: 'أموال مؤمَّنة بالضمان', value: formatDual(bulkKpis.securedValue), tone: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+          { label: 'بانتظار صرف الدفعة 40%', value: bulkKpis.blAwaiting.toLocaleString('en-US'), tone: 'bg-amber-50 text-amber-800 border-amber-200' },
+        ].map((k) => (
+          <div key={k.label} className={`rounded-xl border p-4 ${k.tone}`}>
+            <p className="text-xl font-bold" dir="ltr" style={{ textAlign: 'right' }}>{factoryOrdersLoading ? '…' : k.value}</p>
+            <p className="text-xs font-medium mt-0.5">{k.label}</p>
+          </div>
+        ))}
+      </div>
+
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'معلق', count: factoryOrders.filter((o: any) => o.status === 'pending').length, color: 'bg-amber-50 text-amber-700 border-amber-200' },
-          { label: 'قيد المعالجة', count: factoryOrders.filter((o: any) => o.status === 'processing').length, color: 'bg-blue-50 text-blue-700 border-blue-200' },
-          { label: 'تم الشحن', count: factoryOrders.filter((o: any) => o.status === 'shipped').length, color: 'bg-purple-50 text-purple-700 border-purple-200' },
-          { label: 'إجمالي الطلبات', count: factoryOrders.length, color: 'bg-muted text-foreground border-border' },
-        ].map(s => (
-          <div key={s.label} className={`rounded-xl border p-4 ${s.color}`}>
-            <p className="text-2xl font-bold">{s.count}</p>
-            <p className="text-xs font-medium mt-0.5">{s.label}</p>
-          </div>
-        ))}
+          { label: 'معلق', filter: 'pending', count: factoryOrders.filter((o: any) => o.status === 'pending').length, color: 'bg-amber-50 text-amber-700 border-amber-200', ring: 'ring-amber-400 shadow-amber-200' },
+          { label: 'قيد المعالجة', filter: 'processing', count: factoryOrders.filter((o: any) => o.status === 'processing').length, color: 'bg-blue-50 text-blue-700 border-blue-200', ring: 'ring-blue-400 shadow-blue-200' },
+          { label: 'تم الشحن', filter: 'shipped', count: factoryOrders.filter((o: any) => o.status === 'shipped').length, color: 'bg-purple-50 text-purple-700 border-purple-200', ring: 'ring-purple-400 shadow-purple-200' },
+          { label: 'إجمالي الطلبات', filter: 'all', count: factoryOrders.length, color: 'bg-muted text-foreground border-border', ring: 'ring-sky-400 shadow-sky-200' },
+        ].map(s => {
+          const isActive = factoryOrderStatusFilter === s.filter;
+          return (
+            <button
+              key={s.label}
+              type="button"
+              onClick={() => setFactoryOrderStatusFilter(s.filter)}
+              aria-pressed={isActive}
+              className={`rounded-xl border p-4 text-start cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${s.color} ${
+                isActive ? `ring-2 shadow-lg ${s.ring}` : ''
+              }`}
+            >
+              <p className="text-2xl font-bold">{s.count}</p>
+              <p className="text-xs font-medium mt-0.5">{s.label}</p>
+            </button>
+          );
+        })}
       </div>
 
       {/* Filter Bar */}
@@ -160,20 +353,31 @@ export default function FactoryOrdersPanel({
           {/* Orders List */}
           <div className="lg:col-span-2 space-y-2">
             <p className="text-sm font-bold text-foreground mb-2">
-              الطلبات ({factoryOrders.filter((o: any) => factoryOrderStatusFilter === 'all' || o.status === factoryOrderStatusFilter).length})
+              الطلبات ({visibleOrders.length})
             </p>
-            {factoryOrders.filter((o: any) => factoryOrderStatusFilter === 'all' || o.status === factoryOrderStatusFilter).length === 0 ? (
+            {visibleOrders.length === 0 ? (
               <div className="bg-card border border-border rounded-xl p-8 text-center">
                 <Icon name="ClipboardDocumentListIcon" size={28} className="text-muted-foreground mx-auto mb-2" />
                 <p className="text-sm text-muted-foreground">
                   {factoryOrders.length === 0
                     ? 'لا توجد طلبات مخصصة لمصنعك بعد. ستظهر الطلبات هنا تلقائياً عند تقديمها.'
-                    : `لا توجد طلبات بحالة "${factoryOrderStatusFilter}".`}
+                    : hasLocalFilters
+                      ? 'لا توجد طلبات مطابقة للبحث أو التصنيف المحدد.'
+                      : `لا توجد طلبات بحالة "${factoryOrderStatusFilter}".`}
                 </p>
+                {factoryOrders.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => { setCreateError(''); setShowCreateModal(true); }}
+                    className="mt-4 inline-flex items-center gap-1.5 px-4 py-2.5 bg-sky-600 text-white text-xs font-bold rounded-xl hover:bg-sky-700 transition-colors"
+                  >
+                    <Icon name="PlusIcon" size={14} className="text-white" />
+                    {localInbox ? 'تسجيل طلب بيع يدوي' : 'إنشاء أمر إنتاج جديد / Create Production Order'}
+                  </button>
+                )}
               </div>
             ) : (
-              sortedFactoryOrders
-                .filter((o: any) => factoryOrderStatusFilter === 'all' || o.status === factoryOrderStatusFilter)
+              visibleOrders
                 .map((order: any) => {
                   const isSelected = selectedFactoryOrder?.id === order.id;
                   const statusColors: Record<string, string> = {
@@ -219,7 +423,7 @@ export default function FactoryOrdersPanel({
                         <p className="text-xs text-muted-foreground">
                           {new Date(order.created_at).toLocaleDateString('ar-SA', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </p>
-                        <p className="text-sm font-bold text-foreground">${Number(order.total || 0).toLocaleString()}</p>
+                        <p className="text-sm font-bold text-foreground">{formatOrderMoney(Number(order.total || 0), resolveOrderCurrency(order))}</p>
                       </div>
                       {(portShipments[order.id] || []).length > 0 && (
                         <div className="mt-2 space-y-1.5">
@@ -293,7 +497,7 @@ export default function FactoryOrdersPanel({
                   </div>
                   <div>
                     <p className="text-muted-foreground mb-0.5">المبلغ الإجمالي</p>
-                    <p className="font-bold text-foreground">${Number(selectedFactoryOrder.total || 0).toLocaleString()} USD</p>
+                    <p className="font-bold text-foreground">{formatOrderMoney(Number(selectedFactoryOrder.total || 0), resolveOrderCurrency(selectedFactoryOrder), true)}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground mb-0.5">تاريخ الطلب</p>
@@ -340,7 +544,7 @@ export default function FactoryOrdersPanel({
                           </div>
                           <div className="text-right shrink-0 ml-3">
                             <p className="font-semibold text-foreground">الكمية: {item.quantity || item.qty || 1}</p>
-                            {item.unit_price && <p className="text-muted-foreground">${Number(item.unit_price).toLocaleString()} / وحدة</p>}
+                            {item.unit_price && <p className="text-muted-foreground">{formatOrderMoney(Number(item.unit_price), (String(item.currency || '').toUpperCase() === 'USD' || String(item.currency || '').toUpperCase() === 'YER' ? String(item.currency).toUpperCase() : resolveOrderCurrency(selectedFactoryOrder)) as OrderCurrency)} / وحدة</p>}
                           </div>
                         </div>
                       ))}
@@ -472,6 +676,16 @@ export default function FactoryOrdersPanel({
                 )}
 
                 {/* Dispatch Chat Room — shown inline when toggled */}
+                {(selectedFactoryOrder.bl_document_url || selectedFactoryOrder.bill_of_lading_url) &&
+                  !selectedFactoryOrder.milestone_2_paid &&
+                  isB2BOrder(selectedFactoryOrder) && (
+                    <FactorySelfReleasePanel
+                      orderId={selectedFactoryOrder.id}
+                      refreshKey={`${selectedFactoryOrder.bl_document_url || selectedFactoryOrder.bill_of_lading_url}|${selectedFactoryOrder.bl_verified_at || ''}`}
+                      onReleased={fetchFactoryOrders}
+                    />
+                  )}
+
                 {showDispatchChat === selectedFactoryOrder.id && currentUserId && (
                   <div className="mt-4">
                     <DispatchChatRoom
@@ -502,6 +716,89 @@ export default function FactoryOrdersPanel({
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" dir="rtl" onClick={() => !createSaving && setShowCreateModal(false)}>
+          <div className="bg-card border border-border rounded-2xl p-5 w-full max-w-md space-y-3" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-foreground">{localInbox ? 'تسجيل طلب بيع يدوي' : 'إنشاء أمر إنتاج جديد / Create Production Order'}</h3>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">اسم المنتج / Product</label>
+              <input
+                value={createForm.productName}
+                onChange={e => setCreateForm(f => ({ ...f, productName: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-foreground text-xs focus:outline-none focus:border-sky-500"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">الكمية / Quantity</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={createForm.quantity}
+                  onChange={e => setCreateForm(f => ({ ...f, quantity: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-foreground text-xs focus:outline-none focus:border-sky-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">سعر الوحدة ({createForm.currency})</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={createForm.unitPrice}
+                  onChange={e => setCreateForm(f => ({ ...f, unitPrice: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-foreground text-xs focus:outline-none focus:border-sky-500"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">العملة / Currency</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['YER', 'USD'] as const).map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCreateForm(f => ({ ...f, currency: c }))}
+                    className={`py-2 text-xs font-bold rounded-xl border transition-colors ${
+                      createForm.currency === c ? 'bg-sky-600 text-white border-sky-600' : 'bg-background border-border text-foreground hover:border-sky-300'
+                    }`}
+                  >
+                    {c === 'YER' ? 'YER — محلي' : 'USD — تصدير'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">ملاحظات (اختياري)</label>
+              <textarea
+                rows={2}
+                value={createForm.note}
+                onChange={e => setCreateForm(f => ({ ...f, note: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-foreground text-xs focus:outline-none focus:border-sky-500 resize-none"
+              />
+            </div>
+            {createError && <p className="text-xs text-red-600 font-semibold">{createError}</p>}
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                disabled={createSaving}
+                className="px-4 py-2 text-xs font-bold rounded-xl border border-border text-muted-foreground hover:bg-muted disabled:opacity-50"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateProductionOrder}
+                disabled={createSaving}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50"
+              >
+                {createSaving ? 'جارٍ الإنشاء...' : 'إنشاء'}
+              </button>
+            </div>
           </div>
         </div>
       )}

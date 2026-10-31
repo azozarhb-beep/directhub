@@ -22,9 +22,9 @@ interface AgentFactory {
 }
 
 const DOC_TYPE_META = [
-  { key: 'trade_license', labelKey: 'tradeLicense' as const, icon: 'DocumentTextIcon', required: true },
-  { key: 'cr_document', labelKey: 'crDocument' as const, icon: 'ClipboardDocumentListIcon', required: false },
-  { key: 'factory_license', labelKey: 'factoryLicense' as const, icon: 'BuildingOffice2Icon', required: false },
+  { key: 'trade_license', label: 'السجل التجاري', icon: 'DocumentTextIcon', required: true },
+  { key: 'cr_document', label: 'البطاقة والرقم الضريبي', icon: 'ClipboardDocumentListIcon', required: false },
+  { key: 'factory_license', label: 'رخصة مزاولة المهنة / السجل الصناعي', icon: 'BuildingOffice2Icon', required: false },
 ];
 
 function UploadLicensePageInner() {
@@ -92,11 +92,8 @@ function UploadLicensePageInner() {
 
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage
-        .from('factory-documents')
-        .getPublicUrl(filePath);
-
-      const publicUrl = urlData?.publicUrl || '';
+      // Store the private object path (never a public URL); viewed via signed URLs.
+      const publicUrl = filePath;
 
       // Update factory record
       const updateData: Record<string, string | Date> = {
@@ -222,7 +219,7 @@ function UploadLicensePageInner() {
         {/* Document Upload Cards */}
         <div className="space-y-4">
           {DOC_TYPE_META.map(doc => {
-            const docLabel = ul[doc.labelKey];
+            const docLabel = doc.label;
             const isUploaded = !!uploadedDocs[doc.key];
             const isUploading = uploading === doc.key;
             const isPending = uploadedDocs[doc.key]?.startsWith('pending-upload:');

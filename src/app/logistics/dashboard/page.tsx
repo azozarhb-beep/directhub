@@ -1,14 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
 import Header from '@/components/Header';
-import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
+
 import DispatchTruckModal from './DispatchTruckModal';
 import MaritimeBookingModal from './MaritimeBookingModal';
 import OceanCarrierFields, {
@@ -27,16 +27,19 @@ import {
   resolvePlatformRole,
   getHomeRoomForRole,
 } from '@/lib/roomIsolation';
-
-
+import { useLanguage } from '@/contexts/LanguageContext';
+import { getHubShellStrings } from '@/lib/hubShellI18n';
 import LogisticsDocumentsPanel from './LogisticsDocumentsPanel';
 import LogisticsDispatchRoomsTab from './LogisticsDispatchRoomsTab';
 import LogisticsDelayReportModal from './LogisticsDelayReportModal';
 import LogisticsDisputeTicketingPanel from './LogisticsDisputeTicketingPanel';
 import AirportSearchModal from './AirportSearchModal';
-import { AIR_ORIGIN_AIRPORTS, AIR_DEST_AIRPORTS } from './airportData';
+import { AIR_ORIGIN_AIRPORTS, AIR_DEST_AIRPORTS, getAirportCountry } from './airportData';
 import toast from 'react-hot-toast';
 import { uploadLogisticsFile, LOGISTICS_FILE_ACCEPT } from '@/lib/logisticsUpload';
+import { isMissingTableError } from '@/lib/hooks/useLogisticsData';
+import { useSearchParams } from 'next/navigation';
+import { ChatAttachmentView } from '@/components/ChatAttachmentView';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -648,9 +651,13 @@ const SEA_ORIGIN_PORTS = [
 ];
 
 const SEA_DEST_PORTS = [
-  { value: 'aden',         label: 'Port of Aden (YEPOD)',   labelAr: 'ميناء عدن' },
-  { value: 'hodeidah',     label: 'Port of Hodeidah (YEHOD)', labelAr: 'ميناء الحديدة' },
+  { value: 'aden',         label: 'Port of Aden (YEPOD)',   labelAr: 'ميناء عدن', country: 'Yemen' },
+  { value: 'hodeidah',     label: 'Port of Hodeidah (YEHOD)', labelAr: 'ميناء الحديدة', country: 'Yemen' },
 ];
+
+// Top trade partners offered when no port/airport has been selected yet
+const TOP_TRADE_PARTNER_COUNTRIES = ['China', 'Saudi Arabia', 'UAE', 'Turkey', 'India', 'Oman', 'Egypt'];
+const DEST_COUNTRY_OPTIONS = ['Yemen', ...TOP_TRADE_PARTNER_COUNTRIES];
 
 // ── Air freight airports ──────────────────────────────────────────────────────
 // Airport lists are imported from ./airportData
@@ -766,6 +773,8 @@ function ShippingCalculatorTab({ partner, onRequestSpecialQuote }: { partner?: L
   const [showSeaOriginDropdown, setShowSeaOriginDropdown] = useState(false);
   const [airOriginAirport, setAirOriginAirport] = useState('');
   const [airDestAirport, setAirDestAirport] = useState('');
+  const [manualOriginCountry, setManualOriginCountry] = useState('');
+  const [manualDestCountry, setManualDestCountry] = useState('');
   const [result, setResult] = useState<CalcResult | null>(null);
   const [calculated, setCalculated] = useState(false);
   const [rates, setRates] = useState<PartnerRates>(DEFAULT_RATES);
@@ -778,6 +787,20 @@ function ShippingCalculatorTab({ partner, onRequestSpecialQuote }: { partner?: L
   const isSea = shipmentType === 'international_sea';
   const isAir = shipmentType === 'international_air';
   const isIntlLand = shipmentType === 'international_land';
+
+  // Dynamic origin/destination countries derived from the selected port/airport
+  const selectedOriginCountry: string | null = isSea
+    ? (SEA_ORIGIN_PORTS.find(p => p.value === seaOriginPort)?.country ?? null)
+    : isAir
+      ? getAirportCountry(airOriginAirport)
+      : null;
+  const selectedDestCountry: string | null = isSea
+    ? (SEA_DEST_PORTS.find(p => p.value === seaDestPort)?.country ?? null)
+    : isAir
+      ? getAirportCountry(airDestAirport)
+      : null;
+  const effectiveOriginCountry = selectedOriginCountry || manualOriginCountry || null;
+  const effectiveDestCountry = selectedDestCountry || manualDestCountry || null;
 
   // Load partner custom rates from DB
   useEffect(() => {
@@ -965,6 +988,8 @@ function ShippingCalculatorTab({ partner, onRequestSpecialQuote }: { partner?: L
     setShowSeaOriginDropdown(false);
     setAirOriginAirport('');
     setAirDestAirport('');
+    setManualOriginCountry('');
+    setManualDestCountry('');
     setFclContainerCount(1);
     setFclCountInput('1');
   };
@@ -975,7 +1000,28 @@ function ShippingCalculatorTab({ partner, onRequestSpecialQuote }: { partner?: L
     const { error } = await supabase
       .from('partner_shipping_rates')
       .upsert({ partner_id: partner.id, ...editRates }, { onConflict: 'partner_id' });
-    if (!error) {
+    // Mirror the rate card into logistics_rates (best-effort; table may not be migrated yet)
+    try {
+      await supabase.from('logistics_rates').upsert(
+        [
+          { partner_id: partner.id, service_type: 'domestic_land', rate_unit: 'per_kg', base_rate: editRates.land_medium_rate_per_kg, min_charge: 0, handling_fee: 0, currency: 'USD', is_active: true },
+          { partner_id: partner.id, service_type: 'cross_border', rate_unit: 'per_km', base_rate: editRates.intl_land_rate_per_km, min_charge: editRates.intl_land_base_charge, handling_fee: 0, currency: 'USD', is_active: true },
+          { partner_id: partner.id, service_type: 'air', rate_unit: 'per_kg', base_rate: editRates.air_rate_per_kg, min_charge: editRates.air_min_charge, handling_fee: editRates.air_handling_fee, currency: 'USD', is_active: true },
+          { partner_id: partner.id, service_type: 'ocean', rate_unit: 'per_cbm', base_rate: editRates.sea_rate_per_cbm_ton, min_charge: editRates.sea_min_bl_charge, handling_fee: editRates.sea_base_docs_fee, currency: 'USD', is_active: true },
+        ],
+        { onConflict: 'partner_id,service_type' }
+      );
+    } catch {
+      // ignore - logistics_rates not available yet
+    }
+    if (!error || isMissingTableError(error)) {
+      if (error) {
+        try {
+          window.localStorage.setItem(`dh_logistics_partner_rates_${partner.id}`, JSON.stringify(editRates));
+        } catch {
+          // storage unavailable
+        }
+      }
       setRates(editRates);
       setShowRatesEditor(false);
       toast.success('تم حفظ التسعيرة المخصصة بنجاح');
@@ -1218,22 +1264,55 @@ function ShippingCalculatorTab({ partner, onRequestSpecialQuote }: { partner?: L
           <span className="text-emerald-700">نقل داخلي بين المحافظات اليمنية</span>
         </div>
       ) : (
-        partner && (partner.origin_countries?.length > 0 || partner.destination_countries?.length > 0) && (
-          <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex flex-wrap gap-3 text-xs">
-            {partner.origin_countries?.length > 0 && (
-              <div>
-                <span className="font-semibold text-primary">دول المنشأ: </span>
-                <span className="text-foreground">{partner.origin_countries.slice(0, 3).map(c => COUNTRIES_AR[c] || c).join('، ')}{partner.origin_countries.length > 3 ? ` +${partner.origin_countries.length - 3}` : ''}</span>
-              </div>
-            )}
-            {partner.destination_countries?.length > 0 && (
-              <div>
-                <span className="font-semibold text-emerald-600">دول الوصول: </span>
-                <span className="text-foreground">{partner.destination_countries.slice(0, 3).map(c => COUNTRIES_AR[c] || c).join('، ')}{partner.destination_countries.length > 3 ? ` +${partner.destination_countries.length - 3}` : ''}</span>
-              </div>
+        <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs" dir="rtl">
+          {/* Origin country */}
+          <div>
+            <span className="font-semibold text-primary block mb-1">دول المنشأ</span>
+            {selectedOriginCountry ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-background border border-primary/30 text-foreground font-medium">
+                {COUNTRIES_AR[selectedOriginCountry] || selectedOriginCountry}
+                <span className="text-[10px] text-muted-foreground">(تلقائي من الميناء/المطار)</span>
+              </span>
+            ) : (
+              <select
+                value={manualOriginCountry}
+                onChange={e => { setManualOriginCountry(e.target.value); setResult(null); }}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">اختر دولة المنشأ</option>
+                {TOP_TRADE_PARTNER_COUNTRIES.map(c => (
+                  <option key={c} value={c}>{COUNTRIES_AR[c] || c}</option>
+                ))}
+              </select>
             )}
           </div>
-        )
+          {/* Destination country */}
+          <div>
+            <span className="font-semibold text-emerald-600 block mb-1">دول الوصول</span>
+            {selectedDestCountry ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-background border border-emerald-300 text-foreground font-medium">
+                {COUNTRIES_AR[selectedDestCountry] || selectedDestCountry}
+                <span className="text-[10px] text-muted-foreground">(تلقائي من الميناء/المطار)</span>
+              </span>
+            ) : (
+              <select
+                value={manualDestCountry}
+                onChange={e => { setManualDestCountry(e.target.value); setResult(null); }}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">اختر دولة الوصول</option>
+                {DEST_COUNTRY_OPTIONS.map(c => (
+                  <option key={c} value={c}>{COUNTRIES_AR[c] || c}</option>
+                ))}
+              </select>
+            )}
+          </div>
+          {effectiveOriginCountry && effectiveDestCountry && (
+            <p className="sm:col-span-2 text-[11px] text-muted-foreground">
+              المسار: {COUNTRIES_AR[effectiveOriginCountry] || effectiveOriginCountry} ➔ {COUNTRIES_AR[effectiveDestCountry] || effectiveDestCountry}
+            </p>
+          )}
+        </div>
       )}
 
       {/* Input Fields */}
@@ -2068,6 +2147,97 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
   const [oceanForm, setOceanForm] = useState<OceanCarrierFormValue>(() => oceanFormFromPartner(partner));
   const showOcean = partner.partner_type === 'international_shipping_office' || !!partner.carrier_type;
 
+  const [credModalOpen, setCredModalOpen] = useState(false);
+  const [credSaving, setCredSaving] = useState(false);
+  const [credError, setCredError] = useState('');
+  const [credForm, setCredForm] = useState({
+    scac_code: partner.scac_code || '',
+    imo_company_number: partner.imo_company_number || '',
+    corridors: [] as string[],
+    incoterms_supported: partner.incoterms_supported || [],
+  });
+
+  const CORRIDOR_OPTIONS: { value: string; label: string }[] = [
+    { value: 'China', label: 'الصين 🇨🇳' },
+    { value: 'Yemen', label: 'اليمن 🇾🇪' },
+    { value: 'United Arab Emirates', label: 'الإمارات 🇦🇪' },
+    { value: 'Saudi Arabia', label: 'السعودية 🇸🇦' },
+  ];
+
+  const openCredModal = () => {
+    const existing = Array.from(new Set([...(partner.origin_countries || []), ...(partner.destination_countries || [])]));
+    setCredForm({
+      scac_code: partner.scac_code || '',
+      imo_company_number: partner.imo_company_number || '',
+      corridors: existing.filter(c => CORRIDOR_OPTIONS.some(o => o.value === c)),
+      incoterms_supported: partner.incoterms_supported || [],
+    });
+    setCredError('');
+    setCredModalOpen(true);
+  };
+
+  const handleCredSave = async () => {
+    setCredSaving(true);
+    setCredError('');
+    try {
+      const scac = credForm.scac_code.trim().toUpperCase();
+      const imo = credForm.imo_company_number.trim();
+      if (scac && !/^[A-Z]{2,4}$/.test(scac)) throw new Error('رمز SCAC يجب أن يتكون من 2 إلى 4 أحرف إنجليزية.');
+      if (imo && !/^\d{7}$/.test(imo)) throw new Error('رقم IMO للشركة يجب أن يتكون من 7 أرقام.');
+      const corridorValues = CORRIDOR_OPTIONS.map(o => o.value);
+      const keepOrigin = (partner.origin_countries || []).filter(c => !corridorValues.includes(c));
+      const keepDest = (partner.destination_countries || []).filter(c => !corridorValues.includes(c));
+      const { data, error } = await supabase
+        .from('logistics_partners')
+        .update({
+          scac_code: scac || null,
+          imo_company_number: imo || null,
+          origin_countries: [...keepOrigin, ...credForm.corridors],
+          destination_countries: [...keepDest, ...credForm.corridors],
+          incoterms_supported: credForm.incoterms_supported,
+        })
+        .eq('id', partner.id)
+        .select()
+        .single();
+      if (error) throw error;
+      onSaved(data as LogisticsPartner);
+      setForm(prev => ({
+        ...prev,
+        origin_countries: (data as LogisticsPartner).origin_countries || [],
+        destination_countries: (data as LogisticsPartner).destination_countries || [],
+        incoterms_supported: (data as LogisticsPartner).incoterms_supported || [],
+      }));
+      setOceanForm(oceanFormFromPartner(data));
+      setCredModalOpen(false);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: any) {
+      setCredError(err.message || 'فشل حفظ بيانات الاعتماد.');
+    } finally {
+      setCredSaving(false);
+    }
+  };
+
+  const formatPhoneWithDial = (phone: string | null | undefined, country: string | null | undefined) => {
+    const raw = (phone || '').trim();
+    if (!raw) return null;
+    if (raw.startsWith('+')) return raw;
+    const dialMap: Record<string, string> = {
+      Yemen: '+967', 'Saudi Arabia': '+966', 'United Arab Emirates': '+971', China: '+86',
+      Egypt: '+20', Turkey: '+90', Oman: '+968', Kuwait: '+965', Qatar: '+974', Bahrain: '+973',
+      Jordan: '+962', India: '+91', 'United States': '+1',
+    };
+    const dial = dialMap[country || ''] || '+967';
+    const digits = raw.replace(/\D/g, '');
+    const dialDigits = dial.replace('+', '');
+    const local = digits.startsWith('00' + dialDigits)
+      ? digits.slice(2 + dialDigits.length)
+      : digits.startsWith(dialDigits) && digits.length > 9
+        ? digits.slice(dialDigits.length)
+        : digits.replace(/^0+/, '');
+    return `${dial} ${local}`;
+  };
+
   const toggleArrayItem = (field: keyof typeof form, value: string) => {
     const arr = form[field] as string[];
     setForm(prev => ({
@@ -2190,7 +2360,13 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
             <Field label="اسم المنشأة / الشركة" value={partner.company_name} />
             <Field label="مسؤول التواصل" value={partner.contact_name} />
             <Field label="البريد الإلكتروني" value={partner.contact_email} />
-            <Field label="رقم الهاتف" value={partner.contact_phone} />
+            <div>
+              <p className="text-xs text-muted-foreground mb-0.5">رقم الهاتف</p>
+              <p className="text-sm font-medium text-foreground" dir="ltr" style={{ textAlign: 'right' }}>
+                {formatPhoneWithDial(partner.contact_phone, partner.country) || '—'}
+              </p>
+            </div>
+          
             <Field label="دولة المقر" value={partner.country ? (COUNTRIES_AR[partner.country] || partner.country) : null} />
             <Field label="المدينة" value={partner.city} />
             <Field label="العنوان" value={partner.address} />
@@ -2208,10 +2384,10 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
             </div>
           )}
 
-          {showOcean && (
+          {(showOcean || partner.scac_code || partner.imo_company_number) && (
             <div className="p-4 bg-blue-50/40 rounded-xl border border-blue-200 space-y-4" dir="rtl">
               <p className="text-xs font-semibold text-blue-800 flex items-center gap-1.5">
-                <Icon name="GlobeAltIcon" size={14} /> ملف الناقل البحري الدولي (International Ocean Carrier)
+                <Icon name="GlobeAltIcon" size={14} /> بيانات الاعتماد والترخيص الدولي (Carrier &amp; Freight Forwarder Profile)
               </p>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <Field label="الاسم القانوني للناقل" value={partner.legal_company_name} />
@@ -2227,6 +2403,20 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
                     <Field label="رسوم أخرى" value={partner.other_surcharges != null ? String(partner.other_surcharges) : null} />
                   </>
                 )}
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">الخدمات المتاحة</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(partner.services_offered || []).length > 0 ? (
+                    (partner.services_offered || []).map(s => (
+                      <span key={s} className="px-2.5 py-1 bg-primary/10 text-primary rounded-lg text-xs font-medium">
+                        {SERVICES_AR[s] || s}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-sm text-muted-foreground">—</span>
+                  )}
+                </div>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {(partner.cargo_capabilities || []).map(c => (
@@ -2265,18 +2455,6 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {partner.services_offered?.length > 0 && (
-              <div className="p-4 bg-muted/30 rounded-xl border border-border">
-                <p className="text-xs text-muted-foreground mb-2">الخدمات المتاحة</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {partner.services_offered.map(s => (
-                    <span key={s} className="px-2.5 py-1 bg-primary/10 text-primary rounded-lg text-xs font-medium">
-                      {SERVICES_AR[s] || s}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
             {partner.incoterms_supported?.length > 0 && (
               <div className="p-4 bg-muted/30 rounded-xl border border-border">
                 <p className="text-xs text-muted-foreground mb-2">شروط التجارة الدولية المدعومة</p>
@@ -2314,6 +2492,15 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
               </div>
             )}
           </div>
+
+          <button
+            type="button"
+            onClick={openCredModal}
+            className="w-full flex items-center justify-center gap-2 px-5 py-3.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold shadow-sm hover:opacity-90 transition-opacity"
+          >
+            <span aria-hidden="true">✏️</span>
+            تعديل وتحديث بيانات المنشأة والاعتماد
+          </button>
         </div>
       ) : (
         <div className="space-y-5">
@@ -2446,6 +2633,144 @@ function ProfileTab({ partner, onSaved }: { partner: LogisticsPartner; onSaved: 
           </div>
         </div>
       )}
+
+      {credModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          dir="rtl"
+          onClick={() => !credSaving && setCredModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-background rounded-2xl border border-border shadow-xl p-5 space-y-5"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-foreground text-base">تعديل بيانات المنشأة والاعتماد</h4>
+              <button
+                type="button"
+                onClick={() => setCredModalOpen(false)}
+                disabled={credSaving}
+                className="p-1.5 rounded-lg hover:bg-muted/50"
+                aria-label="إغلاق"
+              >
+                <Icon name="XMarkIcon" size={18} />
+              </button>
+            </div>
+
+            {credError && (
+              <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-3 py-2 text-sm">
+                <Icon name="ExclamationCircleIcon" size={16} />
+                {credError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">رمز SCAC القانوني</label>
+                <input
+                  type="text"
+                  dir="ltr"
+                  maxLength={4}
+                  value={credForm.scac_code}
+                  onChange={e => setCredForm(prev => ({ ...prev, scac_code: e.target.value.toUpperCase() }))}
+                  placeholder="مثال: MAEU"
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">رقم IMO للشركة</label>
+                <input
+                  type="text"
+                  dir="ltr"
+                  inputMode="numeric"
+                  maxLength={7}
+                  value={credForm.imo_company_number}
+                  onChange={e => setCredForm(prev => ({ ...prev, imo_company_number: e.target.value.replace(/\D/g, '') }))}
+                  placeholder="7 أرقام"
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2">الممرات التجارية التشغيلية</p>
+              <div className="flex flex-wrap gap-2">
+                {CORRIDOR_OPTIONS.map(o => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() =>
+                      setCredForm(prev => ({
+                        ...prev,
+                        corridors: prev.corridors.includes(o.value)
+                          ? prev.corridors.filter(v => v !== o.value)
+                          : [...prev.corridors, o.value],
+                      }))
+                    }
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                      credForm.corridors.includes(o.value)
+                        ? 'bg-emerald-600 text-white border-emerald-600' :'bg-background text-foreground border-border hover:border-emerald-300'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2">شروط التجارة الدولية المدعومة (Incoterms)</p>
+              <div className="flex flex-wrap gap-2">
+                {INCOTERMS.map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() =>
+                      setCredForm(prev => ({
+                        ...prev,
+                        incoterms_supported: prev.incoterms_supported.includes(t)
+                          ? prev.incoterms_supported.filter(v => v !== t)
+                          : [...prev.incoterms_supported, t],
+                      }))
+                    }
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                      credForm.incoterms_supported.includes(t)
+                        ? 'bg-violet-600 text-white border-violet-600'
+                        : 'bg-background text-foreground border-border hover:border-violet-300'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setCredModalOpen(false)}
+                disabled={credSaving}
+                className="flex-1 px-4 py-2.5 border border-border rounded-xl text-sm font-semibold hover:bg-muted/50 transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleCredSave}
+                disabled={credSaving}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold disabled:opacity-60 hover:opacity-90 transition-opacity"
+              >
+                {credSaving ? (
+                  <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Icon name="CheckIcon" size={15} />
+                )}
+                حفظ البيانات
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2574,6 +2899,58 @@ const TRANSACTION_STATUS_META: Record<string, { label: string; color: string; ic
 
 const PLATFORM_COMMISSION_RATE = 0.05; // 5%
 
+const PAYOUT_CURRENCY_FILTERS = ['ALL', 'USD', 'SAR', 'YER', 'EUR', 'CNY'] as const;
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$', SAR: 'ر.س', YER: 'ر.ي', EUR: '€', CNY: '¥', GBP: '£', AED: 'د.إ', TRY: '₺', EGP: 'ج.م',
+};
+
+const COUNTRY_DIAL_CODES: { code: string; dial: string; label: string; aliases: string[] }[] = [
+  { code: 'YE', dial: '+967', label: 'اليمن', aliases: ['ye', 'yem', 'yemen', 'اليمن'] },
+  { code: 'SA', dial: '+966', label: 'السعودية', aliases: ['sa', 'ksa', 'saudi arabia', 'السعودية'] },
+  { code: 'AE', dial: '+971', label: 'الإمارات', aliases: ['ae', 'uae', 'الإمارات'] },
+  { code: 'EG', dial: '+20', label: 'مصر', aliases: ['eg', 'egypt', 'مصر'] },
+  { code: 'TR', dial: '+90', label: 'تركيا', aliases: ['tr', 'turkey', 'تركيا'] },
+  { code: 'CN', dial: '+86', label: 'الصين', aliases: ['cn', 'china', 'الصين'] },
+  { code: 'OM', dial: '+968', label: 'عُمان', aliases: ['om', 'oman', 'عمان', 'عُمان'] },
+  { code: 'KW', dial: '+965', label: 'الكويت', aliases: ['kw', 'kuwait', 'الكويت'] },
+  { code: 'QA', dial: '+974', label: 'قطر', aliases: ['qa', 'qatar', 'قطر'] },
+  { code: 'JO', dial: '+962', label: 'الأردن', aliases: ['jo', 'jordan', 'الأردن'] },
+  { code: 'DE', dial: '+49', label: 'ألمانيا', aliases: ['de', 'germany', 'ألمانيا'] },
+  { code: 'GB', dial: '+44', label: 'بريطانيا', aliases: ['gb', 'uk', 'united kingdom', 'بريطانيا'] },
+  { code: 'US', dial: '+1', label: 'الولايات المتحدة', aliases: ['us', 'usa', 'united states', 'الولايات المتحدة'] },
+];
+
+function resolveDialCode(country: string): string {
+  const c = (country || '').toLowerCase().trim();
+  const match = COUNTRY_DIAL_CODES.find(d => d.code.toLowerCase() === c || d.aliases.includes(c));
+  return match ? match.dial : '+967';
+}
+
+function resolveCountryCode(country: string): string {
+  const c = (country || '').toLowerCase().trim();
+  const match = COUNTRY_DIAL_CODES.find(d => d.code.toLowerCase() === c || d.aliases.includes(c));
+  return match ? match.code : '';
+}
+
+function getLocalAccountHint(country: string): { placeholder: string; label: string } {
+  const code = resolveCountryCode(country);
+  const ibanCountries = ['SA', 'AE', 'EG', 'TR', 'OM', 'KW', 'QA', 'JO', 'DE', 'GB'];
+  if (code && ibanCountries.includes(code)) {
+    return { label: 'رقم الحساب / IBAN', placeholder: `${code}00 0000 0000 0000 0000` };
+  }
+  return { label: 'رقم الحساب البنكي / IBAN', placeholder: 'أدخل رقم الحساب البنكي أو IBAN الخاص بك' };
+}
+
+function formatMoney(amount: number, currency: string): string {
+  const sym = CURRENCY_SYMBOLS[currency] || currency;
+  const num = amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return currency === 'USD' || currency === 'EUR' || currency === 'CNY' ? `${sym}${num}` : `${num} ${sym}`;
+}
+
+// Single source of truth for "In Transit" (out_for_delivery is tracked as "Awaiting PIN")
+const IN_TRANSIT_STATUSES: string[] = ['shipped', 'in_transit'];
+
 function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partnerCountry: string }) {
   const supabase = createClient();
   const [payments, setPayments] = useState<EscrowPayment[]>([]);
@@ -2584,6 +2961,12 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
   const [withdrawSuccess, setWithdrawSuccess] = useState(false);
+  const [withdrawCurrency, setWithdrawCurrency] = useState<string>('USD');
+  const [withdrawError, setWithdrawError] = useState('');
+  const [payoutRequests, setPayoutRequests] = useState<{
+    id: string; amount: number; currency: string; payout_method: string;
+    status: string; admin_note: string | null; created_at: string; processed_at: string | null;
+  }[]>([]);
 
   // Payout method state
   const [showBankModal, setShowBankModal] = useState(false);
@@ -2593,9 +2976,45 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
   const [bankSaved, setBankSaved] = useState(false);
   const [swiftError, setSwiftError] = useState('');
   const [ibanError, setIbanError] = useState('');
+  const [currencyFilter, setCurrencyFilter] = useState<string>('ALL');
+  const [bankWireMode, setBankWireMode] = useState<'local' | 'international'>('local');
+  const [bankCountry, setBankCountry] = useState('');
+  const [dialCode, setDialCode] = useState<string>(() => resolveDialCode(partnerCountry));
 
   // Determine if partner is domestic (Yemen) or international
   const isDomestic = isYemenPartner(partnerCountry);
+
+  const handleBankSave = async () => {
+    setSwiftError('');
+    setIbanError('');
+    const p = payoutMethod;
+    const needsSwift = !isDomestic || p.payout_type === 'international_swift';
+    if (needsSwift) {
+      if (!validateSwiftCode(p.swift_code)) {
+        setSwiftError('رمز SWIFT/BIC غير صالح (8 أو 11 حرفاً).');
+        return;
+      }
+      if (!validateIBAN(p.iban)) {
+        setIbanError('رقم IBAN غير صالح.');
+        return;
+      }
+    }
+    setBankSaving(true);
+    try {
+      const toSave: PayoutMethod = {
+        ...p,
+        country: needsSwift && bankCountry.trim() ? bankCountry.trim() : p.country,
+      };
+      setSavedPayout(toSave);
+      setBankSaved(true);
+      setTimeout(() => {
+        setBankSaved(false);
+        setShowBankModal(false);
+      }, 1800);
+    } finally {
+      setBankSaving(false);
+    }
+  };
 
   // Keep for backward compat display
   const savedBank = savedPayout ? { bank_name: savedPayout.bank_name, account_number: savedPayout.account_number, beneficiary_name: savedPayout.beneficiary_name } : null;
@@ -2603,12 +3022,20 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
   useEffect(() => {
     const fetch = async () => {
       setLoading(true);
-      const { data } = await supabase
-        .from('logistics_escrow_payments')
-        .select('*, buyer:buyer_id(full_name, email)')
-        .eq('partner_id', partnerId)
-        .order('created_at', { ascending: false });
+      const [{ data }, { data: reqs }] = await Promise.all([
+        supabase
+          .from('logistics_escrow_payments')
+          .select('*, buyer:buyer_id(full_name, email)')
+          .eq('partner_id', partnerId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('logistics_payout_requests')
+          .select('id, amount, currency, payout_method, status, admin_note, created_at, processed_at')
+          .eq('partner_id', partnerId)
+          .order('created_at', { ascending: false }),
+      ]);
       setPayments((data as any[]) || []);
+      setPayoutRequests((reqs as any[]) || []);
       setLoading(false);
     };
     fetch();
@@ -2629,81 +3056,89 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
     setShowBankModal(true);
   };
 
-  const totalReleased = payments.filter(p => p.payment_status === 'released').reduce((s, p) => s + p.amount, 0);
+  const totalReleased = payments.filter(p => p.payment_status === 'released' && !(p as any).withdrawn_at).reduce((s, p) => s + p.amount, 0);
   const totalHeld = payments.filter(p => p.payment_status === 'held_in_escrow').reduce((s, p) => s + p.amount, 0);
   const totalPending = payments.filter(p => p.payment_status === 'pending').reduce((s, p) => s + p.amount, 0);
 
-  const handleWithdrawSubmit = async () => {
-    setWithdrawSubmitting(true);
-    await new Promise(r => setTimeout(r, 1200));
-    setWithdrawSubmitting(false);
-    setWithdrawSuccess(true);
-    setTimeout(() => { setWithdrawSuccess(false); setShowWithdrawModal(false); setWithdrawAmount(''); }, 2500);
+  const sumByCurrency = (status: string): Record<string, number> => {
+    const acc: Record<string, number> = {};
+    payments
+      .filter(p => p.payment_status === status && !(status === 'released' && (p as any).withdrawn_at))
+      .forEach(p => {
+        const cur = (p.currency || 'USD').toUpperCase();
+        acc[cur] = (acc[cur] || 0) + p.amount;
+      });
+    return acc;
   };
+  const pendingPayoutByCur: Record<string, number> = {};
+  payoutRequests.filter(r => r.status === 'pending').forEach(r => {
+    const cur = (r.currency || 'USD').toUpperCase();
+    pendingPayoutByCur[cur] = (pendingPayoutByCur[cur] || 0) + r.amount;
+  });
+  const releasedByCur = sumByCurrency('released');
+  const availableByCur: Record<string, number> = {};
+  Object.keys(releasedByCur).forEach(cur => {
+    availableByCur[cur] = Math.max(0, (releasedByCur[cur] || 0) - (pendingPayoutByCur[cur] || 0));
+  });
+  const heldByCur = sumByCurrency('held_in_escrow');
+  const pendingByCur = sumByCurrency('pending');
+  const activeCurrency = currencyFilter === 'ALL' ? null : currencyFilter;
+  const withdrawableCurrencies = Object.keys(availableByCur).filter(c => availableByCur[c] > 0);
+  const selectedWithdrawCurrency = withdrawableCurrencies.includes(withdrawCurrency)
+    ? withdrawCurrency
+    : (withdrawableCurrencies[0] || 'USD');
+  const maxWithdraw = availableByCur[selectedWithdrawCurrency] || 0;
+  const totalAvailableAny = withdrawableCurrencies.length > 0;
 
-  const handleBankSave = async () => {
-    const p = payoutMethod;
-    setSwiftError('');
-    setIbanError('');
-
-    // Validate per type
-    if (p.payout_type === 'international_swift') {
-      if (!p.beneficiary_name || !p.bank_name || !p.swift_code || !p.iban || !p.currency) return;
-      if (!validateSwiftCode(p.swift_code)) {
-        setSwiftError('رمز SWIFT/BIC غير صحيح. يجب أن يكون من 8 إلى 11 حرفاً (مثال: NBEGYEGC أو NBEGYEGCXXX)');
-        return;
-      }
-      if (!validateIBAN(p.iban)) {
-        setIbanError('رقم IBAN غير صحيح. يجب أن يبدأ برمز الدولة (مثال: EG، SA، AE) متبوعاً بالأرقام');
-        return;
-      }
-    } else if (p.payout_type === 'bank_account' && (!p.bank_name || !p.account_number || !p.beneficiary_name)) return;
-    else if (p.payout_type === 'card' && (!p.card_holder_name || !p.card_number_masked || !p.card_expiry)) return;
-    else if (p.payout_type === 'ewallet' && (!p.wallet_provider || !p.wallet_phone || !p.wallet_owner_name)) return;
-    else if (p.payout_type === 'remittance' && (!p.remittance_network || !p.remittance_recipient_name || !p.remittance_phone)) return;
-
-    setBankSaving(true);
+  const handleWithdrawSubmit = async () => {
+    setWithdrawError('');
+    const amount = parseFloat(withdrawAmount);
+    if (!amount || amount <= 0 || amount > maxWithdraw) {
+      setWithdrawError('المبلغ غير صالح أو يتجاوز الرصيد المتاح');
+      return;
+    }
+    setWithdrawSubmitting(true);
     try {
-      const { error } = await supabase
-        .from('logistics_payout_methods')
-        .insert({
-          partner_id: partnerId,
-          payout_type: p.payout_type === 'international_swift' ? 'bank_account' : p.payout_type,
-          payout_category: p.payout_type === 'international_swift' ? 'international_swift' : (p.payout_type === 'bank_account' ? 'local_bank' : p.payout_type === 'ewallet' ? 'e_wallet' : p.payout_type === 'remittance' ? 'cash_remittance' : 'card'),
-          bank_name: p.bank_name || null,
-          account_number: p.account_number || null,
-          iban: p.iban || null,
-          beneficiary_name: p.beneficiary_name || null,
-          swift_code: p.swift_code || null,
-          currency: p.currency || 'USD',
-          branch_city: p.branch_city || null,
-          card_number_masked: p.card_number_masked || null,
-          card_holder_name: p.card_holder_name || null,
-          card_expiry: p.card_expiry || null,
-          card_issuing_bank: p.card_issuing_bank || null,
-          wallet_provider: p.wallet_provider || null,
-          wallet_phone: p.wallet_phone || null,
-          wallet_owner_name: p.wallet_owner_name || null,
-          remittance_network: p.remittance_network || null,
-          remittance_recipient_name: p.remittance_recipient_name || null,
-          remittance_phone: p.remittance_phone || null,
-          remittance_city: p.remittance_city || null,
-          country: partnerCountry || null,
-          is_primary: true,
-        });
-      if (error) throw error;
-      setSavedPayout({ ...p });
-      setBankSaved(true);
-      toast.success('تم حفظ بيانات وسيلة التحويل بنجاح ✓');
-      setTimeout(() => { setBankSaved(false); setShowBankModal(false); }, 1800);
-    } catch {
-      // fallback: save locally even if DB fails
-      setSavedPayout({ ...p });
-      setBankSaved(true);
-      toast.success('تم حفظ بيانات وسيلة التحويل بنجاح ✓');
-      setTimeout(() => { setBankSaved(false); setShowBankModal(false); }, 1800);
+      const details = savedPayout
+        ? {
+            payout_type: savedPayout.payout_type,
+            bank_name: savedPayout.bank_name || null,
+            account_number: savedPayout.account_number || null,
+            iban: savedPayout.iban || null,
+            swift_code: savedPayout.swift_code || null,
+            beneficiary_name: savedPayout.beneficiary_name || null,
+            card_number_masked: savedPayout.card_number_masked || null,
+            wallet_provider: savedPayout.wallet_provider || null,
+            wallet_phone: savedPayout.wallet_phone || null,
+            remittance_network: savedPayout.remittance_network || null,
+            remittance_recipient_name: savedPayout.remittance_recipient_name || null,
+            remittance_phone: savedPayout.remittance_phone || null,
+            remittance_city: savedPayout.remittance_city || null,
+          }
+        : {};
+      const { error: rpcErr } = await supabase.rpc('request_logistics_payout', {
+        p_partner_id: partnerId,
+        p_amount: amount,
+        p_currency: selectedWithdrawCurrency,
+        p_payout_method: savedPayout?.payout_type || 'bank_account',
+        p_payout_details: details,
+      });
+      if (rpcErr) throw rpcErr;
+
+      const { data: reqs } = await supabase
+        .from('logistics_payout_requests')
+        .select('id, amount, currency, payout_method, status, admin_note, created_at, processed_at')
+        .eq('partner_id', partnerId)
+        .order('created_at', { ascending: false });
+      setPayoutRequests((reqs as any[]) || []);
+
+      setWithdrawSuccess(true);
+      toast.success('تم إرسال طلب السحب للإدارة');
+      setTimeout(() => { setWithdrawSuccess(false); setShowWithdrawModal(false); setWithdrawAmount(''); }, 2500);
+    } catch (e: any) {
+      setWithdrawError(e?.message || 'تعذر إرسال طلب السحب');
     } finally {
-      setBankSaving(false);
+      setWithdrawSubmitting(false);
     }
   };
 
@@ -2718,24 +3153,65 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
   return (
     <div dir="rtl" className="space-y-6">
 
+      {/* ── Currency Filter ── */}
+      <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="تصفية حسب العملة">
+        <span className="text-xs font-semibold text-muted-foreground ml-1">العملة:</span>
+        {PAYOUT_CURRENCY_FILTERS.map(cur => (
+          <button
+            key={cur}
+            type="button"
+            role="tab"
+            aria-selected={currencyFilter === cur}
+            onClick={() => setCurrencyFilter(cur)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+              currencyFilter === cur
+                ? 'bg-primary text-white border-primary shadow-sm'
+                : 'bg-card text-foreground border-border hover:border-primary/40'
+            }`}
+          >
+            {cur === 'ALL' ? 'الكل ALL' : cur}
+          </button>
+        ))}
+      </div>
+
       {/* ── Balance Cards ── */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'متاحة للسحب', sublabel: 'Released', amount: totalReleased, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', icon: 'CheckCircleIcon' },
-          { label: 'في الضمان المالي المشروط', sublabel: 'In Escrow', amount: totalHeld, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200', icon: 'LockClosedIcon' },
-          { label: 'معلقة / قيد الانتظار', sublabel: 'Pending', amount: totalPending, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200', icon: 'ClockIcon' },
-        ].map(card => (
-          <div key={card.label} className={`rounded-xl border p-4 ${card.bg}`}>
-            <div className="flex items-center gap-2 mb-1">
-              <Icon name={card.icon as any} size={16} className={card.color} />
-              <span className="text-xs font-semibold text-muted-foreground">{card.label}</span>
+          { label: 'متاحة للسحب', sublabel: 'Released', byCur: availableByCur, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', icon: 'CheckCircleIcon' },
+          { label: 'في الضمان المالي المشروط', sublabel: 'In Escrow', byCur: heldByCur, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200', icon: 'LockClosedIcon' },
+          { label: 'معلقة / قيد الانتظار', sublabel: 'Pending', byCur: pendingByCur, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200', icon: 'ClockIcon' },
+        ].map(card => {
+          const breakdownCurrencies = Array.from(new Set([
+            ...PAYOUT_CURRENCY_FILTERS.filter(c => c !== 'ALL' && c !== 'EUR' && c !== 'CNY'),
+            ...Object.keys(card.byCur),
+          ]));
+          return (
+            <div key={card.label} className={`rounded-xl border p-4 ${card.bg}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <Icon name={card.icon as any} size={16} className={card.color} />
+                <span className="text-xs font-semibold text-muted-foreground">{card.label}</span>
+              </div>
+              {activeCurrency ? (
+                <p className={`text-xl font-bold ${card.color}`} dir="ltr">
+                  {formatMoney(card.byCur[activeCurrency] || 0, activeCurrency)}
+                  <span className="text-xs font-semibold mr-1 ml-1">{activeCurrency}</span>
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5 mt-1" dir="ltr">
+                  {breakdownCurrencies.map(cur => (
+                    <span
+                      key={cur}
+                      className={`px-2 py-0.5 rounded-md bg-white/70 border border-current/10 text-xs font-bold ${card.color}`}
+                    >
+                      {formatMoney(card.byCur[cur] || 0, cur)} {cur}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground mt-1.5">{card.sublabel}</p>
             </div>
-            <p className={`text-xl font-bold ${card.color}`}>
-              ${card.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{card.sublabel}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* ── Partner Location Badge ── */}
@@ -2750,15 +3226,15 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
       {/* ── Action Buttons ── */}
       <div className="flex flex-wrap gap-3">
         <button
-          onClick={() => setShowWithdrawModal(true)}
-          disabled={totalReleased <= 0}
+          onClick={() => { setWithdrawError(''); setWithdrawCurrency(withdrawableCurrencies[0] || 'USD'); setShowWithdrawModal(true); }}
+          disabled={!totalAvailableAny}
           className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-sm"
         >
           <Icon name="ArrowUpTrayIcon" size={16} />
           طلب سحب الأرباح
-          {totalReleased > 0 && (
-            <span className="bg-white/20 px-2 py-0.5 rounded-lg text-xs">
-              ${totalReleased.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          {totalAvailableAny && (
+            <span className="bg-white/20 px-2 py-0.5 rounded-lg text-xs" dir="ltr">
+              {withdrawableCurrencies.map(c => formatMoney(availableByCur[c], c)).join(' · ')}
             </span>
           )}
         </button>
@@ -2822,6 +3298,45 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
                 {savedPayout.remittance_city && <p className="text-blue-700">المدينة: <span className="font-medium">{savedPayout.remittance_city}</span></p>}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Payout Requests History ── */}
+      {payoutRequests.length > 0 && (
+        <div>
+          <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+            <Icon name="ArrowUpTrayIcon" size={16} className="text-emerald-600" />
+            طلبات السحب
+          </h3>
+          <div className="border border-border rounded-xl overflow-x-auto">
+            <table className="w-full text-sm min-w-[560px]">
+              <thead className="bg-muted/40 border-b border-border">
+                <tr>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">التاريخ</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">المبلغ</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">الحالة</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground">ملاحظة الإدارة</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {payoutRequests.map(r => (
+                  <tr key={r.id}>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{formatDate(r.created_at)}</td>
+                    <td className="px-4 py-3 font-semibold" dir="ltr">{formatMoney(r.amount, (r.currency || 'USD').toUpperCase())} {r.currency}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-medium border ${
+                        r.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : r.status === 'rejected'? 'bg-red-50 text-red-700 border-red-200' :'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}>
+                        {r.status === 'approved' ? 'تمت الموافقة' : r.status === 'rejected' ? 'مرفوض' : 'قيد المراجعة'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{r.admin_note || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -2917,44 +3432,38 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
             ) : (
               <div className="space-y-4">
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-800">
-                  الرصيد المتاح للسحب: <span className="font-bold">${totalReleased.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                  الرصيد المتاح للسحب: <span className="font-bold" dir="ltr">{formatMoney(maxWithdraw, selectedWithdrawCurrency)} {selectedWithdrawCurrency}</span>
                 </div>
-                {!savedPayout && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-start gap-2">
-                    <Icon name="ExclamationTriangleIcon" size={14} className="mt-0.5 shrink-0" />
-                    يرجى إضافة وسيلة السحب أولاً لضمان تحويل المبلغ بشكل صحيح.
+                {withdrawableCurrencies.length > 1 && (
+                  <div className="flex flex-wrap gap-2">
+                    {withdrawableCurrencies.map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => { setWithdrawCurrency(c); setWithdrawAmount(''); }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${selectedWithdrawCurrency === c ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-card text-foreground border-border'}`}
+                      >{c}</button>
+                    ))}
                   </div>
                 )}
                 <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1.5">المبلغ المطلوب سحبه (USD)</label>
+                  <label className="block text-sm font-semibold text-foreground mb-1.5">المبلغ المطلوب سحبه ({selectedWithdrawCurrency})</label>
                   <input
                     type="number"
                     min="1"
-                    max={totalReleased}
+                    max={maxWithdraw}
                     value={withdrawAmount}
                     onChange={e => setWithdrawAmount(e.target.value)}
-                    placeholder={`الحد الأقصى: $${totalReleased.toFixed(2)}`}
+                    placeholder={`الحد الأقصى: ${maxWithdraw.toFixed(2)}`}
                     className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
                   />
                 </div>
-                {savedPayout && (
-                  <div className="text-xs text-muted-foreground bg-muted/30 rounded-xl p-3">
-                    سيتم التحويل عبر: <span className="font-semibold text-foreground">
-                      {savedPayout.payout_type === 'international_swift'
-                        ? 'تحويل بنكي دولي SWIFT'
-                        : PAYOUT_TYPES.find(t => t.value === savedPayout.payout_type)?.label
-                      }
-                    </span>
-                    {savedPayout.payout_type === 'international_swift' && ` — ${savedPayout.bank_name} / ${savedPayout.beneficiary_name}`}
-                    {savedPayout.payout_type === 'bank_account' && ` — ${savedPayout.bank_name} / ${savedPayout.beneficiary_name}`}
-                    {savedPayout.payout_type === 'card' && ` — ${savedPayout.card_number_masked}`}
-                    {savedPayout.payout_type === 'ewallet' && ` — ${EWALLET_PROVIDERS.find(w => w.value === savedPayout.wallet_provider)?.label || savedPayout.wallet_provider}`}
-                    {savedPayout.payout_type === 'remittance' && ` — ${REMITTANCE_NETWORKS.find(n => n.value === savedPayout.remittance_network)?.label || savedPayout.remittance_network}`}
-                  </div>
+                {withdrawError && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">{withdrawError}</div>
                 )}
                 <button
                   onClick={handleWithdrawSubmit}
-                  disabled={withdrawSubmitting || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > totalReleased}
+                  disabled={withdrawSubmitting || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || parseFloat(withdrawAmount) > maxWithdraw}
                   className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2"
                 >
                   {withdrawSubmitting ? (
@@ -2978,7 +3487,7 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
               <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <Icon name={isDomestic ? 'CreditCardIcon' : 'GlobeAltIcon'} size={20} className="text-primary" />
                 {isDomestic
-                  ? 'وسيلة السحب والتحويل المحلي' :'بيانات التحويل البنكي الدولي (International Wire Transfer)'
+                  ? 'إضافة وسيلة استلام المستحقات والأرباح' :'بيانات التحويل البنكي الدولي (International Wire Transfer)'
                 }
               </h2>
               <button onClick={() => setShowBankModal(false)} className="text-muted-foreground hover:text-foreground">
@@ -2997,13 +3506,27 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
               <div className="space-y-5">
 
                 {/* ── International Partner: SWIFT Wire Transfer ── */}
-                {!isDomestic && (
+                {(!isDomestic || payoutMethod.payout_type === 'international_swift') && (
                   <div className="space-y-3">
                     {/* Info Banner */}
-                    <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
-                      <Icon name="InformationCircleIcon" size={15} className="mt-0.5 shrink-0 text-blue-600" />
-                      <span>بما أن مقر شركتك خارج اليمن، يتم استخدام نظام <strong>التحويل البنكي الدولي (SWIFT Wire Transfer)</strong> لتحويل مستحقاتك.</span>
-                    </div>
+                    {!isDomestic ? (
+                      <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
+                        <Icon name="InformationCircleIcon" size={15} className="mt-0.5 shrink-0 text-blue-600" />
+                        <span>بما أن مقر شركتك خارج اليمن، يتم استخدام نظام <strong>التحويل البنكي الدولي (SWIFT Wire Transfer)</strong> لتحويل مستحقاتك.</span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBankWireMode('local');
+                          setPayoutMethod(prev => ({ ...prev, payout_type: 'bank_account', payout_category: 'local_bank' }));
+                        }}
+                        className="text-xs text-primary font-semibold flex items-center gap-1 hover:underline"
+                      >
+                        <Icon name="ArrowRightIcon" size={12} />
+                        رجوع إلى أنواع وسائل الاستلام
+                      </button>
+                    )}
 
                     {/* SWIFT Fields */}
                     <div className="space-y-3 p-4 bg-blue-50/40 border border-blue-100 rounded-xl">
@@ -3011,6 +3534,20 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
                         <Icon name="GlobeAltIcon" size={13} />
                         بيانات التحويل البنكي الدولي SWIFT
                       </p>
+
+                      {/* Bank Country */}
+                      <div>
+                        <label className="block text-xs font-semibold text-foreground mb-1.5">
+                          دولة البنك (Bank Country) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={bankCountry}
+                          onChange={e => setBankCountry(e.target.value)}
+                          placeholder="مثال: Saudi Arabia / مصر / Türkiye"
+                          className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      </div>
 
                       {/* Beneficiary Name */}
                       <div>
@@ -3125,7 +3662,7 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
                 )}
 
                 {/* ── Domestic Partner: Tabbed Local Options ── */}
-                {isDomestic && (
+                {isDomestic && payoutMethod.payout_type !== 'international_swift' && (
                   <div className="space-y-4">
                     {/* Type Selector */}
                     <div>
@@ -3236,15 +3773,27 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
                         </div>
                         <div>
                           <label className="block text-xs font-semibold text-foreground mb-1.5">رقم هاتف المحفظة <span className="text-red-500">*</span></label>
-                          <input
-                            type="tel"
-                            inputMode="numeric"
-                            value={payoutMethod.wallet_phone}
-                            onChange={e => setPayoutMethod(prev => ({ ...prev, wallet_phone: e.target.value.replace(/\D/g, '') }))}
-                            placeholder="07XXXXXXXX"
-                            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
-                            dir="ltr"
-                          />
+                          <div className="flex gap-1.5" dir="ltr">
+                            <select
+                              value={dialCode}
+                              onChange={e => setDialCode(e.target.value)}
+                              aria-label="مفتاح الدولة"
+                              className="w-24 px-1.5 py-2.5 rounded-xl border border-border bg-background text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            >
+                              {COUNTRY_DIAL_CODES.map(d => (
+                                <option key={d.code} value={d.dial}>{d.code} {d.dial}</option>
+                              ))}
+                            </select>
+                            <input
+                              type="tel"
+                              inputMode="numeric"
+                              value={payoutMethod.wallet_phone}
+                              onChange={e => setPayoutMethod(prev => ({ ...prev, wallet_phone: e.target.value.replace(/\D/g, '') }))}
+                              placeholder="7XXXXXXXX"
+                              className="min-w-0 flex-1 px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                              dir="ltr"
+                            />
+                          </div>
                         </div>
                         <div>
                           <label className="block text-xs font-semibold text-foreground mb-1.5">اسم صاحب المحفظة <span className="text-red-500">*</span></label>
@@ -3292,15 +3841,27 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="block text-xs font-semibold text-foreground mb-1.5">رقم الهاتف <span className="text-red-500">*</span></label>
-                            <input
-                              type="tel"
-                              inputMode="numeric"
-                              value={payoutMethod.remittance_phone}
-                              onChange={e => setPayoutMethod(prev => ({ ...prev, remittance_phone: e.target.value.replace(/\D/g, '') }))}
-                              placeholder="07XXXXXXXX"
-                              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
-                              dir="ltr"
-                            />
+                            <div className="flex gap-1.5" dir="ltr">
+                              <select
+                                value={dialCode}
+                                onChange={e => setDialCode(e.target.value)}
+                                aria-label="مفتاح الدولة"
+                                className="w-24 px-1.5 py-2.5 rounded-xl border border-border bg-background text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                              >
+                                {COUNTRY_DIAL_CODES.map(d => (
+                                  <option key={d.code} value={d.dial}>{d.code} {d.dial}</option>
+                                ))}
+                              </select>
+                              <input
+                                type="tel"
+                                inputMode="numeric"
+                                value={payoutMethod.remittance_phone}
+                                onChange={e => setPayoutMethod(prev => ({ ...prev, remittance_phone: e.target.value.replace(/\D/g, '') }))}
+                                placeholder="7XXXXXXXX"
+                                className="min-w-0 flex-1 px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                dir="ltr"
+                              />
+                            </div>
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-foreground mb-1.5">المدينة</label>
@@ -3322,6 +3883,25 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
                     {/* ── Bank Account Fields ── */}
                     {payoutMethod.payout_type === 'bank_account' && (
                       <div className="space-y-3 p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl">
+                        <div className="grid grid-cols-2 gap-1 p-1 bg-white/70 border border-emerald-100 rounded-xl">
+                          <button
+                            type="button"
+                            onClick={() => setBankWireMode('local')}
+                            className={`py-2 rounded-lg text-xs font-bold transition-colors ${bankWireMode === 'local' ? 'bg-emerald-600 text-white shadow-sm' : 'text-emerald-800 hover:bg-emerald-50'}`}
+                          >
+                            تحويل بنكي محلي
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBankWireMode('international');
+                              setPayoutMethod(prev => ({ ...prev, payout_type: 'international_swift', payout_category: 'international_swift' }));
+                            }}
+                            className={`py-2 rounded-lg text-xs font-bold transition-colors ${bankWireMode === 'international' ? 'bg-blue-600 text-white shadow-sm' : 'text-emerald-800 hover:bg-emerald-50'}`}
+                          >
+                            تحويل بنكي دولي (SWIFT / Wire Transfer)
+                          </button>
+                        </div>
                         <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1.5">
                           <Icon name="BuildingLibraryIcon" size={13} />
                           بيانات الحساب البنكي المحلي
@@ -3337,12 +3917,12 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-foreground mb-1.5">رقم الحساب / IBAN <span className="text-red-500">*</span></label>
+                          <label className="block text-xs font-semibold text-foreground mb-1.5">{getLocalAccountHint(partnerCountry).label} <span className="text-red-500">*</span></label>
                           <input
                             type="text"
                             value={payoutMethod.account_number}
                             onChange={e => setPayoutMethod(prev => ({ ...prev, account_number: e.target.value }))}
-                            placeholder="YE00 0000 0000 0000 0000 0000"
+                            placeholder={getLocalAccountHint(partnerCountry).placeholder}
                             className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
                             dir="ltr"
                           />
@@ -3367,7 +3947,8 @@ function PaymentsTab({ partnerId, partnerCountry }: { partnerId: string; partner
                   onClick={handleBankSave}
                   disabled={bankSaving || (() => {
                     const p = payoutMethod;
-                    if (!isDomestic) return !p.beneficiary_name || !p.bank_name || !p.swift_code || !p.iban || !p.currency;
+                    if (!isDomestic) return !p.beneficiary_name || !p.bank_name || !p.swift_code || !p.iban || !p.currency || !bankCountry.trim();
+                    if (p.payout_type === 'international_swift') return !p.beneficiary_name || !p.bank_name || !p.swift_code || !p.iban || !p.currency || !bankCountry.trim();
                     if (p.payout_type === 'bank_account') return !p.bank_name || !p.account_number || !p.beneficiary_name;
                     if (p.payout_type === 'card') return !p.card_holder_name || !p.card_number_masked || !p.card_expiry;
                     if (p.payout_type === 'ewallet') return !p.wallet_provider || !p.wallet_phone || !p.wallet_owner_name;
@@ -3512,14 +4093,6 @@ function OrdersTab({ partnerId, userId }: { partnerId: string; userId: string })
     return matchStatus && matchSearch;
   });
 
-  // KPI counts
-  const kpis = [
-    { label: 'إجمالي الشحنات المسندة', count: orders.length, icon: 'ClipboardDocumentListIcon', color: 'text-gray-600', bg: 'bg-gray-50 border-gray-200' },
-    { label: 'شحنات قيد النقل', count: orders.filter(o => o.status === 'in_transit' || o.status === 'shipped').length, icon: 'TruckIcon', color: 'text-sky-600', bg: 'bg-sky-50 border-sky-200' },
-    { label: 'بانتظار كود التسليم (PIN)', count: orders.filter(o => o.status === 'out_for_delivery' && !o.shipping_fees_released).length, icon: 'KeyIcon', color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200' },
-    { label: 'تم التسليم', count: orders.filter(o => o.status === 'delivered').length, icon: 'CheckBadgeIcon', color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200' },
-  ];
-
   return (
     <div className="space-y-5">
       {dispatchOrder && (
@@ -3557,18 +4130,6 @@ function OrdersTab({ partnerId, userId }: { partnerId: string; userId: string })
           }}
         />
       )}
-            {/* KPI row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {kpis.map(kpi => (
-          <div key={kpi.label} className={`rounded-xl border p-4 ${kpi.bg}`}>
-            <div className="flex items-center gap-2 mb-1">
-              <Icon name={kpi.icon as any} size={16} className={kpi.color} />
-              <span className="text-xs text-muted-foreground">{kpi.label}</span>
-            </div>
-            <p className={`text-2xl font-bold ${kpi.color}`}>{kpi.count}</p>
-          </div>
-        ))}
-      </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
@@ -3873,6 +4434,8 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
   const [orders, setOrders] = useState<AssignedOrder[]>([]);
   const [payments, setPayments] = useState<EscrowPayment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [releasedCurrency, setReleasedCurrency] = useState<string>('ALL');
+  const [heldCurrency, setHeldCurrency] = useState<string>('ALL');
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -3904,7 +4467,7 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
 
   let total = orders.length;
   const delivered = orders.filter(o => o.status === 'delivered').length;
-  const inTransit = orders.filter(o => ['shipped', 'in_transit', 'out_for_delivery'].includes(o.status)).length;
+  const inTransit = orders.filter(o => IN_TRANSIT_STATUSES.includes(o.status)).length;
   const pending = orders.filter(o => ['pending', 'confirmed', 'processing'].includes(o.status)).length;
   const cancelled = orders.filter(o => o.status === 'cancelled').length;
   const disputed = orders.filter(o => o.status === 'disputed').length;
@@ -3912,8 +4475,34 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
 
   const releasedPayments = payments.filter(p => p.payment_status === 'released');
   const heldPayments = payments.filter(p => p.payment_status === 'held_in_escrow');
-  const totalRevenue = releasedPayments.reduce((s, p) => s + p.amount, 0);
-  const pendingRevenue = heldPayments.reduce((s, p) => s + p.amount, 0);
+
+  const CURRENCY_SYMBOLS: Record<string, string> = {
+    USD: '$', EUR: '€', CNY: '¥', SAR: 'SAR ', AED: 'AED ', YER: 'YER ', TRY: '₺', INR: '₹', EGP: 'EGP ', OMR: 'OMR ',
+  };
+  const normalizeCurrency = (c?: string | null) => (c || 'USD').toUpperCase();
+  const formatMoney = (amount: number, cur: string) =>
+    `${CURRENCY_SYMBOLS[cur] ?? `${cur} `}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const groupByCurrency = (list: EscrowPayment[]) => {
+    const map: Record<string, number> = {};
+    list.forEach(p => {
+      const cur = normalizeCurrency(p.currency);
+      map[cur] = (map[cur] || 0) + (Number(p.amount) || 0);
+    });
+    return map;
+  };
+  const currencyOptions = Array.from(
+    new Set(payments.map(p => normalizeCurrency(p.currency)))
+  ).sort();
+  const releasedByCurrency = groupByCurrency(releasedPayments);
+  const heldByCurrency = groupByCurrency(heldPayments);
+  const releasedEntries = Object.entries(releasedByCurrency);
+  const heldEntries = Object.entries(heldByCurrency);
+  const releasedCount = releasedCurrency === 'ALL'
+    ? releasedPayments.length
+    : releasedPayments.filter(p => normalizeCurrency(p.currency) === releasedCurrency).length;
+  const heldCount = heldCurrency === 'ALL'
+    ? heldPayments.length
+    : heldPayments.filter(p => normalizeCurrency(p.currency) === heldCurrency).length;
 
   // Monthly breakdown (last 6 months)
   const now = new Date();
@@ -3998,24 +4587,78 @@ function PerformanceStatsTab({ partnerId }: { partnerId: string }) {
       {/* Revenue Summary */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <Icon name="BanknotesIcon" size={16} className="text-emerald-600" />
-            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">إجمالي الأرباح المحررة</p>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="flex items-center gap-2">
+              <Icon name="BanknotesIcon" size={16} className="text-emerald-600" />
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">إجمالي الأرباح المحررة</p>
+            </div>
+            <select
+              value={releasedCurrency}
+              onChange={e => setReleasedCurrency(e.target.value)}
+              aria-label="العملة"
+              className="text-xs border border-emerald-200 bg-white text-emerald-800 rounded-lg px-2 py-1 focus:outline-none"
+            >
+              <option value="ALL">كل العملات</option>
+              {currencyOptions.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
           </div>
-          <p className="text-3xl font-black text-emerald-800">
-            ${totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </p>
-          <p className="text-xs text-emerald-600 mt-1">{releasedPayments.length} مستحقات تم تحريرها من الضمان</p>
+          {releasedCurrency === 'ALL' ? (
+            releasedEntries.length === 0 ? (
+              <p className="text-3xl font-black text-emerald-800">0.00</p>
+            ) : (
+              <div className="space-y-0.5">
+                {releasedEntries.map(([cur, amt]) => (
+                  <p key={cur} className={`font-black text-emerald-800 ${releasedEntries.length > 1 ? 'text-xl' : 'text-3xl'}`}>
+                    {formatMoney(amt, cur)}
+                  </p>
+                ))}
+              </div>
+            )
+          ) : (
+            <p className="text-3xl font-black text-emerald-800">
+              {formatMoney(releasedByCurrency[releasedCurrency] || 0, releasedCurrency)}
+            </p>
+          )}
+          <p className="text-xs text-emerald-600 mt-1">{releasedCount} مستحقات تم تحريرها من الضمان</p>
         </div>
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <Icon name="LockClosedIcon" size={16} className="text-blue-600" />
-            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">رصيد معلق في الضمان</p>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="flex items-center gap-2">
+              <Icon name="LockClosedIcon" size={16} className="text-blue-600" />
+              <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">رصيد معلق في الضمان</p>
+            </div>
+            <select
+              value={heldCurrency}
+              onChange={e => setHeldCurrency(e.target.value)}
+              aria-label="العملة"
+              className="text-xs border border-blue-200 bg-white text-blue-800 rounded-lg px-2 py-1 focus:outline-none"
+            >
+              <option value="ALL">كل العملات</option>
+              {currencyOptions.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
           </div>
-          <p className="text-3xl font-black text-blue-800">
-            ${pendingRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </p>
-          <p className="text-xs text-blue-600 mt-1">{heldPayments.length} مستحقات بانتظار تأكيد التسليم</p>
+          {heldCurrency === 'ALL' ? (
+            heldEntries.length === 0 ? (
+              <p className="text-3xl font-black text-blue-800">0.00</p>
+            ) : (
+              <div className="space-y-0.5">
+                {heldEntries.map(([cur, amt]) => (
+                  <p key={cur} className={`font-black text-blue-800 ${heldEntries.length > 1 ? 'text-xl' : 'text-3xl'}`}>
+                    {formatMoney(amt, cur)}
+                  </p>
+                ))}
+              </div>
+            )
+          ) : (
+            <p className="text-3xl font-black text-blue-800">
+              {formatMoney(heldByCurrency[heldCurrency] || 0, heldCurrency)}
+            </p>
+          )}
+          <p className="text-xs text-blue-600 mt-1">{heldCount} مستحقات بانتظار تأكيد التسليم</p>
         </div>
       </div>
 
@@ -4260,9 +4903,10 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
     estimated_delivery: '',
     notes: '',
   });
-  const [addPortFT, setAddPortFT] = useState<PortFreeTimeFormValues>(EMPTY_PORT_FREE_TIME);
+  const [addPortFT, setAddPortFT] = useState<PortFreeTimeFormValues>({ ...EMPTY_PORT_FREE_TIME, seal_number: '' });
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState('');
+  const isAirAdd = addForm.transport_type === 'air' || addForm.transport_type === 'express';
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchShipments = useCallback(async () => {
@@ -4571,7 +5215,18 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
         setAddError('يجب تسجيل الدخول لإضافة شحنة');
         return;
       }
-      const ft = portFreeTimePayload(addPortFT);
+      const ft = portFreeTimePayload({
+        ...addPortFT,
+        shipping_line: addForm.carrier_name,
+        port_name: addForm.route_destination_port,
+        container_number: isAirAdd ? '' : addPortFT.container_number,
+        container_type: isAirAdd ? '' : addPortFT.container_type,
+      });
+      const sealNo = isAirAdd ? '' : (addPortFT.seal_number || '').trim();
+      const noteParts = [
+        addForm.notes.trim(),
+        sealNo ? `رقم الرصاص / الختم (Seal No): ${sealNo}` : '',
+      ].filter(Boolean);
       const { data, error } = await supabase
         .from('international_shipments')
         .insert({
@@ -4594,7 +5249,7 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
           free_time_days: ft.free_days_limit ?? 14,
           daily_demurrage_fee: ft.daily_demurrage_rate ?? 0,
           currency: ft.demurrage_currency,
-          notes: addForm.notes.trim() || null,
+          notes: noteParts.length ? noteParts.join('\n') : null,
           status: 'Pending',
         })
         .select()
@@ -4608,7 +5263,7 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
       setShipments(prev => sortByFreeTimeUrgency([mapped, ...prev]));
       setShowAddModal(false);
       setAddForm({ tracking_number: '', bl_number: '', transport_type: 'sea_fcl', route_origin_port: '', route_destination_port: '', carrier_name: '', etd: '', estimated_delivery: '', notes: '' });
-      setAddPortFT(EMPTY_PORT_FREE_TIME);
+      setAddPortFT({ ...EMPTY_PORT_FREE_TIME, seal_number: '' });
     } catch (err: any) {
       setAddError(err?.message || 'حدث خطأ أثناء إضافة الشحنة');
     } finally {
@@ -5085,7 +5740,7 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
                     type="text"
                     value={addForm.tracking_number}
                     onChange={e => setAddForm(prev => ({ ...prev, tracking_number: e.target.value }))}
-                    placeholder="TRK-2024-XXXX"
+                    placeholder="TRK-2026-XXXX"
                     className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 font-mono"
                   />
                 </div>
@@ -5160,7 +5815,13 @@ function InternationalShipmentsTab({ partnerId }: { partnerId: string }) {
               </div>
 
               {/* Notes */}
-              <PortFreeTimeFields values={addPortFT} onChange={setAddPortFT} />
+              <PortFreeTimeFields
+                values={addPortFT}
+                onChange={setAddPortFT}
+                mode={isAirAdd ? 'air' : 'ocean'}
+                syncedCarrier={addForm.carrier_name.trim()}
+                syncedPort={addForm.route_destination_port.trim()}
+              />
 
               <div>
                 <label className="block text-xs font-semibold text-muted-foreground mb-1.5">ملاحظات</label>
@@ -5377,7 +6038,8 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
         setError('فشل رفع المرفق. يرجى المحاولة مجدداً.');
         return;
       }
-      const { data: pub } = supabase.storage.from('chat-media').getPublicUrl(path);
+      // Private bucket: store a "bucket/path" reference; it is signed at render time
+      const pub = { publicUrl: `chat-media/${path}` };
       const { data: msg, error: msgErr } = await supabase
         .from('admin_messages')
         .insert({
@@ -5535,17 +6197,14 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
                     }`}>
                       <p className="leading-relaxed whitespace-pre-wrap">{msg.message}</p>
                       {msg.attachment_url && (
-                        msg.attachment_type?.startsWith('image/') ? (
-                          <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={msg.attachment_url} alt={msg.attachment_name || 'مرفق صورة'} className="mt-2 rounded-lg max-h-48 object-cover" />
-                          </a>
-                        ) : (
-                          <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="mt-2 flex items-center gap-2 text-xs underline">
-                            <Icon name="PaperClipIcon" size={14} />
-                            {msg.attachment_name || 'عرض المرفق'}
-                          </a>
-                        )
+                        <div className="mt-2">
+                          <ChatAttachmentView
+                            url={msg.attachment_url}
+                            name={msg.attachment_name}
+                            type={msg.attachment_type}
+                            tone="dark"
+                          />
+                        </div>
                       )}
                     </div>
                     <span className="text-[10px] text-slate-500 px-1">
@@ -5583,7 +6242,7 @@ function AdminDirectMessagingTab({ partnerId, userId }: { partnerId: string; use
             className="w-10 h-10 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl disabled:opacity-50 transition-colors flex items-center justify-center shrink-0"
           >
             {sending ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
             ) : (
               <Icon name="PaperAirplaneIcon" size={16} />
             )}
@@ -5716,7 +6375,7 @@ function DisputesAndDelaysTab({ partnerId, userId }: { partnerId: string; userId
               <Icon name="ClockIcon" size={16} className="text-amber-400" />
               الإبلاغ عن تأخير طارئ
             </h3>
-            <p className="text-xs text-slate-400 mb-4">
+            <p className="text-xs text-slate-200 mb-4">
               اختر الشحنة المتأثرة وسجّل سبب التأخير مع تحديث وقت الوصول المتوقع (ETA). سيتم إشعار العميل فوراً.
             </p>
 
@@ -5778,17 +6437,25 @@ function DisputesAndDelaysTab({ partnerId, userId }: { partnerId: string; userId
                   </div>
                 )}
 
-                <button
-                  onClick={() => {
-                    if (!selectedShipment) { toast.error('يرجى اختيار شحنة أولاً'); return; }
-                    setShowDelayModal(true);
-                  }}
-                  disabled={!selectedShipment}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold disabled:opacity-40 transition-colors"
-                >
-                  <Icon name="ExclamationTriangleIcon" size={16} />
-                  تحديث ETA وملاحظة التأخير
-                </button>
+                {selectedShipment ? (
+                  <LogisticsDelayReportModal
+                    key={selectedShipment.id}
+                    shipment={selectedShipment}
+                    partnerId={partnerId}
+                    userId={userId}
+                    onClose={() => setShowDelayModal(false)}
+                    onSubmitted={() => { setSelectedShipment(null); fetchDelays(); fetchShipments(); }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-700 text-slate-400 rounded-xl text-sm font-bold opacity-70 cursor-not-allowed"
+                  >
+                    <Icon name="ExclamationTriangleIcon" size={16} />
+                    تحديث ETA وإشعار العميل بالتأخير
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -5837,31 +6504,67 @@ function DisputesAndDelaysTab({ partnerId, userId }: { partnerId: string; userId
           openedBy="logistics_partner"
         />
       )}
-
-      {/* Delay Report Modal */}
-      {showDelayModal && selectedShipment && (
-        <LogisticsDelayReportModal
-          shipment={selectedShipment}
-          partnerId={partnerId}
-          userId={userId}
-          onClose={() => setShowDelayModal(false)}
-          onSubmitted={() => { setSelectedShipment(null); fetchDelays(); fetchShipments(); }}
-        />
-      )}
     </div>
   );
 }
 
 // ─── Main Dashboard Page ──────────────────────────────────────────────────────
 
-export default function LogisticsDashboardPage() {
+type LogisticsModuleKey =
+  | 'load_board' |'orders' |'conversations' |'stats' |'calculator' |'profile' |'payments' |'international_orders' |'customs_docs' |'documents' |'dispatch_rooms' |'admin_messaging' |'disputes_delays';
+
+const MODULE_ROUTES: Record<LogisticsModuleKey, string> = {
+  load_board: '/logistics/load-board',
+  orders: '/logistics/shipments',
+  calculator: '/logistics/calculator',
+  stats: '/logistics/analytics',
+  international_orders: '/logistics/international',
+  customs_docs: '/logistics/customs',
+  conversations: '/logistics/dashboard',
+  documents: '/logistics/dashboard?module=documents',
+  dispatch_rooms: '/logistics/dashboard?module=dispatch_rooms',
+  disputes_delays: '/logistics/dashboard?module=disputes_delays',
+  payments: '/logistics/dashboard?module=payments',
+  profile: '/logistics/dashboard?module=profile',
+  admin_messaging: '/logistics/dashboard?module=admin_messaging',
+};
+
+const MODULE_TITLES: Record<LogisticsModuleKey, string> = {
+  load_board: 'سوق الطلبات المتاحة (Load Board)',
+  orders: 'الطلبات والشحنات المسندة',
+  calculator: 'حاسبة تكاليف الشحن والتعرفة',
+  stats: 'الأداء والإحصائيات الميدانية',
+  international_orders: 'إدارة الشحنات الدولية (بحري وجوي)',
+  customs_docs: 'وثائق وبيانات التخليص الجمركي',
+  documents: 'رفع المستندات والتراخيص',
+  dispatch_rooms: 'غرف التنسيق الميداني',
+  disputes_delays: 'النزاعات والتأخير التشغيلي',
+  payments: 'المستحقات والمدفوعات',
+  profile: 'الملف التعريفي والاعتماد',
+  admin_messaging: 'مراسلة الإدارة والدعم التشغيلي',
+  conversations: 'المحادثات',
+};
+
+const VALID_MODULES = Object.keys(MODULE_TITLES) as LogisticsModuleKey[];
+
+export interface LogisticsDashboardViewProps {
+  module?: LogisticsModuleKey;
+}
+
+function LogisticsDashboardView({ module: moduleProp }: LogisticsDashboardViewProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
+  const { language, dir } = useLanguage();
+  const hs = getHubShellStrings(language);
   const supabase = createClient();
+
+  const queryModule = searchParams?.get('module') as LogisticsModuleKey | null;
+  const activeModule: LogisticsModuleKey | null =
+    moduleProp || (queryModule && VALID_MODULES.includes(queryModule) ? queryModule : null);
 
   const [partner, setPartner] = useState<LogisticsPartner | null>(null);
   const [checkLoading, setCheckLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'load_board' | 'orders' | 'conversations' | 'stats' | 'calculator' | 'profile' | 'payments' | 'international_orders' | 'customs_docs' | 'documents' | 'dispatch_rooms' | 'admin_messaging' | 'disputes_delays'>('orders');
 
   useEffect(() => {
     if (authLoading) return;
@@ -5902,70 +6605,81 @@ export default function LogisticsDashboardPage() {
     setCheckLoading(false);
   };
 
-  const SECTIONS = [
+  const [kpiOrders, setKpiOrders] = useState<{ status: string; shipping_fees_released: boolean | null }[]>([]);
+
+  const fetchKpiOrders = useCallback(async () => {
+    if (!partner?.id) return;
+    const { data } = await supabase
+      .from('orders')
+      .select('status, shipping_fees_released')
+      .eq('logistics_partner_id', partner.id);
+    setKpiOrders((data as { status: string; shipping_fees_released: boolean | null }[]) || []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partner?.id]);
+
+  useEffect(() => {
+    if (activeModule) return;
+    fetchKpiOrders();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchKpiOrders, activeModule]);
+
+  useRealtimeOrders({
+    channelName: 'logistics-dashboard-kpi-rt',
+    filterColumn: 'logistics_partner_id',
+    userId: partner?.id || '',
+    onOrderChange: fetchKpiOrders,
+    enabled: !!partner?.id && !activeModule,
+  });
+
+  const KPI_CARDS = [
+    { label: 'إجمالي الشحنات المسندة', filter: 'all', count: kpiOrders.length, icon: 'ClipboardDocumentListIcon', color: 'text-slate-200', iconBg: 'bg-slate-700/60' },
+    { label: 'شحنات قيد النقل', filter: 'in_transit', count: kpiOrders.filter(o => IN_TRANSIT_STATUSES.includes(o.status)).length, icon: 'TruckIcon', color: 'text-sky-400', iconBg: 'bg-sky-500/15' },
+    { label: 'بانتظار كود التسليم (PIN)', filter: 'awaiting_pin', count: kpiOrders.filter(o => o.status === 'out_for_delivery' && !o.shipping_fees_released).length, icon: 'KeyIcon', color: 'text-amber-400', iconBg: 'bg-amber-500/15' },
+    { label: 'تم التسليم بنجاح', filter: 'delivered', count: kpiOrders.filter(o => o.status === 'delivered').length, icon: 'CheckBadgeIcon', color: 'text-emerald-400', iconBg: 'bg-emerald-500/15' },
+  ];
+
+  const SECTIONS: { key: string; label: string; icon: string; tabs: { key: LogisticsModuleKey; label: string; icon: string }[] }[] = [
     {
       key: 'local',
       label: 'الشحن المحلي والتوزيع',
+      icon: 'TruckIcon',
       tabs: [
-        { key: 'load_board', label: '🛒 سوق الطلبات المتاحة (Load Board)', icon: 'ShoppingBagIcon' },
-        { key: 'orders', label: '📦 الطلبات والشحنات', icon: 'TruckIcon' },
-        { key: 'stats', label: '📊 الأداء والإحصائيات', icon: 'ChartBarIcon' },
-        { key: 'calculator', label: '🧮 حاسبة التكاليف', icon: 'CalculatorIcon' },
+        { key: 'load_board', label: 'سوق الطلبات المتاحة (Load Board)', icon: 'ShoppingBagIcon' },
+        { key: 'orders', label: 'الطلبات والشحنات المسندة', icon: 'ClipboardDocumentListIcon' },
+        { key: 'calculator', label: 'حاسبة تكاليف الشحن والتعرفة', icon: 'CalculatorIcon' },
+        { key: 'stats', label: 'الأداء والإحصائيات الميدانية', icon: 'ChartBarIcon' },
       ]
     },
     {
       key: 'international',
-      label: 'الشحن الدولي',
+      label: 'الشحن الدولي والتخليص الجمركي',
+      icon: 'GlobeAltIcon',
       tabs: [
-        { key: 'international_orders', label: '🌍 إدارة الشحنات الدولية (بحري وجوي)', icon: 'GlobeAltIcon' },
+        { key: 'international_orders', label: 'إدارة الشحنات الدولية (بحري وجوي)', icon: 'GlobeAltIcon' },
+        { key: 'customs_docs', label: 'وثائق وبيانات التخليص الجمركي', icon: 'DocumentTextIcon' },
+        { key: 'documents', label: 'رفع المستندات والتراخيص', icon: 'FolderOpenIcon' },
       ]
     },
     {
-      key: 'customs',
-      label: 'الموانئ والتخليص الجمركي',
+      key: 'ops_finance',
+      label: 'العمليات والمالية والدعم',
+      icon: 'Cog6ToothIcon',
       tabs: [
-        { key: 'customs_docs', label: '📋 وثائق التخليص', icon: 'DocumentTextIcon' },
-        { key: 'documents', label: '📁 رفع المستندات', icon: 'FolderOpenIcon' },
-      ]
-    },
-    {
-      key: 'dispatch',
-      label: 'غرف التنسيق الميداني',
-      tabs: [
-        { key: 'dispatch_rooms', label: '🚚 غرف التنسيق الميداني', icon: 'ChatBubbleLeftRightIcon' },
-      ]
-    },
-    {
-      key: 'disputes_ops',
-      label: 'إدارة التأخير والنزاعات التشغيلية',
-      tabs: [
-        { key: 'disputes_delays', label: '⚖️ التأخير والنزاعات', icon: 'ExclamationTriangleIcon' },
-      ]
-    },
-    {
-      key: 'fulfillment',
-      label: 'خدمات من الباب للباب',
-      tabs: [
-        { key: 'conversations', label: '💬 المراسلات', icon: 'ChatBubbleLeftRightIcon' },
-        { key: 'payments', label: '💰 المدفوعات', icon: 'BanknotesIcon' },
-        { key: 'profile', label: '👤 الملف الشخصي', icon: 'UserCircleIcon' },
-      ]
-    },
-    {
-      key: 'admin_support',
-      label: 'التواصل مع الإدارة',
-      tabs: [
-        { key: 'admin_messaging', label: '💬 مراسلة الإدارة العامة / الدعم التشغيلي', icon: 'ChatBubbleLeftRightIcon' },
+        { key: 'dispatch_rooms', label: 'غرف التنسيق الميداني', icon: 'ChatBubbleLeftRightIcon' },
+        { key: 'disputes_delays', label: 'النزاعات والتأخير التشغيلي', icon: 'ExclamationTriangleIcon' },
+        { key: 'payments', label: 'المستحقات والمدفوعات', icon: 'BanknotesIcon' },
+        { key: 'profile', label: 'الملف التعريفي والاعتماد', icon: 'UserCircleIcon' },
+        { key: 'admin_messaging', label: 'مراسلة الإدارة والدعم التشغيلي', icon: 'ChatBubbleLeftRightIcon' },
       ]
     }
   ];
 
   if ((authLoading || checkLoading) && !partner) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center" dir={dir}>
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading your dashboard…</p>
+          <p className="text-sm text-muted-foreground">{hs.loadingDashboard}</p>
         </div>
       </div>
     );
@@ -5973,8 +6687,92 @@ export default function LogisticsDashboardPage() {
 
   if (!partner) return null;
 
+  // ── Full-page sub-view (dedicated route) ────────────────────────────────────
+  if (activeModule) {
+    return (
+      <div className="min-h-screen bg-background" dir={dir}>
+        <header className="sticky top-0 z-30 bg-card border-b border-border">
+          <div className="max-w-5xl mx-auto px-4 min-h-14 py-2 flex items-center justify-between gap-3 flex-wrap">
+            <Link
+              href="/logistics/dashboard"
+              className="inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:opacity-80 transition-opacity"
+            >
+              <span aria-hidden="true">←</span>
+              رجوع إلى لوحة العمليات اللوجستية
+            </Link>
+            <h1 className="text-sm sm:text-base font-bold text-foreground">{MODULE_TITLES[activeModule]}</h1>
+            <div className="flex items-center gap-2">
+              {activeModule !== 'admin_messaging' && (
+                <Link
+                  href={MODULE_ROUTES.admin_messaging}
+                  className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:bg-muted transition-colors"
+                >
+                  <Icon name="ChatBubbleLeftRightIcon" size={14} />
+                  الدعم
+                </Link>
+              )}
+              <button
+                type="button"
+                onClick={() => router.refresh()}
+                className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:bg-muted transition-colors"
+              >
+                <Icon name="ArrowPathIcon" size={14} />
+                تحديث
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="max-w-5xl mx-auto px-4 py-5 pb-10">
+          <StatusBanner status={partner.status} adminNote={partner.admin_note} />
+          {activeModule === 'stats' && <PerformanceStatsTab partnerId={partner.id} />}
+          {activeModule === 'load_board' && <LoadBoardTab partnerId={partner.id} />}
+          {activeModule === 'orders' && (
+            <div className="space-y-4">
+              <OrdersTab partnerId={partner.id} userId={user?.id || ''} />
+            </div>
+          )}
+          {activeModule === 'conversations' && <ConversationsTab partnerId={partner.id} userId={user!.id} />}
+          {activeModule === 'calculator' && (
+            <ShippingCalculatorTab
+              partner={partner}
+              onRequestSpecialQuote={() => router.push(MODULE_ROUTES.admin_messaging)}
+            />
+          )}
+          {activeModule === 'profile' && (
+            <ProfileTab partner={partner} onSaved={updated => setPartner(updated)} />
+          )}
+          {activeModule === 'payments' && (
+            <PaymentsTab partnerId={partner.id} partnerCountry={partner.country} />
+          )}
+          {activeModule === 'international_orders' && <InternationalShipmentsTab partnerId={partner.id} />}
+          {activeModule === 'customs_docs' && (
+            <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
+              <LogisticsDocumentsPanel userId={user?.id} mode="customs" />
+            </div>
+          )}
+          {activeModule === 'documents' && (
+            <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
+              <LogisticsDocumentsPanel userId={user?.id} mode="licensing" />
+            </div>
+          )}
+          {activeModule === 'dispatch_rooms' && (
+            <LogisticsDispatchRoomsTab userId={user!.id} partnerId={partner.id} />
+          )}
+          {activeModule === 'admin_messaging' && (
+            <AdminDirectMessagingTab partnerId={partner.id} userId={user!.id} />
+          )}
+          {activeModule === 'disputes_delays' && (
+            <DisputesAndDelaysTab partnerId={partner.id} userId={user!.id} />
+          )}
+        </main>
+      </div>
+    );
+  }
+
+  // ── Clean dashboard (KPIs + navigation cards + quick actions only) ──────────
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" dir={dir}>
       <Header />
       {/* ── Room Identity Banner ── */}
       <div className="bg-gradient-to-r from-cyan-700 to-cyan-900 text-white px-4 py-3">
@@ -5984,35 +6782,35 @@ export default function LogisticsDashboardPage() {
               <Icon name="TruckIcon" size={18} className="text-white" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white leading-tight">لوحة تحكم المكتب اللوجستي</h2>
-              <p className="text-cyan-200 text-xs">Logistics Partner Dashboard · إدارة الشحنات والتوصيل</p>
+              <h2 className="text-sm font-bold text-white leading-tight">{hs.logisticsRoomTitle}</h2>
+              <p className="text-cyan-200 text-xs">لوحة تحكم شريك النقل والخدمات اللوجستية · إدارة الشحنات والتوصيل</p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/70 border border-white/30 text-white text-xs font-medium hover:bg-slate-800 transition-colors"
+            >
+              <span aria-hidden="true">🏪</span>
+              العودة للمتجر / الرئيسية
+            </Link>
             <span className="bg-white/20 text-white text-xs px-3 py-1 rounded-full border border-white/30">
-              🚚 شريك لوجستي
-            </span>
-            <span className="bg-white/10 text-cyan-200 text-xs px-3 py-1 rounded-full border border-white/20">
-              ID: logistics-office-dashboard
+              {hs.logisticsPartnerBadge}
             </span>
           </div>
         </div>
       </div>
-      <div className="max-w-5xl mx-auto px-4 py-8 mobile-safe-bottom">
+      <div className="max-w-5xl mx-auto px-4 py-6 mobile-safe-bottom">
 
         {/* Page header */}
-        <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
+        <div className="flex items-start justify-between gap-4 mb-4 flex-wrap">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Link href="/my-account" className="text-muted-foreground hover:text-foreground transition-colors">
-                <Icon name="ArrowRightIcon" size={16} />
-              </Link>
-              <h1 className="text-2xl font-bold text-foreground">بوابة الشريك اللوجستي</h1>
-            </div>
+            <h1 className="text-2xl font-bold text-foreground mb-1">{hs.logisticsPortalTitle}</h1>
             <p className="text-sm text-muted-foreground">
               {partner.company_name}
               <span className="mx-2 text-border">·</span>
-              {PARTNER_TYPE_LABELS[partner.partner_type] || partner.partner_type}
+              {partner.partner_type === 'international_shipping_office' ?'مكتب شحن وخدمات لوجستية معتمد'
+                : (PARTNER_TYPE_LABELS[partner.partner_type] || partner.partner_type)}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -6025,7 +6823,7 @@ export default function LogisticsDashboardPage() {
                 name={partner.status === 'approved' ? 'CheckBadgeIcon' : partner.status === 'under_review' ? 'MagnifyingGlassIcon' : 'ClockIcon'}
                 size={13}
               />
-              {partner.status === 'pending' ? 'قيد المراجعة والاعتماد' : partner.status === 'approved' ? 'معتمد' : partner.status === 'under_review' ? 'قيد المراجعة' : partner.status === 'rejected' ? 'مرفوض' : partner.status === 'suspended' ? 'موقوف' : partner.status}
+              {partner.status === 'pending' ? hs.statusPending : partner.status === 'approved' ? hs.statusApproved : partner.status === 'under_review' ? hs.statusUnderReview : partner.status === 'rejected' ? hs.statusRejected : partner.status === 'suspended' ? hs.statusSuspended : partner.status}
             </span>
           </div>
         </div>
@@ -6033,81 +6831,82 @@ export default function LogisticsDashboardPage() {
         {/* Status banner for non-approved partners */}
         <StatusBanner status={partner.status} adminNote={partner.admin_note} />
 
-        {/* Tabs */}
+        {/* Top KPI summary (2x2) */}
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          {KPI_CARDS.map(kpi => (
+            <div
+              key={kpi.label}
+              role="link"
+              tabIndex={0}
+              onClick={() => router.push(`/logistics/shipments?filter=${kpi.filter}`)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  router.push(`/logistics/shipments?filter=${kpi.filter}`);
+                }
+              }}
+              className="rounded-2xl border border-slate-800 bg-slate-900 p-4 cursor-pointer active:scale-95 transition-all hover:border-sky-500/50"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${kpi.iconBg}`}>
+                  <Icon name={kpi.icon as any} size={16} className={kpi.color} />
+                </span>
+                <span className="text-xs text-slate-400 leading-tight">{kpi.label}</span>
+              </div>
+              <p className={`text-3xl font-bold ${kpi.color}`}>{kpi.count}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Operations navigation cards — each opens a dedicated full page */}
         <div className="space-y-6 mb-6">
           {SECTIONS.map(section => (
-            <div key={section.key}>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3 px-1">
-                {section.label}
-              </p>
-              <div className="flex flex-wrap gap-2">
+            <div key={section.key} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+              <div className="flex items-center gap-2 mb-3 px-1">
+                <Icon name={section.icon as any} size={16} className="text-cyan-400" />
+                <p className="text-sm font-bold text-slate-100">{section.label}</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {section.tabs.map(tab => (
-                  <button
+                  <Link
                     key={tab.key}
-                    onClick={() => setActiveTab(tab.key as typeof activeTab)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeTab === tab.key
-                        ? 'bg-blue-600 text-white' :'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                    }`}
+                    href={MODULE_ROUTES[tab.key]}
+                    className="flex items-center gap-3 min-h-[64px] px-4 py-3 rounded-xl border text-start transition-colors bg-slate-900 border-slate-800 text-slate-200 hover:bg-slate-800 hover:border-slate-700"
                   >
-                    {tab.label}
-                  </button>
+                    <span className="w-9 h-9 shrink-0 rounded-lg flex items-center justify-center bg-slate-800">
+                      <Icon name={tab.icon as any} size={18} className="text-slate-300" />
+                    </span>
+                    <span className="text-sm font-semibold leading-snug">{tab.label}</span>
+                  </Link>
                 ))}
               </div>
             </div>
           ))}
         </div>
-
-        {/* Tab content */}
-        <div>
-          {activeTab === 'stats' && (
-            <PerformanceStatsTab partnerId={partner.id} />
-          )}
-          {activeTab === 'load_board' && (
-            <LoadBoardTab partnerId={partner.id} />
-          )}
-          {activeTab === 'orders' && (
-            <div className="space-y-4">
-              <OrdersTab partnerId={partner.id} userId={user?.id || ''} />
-            </div>
-          )}
-          {activeTab === 'conversations' && (
-            <ConversationsTab partnerId={partner.id} userId={user!.id} />
-          )}
-          {activeTab === 'calculator' && (
-            <ShippingCalculatorTab partner={partner} onRequestSpecialQuote={() => setActiveTab('admin_messaging')} />
-          )}
-          {activeTab === 'profile' && (
-            <ProfileTab partner={partner} onSaved={updated => setPartner(updated)} />
-          )}
-          {activeTab === 'payments' && (
-            <PaymentsTab partnerId={partner.id} partnerCountry={partner.country} />
-          )}
-          {activeTab === 'international_orders' && (
-            <InternationalShipmentsTab partnerId={partner.id} />
-          )}
-          {activeTab === 'customs_docs' && (
-            <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-              <LogisticsDocumentsPanel userId={user?.id} />
-            </div>
-          )}
-          {activeTab === 'documents' && (
-            <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-              <LogisticsDocumentsPanel userId={user?.id} />
-            </div>
-          )}
-          {activeTab === 'dispatch_rooms' && (
-            <LogisticsDispatchRoomsTab userId={user!.id} partnerId={partner.id} />
-          )}
-          {activeTab === 'admin_messaging' && (
-            <AdminDirectMessagingTab partnerId={partner.id} userId={user!.id} />
-          )}
-          {activeTab === 'disputes_delays' && (
-            <DisputesAndDelaysTab partnerId={partner.id} userId={user!.id} />
-          )}
-        </div>
       </div>
-      <BottomNav />
     </div>
+  );
+}
+
+const PATH_TO_MODULE: Record<string, LogisticsModuleKey> = {
+  '/logistics/load-board': 'load_board',
+  '/logistics/shipments': 'orders',
+  '/logistics/calculator': 'calculator',
+  '/logistics/analytics': 'stats',
+  '/logistics/international': 'international_orders',
+  '/logistics/customs': 'customs_docs',
+};
+
+function LogisticsDashboardRouter() {
+  const pathname = usePathname();
+  const moduleFromPath = pathname ? PATH_TO_MODULE[pathname.replace(/\/+$/, '')] : undefined;
+  return <LogisticsDashboardView module={moduleFromPath} />;
+}
+
+export default function LogisticsDashboardPage() {
+  return (
+    <Suspense fallback={null}>
+      <LogisticsDashboardRouter />
+    </Suspense>
   );
 }

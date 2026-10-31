@@ -1,32 +1,51 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 import AIProductAssistant from '@/components/AIProductAssistant';
-import FactoryOnboardingGuide from '@/components/FactoryOnboardingGuide';
 import { MultilingualProductFields, SupplierLanguageBadge } from '@/components/LocalizedProductDisplay';
 import { buildProductShareLinkNoPhone } from '@/lib/whatsappOrderLinks';
+import { copyProductShareText, buildPublicProductUrl } from '@/lib/productCode';
 import TrustScoreBadge from '@/components/TrustScoreBadge';
 import WarrantyInlineForm from './WarrantyInlineForm';
+import FactoryDocumentUploadPanel from '@/components/manufacturer/FactoryDocumentUploadPanel';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Product {
   id: string;
   name: string;
   name_ar: string;
+  short_id?: string | null;
+  slug?: string | null;
   description: string;
   description_ar: string;
   category: string;
   sku: string;
-  unit: string;
-  unit_price: number;
-  minimum_order_qty: number;
   stock_quantity: number;
   inventory_status: 'in_stock' | 'low_stock' | 'out_of_stock' | 'discontinued';
   origin_country: string;
   is_active: boolean;
   created_at: string;
+  created_by_role?: 'agent' | 'manufacturer' | null;
+  created_by_id?: string | null;
+  created_by_name?: string | null;
+  approval_status?: 'approved' | 'pending_factory_approval' | null;
+  image_url?: string | null;
+  primary_image_url?: string | null;
+  images?: any[] | null;
 }
+
+const getProductThumb = (p: Product): string | null => {
+  if (p.primary_image_url) return p.primary_image_url;
+  if (p.image_url) return p.image_url;
+  if (Array.isArray(p.images) && p.images.length > 0) {
+    const first: any = p.images[0];
+    const src = typeof first === 'string' ? first : first?.src;
+    if (typeof src === 'string' && src) return src;
+  }
+  return null;
+};
 
 interface ProductFormData {
   name: string; name_ar: string; name_zh: string; name_tr: string;
@@ -37,19 +56,19 @@ interface ProductFormData {
 }
 
 const CATEGORIES = [
-  { value: 'electronics', label: 'Electronics & Technology' },
-  { value: 'machinery', label: 'Industrial Machinery' },
-  { value: 'textiles', label: 'Textiles & Apparel' },
-  { value: 'building', label: 'Building Materials' },
-  { value: 'food', label: 'Food & Agriculture' },
-  { value: 'chemicals', label: 'Chemicals & Plastics' },
-  { value: 'auto', label: 'Auto Parts & Accessories' },
-  { value: 'packaging', label: 'Packaging Solutions' },
-  { value: 'energy', label: 'Energy & Power' },
-  { value: 'medical', label: 'Medical & Healthcare' },
-  { value: 'furniture', label: 'Furniture & Interiors' },
-  { value: 'raw_materials', label: 'Raw Materials' },
-  { value: 'other', label: 'Other' },
+  { value: 'raw_materials', label: 'مواد خام أولية' },
+  { value: 'packaging', label: 'مواد تعبئة وتغليف' },
+  { value: 'consumables', label: 'مستهلكات' },
+  { value: 'furniture_furnishings', label: 'مفروشات وأثاث' },
+  { value: 'household_products', label: 'منتجات منزلية' },
+  { value: 'clothing_textiles', label: 'ملابس ونسيج' },
+  { value: 'food_beverages', label: 'أغذية ومشروبات' },
+  { value: 'cosmetics_personal_care', label: 'مستحضرات تجميل وعناية' },
+  { value: 'construction_materials', label: 'مواد بناء وإنشاءات' },
+  { value: 'heavy_equipment', label: 'معدات وآليات ثقيلة' },
+  { value: 'spare_parts', label: 'قطع غيار' },
+  { value: 'pharma_medical', label: 'أدوية ومستلزمات طبية' },
+  { value: 'plastics_industries', label: 'بلاستيك وصناعات بلاستيكية' },
 ];
 
 const STATUS_CONFIG = {
@@ -77,6 +96,9 @@ interface ProductsPanelProps {
   setFilterStatus: (v: string) => void;
   filterCategory: string;
   setFilterCategory: (v: string) => void;
+  filterSource: string;
+  setFilterSource: (v: string) => void;
+  handleApproveProduct: (product: Product) => void;
   searchQuery: string;
   setSearchQuery: (v: string) => void;
   selectedProducts: Set<string>;
@@ -124,6 +146,7 @@ interface ProductsPanelProps {
   SortIcon: React.FC<{ col: string }>;
   t: any;
   md: any;
+  onDocumentsChanged?: () => void;
 }
 
 export default function ProductsPanel({
@@ -144,6 +167,9 @@ export default function ProductsPanel({
   setFilterStatus,
   filterCategory,
   setFilterCategory,
+  filterSource,
+  setFilterSource,
+  handleApproveProduct,
   searchQuery,
   setSearchQuery,
   selectedProducts,
@@ -191,8 +217,128 @@ export default function ProductsPanel({
   SortIcon,
   t,
   md,
+  onDocumentsChanged,
 }: ProductsPanelProps) {
   const { language } = useLanguage();
+  const { user: authUser } = useAuth();
+  const [copiedProductId, setCopiedProductId] = React.useState<string | null>(null);
+  const [showVerifiedDetails, setShowVerifiedDetails] = React.useState(false);
+  const [sheetFilter, setSheetFilter] = React.useState<'all' | 'in_stock' | 'low_stock' | 'out_of_stock' | null>(null);
+  const [sheetVisible, setSheetVisible] = React.useState(false);
+
+  const openSheet = (f: 'all' | 'in_stock' | 'low_stock' | 'out_of_stock') => {
+    setSheetFilter(f);
+    requestAnimationFrame(() => requestAnimationFrame(() => setSheetVisible(true)));
+  };
+  const closeSheet = () => {
+    setSheetVisible(false);
+    setTimeout(() => setSheetFilter(null), 300);
+  };
+
+  React.useEffect(() => {
+    if (!sheetFilter) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeSheet(); };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheetFilter]);
+
+  const SHEET_META: Record<'all' | 'in_stock' | 'low_stock' | 'out_of_stock', { title: string; iconName: string; iconBg: string; badge: string }> = {
+    all: { title: 'إجمالي المنتجات', iconName: 'CubeIcon', iconBg: 'linear-gradient(135deg, #8B5CF6, #7C3AED)', badge: 'text-violet-700 bg-violet-50 border-violet-200' },
+    in_stock: { title: 'المنتجات المتوفرة', iconName: 'CheckCircleIcon', iconBg: 'linear-gradient(135deg, #10B981, #059669)', badge: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+    out_of_stock: { title: 'المنتجات غير المتوفرة', iconName: 'XCircleIcon', iconBg: 'linear-gradient(135deg, #EF4444, #DC2626)', badge: 'text-red-700 bg-red-50 border-red-200' },
+    low_stock: { title: 'المنتجات منخفضة المخزون', iconName: 'ExclamationTriangleIcon', iconBg: 'linear-gradient(135deg, #F59E0B, #D97706)', badge: 'text-amber-700 bg-amber-50 border-amber-200' },
+  };
+  const sheetProducts: Product[] = sheetFilter
+    ? (sheetFilter === 'all' ? products : products.filter((p) => p.inventory_status === sheetFilter))
+    : [];
+  const formatNum = (n: number) => new Intl.NumberFormat('en-US').format(Number(n) || 0);
+  const unitLabelAr = (u: string) => {
+    const k = (u || '').toLowerCase();
+    if (k === 'carton' || k === 'cartons' || k === 'box' || k === 'boxes' || k === 'كرتون') return 'كرتون';
+    return u || 'وحدة';
+  };
+  const currencyAr = (c?: string | null) => {
+    const k = String(c || 'YER').toUpperCase();
+    if (k === 'YER') return 'ر.ي';
+    if (k === 'SAR') return 'ر.س';
+    if (k === 'USD') return '$';
+    return k;
+  };
+  const sheetStatusText = (p: Product) => {
+    if (p.inventory_status === 'in_stock') return 'متوفر';
+    if (p.inventory_status === 'low_stock') return 'مخزون منخفض';
+    if (p.inventory_status === 'out_of_stock') return 'غير متوفر';
+    return 'متوقف';
+  };
+  const sheetStockText = (p: Product) => {
+    const u = unitLabelAr(p.unit);
+    const q = formatNum(p.stock_quantity);
+    if (p.inventory_status === 'out_of_stock') return `غير متوفر في المخزون (${q} ${u})`;
+    if (p.inventory_status === 'low_stock') return `مخزون منخفض (${q} ${u})`;
+    if (p.inventory_status === 'in_stock') return `متوفر في المخزون (${q} ${u})`;
+    return `متوقف (${q} ${u})`;
+  };
+  const sheetStatusColor = (p: Product) =>
+    p.inventory_status === 'in_stock' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+      : p.inventory_status === 'low_stock' ? 'bg-amber-50 text-amber-700 border-amber-200'
+      : p.inventory_status === 'out_of_stock'? 'bg-red-50 text-red-700 border-red-200' :'bg-gray-100 text-gray-600 border-gray-200';
+  const isFullyVerified = verifiedTier === 'verified' && trustPercentage >= 100;
+  const isAgentManaged = !!(
+    factoryRegistration?.agent_id ||
+    factoryRegistration?.referred_by_agent_id ||
+    factoryRegistration?.referred_by_agent_code ||
+    factoryRegistration?.registration_type === 'agent'
+  );
+  const noopUploadDocs = () => {};
+  const isAr = language === 'ar';
+  const isPending = (p: Product) => p.approval_status === 'pending_factory_approval';
+  const renderOriginBadge = (p: Product) =>
+    p.created_by_role === 'agent' ? (
+      <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+        <Icon name="UserIcon" size={10} />
+        {isAr ? `أُدرج بواسطة المندوب: ${p.created_by_name || '—'}` : `Listed by agent: ${p.created_by_name || '—'}`}
+      </span>
+    ) : (
+      <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+        <Icon name="BuildingOffice2Icon" size={10} />
+        {isAr ? 'إدراج ذاتي' : 'Self-listed'}
+      </span>
+    );
+  const renderStatus = (p: Product) =>
+    isPending(p) ? (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+        {isAr ? 'بانتظار تأكيد المصنع' : 'Pending factory approval'}
+      </span>
+    ) : (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CONFIG[p.inventory_status]?.color || 'bg-gray-100 text-gray-600'}`}>
+        {t.status[p.inventory_status as keyof typeof t.status] || p.inventory_status}
+      </span>
+    );
+  const renderReviewButton = (p: Product, full?: boolean) =>
+    isPending(p) ? (
+      <>
+        <button
+          onClick={() => handleApproveProduct(p)}
+          className={`${full ? 'flex-1 h-8' : 'h-8 px-2.5'} inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors`}
+        >
+          <Icon name="CheckCircleIcon" size={13} />
+          {isAr ? 'اعتماد' : 'Approve'}
+        </button>
+        <button
+          onClick={() => openEditModal(p)}
+          className={`${full ? 'flex-1 h-8' : 'h-8 px-2.5'} inline-flex items-center justify-center gap-1 rounded-lg bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors`}
+        >
+          <Icon name="ClipboardDocumentCheckIcon" size={13} />
+          {isAr ? 'مراجعة وتعديل' : 'Review & edit'}
+        </button>
+      </>
+    ) : null;
 
   return (
     <>
@@ -204,19 +350,40 @@ export default function ProductsPanel({
         </div>
       )}
 
-      {/* AI Onboarding Guide */}
-      {!docGateLoading && (
-        <FactoryOnboardingGuide
-          hasDocuments={hasDocuments}
-          canListProducts={canListProducts}
-          factoryRegistration={factoryRegistration}
-          onUploadDocs={() => setShowDocGate(true)}
-          onAddProduct={handleOpenAddModal}
-        />
-      )}
-
       {/* Trust Score Card */}
-      {!docGateLoading && factoryRegistration && (
+      {!docGateLoading && factoryRegistration && isFullyVerified && (
+        <div className="mb-4">
+          <div className="flex items-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800">
+            <Icon name="CheckCircleIcon" size={18} className="text-emerald-600 shrink-0" />
+            <span className="flex-1 min-w-0 text-xs sm:text-sm font-bold leading-snug">
+              حساب المصنع موثق بالكامل بنسبة 100% (السجل التجاري والترخيص الصناعي)
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowVerifiedDetails((v) => !v)}
+              aria-expanded={showVerifiedDetails}
+              className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 hover:text-emerald-900 transition-colors"
+            >
+              <span className="hidden sm:inline">عرض التفاصيل</span>
+              <Icon name="ChevronDownIcon" size={14} className={`transition-transform ${showVerifiedDetails ? 'rotate-180' : ''}`} />
+            </button>
+          </div>
+          {showVerifiedDetails && (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {[
+                { key: 'trade_license', label: 'السجل التجاري' },
+                { key: 'manufacturing_license', label: 'الترخيص الصناعي' },
+              ].map((doc) => (
+                <div key={doc.key} className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-medium border bg-emerald-50 border-emerald-200 text-emerald-700">
+                  <Icon name="CheckCircleIcon" size={12} className="text-emerald-600 shrink-0" />
+                  <span className="truncate">{doc.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {!docGateLoading && factoryRegistration && !isFullyVerified && (
         <div className="relative mb-4 overflow-hidden rounded-2xl border shadow-md" style={{ background: verifiedTier === 'verified' ? 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)' : verifiedTier === 'partial' ? 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)' : 'linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%)', borderColor: verifiedTier === 'verified' ? '#6ee7b7' : verifiedTier === 'partial' ? '#fcd34d' : '#e5e7eb' }}>
           <div className="absolute top-0 left-0 right-0 h-0.5" style={{ background: verifiedTier === 'verified' ? 'linear-gradient(90deg, transparent, #10B981, transparent)' : verifiedTier === 'partial' ? 'linear-gradient(90deg, transparent, #F59E0B, transparent)' : 'linear-gradient(90deg, transparent, #9CA3AF, transparent)' }} />
           <div className="px-5 py-4">
@@ -246,11 +413,10 @@ export default function ProductsPanel({
                 <div className="h-full rounded-full transition-all duration-700" style={{ width: `${trustPercentage}%`, background: verifiedTier === 'verified' ? 'linear-gradient(90deg, #10B981, #059669)' : verifiedTier === 'partial' ? 'linear-gradient(90deg, #F59E0B, #D97706)' : 'linear-gradient(90deg, #9CA3AF, #6B7280)' }} />
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="mt-3 grid grid-cols-2 gap-2">
               {[
                 { key: 'trade_license', label: 'السجل التجاري', hasDoc: !!factoryRegistration?.trade_license_url },
                 { key: 'manufacturing_license', label: 'الترخيص الصناعي', hasDoc: !!factoryRegistration?.manufacturing_license_url },
-                { key: 'tax_id', label: 'الرقم الضريبي', hasDoc: !!factoryRegistration?.tax_id },
               ].map((doc) => (
                 <div key={doc.key} className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] font-medium border ${doc.hasDoc ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-600'}`}>
                   <Icon name={doc.hasDoc ? 'CheckCircleIcon' : 'XCircleIcon'} size={11} className={doc.hasDoc ? 'text-emerald-600 shrink-0' : 'text-red-400 shrink-0'} />
@@ -258,7 +424,7 @@ export default function ProductsPanel({
                 </div>
               ))}
             </div>
-            {verifiedTier !== 'verified' && missingDocuments.length > 0 && (
+            {verifiedTier !== 'verified' && missingDocuments.length > 0 && !isAgentManaged && (
               <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-white/70 border border-amber-200 rounded-xl">
                 <Icon name="ArrowUpTrayIcon" size={13} className="text-amber-600 shrink-0" />
                 <span className="text-[11px] text-amber-700 font-medium">
@@ -295,10 +461,14 @@ export default function ProductsPanel({
                   )}
                 </div>
                 <p className="text-xs text-amber-700 leading-relaxed">
-                  {hasDocuments ? t.manufacturerDashboard.documentsUnderReviewDesc : t.manufacturerDashboard.completeDocumentsDesc}
+                  {hasDocuments
+                    ? t.manufacturerDashboard.documentsUnderReviewDesc
+                    : isAgentManaged
+                    ? (language === 'ar' ?'مندوبك المعتمد مسؤول عن جمع ورفع مستندات التوثيق الخاصة بمصنعك. لا حاجة لرفعها بنفسك.' :'Your assigned agent is responsible for collecting and uploading your KYC documents. No action is needed from you.')
+                    : t.manufacturerDashboard.completeDocumentsDesc}
                 </p>
                 <div className="flex flex-wrap items-center gap-2.5 mt-3">
-                  {!hasDocuments && (
+                  {!hasDocuments && !isAgentManaged && (
                     <button onClick={() => setShowDocGate(true)} className="inline-flex items-center gap-1.5 px-4 py-2 text-white text-xs font-bold rounded-xl shadow-sm transition-all hover:shadow-md active:scale-95" style={{ background: 'linear-gradient(135deg, #D97706, #B45309)' }}>
                       <Icon name="ArrowUpTrayIcon" size={13} />
                       {t.manufacturerDashboard.uploadDocumentsNow}
@@ -332,24 +502,34 @@ export default function ProductsPanel({
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {[
-          { labelKey: 'totalProducts', value: stats.total, icon: 'CubeIcon', gradient: 'linear-gradient(135deg, #6366F1, #4F46E5)', shadow: 'shadow-indigo-100' },
-          { labelKey: 'inStock', value: stats.inStock, icon: 'CheckCircleIcon', gradient: 'linear-gradient(135deg, #10B981, #059669)', shadow: 'shadow-emerald-100' },
-          { labelKey: 'lowStock', value: stats.lowStock, icon: 'ExclamationTriangleIcon', gradient: 'linear-gradient(135deg, #F59E0B, #D97706)', shadow: 'shadow-amber-100' },
-          { labelKey: 'outOfStock', value: stats.outOfStock, icon: 'XCircleIcon', gradient: 'linear-gradient(135deg, #EF4444, #DC2626)', shadow: 'shadow-red-100' },
-        ].map((stat) => (
-          <div key={stat.labelKey} className={`relative bg-card border border-border/60 rounded-2xl p-4 shadow-md ${stat.shadow} overflow-hidden transition-all hover:shadow-lg hover:-translate-y-0.5`}>
-            <div className="absolute top-0 right-0 w-20 h-20 rounded-full opacity-5 -translate-y-4 translate-x-4" style={{ background: stat.gradient }} />
-            <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-sm" style={{ background: stat.gradient }}>
-                <Icon name={stat.icon as any} size={16} className="text-white" />
+          { labelKey: 'totalProducts', filter: 'all', value: stats.total, icon: 'CubeIcon', gradient: 'linear-gradient(135deg, #6366F1, #4F46E5)', shadow: 'shadow-indigo-100', ring: 'border-indigo-500 ring-2 ring-indigo-500/40' },
+          { labelKey: 'inStock', filter: 'in_stock', value: stats.inStock ?? 0, icon: 'CheckCircleIcon', gradient: 'linear-gradient(135deg, #10B981, #059669)', shadow: 'shadow-emerald-100', ring: 'border-emerald-500 ring-2 ring-emerald-500/40' },
+          { labelKey: 'lowStock', filter: 'low_stock', value: stats.lowStock ?? 0, icon: 'ExclamationTriangleIcon', gradient: 'linear-gradient(135deg, #F59E0B, #D97706)', shadow: 'shadow-amber-100', ring: 'border-amber-500 ring-2 ring-amber-500/40' },
+          { labelKey: 'outOfStock', filter: 'out_of_stock', value: stats.outOfStock ?? 0, icon: 'XCircleIcon', gradient: 'linear-gradient(135deg, #EF4444, #DC2626)', shadow: 'shadow-red-100', ring: 'border-red-500 ring-2 ring-red-500/40' },
+        ].map((stat) => {
+          const isActiveCard = sheetFilter === stat.filter;
+          return (
+            <button
+              type="button"
+              key={stat.labelKey}
+              onClick={() => openSheet(stat.filter as 'all' | 'in_stock' | 'low_stock' | 'out_of_stock')}
+              aria-haspopup="dialog"
+              aria-pressed={isActiveCard}
+              className={`relative flex flex-col items-stretch text-start bg-card border rounded-2xl p-4 shadow-md ${stat.shadow} overflow-hidden transition-all hover:shadow-lg hover:-translate-y-0.5 cursor-pointer ${isActiveCard ? stat.ring : 'border-border/60'}`}
+            >
+              <div className="absolute top-0 right-0 w-20 h-20 rounded-full opacity-5 -translate-y-4 translate-x-4 pointer-events-none" style={{ background: stat.gradient }} />
+              <div className="relative flex items-center gap-2.5 mb-3">
+                <div className="w-9 h-9 shrink-0 rounded-xl flex items-center justify-center shadow-sm" style={{ background: stat.gradient }}>
+                  <Icon name={stat.icon as any} size={16} className="text-white" />
+                </div>
+                <span className="text-xs text-muted-foreground font-semibold leading-tight">
+                  {t.manufacturerDashboard[stat.labelKey as keyof typeof t.manufacturerDashboard] as string}
+                </span>
               </div>
-              <span className="text-xs text-muted-foreground font-semibold leading-tight">
-                {t.manufacturerDashboard[stat.labelKey as keyof typeof t.manufacturerDashboard] as string}
-              </span>
-            </div>
-            <p className="text-3xl font-black text-foreground tracking-tight">{stat.value}</p>
-          </div>
-        ))}
+              <p className="relative text-3xl font-black text-foreground tracking-tight leading-none">{stat.value}</p>
+            </button>
+          );
+        })}
       </div>
 
       {/* Filters */}
@@ -370,6 +550,11 @@ export default function ProductsPanel({
         <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="h-9 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
           <option value="all">{t.manufacturerDashboard.allCategories}</option>
           {CATEGORIES.map((c) => (<option key={c.value} value={c.value}>{c.label}</option>))}
+        </select>
+        <select value={filterSource} onChange={(e) => setFilterSource(e.target.value)} className="h-9 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
+          <option value="all">{isAr ? 'الكل' : 'All'}</option>
+          <option value="mine">{isAr ? 'أضفتها بنفسي' : 'Added by Me'}</option>
+          <option value="agent">{isAr ? 'أضافها المندوب' : 'Added by Agent'}</option>
         </select>
       </div>
 
@@ -415,26 +600,51 @@ export default function ProductsPanel({
                 {filteredProducts.map((product) => (
                   <tr key={product.id} className={`hover:bg-muted/30 transition-colors ${!product.is_active ? 'opacity-50' : ''}`}>
                     <td className="px-4 py-3">
-                      <p className="font-medium text-foreground">{product.name}</p>
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-muted overflow-hidden shrink-0 border border-border flex items-center justify-center">
+                          {getProductThumb(product) ? (
+                            <img src={getProductThumb(product) as string} alt={product.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <Icon name="PhotoIcon" size={20} className="text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                      <p className="font-medium text-foreground break-words">{product.name}</p>
+                      {renderOriginBadge(product)}
                       {product.origin_country && (
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <p className="text-xs text-muted-foreground">{product.origin_country}</p>
                           <SupplierLanguageBadge originCountry={product.origin_country} size="sm" />
                         </div>
                       )}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-4 py-3"><span className="text-xs text-muted-foreground capitalize">{product.category.replace('_', ' ')}</span></td>
                     <td className="px-4 py-3"><span className="font-mono text-xs text-muted-foreground">{product.sku || '—'}</span></td>
-                    <td className="px-4 py-3 text-right"><span className="font-semibold text-foreground">${product.unit_price.toFixed(2)}</span><span className="text-xs text-muted-foreground">/{product.unit}</span></td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap" dir="ltr"><span className="font-semibold text-foreground">${product.unit_price.toFixed(2)}</span><span className="text-xs text-muted-foreground"> / {product.unit}</span></td>
                     <td className="px-4 py-3 text-right"><span className="font-medium text-foreground">{product.stock_quantity}</span><span className="text-xs text-muted-foreground"> {product.unit}</span></td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CONFIG[product.inventory_status]?.color || 'bg-gray-100 text-gray-600'}`}>
-                        {t.status[product.inventory_status as keyof typeof t.status] || product.inventory_status}
-                      </span>
+                      {renderStatus(product)}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <a href={buildProductShareLinkNoPhone(`${process.env.NEXT_PUBLIC_SITE_URL || 'https://direct-hub.net'}/product/${product.id}`, language === 'ar')} target="_blank" rel="noopener noreferrer" title={language === 'ar' ? 'مشاركة عبر واتساب' : 'Share via WhatsApp'} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-green-50 transition-colors text-muted-foreground hover:text-green-600">
+                        {renderReviewButton(product)}
+                        <a href={`/p/${product.id}`} target="_blank" rel="noopener noreferrer" className="px-2 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-xs font-semibold text-primary whitespace-nowrap">
+                          معاينة صفحة المنتج ↗
+                        </a>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const ok = await copyProductShareText({ id: product.id, name: product.name, name_ar: (product as any).name_ar, sku: product.sku, short_id: product.short_id, slug: product.slug, currency: (product as any).currency || 'YER' });
+                            if (ok) { setCopiedProductId(product.id); setTimeout(() => setCopiedProductId(null), 2500); }
+                          }}
+                          title="نسخ رابط وكود المنتج"
+                          className="px-2 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-xs font-semibold text-foreground whitespace-nowrap"
+                        >
+                          {copiedProductId === product.id ? '✓ تم النسخ' : '🔗 نسخ رابط وكود المنتج'}
+                        </button>
+                        <a href={buildProductShareLinkNoPhone(buildPublicProductUrl(product), language === 'ar')} target="_blank" rel="noopener noreferrer" title={language === 'ar' ? 'مشاركة عبر واتساب' : 'Share via WhatsApp'} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-green-50 transition-colors text-muted-foreground hover:text-green-600">
                           <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
                         </a>
                         <button onClick={() => handleToggleActive(product)} title={product.is_active ? t.manufacturerDashboard.deactivate : t.manufacturerDashboard.activate} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
@@ -459,28 +669,50 @@ export default function ProductsPanel({
             {filteredProducts.map((product) => (
               <div key={product.id} className={`p-4 ${!product.is_active ? 'opacity-50' : ''}`}>
                 <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-foreground truncate">{product.name}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{product.category.replace('_', ' ')}</p>
+                  <div className="w-14 h-14 rounded-xl bg-muted overflow-hidden shrink-0 border border-border flex items-center justify-center">
+                    {getProductThumb(product) ? (
+                      <img src={getProductThumb(product) as string} alt={product.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <Icon name="PhotoIcon" size={22} className="text-muted-foreground" />
+                    )}
                   </div>
-                  <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CONFIG[product.inventory_status]?.color || 'bg-gray-100 text-gray-600'}`}>
-                    {t.status[product.inventory_status as keyof typeof t.status] || product.inventory_status}
-                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-foreground break-words">{product.name}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{product.category.replace('_', ' ')}</p>
+                    {renderOriginBadge(product)}
+                  </div>
+                  <span className="shrink-0">{renderStatus(product)}</span>
                 </div>
                 <div className="flex items-center gap-4 text-sm mb-3">
-                  <span><span className="font-semibold text-foreground">${product.unit_price.toFixed(2)}</span><span className="text-muted-foreground">/{product.unit}</span></span>
+                  <span dir="ltr" className="whitespace-nowrap"><span className="font-semibold text-foreground">${product.unit_price.toFixed(2)}</span><span className="text-muted-foreground"> / {product.unit}</span></span>
                   <span className="text-muted-foreground">Stock: <span className="text-foreground font-medium">{product.stock_quantity} {product.unit}</span></span>
                 </div>
+                {isPending(product) && (
+                  <div className="flex items-center gap-2 mb-2">{renderReviewButton(product, true)}</div>
+                )}
+                <a href={`/product/${product.id}`} target="_blank" rel="noopener noreferrer" className="mb-2 h-8 flex items-center justify-center rounded-lg border border-primary/30 text-xs font-semibold text-primary hover:bg-primary/5 transition-colors">
+                  معاينة صفحة المنتج ↗
+                </a>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const ok = await copyProductShareText({ id: product.id, name: product.name, name_ar: (product as any).name_ar, sku: product.sku, short_id: product.short_id, slug: product.slug, currency: (product as any).currency || 'YER' });
+                    if (ok) { setCopiedProductId(product.id); setTimeout(() => setCopiedProductId(null), 2500); }
+                  }}
+                  className="mb-2 w-full h-8 flex items-center justify-center rounded-lg border border-border text-xs font-semibold text-foreground hover:bg-muted transition-colors"
+                >
+                  {copiedProductId === product.id ? '✓ تم النسخ' : '🔗 نسخ رابط وكود المنتج'}
+                </button>
                 <div className="flex items-center gap-2">
                   <button onClick={() => handleToggleActive(product)} className="flex-1 h-8 flex items-center justify-center gap-1 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
                     <Icon name={product.is_active ? 'EyeIcon' : 'EyeSlashIcon'} size={13} />
-                    {product.is_active ? 'Active' : 'Inactive'}
+                    {product.is_active ? (isAr ? 'نشط' : 'Active') : (isAr ? 'غير نشط' : 'Inactive')}
                   </button>
                   <button onClick={() => openEditModal(product)} className="flex-1 h-8 flex items-center justify-center gap-1 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
-                    <Icon name="PencilSquareIcon" size={13} /> Edit
+                    <Icon name="PencilSquareIcon" size={13} /> {isAr ? 'تعديل' : 'Edit'}
                   </button>
                   <button onClick={() => setDeleteId(product.id)} className="flex-1 h-8 flex items-center justify-center gap-1 rounded-lg border border-red-200 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors">
-                    <Icon name="TrashIcon" size={13} /> Delete
+                    <Icon name="TrashIcon" size={13} /> {isAr ? 'حذف' : 'Delete'}
                   </button>
                 </div>
                 <div className="mt-3 pt-3 border-t border-slate-700">
@@ -585,7 +817,7 @@ export default function ProductsPanel({
               <div className="flex gap-3 pt-1">
                 <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 h-10 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">Cancel</button>
                 <button type="submit" disabled={formLoading} className="flex-1 h-10 bg-primary text-primary-foreground rounded-lg text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2 transition-opacity active:opacity-80">
-                  {formLoading ? <><Icon name="ArrowPathIcon" size={15} className="animate-spin" /> Saving...</> : (editingProduct ? 'Save Changes' : 'Add Product')}
+                  {formLoading ? <><Icon name="ArrowPathIcon" size={15} className="animate-spin" /> Saving...</> : (editingProduct ? (editingProduct.approval_status === 'pending_factory_approval' ? (isAr ? 'حفظ واعتماد' : 'Save & Approve') : 'Save Changes') : 'Add Product')}
                 </button>
               </div>
             </form>
@@ -595,25 +827,25 @@ export default function ProductsPanel({
 
       {/* Delete Confirmation Modal */}
       {deleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 px-4">
           <div className="w-full max-w-sm bg-card rounded-2xl border border-border shadow-xl p-6">
             <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
               <Icon name="TrashIcon" size={22} className="text-red-600" />
             </div>
-            <h3 className="text-center font-bold text-foreground mb-1">Delete Product?</h3>
-            <p className="text-center text-sm text-muted-foreground mb-5">This action cannot be undone. The product will be permanently removed.</p>
+            <h3 className="text-center font-bold text-foreground mb-1">{isAr ? 'حذف المنتج؟' : 'Delete Product?'}</h3>
+            <p className="text-center text-sm text-muted-foreground mb-5">{isAr ? 'لا يمكن التراجع عن هذا الإجراء. سيتم حذف المنتج نهائياً.' : 'This action cannot be undone. The product will be permanently removed.'}</p>
             <div className="flex gap-3">
-              <button onClick={() => setDeleteId(null)} className="flex-1 h-10 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">Cancel</button>
-              <button onClick={() => handleDelete(deleteId)} className="flex-1 h-10 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors">Delete</button>
+              <button onClick={() => setDeleteId(null)} className="flex-1 h-10 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">{isAr ? 'إلغاء' : 'Cancel'}</button>
+              <button onClick={() => handleDelete(deleteId)} className="flex-1 h-10 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors">{isAr ? 'حذف' : 'Delete'}</button>
             </div>
           </div>
         </div>
       )}
 
       {/* Document Gate Modal */}
-      {showDocGate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-          <div className="w-full max-w-md bg-card rounded-2xl border border-border shadow-xl overflow-hidden">
+      {showDocGate && !isAgentManaged && (
+        <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/60 px-4 py-6 overflow-y-auto">
+          <div className="w-full max-w-3xl bg-card rounded-2xl border border-border shadow-xl overflow-hidden">
             <div className="bg-amber-50 border-b border-amber-200 px-6 py-4 flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
                 <Icon name="LockClosedIcon" size={20} className="text-amber-600" />
@@ -626,81 +858,125 @@ export default function ProductsPanel({
                 <Icon name="XMarkIcon" size={20} />
               </button>
             </div>
-            <div className="p-6">
-              <div className="mb-5">
-                <label className="block text-sm font-semibold text-foreground mb-2">{md.accountTypeBilingual}</label>
-                <div className="flex rounded-xl border border-border overflow-hidden">
-                  <button type="button" onClick={() => { setAccountType('factory'); setSecondDocFile(null); setMfgLicenseFile(null); }} className={`flex-1 py-2.5 text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${accountType === 'factory' ? 'bg-amber-600 text-white' : 'bg-card text-muted-foreground hover:bg-muted'}`}>
-                    <Icon name="BuildingOffice2Icon" size={16} /> Factory
-                  </button>
-                  <button type="button" onClick={() => { setAccountType('supplier'); setMfgLicenseFile(null); setSecondDocFile(null); }} className={`flex-1 py-2.5 text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${accountType === 'supplier' ? 'bg-amber-600 text-white' : 'bg-card text-muted-foreground hover:bg-muted'}`}>
-                    <Icon name="TruckIcon" size={16} /> {md.supplierAgentBilingual}
-                  </button>
-                </div>
-              </div>
-              {docUploadError && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2.5 text-sm mb-4 flex items-center gap-2">
-                  <Icon name="ExclamationCircleIcon" size={14} /> {docUploadError}
-                </div>
+            <div className="p-4 sm:p-6 max-h-[80vh] overflow-y-auto">
+              {authUser?.id && (
+                <FactoryDocumentUploadPanel userId={authUser.id} onUploaded={onDocumentsChanged} />
               )}
-              <form onSubmit={handleDocumentUpload} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1.5">{md.tradeLicenseBilingual}</label>
-                  <label className="block">
-                    {tradeLicenseFile ? (
-                      <div className="border-2 border-dashed border-green-400 bg-green-50 rounded-xl p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-2"><Icon name="DocumentCheckIcon" size={18} className="text-green-600" /><span className="text-sm text-green-700 font-medium truncate max-w-[200px]">{tradeLicenseFile.name}</span></div>
-                        <button type="button" onClick={() => setTradeLicenseFile(null)} className="text-muted-foreground hover:text-red-600"><Icon name="XMarkIcon" size={16} /></button>
+              <div className="flex justify-end pt-4">
+                <button type="button" onClick={() => setShowDocGate(false)} className="h-10 px-5 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">
+                  {t?.common?.close || 'Close'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stat Card Bottom Sheet */}
+      {sheetFilter && (
+        <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true" aria-label={SHEET_META[sheetFilter].title} dir="rtl">
+          <div
+            onClick={closeSheet}
+            className={`absolute inset-0 bg-black/60 transition-opacity duration-300 ${sheetVisible ? 'opacity-100' : 'opacity-0'}`}
+          />
+          <div
+            className={`absolute bottom-0 inset-x-0 mx-auto w-full max-w-2xl h-[75vh] bg-background rounded-t-3xl shadow-2xl flex flex-col transition-transform duration-300 ease-out ${sheetVisible ? 'translate-y-0' : 'translate-y-full'}`}
+          >
+            <div className="pt-2.5 pb-1 flex justify-center shrink-0">
+              <span className="w-12 h-1.5 rounded-full bg-border" />
+            </div>
+            <div className="flex items-center gap-3 px-4 pb-3 pt-1 border-b border-border shrink-0">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm" style={{ background: SHEET_META[sheetFilter].iconBg }}>
+                <Icon name={SHEET_META[sheetFilter].iconName as any} size={20} className="text-white" />
+              </div>
+              <h3 className="flex-1 min-w-0 font-black text-foreground text-base sm:text-lg leading-tight">
+                {SHEET_META[sheetFilter].title} ({sheetProducts.length})
+              </h3>
+              <button
+                type="button"
+                onClick={closeSheet}
+                aria-label="إغلاق"
+                className="w-9 h-9 flex items-center justify-center rounded-full bg-muted hover:bg-muted/70 text-foreground transition-colors shrink-0"
+              >
+                <Icon name="XMarkIcon" size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+              {sheetProducts.length === 0 ? (
+                <div className="h-full min-h-[240px] flex flex-col items-center justify-center text-center px-6">
+                  <div className="relative w-28 h-28 mb-5">
+                    <div className="absolute inset-0 rounded-full bg-muted" />
+                    <div className="absolute inset-3 rounded-full bg-card border border-dashed border-border flex items-center justify-center">
+                      <Icon name="ArchiveBoxIcon" size={44} className="text-muted-foreground" />
+                    </div>
+                    <span className="absolute -top-1 -left-1 w-6 h-6 rounded-full bg-amber-200/70" />
+                    <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-indigo-200/70" />
+                  </div>
+                  <p className="font-bold text-foreground text-base">لا توجد منتجات في هذه الفئة حالياً</p>
+                </div>
+              ) : (
+                sheetProducts.map((product) => {
+                  const thumb = getProductThumb(product);
+                  const cur = currencyAr((product as any).currency);
+                  return (
+                    <div key={product.id} className={`w-full bg-card border border-border rounded-2xl p-3.5 shadow-sm ${!product.is_active ? 'opacity-60' : ''}`}>
+                      <div className="flex items-start gap-3">
+                        <div className="w-20 h-20 rounded-xl bg-muted overflow-hidden shrink-0 border border-border flex items-center justify-center">
+                          {thumb ? (
+                            <img src={thumb} alt={product.name_ar || product.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <Icon name="PhotoIcon" size={28} className="text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-foreground text-sm leading-snug break-words">{product.name_ar || product.name}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5 capitalize">{(product.category || '').replace('_', ' ')}</p>
+                          <span className={`inline-flex items-center mt-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold border ${sheetStatusColor(product)}`}>
+                            {sheetStatusText(product)}
+                          </span>
+                        </div>
                       </div>
-                    ) : (
-                      <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { const f = e.target.files?.[0] || null; if (f && f.size > 15 * 1024 * 1024) { return; } setTradeLicenseFile(f); }} className="block w-full text-xs text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer" />
-                    )}
-                  </label>
-                </div>
-                {accountType === 'factory' ? (
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-1.5">{md.mfgLicenseBilingual}</label>
-                    <label className="block">
-                      {mfgLicenseFile ? (
-                        <div className="border-2 border-dashed border-green-400 bg-green-50 rounded-xl p-4 flex items-center justify-between">
-                          <div className="flex items-center gap-2"><Icon name="DocumentCheckIcon" size={18} className="text-green-600" /><span className="text-sm text-green-700 font-medium truncate max-w-[200px]">{mfgLicenseFile.name}</span></div>
-                          <button type="button" onClick={() => setMfgLicenseFile(null)} className="text-muted-foreground hover:text-red-600"><Icon name="XMarkIcon" size={16} /></button>
-                        </div>
-                      ) : (
-                        <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { const f = e.target.files?.[0] || null; if (f && f.size > 15 * 1024 * 1024) { return; } setMfgLicenseFile(f); }} className="block w-full text-xs text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer" />
-                      )}
-                    </label>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-1.5">{md.importLicenseBilingual} *</label>
-                    <label className="block">
-                      {secondDocFile ? (
-                        <div className="border-2 border-dashed border-green-400 bg-green-50 rounded-xl p-4 flex items-center justify-between">
-                          <div className="flex items-center gap-2"><Icon name="DocumentCheckIcon" size={18} className="text-green-600" /><span className="text-sm text-green-700 font-medium truncate max-w-[200px]">{secondDocFile.name}</span></div>
-                          <button type="button" onClick={() => setSecondDocFile(null)} className="text-muted-foreground hover:text-red-600"><Icon name="XMarkIcon" size={16} /></button>
-                        </div>
-                      ) : (
-                        <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { const f = e.target.files?.[0] || null; if (f && f.size > 15 * 1024 * 1024) { return; } setSecondDocFile(f); }} className="block w-full text-xs text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer" />
-                      )}
-                    </label>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1.5">{md.taxIdBilingual}</label>
-                  <input type="text" value={taxId} onChange={(e) => setTaxId(e.target.value)} placeholder="Enter your official Tax Identification Number" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-1.5">{md.establishedYearBilingual}</label>
-                  <input type="number" min="1900" max={new Date().getFullYear()} value={establishedYear} onChange={(e) => setEstablishedYear(e.target.value)} placeholder="e.g. 2004" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
-                </div>
-                <div className="flex gap-3 pt-1">
-                  <button type="button" onClick={() => setShowDocGate(false)} className="flex-1 h-10 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">Cancel</button>
-                  <button type="submit" disabled={uploadingDocs || !tradeLicenseFile || (accountType === 'factory' ? !mfgLicenseFile : !secondDocFile)} className="flex-1 h-10 bg-amber-600 text-white rounded-lg text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2 hover:bg-amber-700 transition-colors">
-                    {uploadingDocs ? <><Icon name="ArrowPathIcon" size={15} className="animate-spin" /> Uploading...</> : <><Icon name="ArrowUpTrayIcon" size={15} /> Submit Documents</>}
-                  </button>
-                </div>
-              </form>
+
+                      <p className="mt-3 text-xs font-semibold text-foreground/80">{sheetStockText(product)}</p>
+
+                      <div className="mt-2 rounded-xl bg-primary/10 border border-primary/20 px-3 py-2 flex items-center justify-center">
+                        <span className="font-black text-primary text-base">
+                          {formatNum(product.unit_price)} {cur} / {unitLabelAr(product.unit)}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { closeSheet(); openEditModal(product); }}
+                          className="flex-1 h-10 inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary text-primary-foreground text-xs sm:text-sm font-bold hover:opacity-90 transition-opacity"
+                        >
+                          تعديل المنتج ✏️
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const ok = await copyProductShareText({ id: product.id, name: product.name, name_ar: (product as any).name_ar, sku: product.sku, short_id: product.short_id, slug: product.slug, currency: (product as any).currency || 'YER' });
+                            if (ok) { setCopiedProductId(product.id); setTimeout(() => setCopiedProductId(null), 2500); }
+                          }}
+                          className="flex-1 h-10 inline-flex items-center justify-center gap-1.5 rounded-xl border border-primary text-primary text-xs sm:text-sm font-bold hover:bg-primary/5 transition-colors"
+                        >
+                          {copiedProductId === product.id ? '✓ تم النسخ' : 'نسخ رابط الصفقة 🔗'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteId(product.id)}
+                          aria-label="حذف المنتج"
+                          className="w-10 h-10 shrink-0 inline-flex items-center justify-center rounded-xl border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <Icon name="TrashIcon" size={17} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>

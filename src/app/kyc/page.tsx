@@ -9,6 +9,7 @@ import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { resolveFileType, extensionForType, fileWithResolvedType } from '@/lib/attachmentTypes';
+import SignedDocLink from '@/components/SignedDocLink';
 
 interface KYCRecord {
   id: string;
@@ -76,7 +77,29 @@ export default function KYCPage() {
         .select('*')
         .eq('user_id', user!.id)
         .maybeSingle();
-      setKycRecord(data);
+      if (data) {
+        setKycRecord(data);
+      } else {
+        // Existing factory account without a KYC row: create a minimal one so the
+        // document upload view opens directly (never route to the signup wizard).
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('company_name, full_name, country, city')
+          .eq('id', user!.id)
+          .maybeSingle();
+        const { data: created } = await supabase
+          .from('factory_registrations')
+          .insert({
+            user_id: user!.id,
+            company_name: profile?.company_name || profile?.full_name || '',
+            contact_email: user!.email || '',
+            ...(profile?.country ? { country: profile.country } : {}),
+            ...(profile?.city ? { city: profile.city } : {}),
+          })
+          .select('*')
+          .maybeSingle();
+        setKycRecord(created ?? null);
+      }
     } catch (err) {
       console.error('KYC fetch error:', err);
     } finally {
@@ -118,14 +141,15 @@ export default function KYCPage() {
     setUploading(docType);
     try {
       const ext = extensionForType(resolvedType);
-      const path = `${user!.id}/${docType}_${Date.now()}.${ext}`;
+      // Path must start with factory-docs/ (storage INSERT policy); owner uid is folder [2] for private reads.
+      const path = `factory-docs/kyc/${user!.id}/${docType}_${Date.now()}.${ext}`;
       const { error: uploadErr } = await supabase.storage
         .from('factory-documents')
         .upload(path, fileWithResolvedType(file, resolvedType), { contentType: resolvedType, upsert: true });
       if (uploadErr) throw uploadErr;
 
-      const { data: urlData } = supabase.storage.from('factory-documents').getPublicUrl(path);
-      const publicUrl = urlData.publicUrl;
+      // Store the private object path (never a public URL); viewed via signed URLs.
+      const publicUrl = path;
 
       const fieldMap: Record<string, string> = {
         trade_license: 'trade_license_url',
@@ -161,7 +185,7 @@ export default function KYCPage() {
     const status = kycRecord.kyc_status;
     if (stepKey === 'submitted') return kycRecord.submitted_at ? 'done' : 'active';
     if (stepKey === 'documents') {
-      const hasDocs = !!(kycRecord.trade_license_url || kycRecord.cr_document_url || kycRecord.tax_certificate_url);
+      const hasDocs = !!(kycRecord.trade_license_url || kycRecord.cr_document_url);
       if (hasDocs) return 'done';
       if (kycRecord.submitted_at) return 'active';
       return 'pending';
@@ -194,13 +218,6 @@ export default function KYCPage() {
       required: true,
     },
     {
-      key: 'tax_certificate',
-      label: k.docs.tax_certificate.label,
-      desc: k.docs.tax_certificate.desc,
-      url: kycRecord?.tax_certificate_url,
-      required: false,
-    },
-    {
       key: 'factory_license',
       label: k.docs.factory_license.label,
       desc: k.docs.factory_license.desc,
@@ -228,11 +245,11 @@ export default function KYCPage() {
           <h1 className="text-2xl font-bold text-foreground mb-3">{k.notRegisteredTitle}</h1>
           <p className="text-muted-foreground mb-8">{k.notRegisteredBody}</p>
           <a
-            href="/factory/register"
+            href="/manufacturer/settings"
             className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-xl font-semibold"
           >
-            <Icon name="BuildingOffice2Icon" size={18} />
-            {k.registerNow}
+            <Icon name="ArrowRightIcon" size={18} />
+            العودة إلى إعدادات المصنع
           </a>
         </div>
         <BottomNav />
@@ -256,6 +273,15 @@ export default function KYCPage() {
       )}
 
       <div className="max-w-4xl mx-auto px-4 py-8 mobile-safe-bottom">
+        <div className="mb-4">
+          <a
+            href="/manufacturer/settings"
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Icon name="ArrowRightIcon" size={14} />
+            العودة إلى إعدادات وتوثيق المصنع
+          </a>
+        </div>
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
@@ -374,15 +400,13 @@ export default function KYCPage() {
 
                 {doc.url ? (
                   <div className="flex items-center gap-2">
-                    <a
-                      href={doc.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <SignedDocLink
+                      url={doc.url}
                       className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-emerald-700 bg-emerald-100 rounded-lg hover:bg-emerald-200 transition-colors"
                     >
                       <Icon name="EyeIcon" size={14} />
                       {k.viewDoc}
-                    </a>
+                    </SignedDocLink>
                     {kycStatus !== 'approved' && (
                       <label className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-muted-foreground bg-muted rounded-lg hover:bg-muted/80 cursor-pointer transition-colors">
                         <Icon name="ArrowPathIcon" size={14} />

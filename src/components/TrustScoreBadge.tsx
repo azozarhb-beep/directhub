@@ -15,7 +15,6 @@ interface TrustScoreBadgeProps {
 const DOC_LABELS: Record<string, string> = {
   trade_license: 'السجل التجاري / رخصة التجارة',
   manufacturing_license: 'الترخيص الصناعي / رخصة التصنيع',
-  tax_id: 'الرقم الضريبي',
 };
 
 export default function TrustScoreBadge({

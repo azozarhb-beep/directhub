@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import Header from '@/components/Header';
 import { createNotification } from '@/lib/notificationEngine';
+import { DISPUTE_REASON_OPTIONS, getDisputeReasonMeta, normalizeDisputeReason } from '@/lib/disputeReasons';
 
 import Icon from '@/components/ui/AppIcon';
 
@@ -57,7 +58,6 @@ import PendingPaymentApprovalPanel from './PendingPaymentApprovalPanel';
 
 
 import TreasuryPanel from '@/components/admin/TreasuryPanel';
-import RoleSimulationPanel from './RoleSimulationPanel';
 import BroadcastCenterPanel from './BroadcastCenterPanel';
 import SitemapHubPanel from './SitemapHubPanel';
 import PushSchedulerPanel from './PushSchedulerPanel';
@@ -2035,6 +2035,7 @@ export default function AdminControlRoomPage() {
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [portalHub, setPortalHub] = useState<string | null>(null);
+  const [agentMsgUnread, setAgentMsgUnread] = useState(0);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
@@ -2141,6 +2142,7 @@ export default function AdminControlRoomPage() {
   const [disputeOrders, setDisputeOrders] = useState<any[]>([]);
   const [disputeLoading, setDisputeLoading] = useState(false);
   const [selectedDisputeOrder, setSelectedDisputeOrder] = useState<any | null>(null);
+  const [disputeReasonFilter, setDisputeReasonFilter] = useState<string>('all');
   const [disputeActionLoading, setDisputeActionLoading] = useState(false);
   const [disputeResolutionNote, setDisputeResolutionNote] = useState('');
   const [disputeActionMsg, setDisputeActionMsg] = useState('');
@@ -2513,6 +2515,48 @@ export default function AdminControlRoomPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // ── Field & Supply Hub live badge counters ─────────────────────────────────
+  const [hubCounts, setHubCounts] = useState({ documents: 0, agents: 0, inspections: 0, manualReview: 0 });
+
+  const loadHubCounts = useCallback(async () => {
+    try {
+      const [docsRes, agentsRes, inspRes, manualRes, fastTrackRes] = await Promise.all([
+        supabase.from('agent_factory_documents').select('id', { count: 'exact', head: true }).eq('verification_status', 'pending'),
+        supabase.from('user_profiles').select('id', { count: 'exact', head: true }).eq('role', 'field_agent').eq('is_active', true),
+        supabase.from('field_inspection_tasks').select('id', { count: 'exact', head: true }).in('status', ['assigned', 'dispatched', 'in_progress']),
+        supabase.from('manual_review_queue').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('factory_registrations').select('id', { count: 'exact', head: true }).eq('approval_type', 'fast_track_initial').not('registration_status', 'in', '(approved,rejected)'),
+      ]);
+      setHubCounts({
+        documents: docsRes.count || 0,
+        agents: agentsRes.count || 0,
+        inspections: inspRes.count || 0,
+        manualReview: (manualRes.count || 0) + (fastTrackRes.count || 0),
+      });
+    } catch {
+      // keep previous counts on failure
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!mounted || authLoading || !user || !isAdmin) return;
+    loadHubCounts();
+    const onRefresh = () => { loadHubCounts(); };
+    window.addEventListener('hub-counts-refresh', onRefresh);
+    const channel = supabase
+      .channel('hub-badge-counters')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'agent_factory_documents' }, onRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'field_inspection_tasks' }, onRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'manual_review_queue' }, onRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'factory_registrations' }, onRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_profiles' }, onRefresh)
+      .subscribe();
+    return () => {
+      window.removeEventListener('hub-counts-refresh', onRefresh);
+      supabase.removeChannel(channel);
+    };
+  }, [mounted, authLoading, user, isAdmin, supabase, loadHubCounts]);
 
   useEffect(() => {
     if (!authLoading && !user) { router.push('/login'); return; }
@@ -3021,6 +3065,13 @@ export default function AdminControlRoomPage() {
       setEscrowLoading(false);
     }
   };
+
+  // Auto-fill "Assign Factory User ID" with the factory linked to the selected order (only when empty)
+  useEffect(() => {
+    if (selectedEscrowOrder?.factory_user_id) {
+      setEscrowFactoryId((prev) => prev || selectedEscrowOrder.factory_user_id);
+    }
+  }, [selectedEscrowOrder]);
 
   const handleVerifyPayment = async (order: any) => {
     setEscrowActionLoading(true);
@@ -4407,7 +4458,7 @@ export default function AdminControlRoomPage() {
                   { label: 'محادثات المصانع المباشرة', icon: 'ChatBubbleLeftRightIcon', gradient: 'linear-gradient(135deg,#6366F1,#4F46E5)', tab: 'messages' },
                   { label: 'تفاوض المشتري والمورد', icon: 'ChatBubbleLeftRightIcon', gradient: 'linear-gradient(135deg,#7C3AED,#6D28D9)', tab: 'buyer_seller_chat' },
                   { label: 'مركز البث', icon: 'MegaphoneIcon', gradient: 'linear-gradient(135deg,#A855F7,#7C3AED)', tab: 'broadcast_center' },
-                  { label: 'المراسلة المتكاملة', icon: 'ChatBubbleLeftRightIcon', gradient: 'linear-gradient(135deg,#D97706,#B45309)', tab: 'admin_messaging' },
+                  { label: 'المراسلة المتكاملة', icon: 'ChatBubbleLeftRightIcon', gradient: 'linear-gradient(135deg,#D97706,#B45309)', tab: 'admin_messaging', badge: agentMsgUnread },
                   { label: 'جدولة الإشعارات', icon: 'BellAlertIcon', gradient: 'linear-gradient(135deg,#7C3AED,#5B21B6)', tab: 'push_scheduler' },
                   { label: 'سجل التحديثات', icon: 'MegaphoneIcon', gradient: 'linear-gradient(135deg,#F97316,#EA580C)', tab: 'changelog' },
                   { label: 'تنبيهات الموردين', icon: 'BellAlertIcon', gradient: 'linear-gradient(135deg,#DC2626,#B91C1C)', tab: 'supplier_alerts' },
@@ -4430,7 +4481,6 @@ export default function AdminControlRoomPage() {
                   { label: 'مدقّق النظام بالذكاء الاصطناعي', icon: 'ShieldCheckIcon', gradient: 'linear-gradient(135deg,#1E293B,#0F172A)', tab: 'ai_auditor' },
                   { label: 'سجلات أمل', icon: 'ChatBubbleLeftEllipsisIcon', gradient: 'linear-gradient(135deg,#F97316,#EA580C)', tab: 'amal_logs' },
                   { label: 'مستكشف قاعدة البيانات', icon: 'CircleStackIcon', gradient: 'linear-gradient(135deg,#334155,#1E293B)', tab: 'db_explorer' },
-                  { label: 'محاكاة الأدوار', icon: 'UserGroupIcon', gradient: 'linear-gradient(135deg,#4F46E5,#6366F1)', tab: 'role_simulation' },
                   { label: 'صحة النظام', icon: 'ServerStackIcon', gradient: 'linear-gradient(135deg,#475569,#334155)', tab: 'system_health' },
                   { label: 'البنية الحية', icon: 'SignalIcon', gradient: 'linear-gradient(135deg,#10B981,#059669)', tab: 'live_infra' },
                   { label: 'بطاقات المشاكل', icon: 'RectangleStackIcon', gradient: 'linear-gradient(135deg,#7C3AED,#6D28D9)', tab: 'issue_cards' },
@@ -4491,7 +4541,14 @@ export default function AdminControlRoomPage() {
                           <Icon name={hub.icon as any} size={28} className="text-white" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h3 className="text-base font-bold text-slate-100 leading-tight">{hub.title}</h3>
+                          <h3 className="text-base font-bold text-slate-100 leading-tight flex items-center gap-2">
+                            {hub.title}
+                            {hub.id === 'comms' && agentMsgUnread > 0 && (
+                              <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold inline-flex items-center justify-center">
+                                {agentMsgUnread > 99 ? '99+' : agentMsgUnread}
+                              </span>
+                            )}
+                          </h3>
                           <p className="text-[10px] uppercase tracking-widest text-slate-500 mt-0.5">{hub.subtitle}</p>
                           <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">{hubDescriptions[hub.id]}</p>
                           {badges.length > 0 && (
@@ -4663,6 +4720,30 @@ export default function AdminControlRoomPage() {
                 </div>
                 <span className="text-sm font-bold leading-tight text-slate-100">بوابة الميدان والمصانع والكتالوج الشامل</span>
                 <span className="text-[11px] leading-snug text-slate-400">إدارة المناديب، توثيق المصانع، الكتالوج الشامل، ومهام التفتيش الميداني، وتعيين مشرفي الميدان</span>
+              </Link>
+
+              {/* Global Territory Hub → /admin/territories */}
+              <Link
+                href="/admin/territories"
+                className="relative flex flex-col items-center gap-2.5 p-4 rounded-2xl border bg-[#161b22] border-[#30363d] text-[#8b949e] hover:border-[#484f58] hover:bg-[#1c2330] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 text-center overflow-hidden col-span-2 sm:col-span-3 md:col-span-2"
+              >
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm" style={{ background: 'linear-gradient(135deg,#14B8A6,#6366F1)' }}>
+                  <Icon name="GlobeAltIcon" size={22} className="text-white" />
+                </div>
+                <span className="text-sm font-bold leading-tight text-slate-100">مركز المربعات الجغرافية العالمي</span>
+                <span className="text-[11px] leading-snug text-slate-400">ربط المشرفين الميدانيين بالمربعات الصناعية لكل دولة، إعادة الإسناد، وحل الحسابات بانتظار التعيين</span>
+              </Link>
+
+              {/* Global Industrial Zones & Territory Engine → /admin/zones (Super Admin) */}
+              <Link
+                href="/admin/zones"
+                className="relative flex flex-col items-center gap-2.5 p-4 rounded-2xl border bg-[#161b22] border-[#30363d] text-[#8b949e] hover:border-[#484f58] hover:bg-[#1c2330] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 text-center overflow-hidden col-span-2 sm:col-span-3 md:col-span-2"
+              >
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm" style={{ background: 'linear-gradient(135deg,#10B981,#0EA5E9)' }}>
+                  <Icon name="MapPinIcon" size={22} className="text-white" />
+                </div>
+                <span className="text-sm font-bold leading-tight text-slate-100">محرك المناطق الصناعية والأقاليم</span>
+                <span className="text-[11px] leading-snug text-slate-400">تحديد التجمعات الصناعية على الخريطة بمضلع أو نصف قطر، وربط المندوبين المعتمدين بكل تجمع</span>
               </Link>
 
               {/* Financial Escrow, Treasury & Commission Clearing Engine → /admin/finance */}
@@ -4903,7 +4984,6 @@ export default function AdminControlRoomPage() {
                 { key: 'issue_cards', label: ui.tabs.issue_cards, icon: 'RectangleStackIcon', gradient: 'linear-gradient(135deg,#7C3AED,#6D28D9)' },
                 { key: 'idea_generator', label: ui.tabs.idea_generator, icon: 'LightBulbIcon', gradient: 'linear-gradient(135deg,#7C3AED,#6D28D9)' },
                 { key: 'db_explorer', label: ui.tabs.db_explorer, icon: 'CircleStackIcon', gradient: 'linear-gradient(135deg,#334155,#1E293B)' },
-                { key: 'role_simulation', label: 'محاكاة الأدوار', icon: 'UserGroupIcon', gradient: 'linear-gradient(135deg,#4F46E5,#6366F1)' },
                 { key: 'sitemap_hub', label: 'دليل الصفحات', icon: 'MapIcon', gradient: 'linear-gradient(135deg,#E11D48,#BE123C)' },
               ].map(tab => {
                 const isActive = activeTab === tab.key;
@@ -5864,7 +5944,7 @@ export default function AdminControlRoomPage() {
                     {[
                       { label: '🚨 مُصعَّد — تدخل مطلوب', count: disputeOrders.filter((o: any) => o.dispute_status === 'escalated' || o.escrow_status === 'escrow_frozen_escalated').length, color: 'bg-red-50 text-red-700 border-red-200' },
                       { label: '🔒 محفظة مجمّدة (L1)', count: disputeOrders.filter((o: any) => o.escrow_status === 'escrow_frozen' && o.dispute_status !== 'escalated').length, color: 'bg-orange-50 text-orange-700 border-orange-200' },
-                      { label: 'تأخر في التسليم', count: disputeOrders.filter((o: any) => o.dispute_reason === 'late_delivery').length, color: 'bg-amber-50 text-amber-700 border-amber-200' },
+                      { label: 'تأخر في التسليم', count: disputeOrders.filter((o: any) => normalizeDisputeReason(o.dispute_reason) === 'delivery_delay').length, color: 'bg-amber-50 text-amber-700 border-amber-200' },
                       { label: '✅ تم الاسترجاع', count: disputeOrders.filter((o: any) => o.escrow_status === 'refund_processed').length, color: 'bg-green-50 text-green-700 border-green-200' },
                     ].map(s => (
                       <div key={s.label} className={`rounded-xl border p-4 ${s.color}`}>
@@ -5907,6 +5987,25 @@ export default function AdminControlRoomPage() {
                     <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
                       {/* List */}
                       <div className="lg:col-span-2 space-y-2">
+                        <div className="flex flex-wrap gap-1.5 mb-1">
+                          <button
+                            type="button"
+                            onClick={() => setDisputeReasonFilter('all')}
+                            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${disputeReasonFilter === 'all' ? 'bg-red-600 text-white border-red-600' : 'bg-card text-muted-foreground border-border hover:border-red-300'}`}
+                          >
+                            الكل ({disputeOrders.length})
+                          </button>
+                          {DISPUTE_REASON_OPTIONS.map(r => (
+                            <button
+                              key={r.value}
+                              type="button"
+                              onClick={() => setDisputeReasonFilter(r.value)}
+                              className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${disputeReasonFilter === r.value ? 'bg-red-600 text-white border-red-600' : `${r.badge} hover:opacity-80`}`}
+                            >
+                              {r.emoji} {r.labelAr} ({disputeOrders.filter((o: any) => normalizeDisputeReason(o.dispute_reason) === r.value).length})
+                            </button>
+                          ))}
+                        </div>
                         {disputeOrders.length === 0 ? (
                           <div className="bg-card border border-border rounded-xl p-8 text-center">
                             <Icon name="CheckCircleIcon" size={28} className="text-emerald-500 mx-auto mb-2" />
@@ -5915,7 +6014,7 @@ export default function AdminControlRoomPage() {
                               <Icon name="ArrowPathIcon" size={12} /> تحديث
                             </button>
                           </div>
-                        ) : disputeOrders.map((order: any) => {
+                        ) : disputeOrders.filter((o: any) => disputeReasonFilter === 'all' || normalizeDisputeReason(o.dispute_reason) === disputeReasonFilter).map((order: any) => {
                           const isEscalated = order.dispute_status === 'escalated' || order.escrow_status === 'escrow_frozen_escalated';
                           const isFrozen = order.escrow_status === 'escrow_frozen' && !isEscalated;
                           const isRefunded = order.escrow_status === 'refund_processed';
@@ -5958,8 +6057,13 @@ export default function AdminControlRoomPage() {
                                 </div>
                               </div>
                               <div className="flex items-center justify-between">
-                                <p className="text-xs text-muted-foreground">
-                                  {order.dispute_reason === 'late_delivery' ? '⏰ تأخر تسليم' : '⚠️ عدم مطابقة'}
+                                <p className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                                  {(() => {
+                                    const rm = getDisputeReasonMeta(order.dispute_reason);
+                                    return rm ? (
+                                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${rm.badge}`}>{rm.emoji} {rm.labelAr}</span>
+                                    ) : (order.dispute_reason || '—');
+                                  })()}
                                   {(order.dispute_tier === 2 || isEscalated) && <span className="ml-1 text-red-600 font-bold">· مستوى 2</span>}
                                 </p>
                                 <p className="text-sm font-bold text-red-700">${order.total?.toLocaleString('en-US')} USD</p>
@@ -6017,7 +6121,7 @@ export default function AdminControlRoomPage() {
                                 <div>
                                   <p className="text-muted-foreground">سبب الشكوى</p>
                                   <p className="font-bold text-red-700 mt-0.5">
-                                    {selectedDisputeOrder.dispute_reason === 'late_delivery' ? '⏰ تأخر في التسليم' : '⚠️ عدم مطابقة المواصفات'}
+                                    {(() => { const rm = getDisputeReasonMeta(selectedDisputeOrder.dispute_reason); return rm ? `${rm.emoji} ${rm.labelAr}` : (selectedDisputeOrder.dispute_reason || '—'); })()}
                                   </p>
                                 </div>
                                 <div>
@@ -6373,7 +6477,7 @@ export default function AdminControlRoomPage() {
                     ) : (
                       <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
                         <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-bold text-foreground">Order {selectedEscrowOrder.order_number}</h3>
+                          <h3 className="text-sm font-bold text-foreground">{language === 'ar' ? 'الطلب' : 'Order'} {selectedEscrowOrder.order_number}</h3>
                           <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${(ESCROW_STATUS_CONFIG[selectedEscrowOrder.escrow_status] || ESCROW_STATUS_CONFIG.pending_payment).color}`}>
                             {(ESCROW_STATUS_CONFIG[selectedEscrowOrder.escrow_status] || ESCROW_STATUS_CONFIG.pending_payment).labelAr || (ESCROW_STATUS_CONFIG[selectedEscrowOrder.escrow_status] || ESCROW_STATUS_CONFIG.pending_payment).label}
                           </span>
@@ -6381,8 +6485,8 @@ export default function AdminControlRoomPage() {
 
                         {/* Buyer info */}
                         <div className="bg-muted/40 rounded-xl p-3 space-y-1">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase">Buyer</p>
-                          <p className="text-sm font-semibold text-foreground">{selectedEscrowOrder.user_profiles?.full_name || 'Unknown'}</p>
+                          <p className="text-xs font-semibold text-muted-foreground uppercase">{language === 'ar' ? 'المشتري' : 'Buyer'}</p>
+                          <p className="text-sm font-semibold text-foreground">{selectedEscrowOrder.user_profiles?.full_name || (language === 'ar' ? 'غير معروف' : 'Unknown')}</p>
                           <p className="text-xs text-muted-foreground">{selectedEscrowOrder.user_profiles?.email}</p>
                           {selectedEscrowOrder.user_profiles?.company_name && (
                             <p className="text-xs text-muted-foreground">{selectedEscrowOrder.user_profiles.company_name}</p>
@@ -6414,11 +6518,11 @@ export default function AdminControlRoomPage() {
                         {/* Order summary */}
                         <div className="grid grid-cols-2 gap-3">
                           <div className="bg-muted/40 rounded-xl p-3">
-                            <p className="text-xs text-muted-foreground">Total Amount</p>
+                            <p className="text-xs text-muted-foreground">{language === 'ar' ? 'المبلغ الإجمالي' : 'Total Amount'}</p>
                             <p className="text-lg font-bold text-primary">${selectedEscrowOrder.total?.toLocaleString('en-US')} USD</p>
                           </div>
                           <div className="bg-muted/40 rounded-xl p-3">
-                            <p className="text-xs text-muted-foreground">Items</p>
+                            <p className="text-xs text-muted-foreground">{language === 'ar' ? 'العناصر' : 'Items'}</p>
                             <p className="text-lg font-bold text-foreground">{selectedEscrowOrder.items?.length || 0}</p>
                           </div>
                         </div>
@@ -6428,11 +6532,11 @@ export default function AdminControlRoomPage() {
                           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-3">
                             <Icon name="DocumentIcon" size={18} className="text-blue-600 shrink-0" />
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-semibold text-blue-800">Bank Transfer Receipt</p>
-                              <p className="text-xs text-blue-600 truncate">{selectedEscrowOrder.receipt_filename || 'Receipt uploaded'}</p>
+                              <p className="text-xs font-semibold text-blue-800">{language === 'ar' ? 'إيصال الحوالة البنكية' : 'Bank Transfer Receipt'}</p>
+                              <p className="text-xs text-blue-600 truncate">{selectedEscrowOrder.receipt_filename || (language === 'ar' ? 'تم رفع الإيصال' : 'Receipt uploaded')}</p>
                             </div>
                             {selectedEscrowOrder.receipt_url.startsWith('http') && (
-                              <a href={selectedEscrowOrder.receipt_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-blue-700 hover:underline shrink-0">View</a>
+                              <a href={selectedEscrowOrder.receipt_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-blue-700 hover:underline shrink-0">{language === 'ar' ? 'عرض' : 'View'}</a>
                             )}
                           </div>
                         )}
@@ -6493,17 +6597,16 @@ export default function AdminControlRoomPage() {
                           <div className="border border-blue-200 rounded-xl p-4 bg-blue-50 space-y-3">
                             <h4 className="text-sm font-bold text-blue-900 flex items-center gap-2">
                               <Icon name="BanknotesIcon" size={16} />
-                              Verify Bank Transfer
+                              {language === 'ar' ? 'التحقق من الحوالة البنكية' : 'Verify Bank Transfer'}
                             </h4>
-                            <p className="text-xs text-blue-700">Confirm you have received the bank transfer. This will secure funds in escrow and notify the factory to ship.</p>
+                            <p className="text-xs text-blue-700">{language === 'ar' ? 'أكّد أنك استلمت الحوالة البنكية. سيؤدي ذلك إلى تأمين الأموال في الضمان وإشعار المصنع بالشحن.' : 'Confirm you have received the bank transfer. This will secure funds in escrow and notify the factory to ship.'}</p>
                             <div>
-                              <label className="text-xs font-medium text-blue-800 mb-1 block">Assign Factory User ID (optional)</label>
+                              <label className="text-xs font-medium text-blue-800 mb-1 block">{language === 'ar' ? 'تعيين معرّف مستخدم المصنع (اختياري)' : 'Assign Factory User ID (optional)'}</label>
                               <input
                                 type="text"
                                 value={escrowFactoryId}
                                 onChange={(e) => setEscrowFactoryId(e.target.value)}
-                                placeholder="Factory user UUID (optional)"
-                                className="w-full h-9 px-3 rounded-lg border border-blue-200 bg-white text-foreground text-xs focus:outline-none focus:border-blue-500"
+                                placeholder={language === 'ar' ? 'معرّف UUID لمستخدم المصنع (اختياري)' : 'Factory user UUID (optional)'}
                               />
                             </div>
                             <button
@@ -6512,7 +6615,7 @@ export default function AdminControlRoomPage() {
                               className="w-full h-10 bg-blue-600 text-white font-semibold rounded-lg text-sm disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors"
                             >
                               {escrowActionLoading ? <Icon name="ArrowPathIcon" size={15} className="animate-spin" /> : <Icon name="LockClosedIcon" size={15} />}
-                              Verify & Secure Funds in Escrow
+                              {language === 'ar' ? 'التحقق وتأمين الأموال في الضمان' : 'Verify & Secure Funds in Escrow'}
                             </button>
                             <button
                               onClick={() => handleFastTrackOrderApproval(selectedEscrowOrder)}
@@ -6520,7 +6623,7 @@ export default function AdminControlRoomPage() {
                               className="w-full h-10 bg-amber-500 text-white font-semibold rounded-lg text-sm disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-amber-600 transition-colors"
                             >
                               {escrowActionLoading ? <Icon name="ArrowPathIcon" size={15} className="animate-spin" /> : <Icon name="BoltIcon" size={15} />}
-                              ⚡ قبول سريع — Fast-Track (fast_track_initial)
+                              {language === 'ar' ? '⚡ قبول سريع (fast_track_initial)' : '⚡ قبول سريع — Fast-Track (fast_track_initial)'}
                             </button>
                           </div>
                         )}
@@ -6847,13 +6950,6 @@ export default function AdminControlRoomPage() {
         )}
 
         {/* ══════════════════════════════════════════════════════════════════════
-            TAB: ROLE SIMULATION — محاكاة الأدوار
-        ══════════════════════════════════════════════════════════════════════ */}
-        {activeTab === 'role_simulation' && (
-          <RoleSimulationPanel />
-        )}
-
-        {/* ══════════════════════════════════════════════════════════════════════
             TAB: BROADCAST CENTER — مركز البث والإعلانات
         ══════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'broadcast_center' && (
@@ -7003,6 +7099,7 @@ export default function AdminControlRoomPage() {
                   { label: 'مراجعة التحقق', icon: 'DocumentCheckIcon', tab: 'verification' as ActiveTab, badge: analytics.pendingVerifications, color: 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' },
                   { label: 'إدارة الضمان', icon: 'ShieldCheckIcon', tab: 'escrow' as ActiveTab, badge: 0, color: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' },
                   { label: 'مراقبة المحادثات', icon: 'ChatBubbleLeftRightIcon', tab: 'buyer_seller_chat' as ActiveTab, badge: 0, color: 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100' },
+                  { label: 'مراسلة المندوبين', icon: 'PaperAirplaneIcon', tab: 'admin_messaging' as ActiveTab, badge: agentMsgUnread, color: 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100' },
                   { label: 'إعدادات المنصة', icon: 'Cog6ToothIcon', tab: 'platform_settings' as ActiveTab, badge: 0, color: 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100' },
                   { label: 'المدفوعات', icon: 'CreditCardIcon', tab: 'payments' as ActiveTab, badge: 0, color: 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' },
                   { label: 'الحسابات والأرصدة', icon: 'BanknotesIcon', tab: 'accounts' as ActiveTab, badge: 0, color: 'bg-lime-50 border-lime-200 text-lime-700 hover:bg-lime-100' },

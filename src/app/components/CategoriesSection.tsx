@@ -19,17 +19,6 @@ interface Category {
   is_active: boolean;
 }
 
-const MOCK_CATEGORIES: Category[] = [
-  { id: 'c1', slug: 'electronics-mobile-phones', name_en: 'Electronics', name_ar: 'إلكترونيات', image_url: CATEGORY_IMAGES['electronics-mobile-phones'], product_count: 1240, supplier_count: 320, is_active: true },
-  { id: 'c2', slug: 'automotive-vehicles', name_en: 'Automotive', name_ar: 'سيارات وقطع غيار', image_url: CATEGORY_IMAGES['automotive-vehicles'], product_count: 870, supplier_count: 210, is_active: true },
-  { id: 'c3', slug: 'construction-building-materials', name_en: 'Construction', name_ar: 'مواد البناء', image_url: CATEGORY_IMAGES['construction-building-materials'], product_count: 1560, supplier_count: 430, is_active: true },
-  { id: 'c4', slug: 'health-medical-equipment', name_en: 'Medical Equipment', name_ar: 'معدات طبية', image_url: CATEGORY_IMAGES['health-medical-equipment'], product_count: 640, supplier_count: 180, is_active: true },
-  { id: 'c5', slug: 'home-appliances-furniture', name_en: 'Home Appliances', name_ar: 'أجهزة منزلية', image_url: CATEGORY_IMAGES['home-appliances-furniture'], product_count: 980, supplier_count: 260, is_active: true },
-  { id: 'c6', slug: 'raw-materials-chemicals', name_en: 'Raw Materials', name_ar: 'مواد خام وكيماويات', image_url: CATEGORY_IMAGES['raw-materials-chemicals'], product_count: 2100, supplier_count: 510, is_active: true },
-  { id: 'c7', slug: 'beauty-personal-care', name_en: 'Beauty & Care', name_ar: 'تجميل وعناية', image_url: CATEGORY_IMAGES['beauty-personal-care'], product_count: 730, supplier_count: 195, is_active: true },
-  { id: 'c8', slug: 'pharmaceuticals-raw-materials', name_en: 'Pharmaceuticals', name_ar: 'أدوية ومستحضرات', image_url: CATEGORY_IMAGES['pharmaceuticals-raw-materials'], product_count: 450, supplier_count: 120, is_active: true },
-];
-
 const CATEGORY_GRADIENTS = [
   'from-violet-600 to-violet-900',
   'from-slate-600 to-slate-900',
@@ -77,10 +66,10 @@ const CategoriesSection: React.FC = () => {
           }));
           setCategories(enriched);
         } else {
-          setCategories(MOCK_CATEGORIES);
+          setCategories([]);
         }
       } catch {
-        setCategories(MOCK_CATEGORIES);
+        setCategories([]);
       } finally {
         setLoading(false);
       }
@@ -115,6 +104,13 @@ const CategoriesSection: React.FC = () => {
             {[...Array(8)].map((_, i) => (
               <div key={i} className="bg-muted animate-pulse rounded-xl" style={{ aspectRatio: '3/4' }} />
             ))}
+          </div>
+        ) : categories.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center bg-card border border-dashed border-border rounded-2xl">
+            <Icon name="Squares2X2Icon" size={32} className="text-muted-foreground/60 mb-3" />
+            <p className="text-sm font-bold text-foreground">
+              {language === 'ar' ? 'لا توجد فئات متاحة حالياً' : 'No categories available yet'}
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 border border-border">

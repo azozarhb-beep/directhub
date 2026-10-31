@@ -31,52 +31,6 @@ interface CartItem {
 
 type Step = 'shipping' | 'payment' | 'review' | 'otp' | 'confirmed';
 
-// ── Commission Engine ──────────────────────────────────────────────────────────
-type OrderCategory = 'large_deal' | 'retail' | 'wholesale' | 'bulk_wholesale';
-
-interface CommissionResult {
-  amount: number;
-  rateLabel: string;
-  description: string;
-}
-
-function calculateCommission(category: OrderCategory, orderTotal: number, containerCount: number): CommissionResult {
-  switch (category) {
-    case 'large_deal':
-      return {
-        amount: 150 * containerCount,
-        rateLabel: `$150 × ${containerCount} containers`,
-        description: 'Fixed fee per container ($100–$200 range, avg $150)'
-      };
-    case 'retail':
-      return {
-        amount: orderTotal * 0.035,
-        rateLabel: '3.5% of order total',
-        description: 'Retail / B2C order commission'
-      };
-    case 'wholesale':
-      return {
-        amount: orderTotal * 0.025,
-        rateLabel: '2.5% of order total',
-        description: 'Wholesale / B2B order commission'
-      };
-    case 'bulk_wholesale':
-      return {
-        amount: orderTotal * 0.015,
-        rateLabel: '1.5% of order total',
-        description: 'Bulk wholesale commission'
-      };
-    default:
-      return { amount: 0, rateLabel: '—', description: '' };
-  }
-}
-
-const ORDER_CATEGORY_OPTIONS: {value: OrderCategory;label: string;sublabel: string;icon: string;}[] = [
-{ value: 'retail', labelKey: 'retail', subKey: 'retailSub', icon: 'ShoppingBagIcon' },
-{ value: 'wholesale', labelKey: 'wholesale', subKey: 'wholesaleSub', icon: 'BuildingStorefrontIcon' },
-{ value: 'bulk_wholesale', labelKey: 'bulkWholesale', subKey: 'bulkWholesaleSub', icon: 'CubeIcon' },
-{ value: 'large_deal', labelKey: 'largeDeal', subKey: 'largeDealSub', icon: 'TruckIcon' }];
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Wire Transfer OCR Verification Component ─────────────────────────────────
@@ -987,10 +941,6 @@ export default function CheckoutPage() {
     },
   });
 
-  // Commission Engine
-  const [orderCategory, setOrderCategory] = useState<OrderCategory>('retail');
-  const [containerCount, setContainerCount] = useState<number>(1);
-
   // OTP
   const [otpCode, setOtpCode] = useState('');
   const [otpSent, setOtpSent] = useState(false);
@@ -1042,9 +992,6 @@ export default function CheckoutPage() {
 
   const displaySubtotal = subtotal;
   const displayTotal = displaySubtotal + shippingCost;
-
-  // Compute commission dynamically
-  const commission = calculateCommission(orderCategory, displaySubtotal, containerCount);
 
   useEffect(() => {
     if (authLoading) return;
@@ -1134,11 +1081,7 @@ export default function CheckoutPage() {
             items: displayItems,
             subtotal: displaySubtotal,
             shippingCost,
-            total: displayTotal,
-            orderCategory,
-            containerCount,
-            platformCommission: commission.amount,
-            commissionRateLabel: commission.rateLabel
+            total: displayTotal
           },
           expires_at: expiresAt
         })
@@ -1214,12 +1157,6 @@ export default function CheckoutPage() {
           total: displayTotal,
           notes,
           confirmed_at: new Date().toISOString(),
-          order_category: orderCategory,
-          container_count: orderCategory === 'large_deal' ? containerCount : 0,
-          platform_commission: commission.amount,
-          commission_rate_label: commission.rateLabel,
-          platform_commission_amount: commission.amount,
-          platform_commission_rate_label: commission.rateLabel,
           wire_transfer_verified: wireOcrVerified,
           wire_transfer_ocr_result: wireOcrResult || null,
           // Seller Fulfillment fields
@@ -1237,16 +1174,7 @@ export default function CheckoutPage() {
 
       if (orderError) throw orderError;
 
-      await supabase.from('platform_commissions').insert({
-        order_id: order.id,
-        order_number: order.order_number,
-        order_category: orderCategory,
-        order_total: displaySubtotal,
-        container_count: orderCategory === 'large_deal' ? containerCount : 0,
-        commission_amount: commission.amount,
-        commission_rate_label: commission.rateLabel,
-        status: 'pending'
-      });
+      // Commission is calculated server-side by a database trigger on order creation.
 
       // Log CFO approval request for cash upfront orders
       if (isCashUpfrontEscrow) {
@@ -1535,21 +1463,6 @@ export default function CheckoutPage() {
                   </h2>
                   <p className="text-xs text-muted-foreground mb-5">{C.choosePaymentGateway}</p>
 
-                  {/* ── Cash-Only Policy Banner ── */}
-                  <div className="mb-4 flex items-start gap-3 p-4 bg-amber-50 border border-amber-300 rounded-xl">
-                    <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-                      <Icon name="ShieldCheckIcon" size={18} className="text-amber-700" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-amber-900">
-                        {language === 'ar' ? 'دفع فوري — نقداً فقط' : 'Immediate Payment Required — Cash Only'}
-                      </p>
-                      <p className="text-xs text-amber-800 leading-relaxed mt-0.5">
-                        {language === 'ar' ?'جميع المعاملات المحلية بالريال اليمني (YER). لا ائتمان، لا ديون، لا دفع مؤجل. لا شراء بدون دفع كامل ومسبق.' :'All local transactions are in Yemeni Rial (YER). No credit, no debt, no deferred payments. No purchase without full upfront payment.'}
-                      </p>
-                    </div>
-                  </div>
-
                   {/* ── Escrow Info Banner ── */}
                   <div className="mb-5 flex items-start gap-3 p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
                     <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
@@ -1609,101 +1522,6 @@ export default function CheckoutPage() {
                     </p>
                   </div>
 
-                  {/* ── Smart Commission Engine ── */}
-                  <div className="mb-5">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Icon name="CurrencyDollarIcon" size={16} className="text-primary" />
-                      <label className="text-xs font-semibold text-foreground uppercase tracking-wide">{C.orderCategoryLabel}</label>
-                      <span className="text-[10px] text-muted-foreground font-normal">{C.determinesCommission}</span>
-                    </div>
-                    {/* Smart auto-suggestion banner */}
-                    {displaySubtotal > 0 && (
-                      <div className="mb-3 flex items-center gap-2.5 px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-xl">
-                        <Icon name="LightBulbIcon" size={15} className="text-blue-600 shrink-0" />
-                        <p className="text-xs text-blue-800 flex-1">
-                          {displaySubtotal >= 10000
-                            ? <><span className="font-bold">B2B suggestion:</span> Your order total (${displaySubtotal.toLocaleString()}) qualifies as a <span className="font-bold">Large Deal</span> — select it for the lowest commission rate.</>
-                            : displaySubtotal >= 3000
-                            ? <><span className="font-bold">B2B suggestion:</span> Your order total (${displaySubtotal.toLocaleString()}) qualifies as <span className="font-bold">Bulk Wholesale</span> — select it for a reduced 1.5% commission.</>
-                            : displaySubtotal >= 500
-                            ? <><span className="font-bold">B2B suggestion:</span> Your order total (${displaySubtotal.toLocaleString()}) qualifies as <span className="font-bold">Wholesale</span> — select it for a 2.5% commission rate.</>
-                            : <><span className="font-bold">B2C:</span> Your order total (${displaySubtotal.toLocaleString()}) is a standard retail order — 3.5% commission applies.</>
-                          }
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (displaySubtotal >= 10000) setOrderCategory('large_deal');
-                            else if (displaySubtotal >= 3000) setOrderCategory('bulk_wholesale');
-                            else if (displaySubtotal >= 500) setOrderCategory('wholesale');
-                            else setOrderCategory('retail');
-                          }}
-                          className="shrink-0 text-[10px] font-bold px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                          Apply
-                        </button>
-                      </div>
-                    )}
-                    <div className="grid grid-cols-2 gap-2 mb-3">
-                      {ORDER_CATEGORY_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setOrderCategory(opt.value)}
-                          className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 text-left transition-all ${
-                            orderCategory === opt.value
-                              ? 'border-primary bg-primary/5 text-foreground'
-                              : 'border-border bg-background text-muted-foreground hover:border-primary/40'
-                          }`}>
-                          <Icon name={opt.icon as any} size={16} className={orderCategory === opt.value ? 'text-primary' : 'text-muted-foreground'} />
-                          <div>
-                            <p className="text-xs font-semibold leading-tight">{(C.orderCategories as any)[opt.labelKey] || opt.labelKey}</p>
-                            <p className={`text-[10px] ${orderCategory === opt.value ? 'text-primary' : 'text-muted-foreground'}`}>{(C.orderCategories as any)[opt.subKey] || opt.subKey}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-
-                    {orderCategory === 'large_deal' && (
-                      <div className="flex items-center gap-3 mb-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
-                        <Icon name="CubeIcon" size={18} className="text-blue-600 shrink-0" />
-                        <div className="flex-1">
-                          <label className="text-xs font-semibold text-blue-800 block mb-1">{C.containerCount}</label>
-                          <input
-                            type="number"
-                            min={1}
-                            max={999}
-                            value={containerCount}
-                            onChange={(e) => setContainerCount(Math.max(1, Number(e.target.value)))}
-                            className="w-24 h-9 px-3 rounded-lg border border-blue-300 bg-white text-foreground text-sm font-bold focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-300 transition-colors"
-                          />
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs text-blue-600">$100 × {containerCount}</p>
-                          <p className="text-sm font-bold text-blue-800">${(100 * containerCount).toLocaleString()}</p>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <Icon name="ReceiptPercentIcon" size={18} className="text-amber-600 shrink-0" />
-                        <div>
-                          <p className="text-xs font-semibold text-amber-800">{C.platformCommission}</p>
-                          <p className="text-[10px] text-amber-600">{commission.rateLabel}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-lg font-bold text-amber-800">${commission.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                        <p className="text-[10px] text-amber-600">{C.deductedFromSupplier}</p>
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground mt-1.5 flex items-center gap-1">
-                      <Icon name="InformationCircleIcon" size={11} className="shrink-0 text-blue-400" />
-                      {C.commissionNote}
-                    </p>
-                  </div>
-
                   {/* ── Cash Upfront Escrow Option ── */}
                   <div className="mb-5">
                     <button
@@ -1752,29 +1570,29 @@ export default function CheckoutPage() {
                               <span className="text-gray-600">{language === 'ar' ? 'إجمالي الطلب' : 'Order Total'}</span>
                               <span className="font-bold">${displayTotal.toLocaleString()}</span>
                             </div>
-                            <div className="flex justify-between text-xs">
-                              <span className="text-gray-600">{language === 'ar' ? 'عمولة المنصة' : 'Platform Commission'}</span>
-                              <span className="font-bold text-primary">${commission.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                            </div>
                             <div className="flex justify-between text-xs border-t border-emerald-200 pt-1.5">
                               <span className="font-bold text-emerald-800">{language === 'ar' ? 'المبلغ المجمّد في الضمان' : 'Amount Frozen in Escrow'}</span>
                               <span className="font-bold text-emerald-800 text-sm">${displayTotal.toLocaleString()}</span>
                             </div>
                           </div>
                         </div>
-                        <WireTransferOCRVerifier
-                          onVerified={(result) => {
-                            setWireOcrVerified(true);
-                            setWireOcrResult(result);
-                          }}
-                        />
-                        {wireOcrVerified && (
-                          <div className="flex items-center gap-2 px-3 py-2 bg-emerald-100 border border-emerald-300 rounded-lg">
-                            <Icon name="CheckBadgeIcon" size={16} className="text-emerald-700" />
-                            <p className="text-xs font-bold text-emerald-800">
-                              {language === 'ar' ? 'تم التحقق من إيصال التحويل البنكي ✓' : 'Wire transfer receipt verified ✓'}
-                            </p>
-                          </div>
+                        {paymentGateway.gateway === 'international_swift' && (
+                          <>
+                            <WireTransferOCRVerifier
+                              onVerified={(result) => {
+                                setWireOcrVerified(true);
+                                setWireOcrResult(result);
+                              }}
+                            />
+                            {wireOcrVerified && (
+                              <div className="flex items-center gap-2 px-3 py-2 bg-emerald-100 border border-emerald-300 rounded-lg">
+                                <Icon name="CheckBadgeIcon" size={16} className="text-emerald-700" />
+                                <p className="text-xs font-bold text-emerald-800">
+                                  {language === 'ar' ? 'تم التحقق من إيصال التحويل البنكي ✓' : 'Wire transfer receipt verified ✓'}
+                                </p>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )}
@@ -1888,8 +1706,7 @@ export default function CheckoutPage() {
                         <Icon name="BuildingLibraryIcon" size={13} className="text-primary" />
                         {paymentGateway.gateway === 'local_wallet' ? C.gatewayLocalWallet :
                          paymentGateway.gateway === 'local_bank_transfer' ? C.gatewayLocalBank :
-                         paymentGateway.gateway === 'international_swift' ? 'SWIFT / IBAN' :
-                         paymentGateway.gateway === 'international_card'? C.gatewayIntlCard : C.gatewayBankTransfer}
+                         paymentGateway.gateway === 'international_swift' ? 'SWIFT / IBAN' : C.gatewayBankTransfer}
                       </span>
                     </div>
                     {paymentGateway.gateway === 'local_wallet' && paymentGateway.localWallet.walletProvider && (
@@ -1898,12 +1715,6 @@ export default function CheckoutPage() {
                         <span className="text-xs font-semibold text-foreground capitalize">{paymentGateway.localWallet.walletProvider}</span>
                       </div>
                     )}
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Order Category</span>
-                      <span className="text-xs font-semibold text-foreground capitalize">
-                        {ORDER_CATEGORY_OPTIONS.find(o => o.value === orderCategory)?.labelKey || orderCategory}
-                      </span>
-                    </div>
                     {agreedDeliveryDays !== '' && Number(agreedDeliveryDays) > 0 && (
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-muted-foreground">{C.deliveryDateReview}</span>
@@ -1935,13 +1746,6 @@ export default function CheckoutPage() {
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Shipping</span>
                       <span className="font-medium text-foreground">${shippingCost}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground flex items-center gap-1">
-                        <Icon name="ReceiptPercentIcon" size={13} className="text-amber-500" />
-                        Platform Commission
-                      </span>
-                      <span className="font-medium text-amber-700">${commission.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex justify-between text-base font-bold border-t border-border pt-3 mt-1">
                       <span className="text-foreground">Total Due</span>
@@ -2282,12 +2086,6 @@ export default function CheckoutPage() {
                     <span className="text-muted-foreground">{C.shippingLabel}</span>
                     <span className="font-medium text-foreground">{shippingCost} YER</span>
                   </div>
-                  {step === 'review' && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">{C.commissionOnSupplier}</span>
-                      <span className="font-medium text-amber-700 text-xs line-through">{commission.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</span>
-                    </div>
-                  )}
                   <div className="flex justify-between text-sm font-bold border-t border-border pt-2">
                     <span className="text-foreground">{C.total}</span>
                     <span className="text-primary">{displayTotal.toLocaleString()} YER</span>

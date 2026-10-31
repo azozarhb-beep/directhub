@@ -40,7 +40,7 @@ export async function uploadChatImage(
   file: File,
   userId: string,
   pathPrefix = 'unified-chat'
-): Promise<{ publicUrl: string; fileName: string } | null> {
+): Promise<{ publicUrl: string; fileName: string; fileType: string } | null> {
   const supabase = createClient();
   const resolvedType = resolveFileType(file, CHAT_IMAGE_ALLOWED);
   if (!resolvedType) {
@@ -50,17 +50,23 @@ export async function uploadChatImage(
   const ext = extensionForType(resolvedType);
   const filePath = `${pathPrefix}/${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
-  const { data: uploadData, error: uploadError } = await supabase.storage
-    .from('chat-media')
-    .upload(filePath, fileWithResolvedType(file, resolvedType), { contentType: resolvedType, upsert: false });
-
-  if (uploadError || !uploadData) {
-    console.error('[ChatImageAttachment] Upload error:', uploadError);
-    return null;
+  // Try the primary chat bucket first, then fall back to chat-attachments so a
+  // missing/misconfigured bucket never blocks delivery of an image.
+  const buckets = ['chat-media', 'chat-attachments'] as const;
+  let lastError: unknown = null;
+  for (const bucket of buckets) {
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(bucket)
+      .upload(filePath, fileWithResolvedType(file, resolvedType), { contentType: resolvedType, upsert: false });
+    if (!uploadError && uploadData) {
+      // Private bucket: return a "bucket/path" reference; it is signed at render time
+      return { publicUrl: `${bucket}/${filePath}`, fileName: file.name, fileType: resolvedType };
+    }
+    lastError = uploadError;
+    console.error(`[ChatImageAttachment] Upload error (${bucket}):`, uploadError);
   }
-
-  const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(filePath);
-  return { publicUrl: urlData?.publicUrl ?? '', fileName: file.name };
+  console.error('[ChatImageAttachment] All chat buckets failed:', lastError);
+  return null;
 }
 
 /**
@@ -72,7 +78,7 @@ export function isImageAttachment(url?: string, name?: string): boolean {
   if (url.startsWith('blob:')) return true;
   // Check by file extension in the URL path or name
   const target = name || url;
-  return /\.(jpg|jpeg|png|webp|gif|bmp|svg|avif|heic|heif)(\?|$)/i.test(target);
+  return /\.(jpg|jpeg|png|webp|gif|bmp|svg|avif|heic|heif)(\?|$)/i.test(target) || /\.(jpg|jpeg|png|webp|gif|bmp|svg|avif|heic|heif)(\?|$)/i.test(url);
 }
 
 /**

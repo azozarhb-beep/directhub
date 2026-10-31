@@ -11,7 +11,19 @@ interface CreateRFQModalProps {
   onSuccess?: (rfq: any) => void;
 }
 
-const CURRENCIES = ['USD', 'SAR', 'AED', 'EUR', 'GBP', 'CNY', 'TRY', 'EGP', 'YER'];
+const CURRENCIES = ['USD', 'YER'] as const;
+
+type RfqMarket = 'local' | 'international';
+
+const MARKET_CURRENCY: Record<RfqMarket, 'USD' | 'YER'> = {
+  local: 'YER',
+  international: 'USD',
+};
+
+const MARKET_LABELS: Record<RfqMarket, { ar: string; en: string }> = {
+  local: { ar: 'مصنع محلي (ريال يمني)', en: 'Local factory (YER)' },
+  international: { ar: 'مصنع دولي (دولار أمريكي)', en: 'International factory (USD)' },
+};
 
 const UNIT_CATEGORY_KEYS = [
   { key: 'weight' as const, units: ['kg', 'g', 'ton', 'lb', 'oz', 'mg'] },
@@ -40,6 +52,7 @@ export default function CreateRFQModal({ onClose, onSuccess }: CreateRFQModalPro
     supplier_name: '',
     supplier_country: '',
   });
+  const [market, setMarket] = useState<RfqMarket>('international');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [unitSearch, setUnitSearch] = useState('');
@@ -84,10 +97,10 @@ export default function CreateRFQModal({ onClose, onSuccess }: CreateRFQModalPro
         unit: form.unit,
         specifications: form.specifications.trim() || null,
         target_price: form.target_price ? parseFloat(form.target_price) : null,
-        currency: form.currency,
+        currency: MARKET_CURRENCY[market],
         destination_country: form.destination_country.trim() || null,
         supplier_name: form.supplier_name.trim() || 'Any',
-        supplier_country: form.supplier_country.trim() || 'Any',
+        supplier_country: market === 'local' ? 'Yemen' : form.supplier_country.trim() || 'Any',
         status: 'pending',
         is_published: true,
         expires_at: expiresAt.toISOString(),
@@ -244,6 +257,30 @@ export default function CreateRFQModal({ onClose, onSuccess }: CreateRFQModalPro
           />
         </div>
 
+        <div>
+          <label className="block text-xs font-semibold text-foreground mb-1.5">
+            {isRTL ? 'وجهة الطلب' : 'Route request to'}
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {(['local', 'international'] as RfqMarket[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => {
+                  setMarket(m);
+                  setForm((f) => ({ ...f, currency: MARKET_CURRENCY[m] }));
+                }}
+                className={`px-3 py-2.5 rounded-xl border text-xs font-semibold transition-colors ${
+                  market === m
+                    ? 'border-primary bg-primary/10 text-primary' :'border-border bg-background text-foreground hover:bg-muted'
+                }`}
+              >
+                {isRTL ? MARKET_LABELS[m].ar : MARKET_LABELS[m].en}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-semibold text-foreground mb-1.5">{labels.targetPrice}</label>
@@ -260,9 +297,9 @@ export default function CreateRFQModal({ onClose, onSuccess }: CreateRFQModalPro
           <div>
             <label className="block text-xs font-semibold text-foreground mb-1.5">{labels.currency}</label>
             <select
-              value={form.currency}
-              onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))}
-              className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm focus:outline-none focus:border-primary transition-colors"
+              value={MARKET_CURRENCY[market]}
+              disabled
+              className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm focus:outline-none focus:border-primary transition-colors opacity-80"
             >
               {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
