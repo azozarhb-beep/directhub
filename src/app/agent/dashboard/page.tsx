@@ -5,22 +5,25 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
+import { formatCoverageLabel } from '@/lib/territoryData';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import UnifiedMessagingEngine from '@/components/UnifiedMessagingEngine';
 import { AgentProductEditDrawer, AgentProductPreviewModal } from './AgentProductEditDrawer';
+import { AgentProductShareModal, copyAgentProductLink } from './AgentProductShareModal';
 import DocumentUploadPanel from './DocumentUploadPanel';
 import InfoExchangePanel from './InfoExchangePanel';
 import ReceivingAccountPanel from './ReceivingAccountPanel';
 import AgentComplaintsPanel from './AgentComplaintsPanel';
 import AgentSalesDashboard from './AgentSalesDashboard';
-import AgentCommissionAccountPanel from './AgentCommissionAccountPanel';
-import AgentEarningsPanel from './AgentEarningsPanel';
 import AgentDispatchRoomsTab from './AgentDispatchRoomsTab';
 import AgentInspectionTasksPanel from './AgentInspectionTasksPanel';
+
+import AgentOperationsHub from './AgentOperationsHub';
 import EnhancedAgentDashboard from '@/components/agent/EnhancedAgentDashboard';
 import ReferralTrackingPanel from './ReferralTrackingPanel';
+import AgentUnifiedEarningsCard from './AgentUnifiedEarningsCard';
 import { isApprovedOrActiveFacility } from '@/lib/referralStats';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { CHAT_LANGUAGES, ChatLanguage } from './AgentLanguageSelector';
@@ -124,6 +127,70 @@ const FACTORY_TYPE_KEYS: Record<string, 'typeLocalFactory' | 'typeIntlFactory' |
   local_supplier: 'typeLocalSupplier',
 };
 
+// ─── Anti-bypass helpers ─────────────────────────────────────────────────────
+
+const COORDINATION_ROOM_HREF = '/agent/dashboard?tab=admin-msg';
+
+function maskPhone(phone: string | null | undefined): string {
+  const raw = (phone || '').trim();
+  if (!raw || raw === '—') return '—';
+  const digits = raw.replace(/[^\d]/g, '');
+  if (digits.length < 6) return '***';
+  const hasPlus = raw.startsWith('+');
+  const head = digits.slice(0, Math.min(6, digits.length - 2));
+  const tail = digits.slice(-2);
+  const headFmt = head.length > 3 ? `${head.slice(0, 3)} ${head.slice(3)}` : head;
+  return `${hasPlus ? '+' : ''}${headFmt}***${tail}`;
+}
+
+function cleanLocationPart(value: string | null | undefined): string {
+  return (value || '')
+    .replace(/^[\s\d٠-٩]+[,،]\s*/u, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function formatCityAddress(parts: Array<string | null | undefined>): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  parts.forEach(p => {
+    const c = cleanLocationPart(p);
+    if (c && c !== '—' && !seen.has(c)) {
+      seen.add(c);
+      out.push(c);
+    }
+  });
+  return out.join('، ');
+}
+
+function buildMapsUrl(parts: Array<string | null | undefined>): string {
+  const q = formatCityAddress(parts);
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+}
+
+function SecureContactActions({ mapQueryParts }: { mapQueryParts: Array<string | null | undefined> }) {
+  return (
+    <div className="flex flex-col sm:flex-row gap-2 pt-1">
+      <Link
+        href={COORDINATION_ROOM_HREF}
+        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-primary text-white hover:bg-primary/90 transition-colors"
+      >
+        <span aria-hidden="true">💬</span>
+        محادثة التنسيق الداخلي المباشر
+      </Link>
+      <a
+        href={buildMapsUrl(mapQueryParts)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 transition-colors"
+      >
+        <span aria-hidden="true">📍</span>
+        فتح الموقع في الخريطة GPS
+      </a>
+    </div>
+  );
+}
+
 // ─── Full Review Modal ────────────────────────────────────────────────────────
 
 function ReviewModal({
@@ -204,7 +271,7 @@ function ReviewModal({
             <div>
               <h3 className="font-bold text-foreground text-sm">{factory.company_name}</h3>
               <p className="text-xs text-muted-foreground">
-                {(FACTORY_TYPE_KEYS[factory.factory_type] ? ad[FACTORY_TYPE_KEYS[factory.factory_type]] : factory.factory_type)} · {factory.city}, {factory.country}
+                {(FACTORY_TYPE_KEYS[factory.factory_type] ? ad[FACTORY_TYPE_KEYS[factory.factory_type]] : factory.factory_type)} · {formatCityAddress([factory.city, factory.country])}
               </p>
             </div>
           </div>
@@ -266,7 +333,7 @@ function ReviewModal({
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">{ad.cityRegion}</p>
-                    <p className="text-sm font-semibold text-foreground">{factory.city}{factory.region ? `${factory.region ? ', ' + factory.region : ''}` : ''}</p>
+                    <p className="text-sm font-semibold text-foreground">{formatCityAddress([factory.city, factory.region]) || '—'}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">{ad.country}</p>
@@ -297,20 +364,15 @@ function ReviewModal({
                   </div>
                   <div className="flex items-center gap-2">
                     <Icon name="PhoneIcon" size={14} className="text-muted-foreground shrink-0" />
-                    <span className="text-sm text-foreground" dir="ltr">{factory.contact_phone}</span>
+                    <span className="text-sm text-foreground font-mono" dir="ltr">{maskPhone(factory.contact_phone)}</span>
                   </div>
-                  {factory.contact_email && (
+                  {factory.address && (
                     <div className="flex items-center gap-2">
-                      <Icon name="EnvelopeIcon" size={14} className="text-muted-foreground shrink-0" />
-                      <span className="text-sm text-foreground">{factory.contact_email}</span>
+                      <Icon name="MapPinIcon" size={14} className="text-muted-foreground shrink-0" />
+                      <span className="text-sm text-foreground">{formatCityAddress([factory.city, factory.region, factory.address])}</span>
                     </div>
                   )}
-                  {factory.website && (
-                    <div className="flex items-center gap-2">
-                      <Icon name="GlobeAltIcon" size={14} className="text-muted-foreground shrink-0" />
-                      <span className="text-sm text-foreground">{factory.website}</span>
-                    </div>
-                  )}
+                  <SecureContactActions mapQueryParts={[factory.address, factory.city, factory.region, factory.country]} />
                 </div>
               </div>
 
@@ -534,22 +596,47 @@ export default function AgentDashboardPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const supabase = createClient();
+  const [coverageLabel, setCoverageLabel] = useState('');
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.rpc('get_my_territory');
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!cancelled && row?.territory_city) {
+        setCoverageLabel(formatCoverageLabel(row.territory_city, row.territory_district));
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const [factories, setFactories] = useState<AgentFactory[]>([]);
   const [products, setProducts] = useState<AgentProduct[]>([]);
   const [referredStats, setReferredStats] = useState<{ total: number; approved: number }>({ total: 0, approved: 0 });
   const [previewProduct, setPreviewProduct] = useState<AgentProduct | null>(null);
   const [editProduct, setEditProduct] = useState<AgentProduct | null>(null);
+  const [shareProduct, setShareProduct] = useState<AgentProduct | null>(null);
   const [loading, setLoading] = useState(true);
-  type AgentTabId = 'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral' | 'dispatch_rooms';
-  const VALID_TABS: AgentTabId[] = ['factories', 'products', 'messaging', 'documents', 'exchange', 'complaints', 'sales', 'admin_msg', 'commission', 'enhanced', 'inspections', 'earnings', 'referral', 'dispatch_rooms'];
+  type AgentTabId = 'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral' | 'dispatch_rooms' | 'order_tracking';
+  const VALID_TABS: AgentTabId[] = ['factories', 'products', 'messaging', 'documents', 'exchange', 'complaints', 'sales', 'admin_msg', 'commission', 'enhanced', 'inspections', 'earnings', 'referral', 'dispatch_rooms', 'order_tracking'];
   const TAB_URL_KEYS: Record<AgentTabId, string> = {
     factories: 'factories', products: 'products', messaging: 'messaging', documents: 'documents',
     exchange: 'exchange', complaints: 'complaints', sales: 'sales',
     admin_msg: 'admin-msg', commission: 'commission', enhanced: 'register', inspections: 'inspections',
-    earnings: 'earnings', referral: 'referral', dispatch_rooms: 'dispatch',
+    earnings: 'earnings', referral: 'referral', dispatch_rooms: 'dispatch', order_tracking: 'orders',
   };
   const [activeTab, setActiveTabState] = useState<AgentTabId | null>(null);
+  const [deepLink, setDeepLink] = useState<{ recipientId: string; name: string } | null>(null);
+
+  const readDeepLinkFromUrl = useCallback((): { recipientId: string; name: string } | null => {
+    if (typeof window === 'undefined') return null;
+    const sp = new URLSearchParams(window.location.search);
+    const recipientId = sp.get('recipientId');
+    if (!recipientId) return null;
+    return { recipientId, name: sp.get('name') || '' };
+  }, []);
 
   const readTabFromUrl = useCallback((): AgentTabId | null => {
     if (typeof window === 'undefined') return null;
@@ -562,13 +649,18 @@ export default function AgentDashboardPage() {
 
   useEffect(() => {
     setActiveTabState(readTabFromUrl());
-    const onPopState = () => setActiveTabState(readTabFromUrl());
+    setDeepLink(readDeepLinkFromUrl());
+    const onPopState = () => {
+      setActiveTabState(readTabFromUrl());
+      setDeepLink(readDeepLinkFromUrl());
+    };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [readTabFromUrl]);
+  }, [readTabFromUrl, readDeepLinkFromUrl]);
 
   const openTab = useCallback((id: AgentTabId) => {
     setActiveTabState(id);
+    setDeepLink(null);
     router.push(`/agent/dashboard?tab=${TAB_URL_KEYS[id]}`, { scroll: false });
     if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -583,7 +675,10 @@ export default function AgentDashboardPage() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
+  const [activeStatCard, setActiveStatCard] = useState<'total' | 'approved' | 'pending' | 'products' | null>(null);
+  const factoryListRef = useRef<HTMLDivElement | null>(null);
   const [agentUnreadCount, setAgentUnreadCount] = useState(0);
+  const [adminUnreadCount, setAdminUnreadCount] = useState(0);
   const [dashboardChatLang] = useState<ChatLanguage>(
     () => CHAT_LANGUAGES.find(l => l.code === 'ar') || CHAT_LANGUAGES[0]
   );
@@ -594,7 +689,7 @@ export default function AgentDashboardPage() {
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [milestoneModal, setMilestoneModal] = useState<{ taskId: string; currentStage: number } | null>(null);
   const [milestoneNote, setMilestoneNote] = useState('');
-  const [milestoneUpdating, setMilestoneUpdating] = useState(false);
+  const [milestoneUpdating] = useState(false);
   const hasLoadedOnceRef = React.useRef(false);
 
   // Auth guard — wrong roles redirect to their room (never 403)
@@ -744,76 +839,73 @@ export default function AgentDashboardPage() {
     return () => { supabase.removeChannel(channel); };
   }, [user, supabase]);
 
+  // Unread admin → agent messages (agent_admin_messages) for the "المراسلة مع الإدارة" card
+  useEffect(() => {
+    if (!user) return;
+    const fetchAdminUnread = async () => {
+      try {
+        const { count } = await supabase
+          .from('agent_admin_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('agent_id', user.id)
+          .eq('sender_role', 'admin')
+          .eq('is_read_by_agent', false);
+        setAdminUnreadCount(count || 0);
+      } catch {
+        setAdminUnreadCount(0);
+      }
+    };
+    fetchAdminUnread();
+
+    const channel = supabase
+      .channel(`agent-dashboard-admin-unread-${user.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'agent_admin_messages',
+        filter: `agent_id=eq.${user.id}`,
+      }, () => fetchAdminUnread())
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user, supabase]);
+
   const fetchInspectionTasks = useCallback(async () => {
     if (!user) return;
     setInspectionLoading(true);
     try {
-      // Fetch orders that are in inspection-relevant escrow statuses
-      const { data: ordersData } = await supabase
-        .from('orders')
-        .select(`
-          id, order_number, status, escrow_status, total, currency, items,
-          created_at, delivery_deadline, factory_user_id,
-          agent_factory_registrations!orders_factory_id_fkey (
-            id, company_name, city, country, address, contact_person, contact_phone, industry
-          )
-        `)
-        .in('escrow_status', ['funds_secured', 'ready_for_inspection', 'shipped', 'pending_admin_payout'])
-        .order('created_at', { ascending: false })
-        .limit(50);
+      // Masked RPC: only order number, items, pallet counts and PSI checkpoints.
+      // No shipping address, buyer details, or escrow splits reach the agent.
+      const { data: viewRows } = await supabase.rpc('get_agent_assigned_inspection_view');
 
-      if (ordersData && ordersData.length > 0) {
-        const tasks: InspectionTask[] = ordersData.map((order: any) => {
-          const factory = order.agent_factory_registrations;
-          // Try to match factory from agent's registered factories
-          const agentFactory = factories.find(f => f.id === factory?.id);
-          const factoryName = agentFactory?.company_name || factory?.company_name || 'مصنع غير محدد';
-          const itemsArr = Array.isArray(order.items) ? order.items : [];
-          const itemsSummary = itemsArr.slice(0, 2).map((it: any) => it.name_ar || it.name_en || it.product_name || '').filter(Boolean).join('، ') || 'منتجات متعددة';
+      if (viewRows && (viewRows as any[]).length > 0) {
+        const tasks: InspectionTask[] = (viewRows as any[]).map((row: any) => {
+          const itemsArr = Array.isArray(row.items) ? row.items : [];
+          const itemsSummary = itemsArr.slice(0, 2).map((it: any) => it?.name || '').filter(Boolean).join('، ') || 'منتجات متعددة';
           return {
-            id: order.id,
-            order_id: order.id,
-            order_number: order.order_number || order.id.slice(0, 8).toUpperCase(),
-            factory_id: factory?.id || null,
-            factory_name: factoryName,
-            factory_city: agentFactory?.city || factory?.city || '—',
-            factory_country: agentFactory?.country || factory?.country || '—',
-            factory_address: agentFactory?.address || factory?.address || '—',
-            factory_contact_person: agentFactory?.contact_person || factory?.contact_person || '—',
-            factory_contact_phone: agentFactory?.contact_phone || factory?.contact_phone || '—',
-            factory_industry: agentFactory?.industry || factory?.industry || '—',
-            escrow_status: order.escrow_status,
-            order_total: order.total || 0,
-            currency: order.currency || 'USD',
-            created_at: order.created_at,
-            delivery_deadline: order.delivery_deadline || null,
+            id: row.task_id,
+            order_id: row.order_id || '',
+            order_number: row.order_number || String(row.task_id).slice(0, 8).toUpperCase(),
+            factory_id: null,
+            factory_name: row.factory_name || 'مصنع غير محدد',
+            factory_city: row.city || '—',
+            factory_country: '—',
+            factory_address: '—',
+            factory_contact_person: '—',
+            factory_contact_phone: '—',
+            factory_industry: '—',
+            escrow_status: row.status,
+            order_total: 0,
+            currency: '',
+            created_at: row.created_at,
+            delivery_deadline: null,
             items_summary: itemsSummary,
           };
         });
         setInspectionTasks(tasks);
       } else {
-        // Fallback: build mock inspection tasks from agent's approved factories
-        const approvedFactoriesForInspection = factories.filter(f => f.registration_status === 'approved');
-        const mockTasks: InspectionTask[] = approvedFactoriesForInspection.slice(0, 5).map((f, idx) => ({
-          id: `mock-${f.id}`,
-          order_id: `mock-${f.id}`,
-          order_number: `ORD-${f.id.slice(0, 6).toUpperCase()}`,
-          factory_id: f.id,
-          factory_name: f.company_name,
-          factory_city: f.city,
-          factory_country: f.country,
-          factory_address: f.address || '—',
-          factory_contact_person: f.contact_person,
-          factory_contact_phone: f.contact_phone,
-          factory_industry: f.industry || '—',
-          escrow_status: idx % 2 === 0 ? 'ready_for_inspection' : 'funds_secured',
-          order_total: 0,
-          currency: 'USD',
-          created_at: f.created_at,
-          delivery_deadline: null,
-          items_summary: 'في انتظار التفتيش الميداني',
-        }));
-        setInspectionTasks(mockTasks);
+        // Production: never fabricate inspection tasks. Real tasks only.
+        setInspectionTasks([]);
       }
     } catch (err) {
       console.error('Error fetching inspection tasks:', err);
@@ -830,11 +922,6 @@ export default function AgentDashboardPage() {
   }, [activeTab, user, fetchInspectionTasks]);
 
   const handleGreenLight = async (task: InspectionTask) => {
-    if (task.id.startsWith('mock-')) {
-      setSuccessMsg('✅ تم إرسال الإشارة الخضراء (وضع المحاكاة) — سيتم تفعيل الإجراء الفعلي عند ربط الطلب بنظام الضمان.');
-      setTimeout(() => setSuccessMsg(''), 5000);
-      return;
-    }
     setGreenLightLoading(task.id);
     try {
       const res = await fetch('/api/escrow/green-light', {
@@ -878,6 +965,30 @@ export default function AgentDashboardPage() {
     ? factories.filter(f => f.registration_status === filterStatus)
     : factories;
 
+  const scrollToFactoryList = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    window.setTimeout(() => {
+      factoryListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+  }, []);
+
+  const handleStatCardClick = useCallback((card: 'total' | 'approved' | 'pending' | 'products') => {
+    setActiveStatCard(card);
+    if (card === 'products') {
+      setFilterStatus('');
+      openTab('products');
+      return;
+    }
+    setFilterStatus(card === 'approved' ? 'approved' : card === 'pending' ? 'pending' : '');
+    openTab('factories');
+    scrollToFactoryList();
+  }, [openTab, scrollToFactoryList]);
+
+  const resetStatFilter = useCallback(() => {
+    setFilterStatus('');
+    setActiveStatCard(null);
+  }, []);
+
   if ((authLoading || loading) && !hasLoadedOnceRef.current) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -911,6 +1022,11 @@ export default function AgentDashboardPage() {
             <span className="bg-white/10 text-violet-200 text-xs px-3 py-1 rounded-full border border-white/20">
               ID: field-agent-dashboard
             </span>
+            {coverageLabel && (
+              <span className="bg-emerald-500/30 text-white text-xs px-3 py-1 rounded-full border border-emerald-300/50 font-bold">
+                📍 نطاق التغطية الميداني: {coverageLabel}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -951,91 +1067,121 @@ export default function AgentDashboardPage() {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          {[
-            { label: ad.statTotal, value: statTotalFactories, icon: 'BuildingOffice2Icon', color: 'text-blue-600', bg: 'bg-blue-50' },
-            { label: ad.statApproved, value: statApprovedFactories, icon: 'CheckBadgeIcon', color: 'text-emerald-600', bg: 'bg-emerald-50' },
-            { label: ad.statPendingReview, value: pendingReview, icon: 'ClockIcon', color: 'text-amber-600', bg: 'bg-amber-50' },
-            { label: ad.statProducts, value: totalProducts, icon: 'CubeIcon', color: 'text-purple-600', bg: 'bg-purple-50' },
-          ].map(stat => (
-            <div key={stat.label} className="bg-card border border-border rounded-xl p-4">
-              <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center mb-3`}>
-                <Icon name={stat.icon as any} size={18} className={stat.color} />
-              </div>
-              <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
-            </div>
-          ))}
+          {([
+            { id: 'total', label: ad.statTotal, value: statTotalFactories, icon: 'BuildingOffice2Icon', color: 'text-blue-600', bg: 'bg-blue-50', activeBorder: 'border-blue-400 ring-2 ring-blue-400/25' },
+            { id: 'approved', label: ad.statApproved, value: statApprovedFactories, icon: 'CheckBadgeIcon', color: 'text-emerald-600', bg: 'bg-emerald-50', activeBorder: 'border-emerald-400 ring-2 ring-emerald-400/25' },
+            { id: 'pending', label: ad.statPendingReview, value: pendingReview, icon: 'ClockIcon', color: 'text-amber-600', bg: 'bg-amber-50', activeBorder: 'border-amber-400 ring-2 ring-amber-400/25' },
+            { id: 'products', label: ad.statProducts, value: totalProducts, icon: 'CubeIcon', color: 'text-indigo-600', bg: 'bg-indigo-50', activeBorder: 'border-indigo-400 ring-2 ring-indigo-400/25' },
+          ] as const).map(stat => {
+            const isStatActive = activeStatCard === stat.id;
+            return (
+              <button
+                key={stat.label}
+                type="button"
+                onClick={() => handleStatCardClick(stat.id)}
+                aria-pressed={isStatActive}
+                className={`text-start cursor-pointer bg-white border rounded-2xl p-4 min-h-[88px] shadow-sm hover:shadow-md transition-all duration-200 active:scale-[0.98] ${
+                  isStatActive ? `${stat.activeBorder} border-2` : 'border-slate-200'
+                }`}
+              >
+                <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center mb-3`}>
+                  <Icon name={stat.icon as any} size={18} className={stat.color} />
+                </div>
+                <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{stat.label}</p>
+              </button>
+            );
+          })}
         </div>
+
+        {activeStatCard !== null && (
+          <div className="-mt-3 mb-5 flex justify-end">
+            <button
+              type="button"
+              onClick={resetStatFilter}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card text-xs font-semibold text-foreground hover:bg-muted active:scale-[0.98] transition-all"
+            >
+              <Icon name="ArrowPathIcon" size={14} />
+              عرض الكل / إعادة ضبط
+            </button>
+          </div>
+        )}
 
         {/* Tabs — 5 Grouped Sections as Grid Cards */}
         <div className="space-y-5 mb-5">
           {([
             {
               key: 'overview',
-              title: 'نظرة عامة',
+              title: 'لوحة الأداء',
               items: [
-                { id: 'sales', icon: 'ChartBarIcon', label: ad.tabSales, badge: 0, badgeColor: '', iconColor: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' },
-                { id: 'earnings', icon: 'BanknotesIcon', label: 'الأرباح والعمولات', badge: 0, badgeColor: '', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
+                { id: 'sales', icon: 'ChartBarIcon', label: ad.tabSales, badge: 0, badgeColor: '', iconColor: 'bg-emerald-50 text-emerald-600', cardTint: 'bg-white border-slate-200' },
+                { id: 'referral', icon: 'LinkIcon', label: 'الإحالات والتتبع', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600', cardTint: 'bg-white border-slate-200' },
               ],
             },
             {
               key: 'factories',
-              title: 'المصانع والتحقق',
+              title: 'المصانع والعمليات',
               items: [
-                { id: 'factories', icon: 'BuildingOffice2Icon', label: ad.tabFactories.replace('{count}', String(totalFactories)), badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' },
-                { id: 'products', icon: 'CubeIcon', label: ad.tabProducts.replace('{count}', String(totalProducts)), badge: 0, badgeColor: '', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
-                { id: 'inspections', icon: 'ClipboardDocumentListIcon', label: 'مهام التفتيش', badge: inspectionTasks.filter(t => !t.id.startsWith('mock-')).length, badgeColor: 'bg-amber-500', iconColor: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' },
-                { id: 'enhanced', icon: 'BriefcaseIcon', label: 'المصانع والتوثيق (KYC)', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
+                { id: 'factories', icon: 'BuildingOffice2Icon', label: '🏭 شبكة المصانع والتوثيق (KYC)', sub: 'إدارة المصانع، إضافة مصنع جديد، وتوثيق السجلات الجغرافية', pills: `${statApprovedFactories} معتمد | ${pendingReview} قيد التوثيق`, badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600', cardTint: 'bg-white border-slate-200' },
+                { id: 'order_tracking', icon: 'TruckIcon', label: '📦 العمليات والتفتيش الميداني', sub: 'متابعة خطوط الإنتاج، طلبات الشحن، ومعاينة البليتات', pills: '', badge: inspectionTasks.length, badgeColor: 'bg-amber-500', iconColor: 'bg-amber-50 text-amber-600', cardTint: 'bg-white border-slate-200' },
+                { id: 'products', icon: 'CubeIcon', label: '🏷️ كتالوج المنتجات', sub: ad.tabProducts.replace('{count}', String(totalProducts)), pills: '', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600', cardTint: 'bg-white border-slate-200' },
+                { id: 'dispatch_rooms', icon: 'TruckIcon', label: '🚚 غرف التنسيق الميداني', badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600', cardTint: 'bg-white border-slate-200' },
               ],
             },
             {
               key: 'messaging',
               title: 'المراسلات',
               items: [
-                { id: 'messaging', icon: 'ChatBubbleLeftRightIcon', label: ad.tabMessaging, badge: agentUnreadCount, badgeColor: 'bg-red-500', iconColor: 'bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400' },
-                { id: 'admin_msg', icon: 'ShieldCheckIcon', label: ad.tabAdminMsg, badge: 0, badgeColor: '', iconColor: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' },
-                { id: 'complaints', icon: 'ExclamationTriangleIcon', label: ad.tabComplaints, badge: 0, badgeColor: '', iconColor: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' },
-                { id: 'dispatch_rooms', icon: 'TruckIcon', label: 'غرف التنسيق الميداني', badge: 0, badgeColor: '', iconColor: 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400' },
+                { id: 'messaging', icon: 'ChatBubbleLeftRightIcon', label: ad.tabMessaging, badge: agentUnreadCount, badgeColor: 'bg-red-500', iconColor: 'bg-emerald-50 text-emerald-600', cardTint: 'bg-white border-slate-200' },
+                { id: 'admin_msg', icon: 'ShieldCheckIcon', label: ad.tabAdminMsg, badge: adminUnreadCount, badgeColor: 'bg-red-500', iconColor: 'bg-indigo-50 text-indigo-600', cardTint: 'bg-white border-slate-200' },
               ],
             },
             {
               key: 'accounts',
               title: 'الحسابات والعمولات',
               items: [
-                { id: 'commission', icon: 'CurrencyDollarIcon', label: 'حساب العمولة', badge: 0, badgeColor: '', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
-                { id: 'exchange', icon: 'ArrowsRightLeftIcon', label: ad.tabInfoExchange, badge: 0, badgeColor: '', iconColor: 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-950/40 dark:text-fuchsia-400' },
+                { id: 'earnings', icon: 'BanknotesIcon', label: 'الأرباح والعمولات', badge: 0, badgeColor: '', iconColor: 'bg-amber-50 text-amber-600', cardTint: 'bg-white border-slate-200' },
+                { id: 'exchange', icon: 'ArrowsRightLeftIcon', label: ad.tabInfoExchange, badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600', cardTint: 'bg-white border-slate-200' },
               ],
             },
             {
               key: 'tools',
-              title: 'الأدوات',
+              title: 'الأدوات والشكاوى',
               items: [
-                { id: 'documents', icon: 'FolderOpenIcon', label: ad.tabDocuments, badge: 0, badgeColor: '', iconColor: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400' },
-                { id: 'referral', icon: 'LinkIcon', label: 'الإحالات والتتبع', badge: 0, badgeColor: '', iconColor: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400' },
+                { id: 'documents', icon: 'FolderOpenIcon', label: ad.tabDocuments, badge: 0, badgeColor: '', iconColor: 'bg-emerald-50 text-emerald-600', cardTint: 'bg-white border-slate-200' },
+                { id: 'complaints', icon: 'ExclamationTriangleIcon', label: ad.tabComplaints, badge: 0, badgeColor: '', iconColor: 'bg-amber-50 text-amber-600', cardTint: 'bg-white border-slate-200' },
               ],
             },
           ]).map(section => (
             <div key={section.key}>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2 px-1">{section.title}</p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {section.items.map(item => {
-                  const isActive = activeTab === item.id;
+              <div className="grid grid-cols-2 gap-3">
+                {section.items.map((item: any) => {
+                  const isActive = activeTab === item.id || (item.id === 'factories' && activeTab === 'enhanced') || (item.id === 'order_tracking' && activeTab === 'inspections');
                   return (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => openTab(item.id as AgentTabId)}
                       aria-pressed={isActive}
-                      className={`relative flex flex-col items-center justify-center p-3 min-h-[96px] rounded-xl border text-center transition-all active:scale-[0.98] ${
+                      className={`relative flex flex-col items-center justify-center p-3 min-h-[96px] rounded-2xl border text-center shadow-sm hover:shadow-md transition-all duration-200 active:scale-[0.98] ${
                         isActive
-                          ? 'bg-[#D4AF37]/10 border-[#D4AF37] border-2 ring-2 ring-[#D4AF37]/25 shadow-md'
-                          : 'bg-white dark:bg-zinc-900 border-slate-100 dark:border-zinc-800 shadow-sm hover:shadow-md hover:border-[#D4AF37]/50'
+                          ? 'bg-white border-[#D4AF37] border-2 ring-2 ring-[#D4AF37]/25'
+                          : `${item.cardTint || 'bg-white border-slate-200'}`
                       }`}
                     >
                       <span className={`w-11 h-11 rounded-xl flex items-center justify-center mb-2.5 ${item.iconColor}`}>
                         <Icon name={item.icon as any} size={22} />
                       </span>
-                      <span className="leading-tight text-slate-800 dark:text-zinc-100 font-semibold text-sm">{item.label}</span>
+                      <span className="leading-tight text-sm text-slate-900 font-semibold">{item.label}</span>
+                      {item.sub && (
+                        <span className="mt-1 text-xs leading-snug text-slate-500">{item.sub}</span>
+                      )}
+                      {item.pills && (
+                        <span className="mt-2 inline-flex items-center rounded-full bg-slate-100 text-slate-500 px-2.5 py-0.5 text-xs font-medium">
+                          {item.pills}
+                        </span>
+                      )}
                       {item.badge > 0 && (
                         <span className={`absolute top-2 end-2 min-w-[18px] h-[18px] ${item.badgeColor} text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1`}>
                           {item.badge > 99 ? '99+' : item.badge}
@@ -1058,42 +1204,45 @@ export default function AgentDashboardPage() {
           const TAB_META: Record<AgentTabId, { icon: string; title: string; iconColor: string }> = {
             sales: { icon: 'ChartBarIcon', title: ad.tabSales, iconColor: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' },
             earnings: { icon: 'BanknotesIcon', title: 'الأرباح والعمولات', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
-            factories: { icon: 'BuildingOffice2Icon', title: ad.tabFactories.replace('{count}', String(totalFactories)), iconColor: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' },
-            products: { icon: 'CubeIcon', title: ad.tabProducts.replace('{count}', String(totalProducts)), iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
-            inspections: { icon: 'ClipboardDocumentListIcon', title: 'مهام التفتيش', iconColor: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' },
-            enhanced: { icon: 'BriefcaseIcon', title: 'المصانع والتوثيق (KYC)', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
+            factories: { icon: 'BuildingOffice2Icon', title: '🏭 شبكة المصانع والتوثيق (KYC)', iconColor: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' },
+            products: { icon: 'CubeIcon', title: '🏷️ كتالوج المنتجات', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
+            inspections: { icon: 'ClipboardDocumentListIcon', title: '📦 العمليات والتفتيش الميداني', iconColor: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' },
+            enhanced: { icon: 'BriefcaseIcon', title: '🏭 شبكة المصانع والتوثيق (KYC)', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
             messaging: { icon: 'ChatBubbleLeftRightIcon', title: ad.tabMessaging, iconColor: 'bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400' },
             admin_msg: { icon: 'ShieldCheckIcon', title: ad.tabAdminMsg, iconColor: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' },
             complaints: { icon: 'ExclamationTriangleIcon', title: ad.tabComplaints, iconColor: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' },
             dispatch_rooms: { icon: 'TruckIcon', title: 'غرف التنسيق الميداني', iconColor: 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400' },
-            commission: { icon: 'CurrencyDollarIcon', title: 'حساب العمولة', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
+            order_tracking: { icon: 'TruckIcon', title: '📦 العمليات والتفتيش الميداني', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
+            commission: { icon: 'BanknotesIcon', title: 'الأرباح والعمولات', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
             exchange: { icon: 'ArrowsRightLeftIcon', title: ad.tabInfoExchange, iconColor: 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-950/40 dark:text-fuchsia-400' },
             documents: { icon: 'FolderOpenIcon', title: ad.tabDocuments, iconColor: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400' },
             referral: { icon: 'LinkIcon', title: 'الإحالات والتتبع', iconColor: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400' },
           };
           const meta = TAB_META[activeTab];
           return (
-            <div className="sticky top-0 z-30 -mx-4 px-4 py-3 mb-4 bg-background/95 backdrop-blur border-b border-border flex items-center gap-3">
+            <div className="sticky top-0 z-30 -mx-4 px-4 py-3 mb-4 bg-background/95 backdrop-blur border-b border-border flex items-center gap-2 sm:gap-3">
               <button
                 type="button"
                 onClick={closeTab}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 text-sm font-semibold hover:shadow-sm active:scale-[0.98] transition-all shrink-0"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 text-xs sm:text-sm font-semibold hover:shadow-sm active:scale-[0.98] transition-all shrink-0"
+                aria-label="العودة للوحة التحكم"
               >
                 <Icon name={dir === 'rtl' ? 'ArrowRightIcon' : 'ArrowLeftIcon'} size={16} />
-                <span>العودة للوحة التحكم</span>
+                <span className="hidden sm:inline">العودة للوحة التحكم</span>
+                <span className="sm:hidden">رجوع</span>
               </button>
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
                 <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${meta.iconColor}`}>
                   <Icon name={meta.icon as any} size={18} />
                 </span>
-                <h2 className="text-sm font-bold text-slate-800 dark:text-zinc-100 truncate">{meta.title}</h2>
+                <h2 className="text-sm font-bold text-slate-800 dark:text-zinc-100 leading-snug break-words min-w-0">{meta.title}</h2>
               </div>
             </div>
           );
         })()}
 
-        {/* Inspection Tasks Tab — field_inspection_tasks based panel */}
-        {activeTab === 'inspections' && user && (
+        {/* Inspection Tasks Tab — now rendered inside the Operations Hub */}
+        {false && activeTab === 'inspections' && user && (
           <AgentInspectionTasksPanel userId={user.id} />
         )}
 
@@ -1125,7 +1274,7 @@ export default function AgentDashboardPage() {
             {!inspectionLoading && (
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { label: 'إجمالي المهام النشطة', value: inspectionTasks.filter(t => !t.id.startsWith('mock-')).length, color: 'text-blue-600', bg: 'bg-blue-50' },
+                  { label: 'إجمالي المهام النشطة', value: inspectionTasks.length, color: 'text-blue-600', bg: 'bg-blue-50' },
                   { label: 'في انتظار التفتيش', value: inspectionTasks.filter(t => t.escrow_status === 'ready_for_inspection').length, color: 'text-amber-600', bg: 'bg-amber-50' },
                   { label: 'مكتملة هذا الشهر', value: 0, color: 'text-emerald-600', bg: 'bg-emerald-50' },
                 ].map(s => (
@@ -1144,7 +1293,7 @@ export default function AgentDashboardPage() {
                   <p className="text-sm text-muted-foreground">جارٍ تحميل مهام التفتيش...</p>
                 </div>
               </div>
-            ) : inspectionTasks.filter(t => !t.id.startsWith('mock-')).length === 0 ? (
+            ) : inspectionTasks.length === 0 ? (
               <div className="bg-card border border-border rounded-xl p-12 text-center">
                 <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
                   <Icon name="CheckCircleIcon" size={28} className="text-emerald-500" />
@@ -1154,7 +1303,7 @@ export default function AgentDashboardPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {inspectionTasks.filter(t => !t.id.startsWith('mock-')).map(task => {
+                {inspectionTasks.map(task => {
                   const MILESTONE_STAGES = [
                     { key: 'confirmed', label: 'طلب مؤكد' },
                     { key: 'funds_secured', label: 'تمويل محجوز' },
@@ -1245,7 +1394,7 @@ export default function AgentDashboardPage() {
                               <div className="grid grid-cols-2 gap-2">
                                 <div>
                                   <p className="text-[10px] text-amber-700 font-medium">المدينة / المنطقة</p>
-                                  <p className="text-xs font-semibold text-amber-900">{task.factory_city}</p>
+                                  <p className="text-xs font-semibold text-amber-900">{formatCityAddress([task.factory_city]) || '—'}</p>
                                 </div>
                                 <div>
                                   <p className="text-[10px] text-amber-700 font-medium">الدولة</p>
@@ -1254,7 +1403,7 @@ export default function AgentDashboardPage() {
                                 {task.factory_address !== '—' && (
                                   <div className="col-span-2">
                                     <p className="text-[10px] text-amber-700 font-medium">العنوان التفصيلي</p>
-                                    <p className="text-xs font-semibold text-amber-900">{task.factory_address}</p>
+                                    <p className="text-xs font-semibold text-amber-900">{formatCityAddress([task.factory_address])}</p>
                                   </div>
                                 )}
                                 <div>
@@ -1263,23 +1412,10 @@ export default function AgentDashboardPage() {
                                 </div>
                                 <div>
                                   <p className="text-[10px] text-amber-700 font-medium">رقم الهاتف</p>
-                                  <p className="text-xs font-semibold text-amber-900 font-mono" dir="ltr">{task.factory_contact_phone}</p>
+                                  <p className="text-xs font-semibold text-amber-900 font-mono" dir="ltr">{maskPhone(task.factory_contact_phone)}</p>
                                 </div>
                               </div>
-                              {task.factory_contact_phone && task.factory_contact_phone !== '—' && (
-                                <a
-                                  href={`https://api.whatsapp.com/send?phone=${task.factory_contact_phone.replace(/[\s\-\(\)\+]/g, '')}&text=${encodeURIComponent(`مرحباً، أنا المندوب الميداني من DirectHub. أتواصل معكم بخصوص الطلب رقم ${task.order_number} لتنسيق موعد التفتيش.`)}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold mt-1"
-                                  style={{ backgroundColor: '#1E1E1E', color: '#25D366', border: '1px solid #25D366' }}
-                                >
-                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                                  </svg>
-                                  تواصل واتساب
-                                </a>
-                              )}
+                              <SecureContactActions mapQueryParts={[task.factory_address, task.factory_city, task.factory_country]} />
                             </div>
 
                             {task.delivery_deadline && (
@@ -1350,7 +1486,7 @@ export default function AgentDashboardPage() {
                             {isExpanded ? 'إخفاء' : 'الموقع'}
                           </button>
 
-                          {!task.id.startsWith('mock-') && (
+                          {task.order_id && (
                             <a
                               href={`/order-tracking?order=${task.order_id}`}
                               className="flex items-center gap-1.5 px-3 py-2.5 bg-muted border border-border text-muted-foreground rounded-xl text-xs font-semibold hover:bg-muted/80 transition-colors"
@@ -1430,6 +1566,8 @@ export default function AgentDashboardPage() {
             showFilters={true}
             height={640}
             chatLanguage={dashboardChatLang}
+            openContactId={deepLink?.recipientId}
+            openContactName={deepLink?.name}
             contacts={factories.map(f => ({
               id: f.id,
               name: f.company_name,
@@ -1449,6 +1587,10 @@ export default function AgentDashboardPage() {
               id: f.id,
               company_name: f.company_name,
               factory_type: f.factory_type,
+              city: f.city,
+              contact_person: f.contact_person,
+              contact_phone: f.contact_phone,
+              registration_status: f.registration_status,
             }))}
           />
         )}
@@ -1502,14 +1644,46 @@ export default function AgentDashboardPage() {
           />
         )}
 
-        {/* Commission Account Tab */}
-        {activeTab === 'commission' && user && (
-          <AgentCommissionAccountPanel userId={user.id} />
+        {/* Unified Earnings, Referral & Payout Account Tab ('commission' kept as legacy alias) */}
+        {(activeTab === 'earnings' || activeTab === 'commission') && user && (
+          <AgentUnifiedEarningsCard userId={user.id} />
         )}
 
-        {/* Earnings & Commissions Tab */}
-        {activeTab === 'earnings' && user && (
-          <AgentEarningsPanel userId={user.id} />
+        {/* Operations Hub — unified order preparation, PSI inspections, freight-ready shipments */}
+        {(activeTab === 'order_tracking' || activeTab === 'inspections') && user && (
+          <AgentOperationsHub
+            userId={user.id}
+            initialTab={activeTab === 'inspections' ? 'inspection' : 'preparation'}
+          />
+        )}
+
+        {/* Factories & KYC switch (merged card) */}
+        {(activeTab === 'factories' || activeTab === 'enhanced') && (
+          <div
+            className="flex gap-1.5 p-1 mb-4 bg-muted rounded-xl"
+            role="tablist"
+            aria-label="المصانع والتوثيق"
+          >
+            {([
+              { id: 'factories', label: '🏭 المصانع والموردون' },
+              { id: 'enhanced', label: '🛡️ التوثيق (KYC)' },
+            ] as const).map(t => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === t.id}
+                onClick={() => { if (activeTab !== t.id) openTab(t.id); }}
+                className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === t.id
+                    ? 'bg-card text-foreground shadow-sm border border-border'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         )}
 
         {/* Enhanced Agent Dashboard Tab */}
@@ -1525,9 +1699,10 @@ export default function AgentDashboardPage() {
         {/* Factories Tab */}
         {activeTab === 'factories' && (
           <>
+            <div ref={factoryListRef} className="scroll-mt-20" />
             {/* Filter Bar */}
             {factories.length > 0 && (
-              <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+              <div className="flex gap-2 mb-4 overflow-x-auto pb-1 items-center">
                 {[
                   { value: '', label: ad.filterAll },
                   { value: 'pending', label: ad.filterPending },
@@ -1537,7 +1712,10 @@ export default function AgentDashboardPage() {
                 ].map(f => (
                   <button
                     key={f.value}
-                    onClick={() => setFilterStatus(f.value)}
+                    onClick={() => {
+                      setFilterStatus(f.value);
+                      setActiveStatCard(f.value === 'approved' ? 'approved' : f.value === 'pending' ? 'pending' : f.value === '' ? null : null);
+                    }}
                     className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                       filterStatus === f.value
                         ? 'bg-primary text-white border-primary' :'bg-card border-border text-muted-foreground hover:bg-muted'
@@ -1551,6 +1729,16 @@ export default function AgentDashboardPage() {
                     )}
                   </button>
                 ))}
+                {(filterStatus !== '' || activeStatCard !== null) && (
+                  <button
+                    type="button"
+                    onClick={resetStatFilter}
+                    className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border border-primary/40 text-primary bg-primary/5 hover:bg-primary/10 transition-colors"
+                  >
+                    <Icon name="ArrowPathIcon" size={12} />
+                    عرض الكل / إعادة ضبط
+                  </button>
+                )}
               </div>
             )}
 
@@ -1599,9 +1787,9 @@ export default function AgentDashboardPage() {
                               {regStatus.label}
                             </span>
                           </div>
-                          <p className="text-sm text-muted-foreground">{factory.city}, {factory.country} · {factory.industry || ad.unspecified}</p>
+                          <p className="text-sm text-muted-foreground">{formatCityAddress([factory.city, factory.country])} · {factory.industry || ad.unspecified}</p>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {factory.contact_person} · {factory.contact_phone}
+                            {factory.contact_person} · <span dir="ltr" className="font-mono">{maskPhone(factory.contact_phone)}</span>
                           </p>
                           {factory.agent_notes && (
                             <p className="text-xs text-blue-600 mt-1 italic">📝 {factory.agent_notes}</p>
@@ -1637,32 +1825,16 @@ export default function AgentDashboardPage() {
                             <Icon name="ClipboardDocumentCheckIcon" size={13} />
                             {ad.reviewApprove}
                           </button>
-                          {/* WhatsApp Activation — shown only for approved factories/suppliers */}
-                          {factory.registration_status === 'approved' && factory.contact_phone && (
-                            <a
-                              href={(() => {
-                                const cleanPhone = factory.contact_phone.replace(/[\s\-\(\)\+]/g, '');
-                                const dashboardUrl = 'https://direct-hub.net/manufacturer/dashboard';
-                                const entityLabel = factory.factory_type === 'local_supplier' ? 'مورد معتمد' : 'مصنع معتمد';
-                                const message =
-                                  `مرحباً بكم في منصة DirectHub 🎉\n\n` +
-                                  `يسعدنا إبلاغكم بأن طلب تسجيل شركة *${factory.company_name}* قد تمت الموافقة عليه رسمياً وأصبحتم الآن ${entityLabel} في منصتنا.\n\n` +
-                                  `✅ تم اعتماد حسابكم بنجاح\n` +
-                                  `🔗 رابط الدخول المباشر لغرفتكم التجارية:\n${dashboardUrl}\n\n` +
-                                  `نتطلع إلى شراكة ناجحة ومثمرة معكم.\n` +
-                                  `فريق DirectHub 🏭`;
-                                return `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`;
-                              })()}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                          {/* Internal coordination (replaces direct WhatsApp) */}
+                          {factory.registration_status === 'approved' && (
+                            <Link
+                              href={`/agent/messages?recipientId=${encodeURIComponent(factory.id)}&name=${encodeURIComponent(factory.company_name || '')}`}
                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-opacity hover:opacity-90"
                               style={{ backgroundColor: '#1E1E1E', color: '#D4AF37', border: '1px solid #D4AF37' }}
                             >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                              </svg>
-                              إرسال رابط التفعيل
-                            </a>
+                              <span aria-hidden="true">💬</span>
+                              محادثة التنسيق الداخلي المباشر
+                            </Link>
                           )}
                           <Link
                             href={`/agent/add-product?factoryId=${factory.id}`}
@@ -1770,6 +1942,24 @@ export default function AgentDashboardPage() {
                           {t.agentProductActions.edit}
                         </button>
                       </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <button
+                          type="button"
+                          onClick={() => copyAgentProductLink(product.id, t.agentProductActions.linkCopied, t.agentProductActions.linkCopyFailed)}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 border border-border rounded-lg text-xs font-semibold text-foreground hover:bg-muted transition-colors"
+                        >
+                          <Icon name="LinkIcon" size={14} />
+                          {t.agentProductActions.copyLink}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShareProduct(product)}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 border border-border rounded-lg text-xs font-semibold text-foreground hover:bg-muted transition-colors"
+                        >
+                          <Icon name="QrCodeIcon" size={14} />
+                          {t.agentProductActions.shareQr}
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -1785,6 +1975,15 @@ export default function AgentDashboardPage() {
           factoryName={factories.find(f => f.id === previewProduct.factory_id)?.company_name}
           onClose={() => setPreviewProduct(null)}
           onEdit={() => { setEditProduct(previewProduct); setPreviewProduct(null); }}
+          onShare={() => setShareProduct(previewProduct)}
+        />
+      )}
+
+      {shareProduct && (
+        <AgentProductShareModal
+          product={shareProduct}
+          factoryName={factories.find(f => f.id === shareProduct.factory_id)?.company_name}
+          onClose={() => setShareProduct(null)}
         />
       )}
 

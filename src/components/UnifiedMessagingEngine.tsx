@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 import type { ChatLanguage } from '@/app/agent/dashboard/AgentLanguageSelector';
 import ChatImageAttachment, { uploadChatImage, isImageAttachment, type AttachmentState } from '@/components/ChatImageAttachment';
+
+import ChatAttachmentView from '@/components/ChatAttachmentView';
 import LiveTranslationChatInput from '@/components/LiveTranslationChatInput';
 import { needsChatTranslation } from '@/lib/chatTranslationGate';
 
@@ -75,6 +77,13 @@ export interface UnifiedMessagingEngineProps {
    * and quick-reply options. Passed from the parent language selector.
    */
   chatLanguage?: ChatLanguage;
+  /**
+   * Deep-link: id of a contact whose thread should be opened automatically.
+   * If no thread exists yet, a new one is created (agent_factory mode).
+   */
+  openContactId?: string;
+  /** Fallback display name used when creating a thread for openContactId */
+  openContactName?: string;
 }
 
 // ─── Category filter config ───────────────────────────────────────────────────
@@ -130,6 +139,8 @@ export default function UnifiedMessagingEngine({
   showFilters = true,
   height = 640,
   chatLanguage,
+  openContactId,
+  openContactName,
 }: UnifiedMessagingEngineProps) {
   const supabase = createClient();
 
@@ -296,6 +307,54 @@ export default function UnifiedMessagingEngine({
   }, [userId, mode, supabase]);
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
+
+  // ── Deep-link: open (or create) thread for a specific contact ──────────────
+  const deepLinkHandledRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!openContactId || loading) return;
+    if (mode !== 'agent_factory') return;
+    if (deepLinkHandledRef.current === openContactId) return;
+    deepLinkHandledRef.current = openContactId;
+
+    const existing = conversations.find(c => c.contactId === openContactId);
+    if (existing) {
+      setActiveConvId(existing.id);
+      setShowMobileSidebar(false);
+      return;
+    }
+
+    const contact = contacts.find(c => c.id === openContactId);
+    const factoryName = contact?.name || openContactName || 'مصنع';
+    (async () => {
+      try {
+        const { data, error: err } = await supabase
+          .from('agent_conversations')
+          .insert({
+            agent_id: userId,
+            factory_reg_id: openContactId,
+            factory_name: factoryName,
+            factory_type: contact?.subtype || 'local_factory',
+            last_message: '',
+            last_message_at: new Date().toISOString(),
+            unread_by_agent: 0,
+            is_active: true,
+          })
+          .select()
+          .single();
+        if (!err && data) {
+          const conv = mapAgentFactoryConvs([data])[0];
+          setConversations(prev => [conv, ...prev]);
+          setActiveConvId(conv.id);
+          setShowMobileSidebar(false);
+        } else if (err) {
+          setError(err.message);
+        }
+      } catch (e) {
+        console.error('Deep-link create conv error:', e);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openContactId, loading, conversations, mode, userId]);
 
   // ── Fetch messages ─────────────────────────────────────────────────────────
 
@@ -952,29 +1011,11 @@ export default function UnifiedMessagingEngine({
                               : 'bg-[#0A192F]/60 text-white rounded-bl-sm border border-[#D4AF37]/15'
                           }`}>
                             {msg.attachmentUrl && (
-                              isImageAttachment(msg.attachmentUrl, msg.attachmentName) ? (
-                                <div className="mb-1.5">
-                                  <img
-                                    src={msg.attachmentUrl}
-                                    alt={msg.attachmentName || 'صورة مرفقة'}
-                                    className="max-w-[220px] max-h-[200px] rounded-xl object-cover cursor-pointer"
-                                    onClick={() => window.open(msg.attachmentUrl, '_blank')}
-                                    onError={e => {
-                                      (e.target as HTMLImageElement).style.display = 'none';
-                                    }}
-                                  />
-                                </div>
-                              ) : (
-                                <a
-                                  href={msg.attachmentUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={`flex items-center gap-1.5 text-xs underline mb-1.5 ${isMine ? 'text-[#0A192F]/80' : 'text-[#D4AF37]'}`}
-                                >
-                                  <Icon name="PaperClipIcon" size={12} />
-                                  {msg.attachmentName || 'مرفق'}
-                                </a>
-                              )
+                              <ChatAttachmentView
+                                url={msg.attachmentUrl}
+                                name={msg.attachmentName}
+                                tone={isMine ? 'light' : 'dark'}
+                              />
                             )}
                             <p className="whitespace-pre-wrap text-xs">{msg.message}</p>
                           </div>

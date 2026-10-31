@@ -5,6 +5,7 @@ import Icon from '@/components/ui/AppIcon';
 import { createClient } from '@/lib/supabase/client';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { isImageAttachment } from '@/components/ChatImageAttachment';
+import { SignedChatImage, SignedChatLink } from '@/components/SignedChatMedia';
 
 interface SupportConversation {
   id: string;
@@ -465,24 +466,21 @@ export default function BuyerSellerChatMonitorPanel() {
                           {m.attachment_url && (
                             <div className="mb-2">
                               {isImg ? (
-                                <a href={m.attachment_url} target="_blank" rel="noopener noreferrer">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img
+                                <SignedChatLink href={m.attachment_url} className="block">
+                                  <SignedChatImage
                                     src={m.attachment_url}
                                     alt={m.attachment_name || 'صورة مرفقة'}
                                     className="max-w-full rounded-xl max-h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
                                   />
-                                </a>
+                                </SignedChatLink>
                               ) : (
-                                <a
+                                <SignedChatLink
                                   href={m.attachment_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
                                   className="flex items-center gap-2 text-xs underline"
                                 >
                                   <Icon name="PaperClipIcon" size={14} />
                                   {m.attachment_name || 'مرفق'}
-                                </a>
+                                </SignedChatLink>
                               )}
                             </div>
                           )}
@@ -705,14 +703,13 @@ export default function BuyerSellerChatMonitorPanel() {
                         }`}>
                           {msg.message}
                           {msg.attachment_url && isImageAttachment(msg.attachment_url) ? (
-                            <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="block mt-1">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={msg.attachment_url} alt="صورة مرفقة" className="max-w-full rounded-lg max-h-48 object-cover" />
-                            </a>
+                            <SignedChatLink href={msg.attachment_url} className="block mt-1">
+                              <SignedChatImage src={msg.attachment_url} alt="صورة مرفقة" className="max-w-full rounded-lg max-h-48 object-cover" />
+                            </SignedChatLink>
                           ) : msg.attachment_url ? (
-                            <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="block mt-1 text-xs underline opacity-80">
+                            <SignedChatLink href={msg.attachment_url} className="block mt-1 text-xs underline opacity-80">
                               📎 مرفق
-                            </a>
+                            </SignedChatLink>
                           ) : null}
                         </div>
                       </div>

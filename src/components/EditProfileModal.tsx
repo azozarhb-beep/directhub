@@ -228,11 +228,12 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, userEmail,
     const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
     // Path must start with auth.uid() so storage UPDATE/DELETE RLS matches folder[1]
     const path = `${userId}/${kind}-${Date.now()}.${ext}`;
+    // Profile avatar/cover are public-facing branding assets -> public product-images bucket
     const { error: uploadError } = await supabase.storage
-      .from('chat-media')
-      .upload(path, file, { upsert: false, contentType: file.type });
+      .from('product-images')
+      .upload(`profile/${path}`, file, { upsert: false, contentType: file.type });
     if (uploadError) throw uploadError;
-    const { data } = supabase.storage.from('chat-media').getPublicUrl(path);
+    const { data } = supabase.storage.from('product-images').getPublicUrl(`profile/${path}`);
     return data.publicUrl;
   };
 

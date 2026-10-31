@@ -16,7 +16,7 @@ interface LogisticsShipment {
   estimated_delivery?: string | null;
 }
 
-interface DelayReportModalProps {
+interface DelayReportFormProps {
   shipment: LogisticsShipment;
   partnerId: string;
   userId: string;
@@ -24,14 +24,14 @@ interface DelayReportModalProps {
   onSubmitted: () => void;
 }
 
+// `dbValue` maps to the existing delay_reason_type enum in the database.
 const DELAY_REASONS = [
-  { value: 'customs',         label: 'توقف جمركي',                   labelEn: 'Customs Hold',          icon: '🛃' },
-  { value: 'checkpoint',      label: 'نقطة تفتيش أمنية',             labelEn: 'Security Checkpoint',   icon: '🚧' },
-  { value: 'mechanical',      label: 'عطل ميكانيكي',                 labelEn: 'Mechanical Failure',    icon: '🔧' },
-  { value: 'road_conditions', label: 'أحوال الطريق / انهيار',        labelEn: 'Road Conditions',       icon: '🛣️' },
-  { value: 'weather',         label: 'أحوال جوية سيئة',              labelEn: 'Bad Weather',           icon: '⛈️' },
-  { value: 'port_congestion', label: 'ازدحام الميناء',               labelEn: 'Port Congestion',       icon: '⚓' },
-  { value: 'other',           label: 'سبب آخر',                      labelEn: 'Other',                 icon: '📋' },
+  { value: 'customs',  dbValue: 'customs',         label: 'إجراءات وتفتيش جمركي',                     labelEn: 'Customs Clearance & Inspection' },
+  { value: 'port',     dbValue: 'port_congestion', label: 'ازدحام في الميناء / المطار / المنفذ',       labelEn: 'Port / Airport / Border Congestion' },
+  { value: 'vehicle',  dbValue: 'mechanical',      label: 'عطل فني أو ميكانيكي لمركبة النقل',          labelEn: 'Vehicle / Fleet Breakdown' },
+  { value: 'weather',  dbValue: 'weather',         label: 'ظروف مناخية وطرق طارئة',                    labelEn: 'Weather & Route Conditions' },
+  { value: 'factory',  dbValue: 'checkpoint',      label: 'تأخر تصاريح أو جاهزية المصنع للتحميل',      labelEn: 'Factory Gate & Loading Delays' },
+  { value: 'other',    dbValue: 'other',           label: 'سبب تشغيلي آخر',                            labelEn: 'Other Operational Reason' },
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -42,17 +42,18 @@ export default function LogisticsDelayReportModal({
   userId,
   onClose,
   onSubmitted,
-}: DelayReportModalProps) {
+}: DelayReportFormProps) {
   const supabase = createClient();
 
   const [delayReason, setDelayReason] = useState('');
-  const [otherReason, setOtherReason] = useState('');
   const [description, setDescription] = useState('');
   const [updatedEta, setUpdatedEta] = useState('');
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPreview, setProofPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const canSubmit = !!shipment?.id && !!delayReason && !!updatedEta && !submitting && !uploading;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -77,12 +78,14 @@ export default function LogisticsDelayReportModal({
       return;
     }
 
+    const reasonItem = DELAY_REASONS.find(r => r.value === delayReason);
+    if (!reasonItem) return;
+
     setSubmitting(true);
     let proofUrl: string | null = null;
     let proofFilename: string | null = null;
 
     try {
-      // Upload proof file if provided
       if (proofFile) {
         setUploading(true);
         const ext = proofFile.name.split('.').pop() || 'bin';
@@ -92,13 +95,11 @@ export default function LogisticsDelayReportModal({
           .upload(path, proofFile, { upsert: true });
 
         if (uploadErr) {
-          // Try fallback bucket
           const { data: uploadData2, error: uploadErr2 } = await supabase.storage
             .from('chat-attachments')
             .upload(path, proofFile, { upsert: true });
           if (!uploadErr2 && uploadData2) {
-            const { data: urlData } = supabase.storage.from('chat-attachments').getPublicUrl(path);
-            proofUrl = urlData.publicUrl;
+            proofUrl = `chat-attachments/${path}`;
             proofFilename = proofFile.name;
           }
         } else if (uploadData) {
@@ -109,7 +110,6 @@ export default function LogisticsDelayReportModal({
         setUploading(false);
       }
 
-      // Insert delay report
       const { error: insertErr } = await supabase
         .from('logistics_operational_delays')
         .insert({
@@ -117,8 +117,8 @@ export default function LogisticsDelayReportModal({
           order_id: shipment.order_id || null,
           partner_id: partnerId,
           reported_by: userId,
-          delay_reason: delayReason,
-          delay_reason_other: delayReason === 'other' ? otherReason : null,
+          delay_reason: reasonItem.dbValue,
+          delay_reason_other: reasonItem.dbValue === 'other' || reasonItem.value === 'factory' ? reasonItem.label : null,
           description: description || null,
           proof_url: proofUrl,
           proof_filename: proofFilename,
@@ -129,7 +129,6 @@ export default function LogisticsDelayReportModal({
 
       if (insertErr) throw insertErr;
 
-      // Update shipment ETA
       await supabase
         .from('logistics_shipments')
         .update({
@@ -138,19 +137,17 @@ export default function LogisticsDelayReportModal({
         })
         .eq('id', shipment.id);
 
-      // Notify customer via notification if order_id exists
       if (shipment.order_id) {
-        const reasonLabel = DELAY_REASONS.find(r => r.value === delayReason)?.label || delayReason;
         await supabase.from('notifications').insert({
-          user_id: null, // Will be set by admin or buyer lookup
+          user_id: null,
           type: 'shipment_delay',
           title: 'تأخير في شحنتك',
-          body: `تم الإبلاغ عن تأخير في شحنتك بسبب: ${reasonLabel}. وقت الوصول المتوقع الجديد: ${new Date(updatedEta).toLocaleDateString('ar-SA')}`,
+          body: `تم الإبلاغ عن تأخير في شحنتك بسبب: ${reasonItem.label}. وقت الوصول المتوقع الجديد: ${new Date(updatedEta).toLocaleDateString('ar-SA')}`,
           is_read: false,
           metadata: {
             shipment_id: shipment.id,
             order_id: shipment.order_id,
-            delay_reason: delayReason,
+            delay_reason: reasonItem.dbValue,
             updated_eta: updatedEta,
           },
         });
@@ -168,156 +165,100 @@ export default function LogisticsDelayReportModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700 bg-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/20 flex items-center justify-center">
-              <Icon name="ExclamationTriangleIcon" size={18} className="text-amber-400" />
-            </div>
-            <div>
-              <h3 className="font-bold text-white text-sm">الإبلاغ عن تأخير تشغيلي</h3>
-              <p className="text-xs text-slate-400">
-                {shipment.tracking_number ? `شحنة #${shipment.tracking_number}` : 'تحديث حالة الشحنة'}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg hover:bg-slate-700 flex items-center justify-center transition-colors"
-          >
-            <Icon name="XMarkIcon" size={16} className="text-slate-400" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
-          {/* Reason Selector */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-2">
-              سبب التأخير <span className="text-red-400">*</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {DELAY_REASONS.map(reason => (
-                <button
-                  key={reason.value}
-                  onClick={() => setDelayReason(reason.value)}
-                  className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-medium transition-all text-right ${
-                    delayReason === reason.value
-                      ? 'border-amber-500 bg-amber-500/20 text-amber-300' :'border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-600'
-                  }`}
-                >
-                  <span className="text-base">{reason.icon}</span>
-                  <span>{reason.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Other reason text */}
-          {delayReason === 'other' && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                وصف السبب <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                value={otherReason}
-                onChange={e => setOtherReason(e.target.value)}
-                placeholder="اكتب سبب التأخير..."
-                className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-              />
-            </div>
-          )}
-
-          {/* Description */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              ملاحظة التأخير (اختياري)
-            </label>
-            <textarea
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              placeholder="أضف أي تفاصيل إضافية عن التأخير..."
-              rows={3}
-              className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-none"
-            />
-          </div>
-
-          {/* Updated ETA */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              وقت الوصول المتوقع الجديد (ETA) <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="datetime-local"
-              value={updatedEta}
-              onChange={e => setUpdatedEta(e.target.value)}
-              className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500"
-            />
-          </div>
-
-          {/* Proof Upload */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              رفع إثبات (صورة / مستند) — اختياري
-            </label>
-            <label className="flex flex-col items-center justify-center gap-2 px-4 py-4 border-2 border-dashed border-slate-700 rounded-xl cursor-pointer hover:border-amber-500/50 transition-colors bg-slate-800/50">
-              <Icon name="CloudArrowUpIcon" size={24} className="text-slate-500" />
-              <span className="text-xs text-slate-400">
-                {proofFile ? proofFile.name : 'اضغط لرفع صورة أو مستند PDF'}
-              </span>
-              <input
-                type="file"
-                accept="image/*,.pdf,.doc,.docx"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-            </label>
-            {proofPreview && (
-              <div className="mt-2 rounded-xl overflow-hidden border border-slate-700">
-                <img src={proofPreview} alt="proof preview" className="w-full max-h-32 object-cover" />
-              </div>
-            )}
-          </div>
-
-          {/* Customer notification notice */}
-          <div className="flex items-start gap-2 px-3 py-2.5 bg-blue-500/10 border border-blue-500/30 rounded-xl">
-            <Icon name="BellAlertIcon" size={14} className="text-blue-400 mt-0.5 shrink-0" />
-            <p className="text-xs text-blue-300">
-              سيتم إرسال إشعار فوري للعميل بمجرد تسجيل التأخير مع وقت الوصول المتوقع الجديد.
-            </p>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="px-5 py-4 border-t border-slate-700 bg-slate-800 flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2.5 rounded-xl border border-slate-600 text-slate-300 text-sm font-medium hover:bg-slate-700 transition-colors"
-          >
-            إلغاء
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={submitting || uploading || !delayReason || !updatedEta}
-            className="flex-1 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
-          >
-            {submitting || uploading ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                {uploading ? 'جاري الرفع...' : 'جاري التسجيل...'}
-              </>
-            ) : (
-              <>
-                <Icon name="ExclamationTriangleIcon" size={14} />
-                تسجيل التأخير وإشعار العميل
-              </>
-            )}
-          </button>
-        </div>
+    <div className="space-y-4 pt-1">
+      {/* New ETA */}
+      <div>
+        <label className="block text-xs font-semibold text-slate-200 mb-1.5">
+          تاريخ ووقت الوصول المتوقع الجديد (New ETA) <span className="text-red-400">*</span>
+        </label>
+        <input
+          type="datetime-local"
+          value={updatedEta}
+          onChange={e => setUpdatedEta(e.target.value)}
+          className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500"
+        />
       </div>
+
+      {/* Reason dropdown */}
+      <div>
+        <label className="block text-xs font-semibold text-slate-200 mb-1.5">
+          سبب التأخير <span className="text-red-400">*</span>
+        </label>
+        <select
+          value={delayReason}
+          onChange={e => setDelayReason(e.target.value)}
+          className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500"
+        >
+          <option value="">— اختر سبب التأخير —</option>
+          {DELAY_REASONS.map(reason => (
+            <option key={reason.value} value={reason.value}>
+              {reason.label} ({reason.labelEn})
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Notes */}
+      <div>
+        <label className="block text-xs font-semibold text-slate-200 mb-1.5">
+          تفاصيل وملاحظات التأخير
+        </label>
+        <textarea
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+          placeholder="أضف أي تفاصيل إضافية عن التأخير..."
+          rows={3}
+          className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-none"
+        />
+      </div>
+
+      {/* Proof upload */}
+      <div>
+        <label className="block text-xs font-semibold text-slate-200 mb-1.5">
+          إرفاق مستند أو صورة إثبات - اختياري
+        </label>
+        <label className="flex flex-col items-center justify-center gap-2 px-4 py-4 border-2 border-dashed border-slate-600 rounded-xl cursor-pointer hover:border-amber-500/60 transition-colors bg-slate-800/50">
+          <Icon name="CloudArrowUpIcon" size={24} className="text-slate-400" />
+          <span className="text-xs text-slate-300 text-center">
+            {proofFile ? proofFile.name : 'إشعار ميناء رسمي، إيصال ورشة، أو مذكرة تأخير تخليص (صورة / PDF)'}
+          </span>
+          <input
+            type="file"
+            accept="image/*,.pdf,.doc,.docx"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+        </label>
+        {proofPreview && (
+          <div className="mt-2 rounded-xl overflow-hidden border border-slate-700">
+            <img src={proofPreview} alt="معاينة مستند إثبات التأخير" className="w-full max-h-32 object-cover" />
+          </div>
+        )}
+      </div>
+
+      {/* Action */}
+      <button
+        type="button"
+        onClick={handleSubmit}
+        disabled={!canSubmit}
+        className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+          canSubmit
+            ? 'bg-amber-500 hover:bg-amber-400 text-slate-900 shadow-lg shadow-amber-500/30 ring-2 ring-amber-300/60'
+            : 'bg-slate-700 text-slate-400 cursor-not-allowed opacity-70'
+        }`}
+      >
+        {submitting || uploading ? (
+          <>
+            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            {uploading ? 'جاري الرفع...' : 'جاري التسجيل...'}
+          </>
+        ) : (
+          <>
+            <Icon name="ExclamationTriangleIcon" size={16} />
+            تحديث ETA وإشعار العميل بالتأخير
+          </>
+        )}
+      </button>
     </div>
   );
 }

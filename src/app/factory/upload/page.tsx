@@ -5,10 +5,19 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
+import { whitenProductImage } from '@/lib/whiteBackground';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
+import {
+  PRODUCT_UNIT_OPTIONS,
+  CUSTOM_UNIT_VALUE,
+  CUSTOM_UNIT_LABEL,
+  CUSTOM_UNIT_PLACEHOLDER,
+  CUSTOM_UNIT_REQUIRED_ERROR,
+  resolveProductUnit,
+} from '@/lib/productUnits';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -26,6 +35,7 @@ interface FormState {
   currency: string;
   unit_price: string;
   unit: string;
+  custom_unit: string;
   minimum_order_qty: string;
   imageFile: File | null;
   imagePreview: string;
@@ -61,19 +71,14 @@ const CATEGORY_META: { value: ProductCategory; labelKey: string; icon: string }[
 ];
 
 const CURRENCIES = [
+  { code: 'YER', symbol: 'ر.ي', label: 'YER' },
   { code: 'USD', symbol: '$', label: 'USD' },
-  { code: 'SAR', symbol: 'ر.س', label: 'SAR' },
-  { code: 'AED', symbol: 'د.إ', label: 'AED' },
-  { code: 'QAR', symbol: 'ر.ق', label: 'QAR' },
-  { code: 'EGP', symbol: 'ج.م', label: 'EGP' },
-  { code: 'YER', symbol: '﷼', label: 'YER' },
-  { code: 'EUR', symbol: '€',   label: 'EUR' },
-  { code: 'GBP', symbol: '£',   label: 'GBP' },
-  { code: 'TRY', symbol: '₺',   label: 'TRY' },
-  { code: 'CNY', symbol: '¥',   label: 'CNY' },
 ];
 
-const UNITS = ['kg', 'ton', 'meter', 'unit', 'liter', 'piece', 'box', 'pallet', 'container', 'roll', 'sqm'];
+const ORIGIN_OPTIONS: { value: 'local' | 'international'; currency: 'YER' | 'USD'; labelAr: string }[] = [
+  { value: 'local', currency: 'YER', labelAr: 'محلي — ر.ي' },
+  { value: 'international', currency: 'USD', labelAr: 'دولي — $' },
+];
 
 const SALES_MODEL_OPTIONS: { value: SalesModel; labelAr: string; labelEn: string; icon: string; descAr: string }[] = [
   { value: 'b2b', labelAr: 'B2B — جملة', labelEn: 'B2B Wholesale', icon: '🏭', descAr: 'بيع بالجملة للشركات والموزعين' },
@@ -87,9 +92,10 @@ const INITIAL_FORM: FormState = {
   category: 'other',
   description: '',
   description_ar: '',
-  currency: 'USD',
+  currency: 'YER',
   unit_price: '',
   unit: 'kg',
+  custom_unit: '',
   minimum_order_qty: '',
   imageFile: null,
   imagePreview: '',
@@ -110,6 +116,7 @@ function ProductCardPreview({ form, isVerified, companyName }: ProductCardPrevie
   const fu = t.factoryUpload;
   const currency = CURRENCIES.find((c) => c.code === form.currency) || CURRENCIES[0];
   const categoryInfo = CATEGORY_META.find((c) => c.value === form.category);
+  const displayUnit = resolveProductUnit(form.unit, form.custom_unit) || '—';
   const hasImage = form.imagePreview || form.imageUrl;
   const hasPrice = form.unit_price && !isNaN(Number(form.unit_price)) && Number(form.unit_price) > 0;
   const hasMoq = form.minimum_order_qty && Number(form.minimum_order_qty) > 0;
@@ -195,7 +202,7 @@ function ProductCardPreview({ form, isVerified, companyName }: ProductCardPrevie
                   <>
                     {currency.symbol}
                     {Number(form.unit_price).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                    <span className="text-[10px] font-normal text-muted-foreground ml-0.5">/{form.unit}</span>
+                    <span className="text-[10px] font-normal text-muted-foreground ml-0.5">/{displayUnit}</span>
                   </>
                 ) : (
                   <span className="text-muted-foreground/40 text-sm font-normal">—</span>
@@ -208,7 +215,7 @@ function ProductCardPreview({ form, isVerified, companyName }: ProductCardPrevie
                 {hasMoq ? (
                   <>
                     {Number(form.minimum_order_qty).toLocaleString('en-US')}
-                    <span className="text-[10px] font-normal text-muted-foreground ml-0.5">{form.unit}</span>
+                    <span className="text-[10px] font-normal text-muted-foreground ml-0.5">{displayUnit}</span>
                   </>
                 ) : (
                   <span className="text-muted-foreground/40 text-sm font-normal">—</span>
@@ -385,7 +392,8 @@ export default function FactoryProductUploadPage() {
   }, [handleImageFile]);
 
   // Upload image to Supabase Storage
-  const uploadImageToStorage = async (file: File): Promise<string> => {
+  const uploadImageToStorage = async (originalFile: File): Promise<string> => {
+    const { file } = await whitenProductImage(originalFile);
     const ext = file.name.split('.').pop() || 'jpg';
     const fileName = `product-${user!.id}-${Date.now()}.${ext}`;
     const { data, error: uploadErr } = await supabase.storage
@@ -409,6 +417,7 @@ export default function FactoryProductUploadPage() {
       return fu.errorPriceRequired;
     if (!form.minimum_order_qty || isNaN(Number(form.minimum_order_qty)) || Number(form.minimum_order_qty) < 1)
       return fu.errorMoqRequired;
+    if (form.unit === CUSTOM_UNIT_VALUE && !form.custom_unit.trim()) return CUSTOM_UNIT_REQUIRED_ERROR;
     // ── Mandatory payout account check ──
     if (!selectedPayoutAccountId) {
       return 'يجب إضافة حساب استلام (بنكي أو محفظة) قبل نشر المنتج. يرجى إعداد حساب الدفع من ملفك الشخصي.';
@@ -450,7 +459,7 @@ export default function FactoryProductUploadPage() {
         category: form.category,
         unit_price: parseFloat(form.unit_price),
         currency: form.currency,
-        unit: form.unit,
+        unit: resolveProductUnit(form.unit, form.custom_unit),
         minimum_order_qty: parseInt(form.minimum_order_qty, 10),
         stock_quantity: 0,
         image_url: finalImageUrl || null,
@@ -460,6 +469,7 @@ export default function FactoryProductUploadPage() {
         is_active: true,
         is_published: false,
         factory_type: 'local',
+        origin_type: form.currency === 'USD' ? 'international' : 'local',
         lead_time_days: 14,
         payout_account_ref: selectedPayoutAccountId || null,
         sales_model: form.sales_model,
@@ -758,15 +768,15 @@ export default function FactoryProductUploadPage() {
                     <span className="text-red-500 mr-1">*</span>
                   </label>
                   <div className="flex flex-col sm:flex-row gap-2">
-                    {/* Currency selector */}
+                    {/* Currency selector (strict: YER for local, USD for international) */}
                     <select
                       value={form.currency}
                       onChange={(e) => set('currency', e.target.value)}
                       className="w-full sm:w-36 px-3 py-2.5 border border-border rounded-xl text-sm text-foreground bg-background focus:outline-none focus:border-primary transition-colors sm:shrink-0"
                     >
-                      {CURRENCIES.map((c) => (
-                        <option key={c.code} value={c.code}>
-                          {c.symbol} {c.code}
+                      {ORIGIN_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.currency}>
+                          {o.labelAr}
                         </option>
                       ))}
                     </select>
@@ -785,13 +795,25 @@ export default function FactoryProductUploadPage() {
                     <select
                       value={form.unit}
                       onChange={(e) => set('unit', e.target.value)}
-                      className="w-full sm:w-24 px-2 py-2.5 border border-border rounded-xl text-sm text-foreground bg-background focus:outline-none focus:border-primary transition-colors sm:shrink-0"
+                      className="w-full sm:w-52 px-2 py-2.5 border border-border rounded-xl text-sm text-foreground bg-background focus:outline-none focus:border-primary transition-colors sm:shrink-0"
                     >
-                      {UNITS.map((u) => (
-                        <option key={u} value={u}>{u}</option>
+                      {PRODUCT_UNIT_OPTIONS.map((u) => (
+                        <option key={u.value} value={u.value}>{u.label}</option>
                       ))}
                     </select>
                   </div>
+                  {form.unit === CUSTOM_UNIT_VALUE && (
+                    <div className="mt-3">
+                      <label className="block text-xs font-bold text-muted-foreground mb-1.5 text-right">{CUSTOM_UNIT_LABEL}</label>
+                      <input
+                        type="text"
+                        value={form.custom_unit}
+                        onChange={(e) => set('custom_unit', e.target.value)}
+                        placeholder={CUSTOM_UNIT_PLACEHOLDER}
+                        className="w-full px-3 py-2.5 border border-border rounded-xl text-sm text-foreground bg-background focus:outline-none focus:border-primary transition-colors"
+                      />
+                    </div>
+                  )}
                   <p className="text-[11px] text-muted-foreground mt-1 text-right">{fu.currencyPrice}</p>
                 </div>
 
@@ -811,7 +833,7 @@ export default function FactoryProductUploadPage() {
                       dir="ltr"
                       className="flex-1 px-3 py-2.5 border border-border rounded-xl text-sm text-foreground bg-background focus:outline-none focus:border-primary transition-colors text-left"
                     />
-                    <span className="text-sm text-muted-foreground shrink-0">{form.unit}</span>
+                    <span className="text-sm text-muted-foreground shrink-0">{resolveProductUnit(form.unit, form.custom_unit) || '—'}</span>
                   </div>
                   <p className="text-[11px] text-muted-foreground mt-1 text-right">{fu.moqHint}</p>
                 </div>

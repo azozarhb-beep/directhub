@@ -214,11 +214,14 @@ function RFQCheckoutContent() {
   const currency = searchParams.get('currency') || 'USD';
   const incoterms = searchParams.get('incoterms') || 'FOB';
   const paymentTermsParam = searchParams.get('paymentTerms') || '';
+  const rfqIdParam = searchParams.get('rfq_id') || '';
+  const responseIdParam = searchParams.get('response_id') || '';
 
   const [step, setStep] = useState<CheckoutStep>('addresses');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [confirmedRef, setConfirmedRef] = useState('');
+  const [confirmedOrderId, setConfirmedOrderId] = useState('');
 
   // Billing address
   const [billing, setBilling] = useState<AddressForm>(emptyAddress());
@@ -318,6 +321,60 @@ function RFQCheckoutContent() {
       const orderRef = rfqRef || `RFQ-${Date.now()}`;
       const finalShipping = sameAsBilling ? billing : shipping;
 
+      // Resolve the accepted quote total so the escrow order never defaults to $0
+      let orderTotal = 0;
+      let orderCurrency = currency;
+      let quoteFactoryId: string | null = null;
+      try {
+        let quoteRow: { total_price: number | null; unit_price: number | null; currency: string | null; rfq_id: string | null; manufacturer_id: string | null } | null = null;
+        if (responseIdParam) {
+          const { data } = await supabase
+            .from('rfq_responses')
+            .select('total_price, unit_price, currency, rfq_id, manufacturer_id')
+            .eq('id', responseIdParam)
+            .maybeSingle();
+          quoteRow = data as any;
+        } else if (rfqIdParam) {
+          const { data } = await supabase
+            .from('rfq_responses')
+            .select('total_price, unit_price, currency, rfq_id, manufacturer_id')
+            .eq('rfq_id', rfqIdParam)
+            .eq('is_accepted', true)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          quoteRow = data as any;
+        }
+        if (quoteRow) {
+          quoteFactoryId = quoteRow.manufacturer_id || null;
+          if (quoteRow.currency) orderCurrency = quoteRow.currency;
+          const qtyNum = parseFloat(quantity);
+          if (quoteRow.total_price && Number(quoteRow.total_price) > 0) {
+            orderTotal = Number(quoteRow.total_price);
+          } else if (quoteRow.unit_price && !isNaN(qtyNum) && qtyNum > 0) {
+            orderTotal = Number(quoteRow.unit_price) * qtyNum;
+          } else if (quoteRow.unit_price && quoteRow.rfq_id) {
+            const { data: rfqRow } = await supabase
+              .from('rfq_requests')
+              .select('quantity')
+              .eq('id', quoteRow.rfq_id)
+              .maybeSingle();
+            const rfqQty = Number((rfqRow as any)?.quantity) || 0;
+            orderTotal = Number(quoteRow.unit_price) * rfqQty;
+          }
+        }
+      } catch {
+        // fall through to param-based fallback below
+      }
+      if (!orderTotal) {
+        const priceNum = parseFloat(targetPrice);
+        const qtyNum = parseFloat(quantity);
+        if (!isNaN(priceNum) && priceNum > 0) {
+          orderTotal = !isNaN(qtyNum) && qtyNum > 0 ? priceNum * qtyNum : priceNum;
+        }
+      }
+      orderTotal = Math.round(orderTotal * 100) / 100;
+
       // Insert RFQ checkout order with pending_verification escrow status
       const { data: order, error: orderErr } = await supabase
         .from('orders')
@@ -326,18 +383,19 @@ function RFQCheckoutContent() {
           order_number: orderRef,
           status: 'pending',
           escrow_status: 'pending_verification',
-          items: [{ name: productName, supplier: supplierName, quantity, unit, targetPrice, currency }],
+          items: [{ name: productName, supplier: supplierName, quantity, unit, targetPrice, currency: orderCurrency }],
           shipping_address: finalShipping,
           billing_address: billing,
           payment_method: selectedPayment,
-          subtotal: 0,
+          subtotal: orderTotal,
           shipping_cost: 0,
-          total: 0,
+          total: orderTotal,
           notes: paymentNotes,
           order_category: 'wholesale',
           platform_commission: 0,
           commission_rate_label: 'TBD',
           payment_reference: transactionRef.trim(),
+          ...(quoteFactoryId ? { factory_user_id: quoteFactoryId } : {}),
         })
         .select('id, order_number')
         .single();
@@ -368,6 +426,7 @@ function RFQCheckoutContent() {
       });
 
       setConfirmedRef(order.order_number);
+      setConfirmedOrderId(order.id);
 
       // ── Dual notification: in-app bell + email confirmation ──────────────
       sendDualNotification({
@@ -962,12 +1021,13 @@ function RFQCheckoutContent() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                  <Link
-                    href="/orders"
-                    className="px-6 py-3 bg-primary text-primary-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2"
+                  <button
+                    type="button"
+                    onClick={() => router.push(confirmedOrderId ? `/orders/${confirmedOrderId}` : '/orders')}
+                    className="px-6 py-3 bg-primary text-primary-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Icon name="TruckIcon" size={16} /> {L.trackOrder}
-                  </Link>
+                  </button>
                   <Link
                     href="/"
                     className="px-6 py-3 border border-border text-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-muted transition-colors"

@@ -48,6 +48,18 @@ interface SearchFactory {
   avg_rating?: number;
 }
 
+interface SectorOption {
+  id: string;
+  name_ar: string;
+  name_en: string | null;
+}
+
+interface SectorProductOption {
+  id: string;
+  name_ar: string;
+  name_en: string | null;
+}
+
 interface FilterState {
   category: string;
   country: string;
@@ -66,6 +78,8 @@ interface FilterState {
   warrantyMin: string;
   weightMax: string;
   salesModel?: string;
+  sectorId?: string;
+  sectorProduct?: string;
 }
 
 // ─── Static (non-translated) constants ───────────────────────────────────────
@@ -712,7 +726,7 @@ const ProductCard: React.FC<{ product: SearchProduct; view: 'grid' | 'list'; inS
           {buyerMode === 'b2b' ? (
             <>
               <Link
-                href={`/chat/${product.id}`}
+                href={`/messaging?productId=${encodeURIComponent(product.id)}`}
                 onClick={(e) => e.stopPropagation()}
                 className="flex-1 flex items-center justify-center gap-0.5 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-bold rounded-lg hover:bg-emerald-100 transition-colors"
                 dir="rtl"
@@ -841,8 +855,11 @@ const FilterSidebar: React.FC<{
   countries: string[];
   activeCount: number;
   activeTab: 'products' | 'factories';
+  sectors: SectorOption[];
+  sectorProducts: SectorProductOption[];
   t: any;
-}> = ({ filters, onChange, onReset, countries, activeCount, activeTab, t }) => {
+}> = ({ filters, onChange, onReset, countries, activeCount, activeTab, sectors, sectorProducts, t }) => {
+  const { isRTL } = useLanguage();
   const allCountries = [...new Set([...COUNTRY_OPTIONS, ...countries])].sort();
   const fl = t.search.filterLabels;
   const st = t.search.supplierType;
@@ -988,6 +1005,44 @@ const FilterSidebar: React.FC<{
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Industry Sector — factories only (reads industry_sectors / sector_products) */}
+      {activeTab === 'factories' && sectors.length > 0 && (
+        <div className="bg-card border border-border rounded-xl p-4 space-y-2.5">
+          <p className="text-xs font-bold text-foreground uppercase tracking-wide">
+            {isRTL ? 'القطاع الصناعي' : 'Industry Sector'}
+          </p>
+          <select
+            value={filters.sectorId || 'all'}
+            onChange={(e) => {
+              onChange('sectorId', e.target.value);
+              onChange('sectorProduct', 'all');
+            }}
+            className="w-full h-9 px-3 rounded-lg border border-border bg-background text-foreground text-xs font-medium focus:outline-none focus:border-primary"
+          >
+            <option value="all">{isRTL ? 'جميع القطاعات' : 'All sectors'}</option>
+            {sectors.map((s) => (
+              <option key={s.id} value={s.id}>
+                {isRTL ? s.name_ar : (s.name_en || s.name_ar)}
+              </option>
+            ))}
+          </select>
+          {filters.sectorId && filters.sectorId !== 'all' && sectorProducts.length > 0 && (
+            <select
+              value={filters.sectorProduct || 'all'}
+              onChange={(e) => onChange('sectorProduct', e.target.value)}
+              className="w-full h-9 px-3 rounded-lg border border-border bg-background text-foreground text-xs font-medium focus:outline-none focus:border-primary"
+            >
+              <option value="all">{isRTL ? 'جميع المنتجات' : 'All products'}</option>
+              {sectorProducts.map((sp) => (
+                <option key={sp.id} value={isRTL ? sp.name_ar : (sp.name_en || sp.name_ar)}>
+                  {isRTL ? sp.name_ar : (sp.name_en || sp.name_ar)}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       )}
 
@@ -1466,6 +1521,8 @@ function SearchResults() {
   const [dbFactories, setDbFactories] = useState<SearchFactory[]>([]);
   const [dbLoading, setDbLoading] = useState(true);
   const [countries, setCountries] = useState<string[]>([]);
+  const [sectors, setSectors] = useState<SectorOption[]>([]);
+  const [sectorProducts, setSectorProducts] = useState<SectorProductOption[]>([]);
 
   useEffect(() => {
     setQuery(queryParam);
@@ -1583,7 +1640,29 @@ function SearchResults() {
       if (filters.country !== 'all') q = q.eq('country', filters.country);
       if (filters.supplierType !== 'all') q = q.eq('seller_category', filters.supplierType);
 
-      const { data, error } = await q.limit(50);
+      // Local vs international scope + verified-first ranking resolved in the database
+      const { data: rankRows } = await supabase
+        .from('factory_registrations')
+        .select('user_id, is_verified, origin_type')
+        .limit(5000);
+      const rankMap = new Map<string, { verified: boolean; origin: string }>();
+      (rankRows || []).forEach((r: any) => {
+        if (r.user_id) rankMap.set(r.user_id, { verified: Boolean(r.is_verified), origin: String(r.origin_type || 'local') });
+      });
+      if (scopeFilter !== 'all') {
+        const wantOrigin = scopeFilter === 'global' ? 'international' : 'local';
+        const scopedIds = [...rankMap.entries()].filter(([, v]) => v.origin === wantOrigin).map(([id]) => id);
+        if (scopedIds.length === 0) {
+          setDbFactories([]);
+          setDbLoading(false);
+          return;
+        }
+        q = q.in('id', scopedIds);
+      }
+
+      const { data, error } = await q
+        .order('created_at', { ascending: false })
+        .limit(50);
       if (!error && data && data.length > 0) {
         const factoryIds = data.map((f: any) => f.id);
         const { data: productsData } = await supabase
@@ -1597,18 +1676,28 @@ function SearchResults() {
           countMap[p.manufacturer_id] = (countMap[p.manufacturer_id] || 0) + 1;
         });
 
-        const enriched = data.map((factory: any) => ({
-          ...factory,
-          product_count: countMap[factory.id] || 0,
-        }));
+        const enriched = data
+          .map((factory: any) => ({
+            ...factory,
+            product_count: countMap[factory.id] || 0,
+            is_verified: rankMap.get(factory.id)?.verified ?? false,
+            origin_type: rankMap.get(factory.id)?.origin ?? 'local',
+          }))
+          .sort((a: any, b: any) => {
+            if (a.is_verified !== b.is_verified) return a.is_verified ? -1 : 1;
+            if (a.origin_type !== b.origin_type) return a.origin_type === 'local' ? -1 : 1;
+            return 0;
+          });
         setDbFactories(enriched);
+      } else if (!error && filters.sectorId && filters.sectorId !== 'all') {
+        setDbFactories([]);
       }
     } catch {
       // keep fallback
     } finally {
       setDbLoading(false);
     }
-  }, [query, filters.country, filters.supplierType]);
+  }, [query, filters.country, filters.supplierType, filters.sectorId, filters.sectorProduct, scopeFilter]);
 
   useEffect(() => {
     if (activeTab === 'products') {
@@ -1652,6 +1741,8 @@ function SearchResults() {
       warrantyMin: '',
       weightMax: '',
       salesModel: 'all',
+      sectorId: 'all',
+      sectorProduct: 'all',
     });
   };
 
@@ -1769,8 +1860,8 @@ function SearchResults() {
 
   const activeFilterCount = [
     filters.supplierType !== 'all',
+    !!filters.sectorId && filters.sectorId !== 'all',
     filters.category !== 'all',
-    filters.country !== 'all',
     !!filters.priceMin,
     !!filters.priceMax,
     !!filters.moqMin,
@@ -2020,6 +2111,8 @@ function SearchResults() {
               countries={countries}
               activeCount={activeFilterCount}
               activeTab={activeTab}
+              sectors={sectors}
+              sectorProducts={sectorProducts}
               t={t}
             />
           </div>
@@ -2214,6 +2307,8 @@ function SearchResults() {
               countries={countries}
               activeCount={activeFilterCount}
               activeTab={activeTab}
+              sectors={sectors}
+              sectorProducts={sectorProducts}
               t={t}
             />
             <div className="mt-6 pt-4 border-t border-border">

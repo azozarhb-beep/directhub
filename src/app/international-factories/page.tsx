@@ -122,7 +122,8 @@ export default function InternationalFactoriesControlRoom() {
       const { data, error } = await supabase
         .from('factory_registrations')
         .select('*, user_profiles(full_name, email)')
-        .or('seller_category.eq.international_factory,factory_type.eq.international')
+        .eq('origin_type', 'international')
+        .order('is_verified', { ascending: false })
         .order('submitted_at', { ascending: false });
 
       if (error) throw error;
@@ -151,7 +152,7 @@ export default function InternationalFactoriesControlRoom() {
     setLoadingProducts(true);
     try {
       const { data, error } = await supabase
-        .from('products')
+        .from('manufacturer_products')
         .select('id, name, category, unit_price, stock_quantity, is_active, created_at, manufacturer_id')
         .eq('origin_type', 'international')
         .order('created_at', { ascending: false })

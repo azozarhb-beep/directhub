@@ -73,6 +73,27 @@ export default function DisputesPage() {
   const isFactory = userRole === 'manufacturer';
   const localeTag = language === 'ar' ? 'ar-SA' : language === 'zh' ? 'zh-CN' : language === 'tr' ? 'tr-TR' : 'en-US';
 
+  const [factoryHubPath, setFactoryHubPath] = useState('/manufacturer/dashboard');
+
+  useEffect(() => {
+    if (!isFactory) return;
+    try {
+      const ref = document.referrer ? new URL(document.referrer) : null;
+      const refPath = ref && ref.origin === window.location.origin ? ref.pathname : '';
+      const hubPaths = ['/factory/local-dashboard', '/manufacturer/international-dashboard', '/manufacturer/dashboard', '/manufacturer/erp'];
+      const match = hubPaths.find((p) => refPath.startsWith(p));
+      if (match) {
+        sessionStorage.setItem('disputes_factory_hub', match);
+        setFactoryHubPath(match);
+      } else {
+        const saved = sessionStorage.getItem('disputes_factory_hub');
+        if (saved) setFactoryHubPath(saved);
+      }
+    } catch {
+      // keep default hub path
+    }
+  }, [isFactory]);
+
   useEffect(() => {
     if (authLoading) return;
     if (!user) router.push('/login');
@@ -194,13 +215,24 @@ export default function DisputesPage() {
               <p className="text-sm text-muted-foreground">{d.subtitle}</p>
             </div>
           </div>
-          <a
-            href="/orders"
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-semibold"
-          >
-            <Icon name="PlusIcon" size={16} />
-            {d.openNew}
-          </a>
+          <div className="flex items-center gap-2 flex-wrap">
+            {isFactory && (
+              <a
+                href={factoryHubPath}
+                className="flex items-center gap-2 px-4 py-2 border border-border bg-card text-foreground rounded-xl text-sm font-semibold hover:bg-muted transition-colors"
+              >
+                <Icon name="ArrowRightIcon" size={16} className={dir === 'rtl' ? '' : 'rotate-180'} />
+                الرجوع إلى غرفة التحكم
+              </a>
+            )}
+            <a
+              href="/orders"
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-semibold"
+            >
+              <Icon name="PlusIcon" size={16} />
+              {d.openNew}
+            </a>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

@@ -32,6 +32,20 @@ interface RegistrationForm {
   main_products: string;
   certifications: string[];
   industry_sector: string;
+  sector_id: string;
+}
+
+interface SectorRow {
+  id: string;
+  name_ar: string;
+  name_en: string | null;
+  slug: string | null;
+}
+
+interface SectorProductRow {
+  id: string;
+  name_ar: string;
+  name_en: string | null;
 }
 
 // Yemeni governorates for local factory and local supplier
@@ -41,15 +55,41 @@ const YEMENI_GOVERNORATES = [
   'الجوف', 'المحويت', 'المهرة', 'ريمة', 'سقطرى', 'أمانة العاصمة',
 ];
 
+// Cascading industrial zones per Yemeni governorate
+const YEMEN_INDUSTRIAL_ZONES: Record<string, string[]> = {
+  'صنعاء': ['ذهبان وبني الحارث', 'منطقة الحصبة الصناعية', 'منطقة الحثيلي الصناعية', 'منطقة السبعين', 'عصر / مذبح', 'أخرى / مربع عام'],
+  'عدن': ['المنطقة الصناعية - المنصورة', 'المنطقة الحرة الصناعية', 'المعلا', 'بئر فضل'],
+  'تعز': ['منطقة الحوبان الصناعية', 'البرح', 'وسط المدينة'],
+  'الحديدة': ['المنطقة الصناعية كيلو 7', 'المنطقة الصناعية كيلو 16', 'ميناء الحديدة والصليف'],
+  'حضرموت': ['منطقة الريان الصناعية', 'المكلا', 'سيئون'],
+};
+const YEMEN_DEFAULT_ZONES = ['المنطقة الصناعية الرئيسية', 'وسط المحافظة', 'أخرى'];
+
+function getYemenZones(governorate: string): string[] {
+  return YEMEN_INDUSTRIAL_ZONES[governorate] ?? YEMEN_DEFAULT_ZONES;
+}
+
+// International hubs per country (others fall back to free text)
+const SAUDI_COUNTRY = 'المملكة العربية السعودية';
+const CHINA_COUNTRY = 'الصين';
+const INTERNATIONAL_HUBS: Record<string, string[]> = {
+  [SAUDI_COUNTRY]: ['المدينة الصناعية الثانية بالرياض', 'سدير للصناعة', 'الجبيل الصناعية', 'المدينة الصناعية بجدة', 'الدمام الصناعية', 'أخرى'],
+  [CHINA_COUNTRY]: ['Guangdong – Foshan Industrial Park', 'Zhejiang – Yiwu Trade Zone', 'Shenzhen', 'Guangzhou', 'Other Hub'],
+};
+
 // World countries in Arabic for international factory
 const INTERNATIONAL_COUNTRIES_AR = [
-  // الدول العربية
-  'اليمن', 'المملكة العربية السعودية', 'الإمارات العربية المتحدة', 'الكويت', 'قطر', 'البحرين', 'عُمان',
-  'مصر', 'الأردن', 'العراق', 'سوريا', 'لبنان', 'فلسطين', 'ليبيا',
+  // السعودية ودول الخليج (GCC) والدول العربية الرئيسية
+  'المملكة العربية السعودية', 'الإمارات العربية المتحدة', 'قطر', 'الكويت', 'البحرين', 'عُمان',
+  'مصر', 'الأردن',
+  // الدول الآسيوية الرئيسية
+  'الصين', 'تركيا', 'الهند', 'باكستان',
+  // بقية الدول العربية
+  'اليمن', 'العراق', 'سوريا', 'لبنان', 'فلسطين', 'ليبيا',
   'تونس', 'الجزائر', 'المغرب', 'السودان', 'الصومال', 'موريتانيا',
   'جيبوتي', 'جزر القمر',
   // آسيا
-  'الصين', 'تركيا', 'الهند', 'باكستان', 'بنغلاديش', 'إندونيسيا', 'ماليزيا',
+  'بنغلاديش', 'إندونيسيا', 'ماليزيا',
   'الفلبين', 'فيتنام', 'تايلاند', 'سنغافورة', 'اليابان', 'كوريا الجنوبية',
   'كوريا الشمالية', 'تايوان', 'هونغ كونغ', 'إيران', 'أفغانستان', 'نيبال',
   'سريلانكا', 'ميانمار', 'كمبوديا', 'لاوس', 'منغوليا', 'كازاخستان',
@@ -154,19 +194,35 @@ function getDialInfo(country: string) {
   return COUNTRY_DIAL_INFO[country] ?? { dial: '+967', placeholder: '7XX XXX XXX', maxLen: 9 };
 }
 
-// Master taxonomy sectors for smart routing
-const INDUSTRY_SECTORS = [
-  { value: 'pharmaceuticals-raw-materials', labelAr: 'الأدوية والمواد الخام الدوائية', labelEn: 'Pharmaceuticals & Raw Drug Materials' },
-  { value: 'raw-materials-chemicals', labelAr: 'المواد الخام والمواد الكيميائية', labelEn: 'Raw Materials & Chemicals' },
-  { value: 'electronics-mobile-phones', labelAr: 'الإلكترونيات والهواتف', labelEn: 'Electronics & Mobile Phones' },
-  { value: 'automotive-vehicles', labelAr: 'السيارات والمركبات', labelEn: 'Automotive & Vehicles' },
-  { value: 'beauty-personal-care', labelAr: 'أدوات التجميل والعناية', labelEn: 'Beauty & Personal Care' },
-  { value: 'health-medical-equipment', labelAr: 'الصحة والمعدات الطبية', labelEn: 'Health & Medical Equipment' },
-  { value: 'home-appliances-furniture', labelAr: 'الأدوات المنزلية', labelEn: 'Home Appliances & Furniture' },
-  { value: 'construction-building-materials', labelAr: 'مواد البناء والإنشاءات', labelEn: 'Construction & Building Materials' },
-  { value: 'office-school-supplies', labelAr: 'اللوازم المكتبية والمدرسية', labelEn: 'Office & School Supplies' },
-  { value: 'toys-sports-entertainment', labelAr: 'الألعاب والترفيه', labelEn: 'Toys, Sports & Entertainment' },
-];
+// Country name (Arabic) -> ISO code used by the zones table
+const COUNTRY_ISO: Record<string, string> = {
+  'اليمن': 'YE',
+  'الصين': 'CN',
+  'تركيا': 'TR',
+  'المملكة العربية السعودية': 'SA',
+  'الإمارات العربية المتحدة': 'AE',
+  'مصر': 'EG',
+  'الهند': 'IN',
+  'عُمان': 'OM',
+};
+
+interface ZoneOption {
+  zone_id: string;
+  country_code: string;
+  province_city: string;
+  zone_name: string;
+  has_rep: boolean;
+}
+
+interface DuplicateInfo {
+  status: 'ok' | 'assigned' | 'unassigned';
+  matched_field: string | null;
+  registration_id: string | null;
+  company_name: string | null;
+  rep_id: string | null;
+  rep_name: string | null;
+  is_own: boolean;
+}
 
 const CERTIFICATIONS_OPTIONS = [
   'ISO 9001', 'ISO 14001', 'ISO 45001', 'ISO 22000', 'HACCP',
@@ -194,6 +250,7 @@ const EMPTY_FORM: RegistrationForm = {
   main_products: '',
   certifications: [],
   industry_sector: '',
+  sector_id: '',
 };
 
 function FactoryRegisterPageInner() {
@@ -216,9 +273,20 @@ function FactoryRegisterPageInner() {
     try {
       if (code) {
         window.localStorage.setItem('dh_referral_code', code);
-        document.cookie = `dh_referral_code=${encodeURIComponent(code)}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
+        window.localStorage.setItem(
+          'dh_referral_code_expires_at',
+          String(Date.now() + 180 * 24 * 60 * 60 * 1000)
+        );
+        document.cookie = `dh_referral_code=${encodeURIComponent(code)}; path=/; max-age=${60 * 60 * 24 * 180}; SameSite=Lax`;
       } else {
-        code = window.localStorage.getItem('dh_referral_code') || '';
+        const expiresAt = Number(window.localStorage.getItem('dh_referral_code_expires_at') || 0);
+        if (expiresAt && Date.now() > expiresAt) {
+          window.localStorage.removeItem('dh_referral_code');
+        window.localStorage.removeItem('dh_referral_code_expires_at');
+          window.localStorage.removeItem('dh_referral_code_expires_at');
+        } else {
+          code = window.localStorage.getItem('dh_referral_code') || '';
+        }
       }
     } catch {
       // storage unavailable
@@ -244,6 +312,101 @@ function FactoryRegisterPageInner() {
   const [existingReg, setExistingReg] = useState<any>(null);
   const [checkingExisting, setCheckingExisting] = useState(true);
   const [localPhone, setLocalPhone] = useState('');
+  const [sectors, setSectors] = useState<SectorRow[]>([]);
+  const [sectorProducts, setSectorProducts] = useState<SectorProductRow[]>([]);
+  const [zoneOptions, setZoneOptions] = useState<ZoneOption[]>([]);
+  const [selectedZoneId, setSelectedZoneId] = useState('');
+  const [duplicate, setDuplicate] = useState<DuplicateInfo | null>(null);
+  const [linkRequestSent, setLinkRequestSent] = useState(false);
+  const [requestingLink, setRequestingLink] = useState(false);
+
+  const countryIso = COUNTRY_ISO[form.country] || '';
+
+  useEffect(() => {
+    if (!countryIso) {
+      setZoneOptions([]);
+      setSelectedZoneId('');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error: zonesErr } = await supabase.rpc('list_active_zones', { p_country_code: countryIso });
+      if (cancelled) return;
+      setZoneOptions(zonesErr ? [] : ((data as ZoneOption[]) ?? []));
+      setSelectedZoneId('');
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countryIso]);
+
+  const runDuplicateCheck = async (): Promise<DuplicateInfo | null> => {
+    const { data, error: dupErr } = await supabase.rpc('check_registration_duplicate', {
+      p_commercial_register: form.commercial_registration_number,
+      p_phone: form.contact_phone,
+    });
+    if (dupErr) {
+      console.error('[Duplicate check] failed:', dupErr.message);
+      return null;
+    }
+    const row = (Array.isArray(data) ? data[0] : data) as DuplicateInfo | undefined;
+    if (!row || row.status === 'ok' || row.is_own) {
+      setDuplicate(null);
+      return null;
+    }
+    setDuplicate(row);
+    return row;
+  };
+
+  const requestRepSupervision = async () => {
+    if (!duplicate?.registration_id) return;
+    setRequestingLink(true);
+    const { error: reqErr } = await supabase.rpc('request_rep_supervision', {
+      p_registration_id: duplicate.registration_id,
+    });
+    setRequestingLink(false);
+    if (reqErr) {
+      setError(reqErr.message);
+      return;
+    }
+    setLinkRequestSent(true);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error: sectorsErr } = await supabase
+        .from('industry_sectors')
+        .select('id, name_ar, name_en, slug')
+        .order('sort_order', { ascending: true });
+      if (!cancelled && !sectorsErr) setSectors((data as SectorRow[]) ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!form.sector_id) {
+      setSectorProducts([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error: prodErr } = await supabase
+        .from('sector_products')
+        .select('id, name_ar, name_en')
+        .eq('sector_id', form.sector_id)
+        .order('created_at', { ascending: true });
+      if (!cancelled && !prodErr) setSectorProducts((data as SectorProductRow[]) ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.sector_id]);
 
   // Sync dial code when country changes
   useEffect(() => {
@@ -298,6 +461,7 @@ function FactoryRegisterPageInner() {
           main_products: Array.isArray(data.main_products) ? data.main_products.join(', ') : '',
           certifications: Array.isArray(data.certifications) ? data.certifications : [],
           industry_sector: data.industry_sector || '',
+          sector_id: data.sector_id || '',
         });
       } else {
         setForm((f) => ({ ...f, contact_email: '' }));
@@ -330,6 +494,14 @@ function FactoryRegisterPageInner() {
 
     setLoading(true);
     try {
+      // ── Universal duplicate prevention (commercial register + phone) ──────
+      const dup = await runDuplicateCheck();
+      if (dup) {
+        setStep(dup.matched_field === 'commercial_register' ? 2 : 3);
+        setLoading(false);
+        return;
+      }
+
       const sellerCategory =
         form.factory_type === 'local' ? 'local_factory' :
         form.factory_type === 'international' ? 'international_factory' : 'local_supplier';
@@ -391,6 +563,7 @@ function FactoryRegisterPageInner() {
         main_products: form.main_products.split(',').map((p) => p.trim()).filter(Boolean),
         certifications: form.certifications,
         industry_sector: form.industry_sector || null,
+        sector_id: form.sector_id || null,
         registration_status: registrationStatus,
         kyc_status: 'pending',
         is_approved: isApproved,
@@ -434,6 +607,14 @@ function FactoryRegisterPageInner() {
         if (bindErr) console.error('[Referral] bind failed:', bindErr.message);
       }
 
+      // ── Territory routing: match zone -> field rep, or mark "بانتظار التعيين" ──
+      if (facilityId && selectedZoneId) {
+        const { error: zoneErr } = await supabase.rpc('bind_registration_to_zone', {
+          p_zone_id: selectedZoneId,
+        });
+        if (zoneErr) console.error('[Territory] zone bind failed:', zoneErr.message);
+      }
+
       // ── Notify user: factory registered ─────────────────────────────────
       const notifResult = await createNotification(supabase, 'factory_registered', user!.id, 'ar', {
         companyName: form.company_name.trim(),
@@ -447,9 +628,29 @@ function FactoryRegisterPageInner() {
         // ignore
       }
 
-      router.push('/manufacturer/dashboard?registered=1');
+      // Keep the profile in sync so every later routing check agrees with the chosen type
+      if (form.factory_type !== 'local_supplier') {
+        try {
+          await supabase
+            .from('user_profiles')
+            .update({ seller_category: sellerCategory, country: form.country })
+            .eq('id', user!.id);
+        } catch {
+          // non-blocking
+        }
+      }
+
+      // Strict routing by factory type: international → International Control Room, local → Local Dashboard
+      router.push(
+        form.factory_type === 'international' ?'/manufacturer/international-dashboard?registered=1' :'/manufacturer/dashboard?registered=1'
+      );
     } catch (err: any) {
-      setError(err.message || t.common.error);
+      const msg: string = err?.message || '';
+      if (err?.code === '23505' && /uq_factory_regs_(commercial_register|phone)/.test(msg)) {
+        setError('هذا المصنع/المورد مسجل مسبقاً. تواصل مع الدعم أو أرسل طلب ربط وإشراف ميداني.');
+      } else {
+        setError(msg || t.common.error);
+      }
     } finally {
       setLoading(false);
     }
@@ -530,6 +731,34 @@ function FactoryRegisterPageInner() {
           <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm flex items-center gap-2 mb-5">
             <Icon name="ExclamationCircleIcon" size={16} />
             {error}
+          </div>
+        )}
+
+        {/* Duplicate prevention banners */}
+        {duplicate?.status === 'assigned' && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm flex items-start gap-2 mb-5">
+            <Icon name="NoSymbolIcon" size={16} className="mt-0.5 shrink-0" />
+            <span>{`هذا المصنع/المورد مسجل مسبقاً ومسند للمشرف الميداني (${duplicate.rep_name || '—'}).`}</span>
+          </div>
+        )}
+        {duplicate?.status === 'unassigned' && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm mb-5 space-y-3">
+            <div className="flex items-start gap-2">
+              <Icon name="ExclamationTriangleIcon" size={16} className="mt-0.5 shrink-0" />
+              <span>المصنع مسجل مسبقاً بدون مشرف، هل تريد إرسال طلب ربط وإشراف ميداني؟</span>
+            </div>
+            {linkRequestSent ? (
+              <p className="text-emerald-700 font-semibold text-xs">تم إرسال طلب الربط والإشراف الميداني إلى الإدارة.</p>
+            ) : (
+              <button
+                type="button"
+                onClick={requestRepSupervision}
+                disabled={requestingLink}
+                className="h-9 px-4 rounded-lg bg-amber-600 text-white text-xs font-semibold disabled:opacity-60"
+              >
+                {requestingLink ? '...' : 'نعم، إرسال طلب ربط وإشراف ميداني'}
+              </button>
+            )}
           </div>
         )}
 
@@ -617,39 +846,6 @@ function FactoryRegisterPageInner() {
               </div>
             </div>
 
-            {/* Country/Region selection for step 1 */}
-            {isLocal ? (
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">
-                  {fr.governorate} <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={form.region}
-                  onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))}
-                  className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors"
-                >
-                  <option value="">{fr.selectGovernorateEllipsis}</option>
-                  {YEMENI_GOVERNORATES.map((g) => (
-                    <option key={g} value={g}>{g}</option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-muted-foreground mt-1">{fr.yemenGovOnly}</p>
-              </div>
-            ) : (
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">{fr.countryLabel}</label>
-                <select
-                  value={form.country}
-                  onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))}
-                  className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors"
-                >
-                  {INTERNATIONAL_COUNTRIES_AR.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
             <button
               onClick={() => setStep(2)}
               className="w-full h-11 bg-primary text-primary-foreground rounded-xl text-sm font-semibold flex items-center justify-center gap-2 active:opacity-80 transition-opacity"
@@ -702,14 +898,21 @@ function FactoryRegisterPageInner() {
                 <span className="text-red-500 ml-1">*</span>
               </label>
               <select
-                value={form.industry_sector}
-                onChange={(e) => setForm((f) => ({ ...f, industry_sector: e.target.value }))}
+                value={form.sector_id}
+                onChange={(e) => {
+                  const picked = sectors.find((s) => s.id === e.target.value);
+                  setForm((f) => ({
+                    ...f,
+                    sector_id: e.target.value,
+                    industry_sector: picked?.slug ?? '',
+                  }));
+                }}
                 className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors"
               >
                 <option value="">{fr.selectIndustry}</option>
-                {INDUSTRY_SECTORS.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {isRTL ? s.labelAr : s.labelEn}
+                {sectors.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {isRTL ? s.name_ar : (s.name_en || s.name_ar)}
                   </option>
                 ))}
               </select>
@@ -723,7 +926,7 @@ function FactoryRegisterPageInner() {
                     type="text"
                     value={form.commercial_registration_number}
                     onChange={(e) => setForm((f) => ({ ...f, commercial_registration_number: e.target.value }))}
-                    placeholder={fr.crNumberPlaceholder}
+                    placeholder="مثال: 12345"
                     className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
                   />
                 </div>
@@ -733,49 +936,110 @@ function FactoryRegisterPageInner() {
                     type="text"
                     value={form.vat_number}
                     onChange={(e) => setForm((f) => ({ ...f, vat_number: e.target.value }))}
-                    placeholder={fr.vatNumberPlaceholder}
+                    placeholder="مثال: 0012345"
                     className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
                   />
                 </div>
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">{fr.cityLabel}</label>
-                <input
-                  type="text"
-                  value={form.city}
-                  onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-                  placeholder={fr.cityPlaceholder}
-                  className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
-                />
-              </div>
-              {isLocal ? (
+            {!isLocal && (
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">{fr.governorate}</label>
+                  <label className="block text-xs font-medium text-foreground mb-1">{fr.crNumberLabel}</label>
+                  <input
+                    type="text"
+                    value={form.commercial_registration_number}
+                    onChange={(e) => setForm((f) => ({ ...f, commercial_registration_number: e.target.value }))}
+                    placeholder="e.g., CR-987654"
+                    dir="ltr"
+                    className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">{fr.vatNumberLabel}</label>
+                  <input
+                    type="text"
+                    value={form.vat_number}
+                    onChange={(e) => setForm((f) => ({ ...f, vat_number: e.target.value }))}
+                    placeholder="e.g., VAT-123456"
+                    dir="ltr"
+                    className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
+                  />
+                </div>
+              </div>
+            )}
+
+            {isLocal ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">
+                    المحافظة <span className="text-red-500">*</span>
+                  </label>
                   <select
                     value={form.region}
-                    onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))}
+                    onChange={(e) => setForm((f) => ({ ...f, region: e.target.value, city: '' }))}
                     className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors"
                   >
                     <option value="">{fr.selectGovernorate}</option>
                     {YEMENI_GOVERNORATES.map((g) => <option key={g} value={g}>{g}</option>)}
                   </select>
                 </div>
-              ) : (
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">{fr.countryLabel}</label>
+                  <label className="block text-xs font-medium text-foreground mb-1">
+                    المربع الصناعي / الميداني <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={form.city}
+                    disabled={!form.region}
+                    onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+                    className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors disabled:opacity-60"
+                  >
+                    <option value="">{form.region ? 'اختر المربع الصناعي' : 'اختر المحافظة أولاً'}</option>
+                    {form.region && getYemenZones(form.region).map((z) => <option key={z} value={z}>{z}</option>)}
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">
+                    {String(fr.countryLabel || '').replace(/\s*\*\s*$/, '')} <span className="text-red-500">*</span>
+                  </label>
                   <select
                     value={form.country}
-                    onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))}
+                    onChange={(e) => setForm((f) => ({ ...f, country: e.target.value, city: '' }))}
                     className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors"
                   >
                     {INTERNATIONAL_COUNTRIES_AR.map((c) => <option key={c} value={c}>{c}</option>)}
+                    <option value="دول أخرى...">دول أخرى...</option>
                   </select>
                 </div>
-              )}
-            </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">
+                    المدينة / المنطقة الصناعية <span className="text-red-500">*</span>
+                  </label>
+                  {INTERNATIONAL_HUBS[form.country] ? (
+                    <select
+                      value={form.city}
+                      onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+                      className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors"
+                    >
+                      <option value="">اختر المنطقة الصناعية</option>
+                      {INTERNATIONAL_HUBS[form.country].map((h) => <option key={h} value={h}>{h}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={form.city}
+                      onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+                      placeholder="أدخل المدينة والمنطقة الصناعية"
+                      className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
+                    />
+                  )}
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-medium text-foreground mb-1">{fr.addressLabel}</label>
@@ -788,6 +1052,30 @@ function FactoryRegisterPageInner() {
               />
             </div>
 
+            {/* Industrial zone -> auto-routing to the territory field rep */}
+            {zoneOptions.length > 0 && (
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">
+                  المربع الصناعي / الميداني
+                </label>
+                <select
+                  value={selectedZoneId}
+                  onChange={(e) => setSelectedZoneId(e.target.value)}
+                  className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors"
+                >
+                  <option value="">اختر المربع الصناعي (اختياري)</option>
+                  {zoneOptions.map((z) => (
+                    <option key={z.zone_id} value={z.zone_id}>
+                      {z.province_city} — {z.zone_name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  سيتم ربط حسابك تلقائياً بالمشرف الميداني المسؤول عن هذا المربع.
+                </p>
+              </div>
+            )}
+
             <div className="flex gap-3 pt-1">
               <button
                 onClick={() => setStep(1)}
@@ -796,10 +1084,16 @@ function FactoryRegisterPageInner() {
                 {fr.backBtn}
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (!form.company_name.trim()) { setError(fr.errorCompanyName); return; }
                   if (isLocal && !form.commercial_registration_number.trim()) { setError(fr.errorCRNumberStep2); return; }
+                  if (isLocal && !form.region) { setError('الرجاء اختيار المحافظة'); return; }
+                  if (isLocal && !form.city) { setError('الرجاء اختيار المربع الصناعي / الميداني'); return; }
+                  if (!isLocal && !form.city.trim()) { setError('الرجاء إدخال المدينة / المنطقة الصناعية'); return; }
                   setError('');
+                  setLinkRequestSent(false);
+                  const dup = await runDuplicateCheck();
+                  if (dup && dup.matched_field === 'commercial_register') return;
                   setStep(3);
                 }}
                 className="flex-1 h-11 bg-primary text-primary-foreground rounded-xl text-sm font-semibold flex items-center justify-center gap-2 active:opacity-80 transition-opacity"
@@ -923,7 +1217,7 @@ function FactoryRegisterPageInner() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">{fr.mainProductsLabel}</label>
+              <label className="block text-xs font-medium text-foreground mb-2">{fr.mainProductsLabel}</label>
               <textarea
                 value={form.main_products}
                 onChange={(e) => setForm((f) => ({ ...f, main_products: e.target.value }))}
@@ -931,6 +1225,35 @@ function FactoryRegisterPageInner() {
                 rows={2}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors resize-none"
               />
+              {sectorProducts.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {sectorProducts.map((sp) => {
+                    const label = isRTL ? sp.name_ar : (sp.name_en || sp.name_ar);
+                    const current = form.main_products.split(',').map((p) => p.trim()).filter(Boolean);
+                    const selected = current.includes(label);
+                    return (
+                      <button
+                        key={sp.id}
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => {
+                            const list = f.main_products.split(',').map((p) => p.trim()).filter(Boolean);
+                            const next = list.includes(label) ? list.filter((p) => p !== label) : [...list, label];
+                            return { ...f, main_products: next.join(', ') };
+                          })
+                        }
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${
+                          selected
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background text-muted-foreground border-border hover:border-primary hover:text-foreground'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div>

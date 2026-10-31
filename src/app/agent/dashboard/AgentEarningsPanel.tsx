@@ -24,6 +24,7 @@ interface EarningsSummary {
     created_at: string;
     city: string;
     country: string;
+    source: 'field' | 'referral';
   }[];
 }
 
@@ -35,27 +36,61 @@ interface CommissionRecord {
   status: 'pending' | 'paid';
   created_at: string;
   factory_name: string;
+  order_category?: string | null;
+  attribution_source?: string | null;
 }
+
+type CommissionTab = 'all' | 'factory_deals' | 'field_inspection' | 'escrow_pending';
 
 interface Props {
   userId: string;
+  embedded?: boolean;
 }
 
 // Commission rule: 20% of Direct Hub's platform fee on each completed order (not of order value)
 const COMMISSION_RATE = 0.20;
 
-// Currency conversion rates (YER base)
-const YER_TO_USD = 1 / 250;
-const YER_TO_SAR = 1 / 66.5;
-const YER_TO_AED = 1 / 68;
+// Minimum available balance (USD) required to request a payout
+const MIN_PAYOUT_USD = 50;
+
+// Indicative USD conversion rates for the local-equivalent display only
+const LOCAL_CURRENCY_BY_COUNTRY: { match: RegExp; currency: 'SAR' | 'YER' | 'CNY' | 'EUR'; label: string }[] = [
+  { match: /yemen|اليمن|^ye$/i, currency: 'YER', label: 'اليمن' },
+  { match: /saudi|السعود|^sa$/i, currency: 'SAR', label: 'السعودية' },
+  { match: /china|الصين|^cn$/i, currency: 'CNY', label: 'الصين' },
+  { match: /germany|france|italy|spain|netherlands|europe|ألمانيا|فرنسا|إيطاليا|إسبانيا|هولندا|^de$|^fr$|^it$|^es$|^nl$/i, currency: 'EUR', label: 'أوروبا' },
+];
+
+const USD_RATES: Record<'SAR' | 'YER' | 'CNY' | 'EUR', number> = {
+  SAR: 3.75,
+  YER: 250,
+  CNY: 7.2,
+  EUR: 0.92,
+};
+
+const COMMISSION_TABS: { key: CommissionTab; label: string }[] = [
+  { key: 'all', label: 'الكل' },
+  { key: 'factory_deals', label: 'عمولات صفقات المصانع' },
+  { key: 'field_inspection', label: 'أتعاب فحص ميداني معتمدة' },
+  { key: 'escrow_pending', label: 'معلق في الضمان' },
+];
+
+function isFieldInspectionCommission(c: CommissionRecord): boolean {
+  const hay = `${c.order_category || ''} ${c.attribution_source || ''}`.toLowerCase();
+  return /inspect|field_fee|فحص/.test(hay);
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function AgentEarningsPanel({ userId }: Props) {
+export default function AgentEarningsPanel({ userId, embedded = false }: Props) {
   const supabase = createClient();
   const [summary, setSummary] = useState<EarningsSummary | null>(null);
   const [commissions, setCommissions] = useState<CommissionRecord[]>([]);
-  const [commissionFilter, setCommissionFilter] = useState<'all' | 'pending' | 'paid'>('all');
+  const [clearedOrderIds, setClearedOrderIds] = useState<Set<string>>(new Set());
+  const [commissionFilter, setCommissionFilter] = useState<CommissionTab>('all');
+  const [territoryCountry, setTerritoryCountry] = useState('');
+  const [payoutBusy, setPayoutBusy] = useState(false);
+  const [payoutMsg, setPayoutMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -63,17 +98,53 @@ export default function AgentEarningsPanel({ userId }: Props) {
     setLoading(true);
     setError('');
     try {
-      // 1. Fetch factories registered under this agent (via referral link / code)
+      // 1. Fetch ALL factories attributed to this agent:
+      //    a) referral-link signups (factory_registrations)
+      //    b) field registrations (agent_factory_registrations, registered by the agent)
       const agentReferralCode = `AGT-${userId.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
-      const { data: factoriesData, error: factoriesErr } = await supabase
-        .from('factory_registrations')
-        .select('id, user_id, company_name, registration_status, is_approved, is_active, approval_type, created_at, city, country')
-        .or(`referred_by_agent_id.eq.${userId},referred_by_agent_code.eq.${agentReferralCode}`)
-        .order('created_at', { ascending: false });
+      const [referralRes, fieldRes] = await Promise.all([
+        supabase
+          .from('factory_registrations')
+          .select('id, user_id, company_name, registration_status, is_approved, is_active, approval_type, created_at, city, country')
+          .or(`referred_by_agent_id.eq.${userId},referred_by_agent_code.eq.${agentReferralCode}`)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('agent_factory_registrations')
+          .select('id, company_name, registration_status, created_at, city, country')
+          .eq('agent_id', userId)
+          .order('created_at', { ascending: false }),
+      ]);
 
-      if (factoriesErr) throw factoriesErr;
+      if (referralRes.error) throw referralRes.error;
 
-      const factories = factoriesData || [];
+      const referralFactories = (referralRes.data || []).map((f: any) => ({
+        ...f,
+        source: 'referral' as const,
+      }));
+      const fieldFactories = (fieldRes.data || []).map((f: any) => ({
+        id: f.id as string,
+        user_id: null as string | null,
+        company_name: f.company_name as string,
+        registration_status: f.registration_status as string,
+        is_approved: f.registration_status === 'approved',
+        is_active: true,
+        approval_type: null as string | null,
+        created_at: f.created_at as string,
+        city: (f.city || '') as string,
+        country: (f.country || '') as string,
+        source: 'field' as const,
+      }));
+
+      // Dedupe by id, then sort newest first
+      const seenIds = new Set<string>();
+      const factories = [...fieldFactories, ...referralFactories]
+        .filter(f => {
+          if (seenIds.has(f.id)) return false;
+          seenIds.add(f.id);
+          return true;
+        })
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
       const approvedFactories = factories.filter(isApprovedOrActiveFacility);
       const pendingFactories = factories.filter(f =>
         f.registration_status === 'pending' || f.registration_status === 'under_review' || f.registration_status === 'pending_supplier_approval'
@@ -95,36 +166,52 @@ export default function AgentEarningsPanel({ userId }: Props) {
         totalPlatformFee += o.platform_commission || 0;
       };
 
-      const referralUserIds = approvedFactories.map(f => f.user_id).filter(Boolean) as string[];
-      if (referralUserIds.length > 0) {
-        const { data: refOrders } = await supabase
-          .from('orders')
-          .select('id, total, platform_commission, status, escrow_status')
-          .in('factory_user_id', referralUserIds);
-        (refOrders || [])
-          .filter(o => COMPLETED.includes(String(o.status)) || o.escrow_status === 'funds_released')
-          .forEach(addOrder);
-      }
+      // Masked RPC: platform fee + status only (no buyer address or full order value)
+      const { data: maskedOrders } = await supabase.rpc('get_agent_sales_orders_view');
+      const maskedList = (maskedOrders as any[]) || [];
+
+      const referralUserIds = new Set(
+        referralFactories
+          .filter(isApprovedOrActiveFacility)
+          .map(f => f.user_id)
+          .filter(Boolean) as string[]
+      );
 
       const { data: agentProducts } = await supabase
         .from('agent_products')
         .select('id')
         .eq('agent_id', userId);
       const agentProductIds = new Set((agentProducts || []).map(p => p.id));
-      if (agentProductIds.size > 0) {
-        const { data: manualOrders } = await supabase
-          .from('orders')
-          .select('id, total, platform_commission, status, escrow_status, items')
-          .order('created_at', { ascending: false })
-          .limit(500);
-        (manualOrders || [])
-          .filter(o => COMPLETED.includes(String(o.status)) || o.escrow_status === 'funds_released')
-          .filter(o => Array.isArray(o.items) && (o.items as any[]).some(it => agentProductIds.has(it?.product_id)))
-          .forEach(addOrder);
-      }
+
+      maskedList
+        .filter(o => COMPLETED.includes(String(o.status)) || o.escrow_status === 'funds_released')
+        .filter(o =>
+          (o.factory_user_id && referralUserIds.has(o.factory_user_id)) ||
+          (Array.isArray(o.product_ids) && o.product_ids.some((pid: string) => agentProductIds.has(pid)))
+        )
+        .forEach(o => addOrder({ id: o.order_id, platform_commission: Number(o.platform_fee) || 0 }));
 
       const totalOrders = countedOrderIds.size;
       const estimatedCommission = totalPlatformFee * COMMISSION_RATE;
+
+      // Operational territory: country of the agent's own attributed factories (most frequent)
+      const countryCounts = new Map<string, number>();
+      factories.forEach(f => {
+        const c = String(f.country || '').trim();
+        if (c) countryCounts.set(c, (countryCounts.get(c) || 0) + 1);
+      });
+      const topCountry = [...countryCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+      if (topCountry) {
+        setTerritoryCountry(topCountry);
+      } else {
+        const { data: acct } = await supabase
+          .from('agent_commission_accounts')
+          .select('country')
+          .eq('agent_id', userId)
+          .order('is_primary', { ascending: false })
+          .limit(1);
+        setTerritoryCountry(String(acct?.[0]?.country || ''));
+      }
 
       setSummary({
         totalFactories: factories.length,
@@ -135,17 +222,43 @@ export default function AgentEarningsPanel({ userId }: Props) {
         totalOrderValue: totalPlatformFee,
         estimatedCommission,
         currency: 'USD',
-        recentFactories: factories.slice(0, 5),
+        recentFactories: factories.slice(0, 5).map(f => ({
+          id: f.id,
+          company_name: f.company_name,
+          registration_status: f.registration_status,
+          approval_type: f.approval_type,
+          created_at: f.created_at,
+          city: f.city,
+          country: f.country,
+          source: f.source,
+        })),
       });
 
       // 3. Fetch commission records from platform_commissions
       const { data: commData } = await supabase
         .from('platform_commissions')
-        .select('id, order_id, commission_amount, currency, status, created_at, factory_name')
+        .select('id, order_id, commission_amount, currency, status, created_at, factory_name, order_category, attribution_source')
         .eq('agent_id', userId)
         .order('created_at', { ascending: false });
 
       setCommissions((commData as CommissionRecord[]) || []);
+
+      // Orders whose escrow has fully cleared (delivered / funds released) → commission is withdrawable
+      const commOrderIds = ((commData as CommissionRecord[]) || []).map(c => c.order_id).filter(Boolean);
+      if (commOrderIds.length > 0) {
+        const { data: ordRows } = await supabase.rpc('get_agent_commission_order_status', {
+          p_order_ids: commOrderIds,
+        });
+        setClearedOrderIds(
+          new Set(
+            ((ordRows as any[]) || [])
+              .filter(o => ['delivered', 'completed'].includes(String(o.status)) || o.escrow_status === 'funds_released')
+              .map(o => o.order_id as string)
+          )
+        );
+      } else {
+        setClearedOrderIds(new Set());
+      }
     } catch (err: any) {
       setError(err.message || 'حدث خطأ أثناء تحميل بيانات الأرباح');
     } finally {
@@ -190,28 +303,71 @@ export default function AgentEarningsPanel({ userId }: Props) {
     maximumFractionDigits: 2,
   });
   const orderValueFormatted = summary.totalOrderValue.toLocaleString('ar-SA', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 
-  // Multi-currency conversions (YER base)
-  const commYER = summary.estimatedCommission * 250; // if estimatedCommission is in USD
-  const commUSD = summary.estimatedCommission;
-  const commSAR = commYER * YER_TO_SAR;
-  const commAED = commYER * YER_TO_AED;
-
-  const filteredCommissions = commissionFilter === 'all'
-    ? commissions
-    : commissions.filter(c => c.status === commissionFilter);
+  const filteredCommissions = commissions.filter(c => {
+    if (commissionFilter === 'all') return true;
+    if (commissionFilter === 'escrow_pending') return c.status === 'pending' && !clearedOrderIds.has(c.order_id);
+    if (commissionFilter === 'field_inspection') return isFieldInspectionCommission(c);
+    return !isFieldInspectionCommission(c);
+  });
 
   const totalEarnedYER = commissions.filter(c => c.currency === 'YER').reduce((s, c) => s + c.commission_amount, 0);
   const totalEarnedUSD = commissions.filter(c => c.currency === 'USD').reduce((s, c) => s + c.commission_amount, 0);
   const totalPendingYER = commissions.filter(c => c.status === 'pending' && c.currency === 'YER').reduce((s, c) => s + c.commission_amount, 0);
   const totalPendingUSD = commissions.filter(c => c.status === 'pending' && c.currency === 'USD').reduce((s, c) => s + c.commission_amount, 0);
 
+  // Escrow-pending = ledger commissions awaiting final order clearance.
+  // Available = commissions on cleared orders that finance has not paid out yet.
+  const usdRows = commissions.filter(c => c.currency === 'USD');
+  const escrowPendingUSD = usdRows
+    .filter(c => c.status === 'pending' && !clearedOrderIds.has(c.order_id))
+    .reduce((s, c) => s + (c.commission_amount || 0), 0);
+  const availableBalanceUSD = usdRows
+    .filter(c => c.status === 'pending' && clearedOrderIds.has(c.order_id))
+    .reduce((s, c) => s + (c.commission_amount || 0), 0);
+  const canRequestPayout = availableBalanceUSD >= MIN_PAYOUT_USD;
+
+  const localInfo = LOCAL_CURRENCY_BY_COUNTRY.find(l => l.match.test(territoryCountry.trim()));
+  const localEquivalent = localInfo
+    ? `${(availableBalanceUSD * USD_RATES[localInfo.currency]).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${localInfo.currency}`
+    : null;
+
+  const handleRequestPayout = async () => {
+    if (!canRequestPayout || payoutBusy) return;
+    setPayoutBusy(true);
+    setPayoutMsg(null);
+    try {
+      const { data: admins } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('role', 'admin');
+      const rows = (admins || []).map((a: { id: string }) => ({
+        user_id: a.id,
+        type: 'system',
+        title: 'طلب سحب أرباح مندوب',
+        body: `طلب مندوب سحب ${availableBalanceUSD.toFixed(2)} USD${localEquivalent ? ` (≈ ${localEquivalent})` : ''}`,
+        link: '/admin/finance',
+        metadata: { kind: 'agent_payout_request', agent_id: userId, amount_usd: availableBalanceUSD },
+      }));
+      if (rows.length > 0) {
+        const { error: insErr } = await supabase.from('notifications').insert(rows);
+        if (insErr) throw insErr;
+      }
+      setPayoutMsg({ type: 'success', text: 'تم إرسال طلب سحب الأرباح إلى الإدارة المالية' });
+    } catch (e: unknown) {
+      setPayoutMsg({ type: 'error', text: e instanceof Error ? e.message : 'تعذّر إرسال طلب السحب' });
+    } finally {
+      setPayoutBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       {/* Header */}
+      {!embedded && (
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-bold text-foreground flex items-center gap-2">
@@ -219,7 +375,7 @@ export default function AgentEarningsPanel({ userId }: Props) {
             مؤشر الأرباح والعمولات
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            إحصائيات المصانع المسجلة عبر رابط الدعوة والعمولات التقديرية
+            إحصائيات المصانع المسجلة (ميدانياً وعبر رابط الدعوة) والعمولات التقديرية
           </p>
         </div>
         <button
@@ -230,6 +386,7 @@ export default function AgentEarningsPanel({ userId }: Props) {
           تحديث
         </button>
       </div>
+      )}
 
       {/* KPI Cards Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -258,8 +415,8 @@ export default function AgentEarningsPanel({ userId }: Props) {
           <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center mb-3">
             <Icon name="BoltIcon" size={18} className="text-amber-600" />
           </div>
-          <p className="text-2xl font-bold text-foreground">{summary.fastTrackFactories}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">قبول سريع</p>
+          <p className="text-2xl font-bold text-foreground" dir="ltr">{escrowPendingUSD.toFixed(2)} <span className="text-sm">USD</span></p>
+          <p className="text-xs text-muted-foreground mt-0.5">أرباح معلقة (Escrow Pending)</p>
         </div>
       </div>
 
@@ -280,13 +437,13 @@ export default function AgentEarningsPanel({ userId }: Props) {
           </div>
           <div>
             <p className="text-xs font-medium mb-0.5" style={{ color: 'rgba(212,175,55,0.7)' }}>
-              العمولة التقديرية (20% من رسوم المنصة)
+              العمولة التقديرية (20% من رسوم المنصة) — بالدولار الأمريكي
             </p>
-            <p className="text-3xl font-bold" style={{ color: '#D4AF37' }}>
-              {commissionFormatted} <span className="text-lg">{summary.currency}</span>
+            <p className="text-3xl font-bold" style={{ color: '#D4AF37' }} dir="ltr">
+              {commissionFormatted} <span className="text-lg">USD</span>
             </p>
             <p className="text-xs mt-1" style={{ color: '#8899aa' }}>
-              بناءً على رسوم المنصة المحققة: {orderValueFormatted} {summary.currency}
+              بناءً على رسوم المنصة المحققة: {orderValueFormatted} USD
             </p>
           </div>
         </div>
@@ -311,55 +468,56 @@ export default function AgentEarningsPanel({ userId }: Props) {
         </div>
       </div>
 
-      {/* Multi-Currency Cards */}
-      <div>
-        <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
-          <Icon name="CurrencyDollarIcon" size={15} className="text-primary" />
-          العمولة التقديرية بالعملات المختلفة
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { flag: '🇾🇪', code: 'YER', amount: commYER, approx: false },
-            { flag: '🇺🇸', code: 'USD', amount: commUSD, approx: true },
-            { flag: '🇸🇦', code: 'SAR', amount: commSAR, approx: true },
-            { flag: '🇦🇪', code: 'AED', amount: commAED, approx: true },
-          ].map(c => (
-            <div key={c.code} className="bg-card border border-border rounded-xl p-4 text-center">
-              <p className="text-2xl mb-1">{c.flag}</p>
-              <p className="text-xs font-bold text-muted-foreground mb-1">{c.code}</p>
-              <p className="text-lg font-bold text-foreground">
-                {c.amount.toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </p>
-              {c.approx && (
-                <p className="text-[10px] text-muted-foreground mt-0.5">* تقريبي</p>
-              )}
-            </div>
-          ))}
+      {/* Payout Request */}
+      <div className="bg-card border border-border rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div>
+          <p className="text-xs text-muted-foreground">الرصيد المتاح للسحب</p>
+          <p className="text-2xl font-bold text-foreground" dir="ltr">{availableBalanceUSD.toFixed(2)} <span className="text-sm">USD</span></p>
+          {localEquivalent && (
+            <p className="text-xs text-muted-foreground mt-0.5" dir="ltr">
+              ≈ {localEquivalent} {localInfo ? `(${localInfo.label})` : ''}
+            </p>
+          )}
+          {!canRequestPayout && (
+            <p className="text-[11px] text-amber-600 mt-1">الحد الأدنى للسحب {MIN_PAYOUT_USD} USD</p>
+          )}
         </div>
-        <p className="text-[10px] text-muted-foreground mt-2">
-          * أسعار التحويل التقريبية: 1 USD = 250 YER · 1 SAR = 66.5 YER · 1 AED = 68 YER
-        </p>
+        <button
+          type="button"
+          onClick={handleRequestPayout}
+          disabled={!canRequestPayout || payoutBusy}
+          className="px-5 py-2.5 rounded-xl text-sm font-bold bg-primary text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {payoutBusy ? 'جارٍ الإرسال...' : 'طلب سحب الأرباح'}
+        </button>
       </div>
+      {payoutMsg && (
+        <div className={`rounded-xl px-4 py-2.5 text-xs font-semibold border ${
+          payoutMsg.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'
+        }`}>
+          {payoutMsg.text}
+        </div>
+      )}
 
       {/* Commission Breakdown Table */}
       <div>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
             <Icon name="TableCellsIcon" size={15} className="text-primary" />
             تفاصيل العمولات المسجلة
           </h3>
-          {/* Status Filter */}
-          <div className="flex gap-1.5">
-            {(['all', 'pending', 'paid'] as const).map(f => (
+          {/* Category Filter Tabs */}
+          <div className="flex gap-1.5 overflow-x-auto max-w-full pb-1">
+            {COMMISSION_TABS.map(t => (
               <button
-                key={f}
-                onClick={() => setCommissionFilter(f)}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-all ${
-                  commissionFilter === f
+                key={t.key}
+                onClick={() => setCommissionFilter(t.key)}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-all whitespace-nowrap ${
+                  commissionFilter === t.key
                     ? 'bg-primary text-white border-primary' :'bg-card border-border text-muted-foreground hover:bg-muted'
                 }`}
               >
-                {f === 'all' ? 'الكل' : f === 'pending' ? 'معلق' : 'مدفوع'}
+                {t.label}
               </button>
             ))}
           </div>
@@ -431,11 +589,11 @@ export default function AgentEarningsPanel({ userId }: Props) {
       </div>
 
       {/* Recent Factories List */}
-      {summary.recentFactories.length > 0 ? (
+      {!embedded && summary.recentFactories.length > 0 ? (
         <div>
           <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
             <Icon name="ClockIcon" size={15} className="text-muted-foreground" />
-            آخر المصانع المسجلة عبر رابطك
+            آخر المصانع المسجلة
           </h3>
           <div className="space-y-2">
             {summary.recentFactories.map(factory => (
@@ -452,7 +610,12 @@ export default function AgentEarningsPanel({ userId }: Props) {
                     <p className="text-xs text-muted-foreground">{factory.city}{factory.country ? `, ${factory.country}` : ''}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                    factory.source === 'field' ?'bg-sky-50 text-sky-700 border-sky-200' :'bg-violet-50 text-violet-700 border-violet-200'
+                  }`}>
+                    {factory.source === 'field' ? 'تسجيل ميداني' : 'رابط إحالة'}
+                  </span>
                   {factory.approval_type === 'fast_track_initial' && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
                       <Icon name="BoltIcon" size={9} />
@@ -471,25 +634,25 @@ export default function AgentEarningsPanel({ userId }: Props) {
             ))}
           </div>
         </div>
-      ) : (
+      ) : !embedded ? (
         <div className="bg-card border border-border rounded-xl p-10 text-center">
           <div className="w-14 h-14 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-3">
             <Icon name="LinkIcon" size={26} className="text-muted-foreground" />
           </div>
-          <p className="font-semibold text-foreground mb-1">لا توجد مصانع مسجلة عبر رابطك بعد</p>
+          <p className="font-semibold text-foreground mb-1">لا توجد مصانع مسجلة بعد</p>
           <p className="text-sm text-muted-foreground mb-4">
             شارك رابط الدعوة الخاص بك مع المصانع والموردين لبدء تتبع العمولات
           </p>
           <div className="bg-muted/50 border border-border rounded-xl px-4 py-3 text-xs text-muted-foreground font-mono break-all">
             {typeof window !== 'undefined'
-              ? `${window.location.origin}/factory/register?agent_id=YOUR_ID`
-              : '/factory/register?agent_id=YOUR_ID'}
+              ? `${window.location.origin}/factory/register?agent_id=${userId}`
+              : `/factory/register?agent_id=${userId}`}
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Referral Link Copy */}
-      {summary.totalFactories > 0 && (
+      {!embedded && summary.totalFactories > 0 && (
         <div className="bg-muted/50 border border-border rounded-xl p-4">
           <p className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1.5">
             <Icon name="LinkIcon" size={13} className="text-primary" />

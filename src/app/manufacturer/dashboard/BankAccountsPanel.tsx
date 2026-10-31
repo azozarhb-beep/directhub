@@ -213,7 +213,14 @@ export default function BankAccountsPanel({
 
       {/* Add Bank Account Modal */}
       {showAddBankModal && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-background">
+        <div
+          className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50"
+          onClick={() => setShowAddBankModal(false)}
+        >
+          <div
+            className="flex flex-col w-full md:max-w-lg max-h-[92vh] bg-background rounded-t-3xl md:rounded-2xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
           <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-card shrink-0">
             <div className="flex items-center gap-2">
               <Icon name="BuildingLibraryIcon" size={18} className="text-primary" />
@@ -283,30 +290,36 @@ export default function BankAccountsPanel({
                 <label className="block text-xs font-semibold text-foreground mb-1.5">{md.accountNumberLabel2} <span className="text-red-500">*</span></label>
                 <input
                   type="text"
+                  dir="ltr"
+                  inputMode="text"
                   value={bankFormData.account_number}
                   onChange={e => setBankFormData({ ...bankFormData, account_number: e.target.value })}
-                  placeholder={md.bankAccountNumberPh}
+                  placeholder="مثال: 3001234567 (رقم الحساب المحلي)"
                   required
                   className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm font-mono focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30"
                 />
+                <p className="text-[11px] text-muted-foreground mt-1">رقم الحساب المحلي المعتاد (مثل بنك الكريمي) مقبول.</p>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-foreground mb-1.5">IBAN</label>
+                <label className="block text-xs font-semibold text-foreground mb-1.5">IBAN (اختياري)</label>
                 <input
                   type="text"
+                  dir="ltr"
                   value={bankFormData.iban}
-                  onChange={e => setBankFormData({ ...bankFormData, iban: e.target.value.toUpperCase() })}
-                  placeholder="SA0380000000608010167519"
+                  onChange={e => setBankFormData({ ...bankFormData, iban: e.target.value.replace(/[^a-zA-Z0-9\s]/g, '').toUpperCase() })}
+                  placeholder="YE00 0000 0000 0000 0000"
                   className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm font-mono focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30"
                 />
+                <p className="text-[11px] text-muted-foreground mt-1">اتركه فارغاً للحسابات المحلية، أو أدخل آيبان يمني يبدأ بـ YE.</p>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-foreground mb-1.5">{md.swiftBic || 'SWIFT / BIC'}</label>
+                <label className="block text-xs font-semibold text-foreground mb-1.5">{md.swiftBic || 'SWIFT / BIC'} (اختياري)</label>
                 <input
                   type="text"
+                  dir="ltr"
                   value={bankFormData.swift_bic}
-                  onChange={e => setBankFormData({ ...bankFormData, swift_bic: e.target.value.toUpperCase() })}
-                  placeholder="RJHISARI"
+                  onChange={e => setBankFormData({ ...bankFormData, swift_bic: e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() })}
+                  placeholder="اختياري — للتحويلات الدولية فقط"
                   className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm font-mono focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30"
                 />
               </div>
@@ -341,6 +354,7 @@ export default function BankAccountsPanel({
                 </button>
               </div>
             </form>
+          </div>
           </div>
         </div>
       )}

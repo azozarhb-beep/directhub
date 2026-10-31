@@ -132,6 +132,24 @@ export async function POST(req: NextRequest) {
       status: 'approved',
     });
 
+    // 2b. Record delivery in shipment_deliveries (best-effort: table may not be migrated yet)
+    try {
+      await supabaseAdmin.from('shipment_deliveries').upsert(
+        {
+          shipment_id: shipment.id,
+          partner_id: partner.id,
+          tracking_id: shipment.tracking_number,
+          pin_code: pin,
+          pod_image_url: podUrl,
+          delivery_status: 'delivered',
+          delivered_at: now,
+        },
+        { onConflict: 'tracking_id' }
+      );
+    } catch (deliveryErr) {
+      console.warn('[LOGISTICS POD CONFIRM] shipment_deliveries unavailable', deliveryErr);
+    }
+
     // 3. Order -> delivered, PIN consumed, shipping fees released
     await supabaseAdmin
       .from('orders')

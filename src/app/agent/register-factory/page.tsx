@@ -9,6 +9,11 @@ import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
+import {
+  DUPLICATE_FACTORY_MESSAGE,
+  checkFactoryDuplicate,
+  enforceAgentGeofence,
+} from '@/lib/agentGeofence';
 
 // Yemeni governorates for local factory and local supplier
 const YEMENI_GOVERNORATES = [
@@ -64,6 +69,8 @@ interface RegistrationForm {
   annual_capacity: string;
   contact_status: string;
   agent_notes: string;
+  commercial_register_number: string;
+  tax_identification_number: string;
 }
 
 function RegisterFactoryPageInner() {
@@ -79,6 +86,10 @@ function RegisterFactoryPageInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [duplicateField, setDuplicateField] = useState<string | null>(null);
+  const [checkingDup, setCheckingDup] = useState(false);
+  const [claimLockId, setClaimLockId] = useState<string | null>(null);
+  const [claimExpiresAt, setClaimExpiresAt] = useState<string | null>(null);
 
   const [form, setForm] = useState<RegistrationForm>({
     company_name: '',
@@ -96,6 +107,8 @@ function RegisterFactoryPageInner() {
     annual_capacity: '',
     contact_status: 'contacting',
     agent_notes: '',
+    commercial_register_number: '',
+    tax_identification_number: '',
   });
 
   // Auth guard
@@ -114,6 +127,9 @@ function RegisterFactoryPageInner() {
   const isLocalType = form.factory_type === 'local_factory' || form.factory_type === 'local_supplier';
 
   const update = (field: keyof RegistrationForm, value: string) => {
+    if (field === 'commercial_register_number' || field === 'tax_identification_number') {
+      setDuplicateField(null);
+    }
     setForm(prev => {
       const updated = { ...prev, [field]: value };
       // When switching factory type, reset country/region appropriately
@@ -127,7 +143,41 @@ function RegisterFactoryPageInner() {
     setError('');
   };
 
+  const handleIdentifierBlur = async () => {
+    const cr = form.commercial_register_number.trim();
+    const tax = form.tax_identification_number.trim();
+    if (!cr && !tax) {
+      setDuplicateField(null);
+      return;
+    }
+    setCheckingDup(true);
+    const result = await checkFactoryDuplicate(supabase, cr, tax);
+    if (result.duplicate) {
+      setDuplicateField(result.field || 'commercial_register_number');
+      setError(DUPLICATE_FACTORY_MESSAGE);
+      setCheckingDup(false);
+      return;
+    }
+    setDuplicateField(null);
+    // Initiating an onboarding draft starts the 48-hour claim lock
+    const { data, error: claimErr } = await supabase.rpc('claim_factory_draft', {
+      p_commercial_register: cr || null,
+      p_tax_id: tax || null,
+    });
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!claimErr && row?.status === 'duplicate') {
+      setDuplicateField('commercial_register_number');
+      setError(DUPLICATE_FACTORY_MESSAGE);
+    } else if (!claimErr && row?.status === 'claimed') {
+      setClaimLockId(row.lock_id || null);
+      setClaimExpiresAt(row.expires_at || null);
+      setError(prev => (prev === DUPLICATE_FACTORY_MESSAGE ? '' : prev));
+    }
+    setCheckingDup(false);
+  };
+
   const validateStep1 = () => {
+    if (duplicateField) { setError(DUPLICATE_FACTORY_MESSAGE); return false; }
     if (!form.company_name.trim()) { setError(arf.errorCompanyRequired); return false; }
     if (isLocalType && !form.region.trim()) { setError('يرجى اختيار المحافظة'); return false; }
     if (!form.city.trim()) { setError(isLocalType ? 'يرجى إدخال المديرية / المنطقة' : arf.errorCityRequired); return false; }
@@ -149,13 +199,33 @@ function RegisterFactoryPageInner() {
 
   const handleSubmit = async () => {
     if (!user) return;
+    if (duplicateField) { setError(DUPLICATE_FACTORY_MESSAGE); return; }
     setLoading(true);
     setError('');
     try {
+      const dup = await checkFactoryDuplicate(
+        supabase,
+        form.commercial_register_number,
+        form.tax_identification_number
+      );
+      if (dup.duplicate) {
+        setDuplicateField(dup.field || 'commercial_register_number');
+        setError(DUPLICATE_FACTORY_MESSAGE);
+        setStep(1);
+        return;
+      }
+
+      const geo = await enforceAgentGeofence(supabase);
+      if (!geo.allowed) {
+        setError(geo.message);
+        return;
+      }
+
       const { error: insertError } = await supabase
         .from('agent_factory_registrations')
         .insert({
           agent_id: user.id,
+          created_by: user.id,
           company_name: form.company_name.trim(),
           factory_type: form.factory_type,
           country: form.country,
@@ -172,8 +242,25 @@ function RegisterFactoryPageInner() {
           contact_status: form.contact_status,
           agent_notes: form.agent_notes.trim(),
           registration_status: 'pending',
+          commercial_register_number: form.commercial_register_number.trim() || null,
+          tax_identification_number: form.tax_identification_number.trim() || null,
+          latitude: geo.point?.lat ?? null,
+          longitude: geo.point?.lng ?? null,
         });
-      if (insertError) throw insertError;
+      if (insertError) {
+        if ((insertError as any).code === '23505') {
+          setDuplicateField('commercial_register_number');
+          setError(DUPLICATE_FACTORY_MESSAGE);
+          setStep(1);
+          return;
+        }
+        throw insertError;
+      }
+      if (claimLockId) {
+        await supabase.rpc('release_factory_draft', { p_lock_id: claimLockId });
+        setClaimLockId(null);
+        setClaimExpiresAt(null);
+      }
       setSuccess(true);
     } catch (err: any) {
       setError(err.message || arf.errorGeneric);
@@ -209,7 +296,9 @@ function RegisterFactoryPageInner() {
                   city: '', region: '', address: '', contact_person: '', contact_phone: '',
                   contact_email: '', website: '', industry: '', employee_count: '',
                   annual_capacity: '', contact_status: 'contacting', agent_notes: '',
+                  commercial_register_number: '', tax_identification_number: '',
                 });
+                setDuplicateField(null);
               }}
               className="flex items-center justify-center gap-2 px-6 py-3 border border-border rounded-xl font-semibold text-muted-foreground hover:bg-muted transition-colors"
             >
@@ -403,6 +492,45 @@ function RegisterFactoryPageInner() {
                   />
                 </div>
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">رقم السجل التجاري</label>
+                  <input
+                    type="text"
+                    value={form.commercial_register_number}
+                    onChange={e => update('commercial_register_number', e.target.value)}
+                    onBlur={handleIdentifierBlur}
+                    placeholder="رقم السجل التجاري"
+                    dir="ltr"
+                    className={`w-full px-3 py-2.5 bg-background border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary ${
+                      duplicateField === 'commercial_register_number' ? 'border-red-500' : 'border-border'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">الرقم الضريبي</label>
+                  <input
+                    type="text"
+                    value={form.tax_identification_number}
+                    onChange={e => update('tax_identification_number', e.target.value)}
+                    onBlur={handleIdentifierBlur}
+                    placeholder="الرقم الضريبي"
+                    dir="ltr"
+                    className={`w-full px-3 py-2.5 bg-background border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary ${
+                      duplicateField === 'tax_identification_number' ? 'border-red-500' : 'border-border'
+                    }`}
+                  />
+                </div>
+              </div>
+              {checkingDup && (
+                <p className="text-xs text-muted-foreground">جارٍ التحقق من عدم تكرار المصنع...</p>
+              )}
+              {!duplicateField && claimExpiresAt && (
+                <p className="text-xs text-emerald-700">
+                  تم حجز هذا المصنع لك مؤقتاً لمدة 48 ساعة لإكمال التسجيل.
+                </p>
+              )}
             </div>
           )}
 

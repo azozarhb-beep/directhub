@@ -4,6 +4,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 import toast from 'react-hot-toast';
+import { SignedChatLink } from '@/components/SignedChatMedia';
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,20 +35,22 @@ interface DispatchChatRoomProps {
   orderId: string;
   orderNumber?: string | null;
   currentUserId: string;
-  currentUserRole: 'factory' | 'agent' | 'logistics' | 'admin';
+  currentUserRole: 'factory' | 'agent' | 'logistics' | 'admin' | 'buyer';
   factoryId?: string | null;
   agentId?: string | null;
   logisticsId?: string | null;
+  buyerId?: string | null;
   onClose?: () => void;
 }
 
 // ─── Role Meta ────────────────────────────────────────────────────────────────
 
 const ROLE_META: Record<string, { label: string; labelAr: string; color: string; icon: string }> = {
-  factory:   { label: 'Factory',          labelAr: 'المصنع',             color: 'bg-blue-100 text-blue-700 border-blue-200',    icon: 'BuildingOffice2Icon' },
-  agent:     { label: 'Field Agent',      labelAr: 'المندوب الميداني',   color: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: 'UserCircleIcon' },
-  logistics: { label: 'Logistics Office', labelAr: 'المكتب اللوجستي',   color: 'bg-violet-100 text-violet-700 border-violet-200', icon: 'TruckIcon' },
+  factory:   { label: 'Factory',          labelAr: 'مدير مستودع المصنع / المورد', color: 'bg-blue-100 text-blue-700 border-blue-200',    icon: 'BuildingOffice2Icon' },
+  agent:     { label: 'Field Agent',      labelAr: 'المندوب / السائق',   color: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: 'UserCircleIcon' },
+  logistics: { label: 'Logistics Office', labelAr: 'إدارة العمليات اللوجستية',   color: 'bg-violet-100 text-violet-700 border-violet-200', icon: 'TruckIcon' },
   admin:     { label: 'Admin',            labelAr: 'الإدارة',            color: 'bg-gray-100 text-gray-700 border-gray-200',    icon: 'ShieldCheckIcon' },
+  buyer:     { label: 'Buyer',            labelAr: 'العميل (مراقبة فقط)', color: 'bg-amber-100 text-amber-700 border-amber-200', icon: 'EyeIcon' },
 };
 
 // ─── Permissions per role ─────────────────────────────────────────────────────
@@ -74,6 +78,7 @@ export default function DispatchChatRoom({
   factoryId,
   agentId,
   logisticsId,
+  buyerId,
   onClose,
 }: DispatchChatRoomProps) {
   const supabase = createClient();
@@ -169,7 +174,7 @@ export default function DispatchChatRoom({
     const recipients = [factoryId, agentId, logisticsId].filter(Boolean) as string[];
     const notifPayload = recipients.map((userId) => ({
       user_id: userId,
-      title: '🚚 غرفة التنسيق الميداني — بضاعة جاهزة للشحن',
+      title: '🚚 غرفة التنسيق الميداني — شحنة مسندة',
       message: `تم فتح غرفة تنسيق ميداني للطلب ${orderNumber ?? orderId}. يرجى الانضمام والتنسيق.`,
       type: 'dispatch_room_created',
       is_read: false,
@@ -230,13 +235,10 @@ export default function DispatchChatRoom({
 
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage
-        .from('chat-attachments')
-        .getPublicUrl(path);
-
+      // Private bucket: store a "bucket/path" reference; it is signed when opened
       setPendingAttachments((prev) => [
         ...prev,
-        { url: urlData.publicUrl, name: file.name, type: file.type },
+        { url: `chat-attachments/${path}`, name: file.name, type: file.type },
       ]);
       toast.success('تم رفع الملف بنجاح');
     } catch (err: any) {
@@ -364,7 +366,7 @@ export default function DispatchChatRoom({
           <p className="text-sm text-muted-foreground mt-1">
             لم يتم إنشاء غرفة التنسيق لهذا الطلب بعد.
             <br />
-            يتم الإنشاء تلقائياً عند تغيير حالة الطلب إلى "البضاعة جاهزة للشحن".
+            يتم الإنشاء تلقائياً فور إسناد الشحنة للتنسيق مع المصنع حول مواعيد الاستلام وتصاريح التحميل.
           </p>
         </div>
         {(currentUserRole === 'factory' || currentUserRole === 'admin') && (
@@ -408,9 +410,10 @@ export default function DispatchChatRoom({
         <div className="flex items-center gap-2 shrink-0">
           {/* Role badges */}
           <div className="hidden sm:flex items-center gap-1">
-            {(['factory', 'agent', 'logistics'] as const).map((r) => {
+            {(['factory', 'agent', 'logistics', 'buyer'] as const).map((r) => {
               const meta = ROLE_META[r];
-              const hasParticipant = r === 'factory' ? !!room.factory_id : r === 'agent' ? !!room.agent_id : !!room.logistics_id;
+              const roomBuyerId = (room as DispatchRoom & { buyer_id?: string | null }).buyer_id ?? buyerId ?? null;
+              const hasParticipant = r === 'factory' ? !!room.factory_id : r === 'agent' ? !!room.agent_id : r === 'logistics' ? !!room.logistics_id : !!roomBuyerId;
               return (
                 <span
                   key={r}
@@ -447,6 +450,7 @@ export default function DispatchChatRoom({
           {currentUserRole === 'agent' && 'يمكنك إرسال صور المعاينة، توثيق البليتات، وتأكيد مطابقة الكمية. لا يمكنك تعديل الأسعار.'}
           {currentUserRole === 'logistics' && 'يمكنك إرسال بيانات السائق (الاسم، الهاتف، لوحة الشاحنة) وموعد الوصول (ETA).'}
           {currentUserRole === 'admin' && 'صلاحيات كاملة — وصول إداري.'}
+          {currentUserRole === 'buyer' && 'وضع المراقبة: يمكنك متابعة تحديثات التنسيق دون إرسال رسائل.'}
         </div>
       )}
 
@@ -491,17 +495,15 @@ export default function DispatchChatRoom({
                     {msg.attachments && msg.attachments.length > 0 && (
                       <div className="space-y-1">
                         {msg.attachments.map((att, i) => (
-                          <a
+                          <SignedChatLink
                             key={i}
                             href={att.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
                             className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs border transition-colors ${mine ? 'bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100' : 'bg-card border-border text-foreground hover:bg-muted'}`}
                           >
                             <Icon name={att.type?.startsWith('image/') ? 'PhotoIcon' : 'PaperClipIcon'} size={14} />
                             <span className="truncate max-w-[160px]">{att.name}</span>
                             <Icon name="ArrowTopRightOnSquareIcon" size={12} className="shrink-0" />
-                          </a>
+                          </SignedChatLink>
                         ))}
                       </div>
                     )}
@@ -530,11 +532,12 @@ export default function DispatchChatRoom({
       )}
 
       {/* Input area */}
-      {isClosed ? (
+      {isClosed || currentUserRole === 'buyer' ? (
         <div className="px-4 py-3 border-t border-border bg-gray-50 text-center">
           <p className="text-xs text-gray-500 flex items-center justify-center gap-1.5">
             <Icon name="LockClosedIcon" size={13} />
-            الغرفة مغلقة — أرشيف للقراءة فقط. السجل محفوظ كملف إثبات تدقيقي مرتبط بنظام الضمان.
+            {isClosed
+              ? 'الغرفة مغلقة — أرشيف للقراءة فقط. السجل محفوظ كملف إثبات تدقيقي مرتبط بنظام الضمان.' :'وضع المراقبة فقط — يتم التنسيق بين المصنع والمندوب وإدارة العمليات.'}
           </p>
         </div>
       ) : (

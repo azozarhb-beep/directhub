@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 import { uploadChatImage, isImageAttachment } from '@/components/ChatImageAttachment';
+import { SignedChatImage, SignedChatLink } from '@/components/SignedChatMedia';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,11 @@ interface PlatformUser {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const AGENT_ROLE_VARIANTS = ['agent', 'field_agent', 'field-agent'];
+const AGENT_CONV_PREFIX = 'agent:';
+const isAgentConvId = (id: string | null | undefined): boolean => !!id && id.startsWith(AGENT_CONV_PREFIX);
+const agentIdFromConvId = (id: string): string => id.slice(AGENT_CONV_PREFIX.length);
 
 function formatMsgTime(dateStr: string): string {
   if (!dateStr) return '';
@@ -206,11 +212,60 @@ export default function AdminMessagingPanel({ userId: propUserId }: AdminMessagi
         .select('*')
         .order('last_message_at', { ascending: false, nullsFirst: false });
 
-      if (!err && data) {
-        setConversations(data as AdminConversation[]);
-      } else {
-        setConversations([]);
+      const base = (!err && data ? data : []) as AdminConversation[];
+
+      // Bridge: Field Agent ↔ Admin threads (agent_admin_messages) as replyable conversations
+      let agentConvs: AdminConversation[] = [];
+      try {
+        const { data: agentMsgs } = await supabase
+          .from('agent_admin_messages')
+          .select('agent_id, sender_role, message, created_at, is_read_by_admin')
+          .order('created_at', { ascending: false })
+          .limit(1000);
+        if (agentMsgs && agentMsgs.length > 0) {
+          const byAgent = new Map<string, { last: any; unread: number }>();
+          for (const m of agentMsgs as any[]) {
+            const entry = byAgent.get(m.agent_id) || { last: m, unread: 0 };
+            if (m.sender_role === 'agent' && !m.is_read_by_admin) entry.unread += 1;
+            byAgent.set(m.agent_id, entry);
+          }
+          const ids = Array.from(byAgent.keys());
+          const { data: profs } = await supabase
+            .from('user_profiles')
+            .select('id, full_name, company_name, email')
+            .in('id', ids);
+          const profMap = new Map<string, any>((profs || []).map((p: any) => [p.id, p]));
+          agentConvs = ids.map(agentId => {
+            const { last, unread } = byAgent.get(agentId)!;
+            const p = profMap.get(agentId);
+            return {
+              id: `${AGENT_CONV_PREFIX}${agentId}`,
+              admin_id: '',
+              participant_id: agentId,
+              participant_role: 'agent',
+              participant_category: null,
+              participant_name: p?.full_name || p?.email || 'مندوب ميداني',
+              participant_company: p?.company_name || '',
+              subject: 'المراسلة مع الإدارة',
+              last_message: last.message,
+              last_message_at: last.created_at,
+              unread_by_admin: unread,
+              unread_by_participant: 0,
+              is_active: true,
+              created_at: last.created_at,
+            } as AdminConversation;
+          });
+        }
+      } catch {
+        agentConvs = [];
       }
+
+      const agentIdsWithThread = new Set(agentConvs.map(c => c.participant_id));
+      const merged = [
+        ...agentConvs,
+        ...base.filter(c => !(c.participant_role === 'agent' && agentIdsWithThread.has(c.participant_id))),
+      ].sort((a, b) => (b.last_message_at || '').localeCompare(a.last_message_at || ''));
+      setConversations(merged);
     } catch {
       setConversations([]);
     } finally {
@@ -219,6 +274,40 @@ export default function AdminMessagingPanel({ userId: propUserId }: AdminMessagi
   }, [supabase]);
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
+
+  // Realtime: new agent → admin messages refresh the inbox
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-agent-inbox-realtime')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'agent_admin_messages',
+      }, (payload) => {
+        const msg = payload.new as any;
+        setActiveConvId(cur => {
+          if (cur && cur === `${AGENT_CONV_PREFIX}${msg.agent_id}`) {
+            setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, {
+              id: msg.id,
+              conversation_id: cur,
+              sender_id: msg.agent_id,
+              sender_role: msg.sender_role === 'admin' ? 'admin' : 'participant',
+              message: msg.message,
+              msg_type: msg.msg_type,
+              attachment_url: msg.attachment_url || undefined,
+              attachment_name: msg.attachment_name || undefined,
+              is_read_by_admin: msg.is_read_by_admin,
+              is_read_by_participant: msg.is_read_by_agent,
+              created_at: msg.created_at,
+            } as AdminMessage]);
+          }
+          return cur;
+        });
+        fetchConversations();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [supabase, fetchConversations]);
 
   // ── Real-time subscription for conversations list (unread updates) ─────────
 
@@ -266,6 +355,35 @@ export default function AdminMessagingPanel({ userId: propUserId }: AdminMessagi
   const fetchMessages = useCallback(async (convId: string) => {
     setMsgsLoading(true);
     try {
+      if (isAgentConvId(convId)) {
+        const agentId = agentIdFromConvId(convId);
+        const { data: am } = await supabase
+          .from('agent_admin_messages')
+          .select('*')
+          .eq('agent_id', agentId)
+          .order('created_at', { ascending: true });
+        setMessages((am || []).map((m: any) => ({
+          id: m.id,
+          conversation_id: convId,
+          sender_id: m.agent_id,
+          sender_role: m.sender_role === 'admin' ? 'admin' : 'participant',
+          message: m.message,
+          msg_type: m.msg_type,
+          attachment_url: m.attachment_url || undefined,
+          attachment_name: m.attachment_name || undefined,
+          is_read_by_admin: m.is_read_by_admin,
+          is_read_by_participant: m.is_read_by_agent,
+          created_at: m.created_at,
+        })) as AdminMessage[]);
+        await supabase
+          .from('agent_admin_messages')
+          .update({ is_read_by_admin: true })
+          .eq('agent_id', agentId)
+          .eq('sender_role', 'agent')
+          .eq('is_read_by_admin', false);
+        setConversations(prev => prev.map(c => c.id === convId ? { ...c, unread_by_admin: 0 } : c));
+        return;
+      }
       const { data } = await supabase
         .from('admin_messages')
         .select('*')
@@ -297,7 +415,7 @@ export default function AdminMessagingPanel({ userId: propUserId }: AdminMessagi
   // ── Real-time subscription ─────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!activeConvId) return;
+    if (!activeConvId || isAgentConvId(activeConvId)) return;
     const channel = supabase
       .channel(`admin-msgs-${activeConvId}`)
       .on('postgres_changes', {
@@ -387,6 +505,15 @@ export default function AdminMessagingPanel({ userId: propUserId }: AdminMessagi
       const { data } = await query;
       let users = (data || []) as PlatformUser[];
 
+      // Agent role variants (agent / field_agent / field-agent) all count as agents
+      if (activeTab === 'agent' && users.length === 0) {
+        const { data: fb } = await supabase
+          .from('user_profiles')
+          .select('id, full_name, company_name, email, role, phone, seller_category')
+          .or(AGENT_ROLE_VARIANTS.map(r => `role.eq.${r}`).join(',') + ',dashboard_path.ilike.%agent%');
+        users = ((fb || []) as PlatformUser[]).filter(u => u.role !== 'admin');
+      }
+
       // For factory tabs, further filter by seller_category
       if (activeTab === 'international_factory') {
         users = users.filter(u => u.seller_category === 'international_factory');
@@ -416,6 +543,32 @@ export default function AdminMessagingPanel({ userId: propUserId }: AdminMessagi
     setCreatingConv(true);
     setError('');
     try {
+      // Field agents: use the agent ↔ admin thread (agent_admin_messages) so replies reach the agent dashboard
+      if (AGENT_ROLE_VARIANTS.includes(selectedUser.role)) {
+        const agentConvId = `${AGENT_CONV_PREFIX}${selectedUser.id}`;
+        setConversations(prev => prev.some(c => c.id === agentConvId) ? prev : [{
+          id: agentConvId,
+          admin_id: userId,
+          participant_id: selectedUser.id,
+          participant_role: 'agent',
+          participant_category: null,
+          participant_name: selectedUser.full_name || selectedUser.email,
+          participant_company: selectedUser.company_name || '',
+          subject: newSubject || 'المراسلة مع الإدارة',
+          last_message: '',
+          last_message_at: new Date().toISOString(),
+          unread_by_admin: 0,
+          unread_by_participant: 0,
+          is_active: true,
+          created_at: new Date().toISOString(),
+        } as AdminConversation, ...prev]);
+        setActiveConvId(agentConvId);
+        setShowNewConv(false);
+        setSelectedUser(null);
+        setNewSubject('');
+        setShowMobileSidebar(false);
+        return;
+      }
       const { data: existing } = await supabase
         .from('admin_conversations')
         .select('id')
@@ -506,6 +659,49 @@ export default function AdminMessagingPanel({ userId: propUserId }: AdminMessagi
       const msgType = attachmentUrl
         ? (attachment?.file.type.startsWith('image/') ? 'image' : 'document')
         : 'text';
+
+      if (isAgentConvId(activeConvId)) {
+        const agentId = agentIdFromConvId(activeConvId);
+        const body = text || (attachmentName || 'مرفق');
+        const { data: am, error: amErr } = await supabase
+          .from('agent_admin_messages')
+          .insert({
+            agent_id: agentId,
+            sender_role: 'admin',
+            message: body,
+            msg_type: attachmentUrl ? 'document' : 'text',
+            attachment_url: attachmentUrl || '',
+            attachment_name: attachmentName || '',
+            is_read_by_admin: true,
+            is_read_by_agent: false,
+          })
+          .select()
+          .single();
+        if (!amErr && am) {
+          setMessages(prev => prev.some(m => m.id === am.id) ? prev : [...prev, {
+            id: am.id,
+            conversation_id: activeConvId,
+            sender_id: userId,
+            sender_role: 'admin',
+            message: am.message,
+            msg_type: am.msg_type,
+            attachment_url: am.attachment_url || undefined,
+            attachment_name: am.attachment_name || undefined,
+            is_read_by_admin: true,
+            is_read_by_participant: false,
+            created_at: am.created_at,
+          } as AdminMessage]);
+          setInput('');
+          setAttachment(null);
+          scrollToBottom();
+          setConversations(prev => prev.map(c =>
+            c.id === activeConvId ? { ...c, last_message: body, last_message_at: am.created_at } : c
+          ));
+        } else {
+          setError('فشل إرسال الرسالة.');
+        }
+        return;
+      }
 
       const { data: msg, error: msgErr } = await supabase
         .from('admin_messages')
@@ -914,18 +1110,16 @@ export default function AdminMessagingPanel({ userId: propUserId }: AdminMessagi
                                 {msg.attachment_url && (
                                   <div className="mb-2">
                                     {isImageAttachment(msg.attachment_url, msg.attachment_name) ? (
-                                      <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer">
-                                        <img
+                                      <SignedChatLink href={msg.attachment_url} className="block">
+                                        <SignedChatImage
                                           src={msg.attachment_url}
                                           alt={msg.attachment_name || 'صورة مرفقة'}
                                           className="max-w-full rounded-xl max-h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
                                         />
-                                      </a>
+                                      </SignedChatLink>
                                     ) : (
-                                      <a
+                                      <SignedChatLink
                                         href={msg.attachment_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
                                         className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors ${
                                           isAdmin
                                             ? 'bg-[#0A192F]/20 border-[#0A192F]/30 text-[#0A192F] hover:bg-[#0A192F]/30'
@@ -934,7 +1128,7 @@ export default function AdminMessagingPanel({ userId: propUserId }: AdminMessagi
                                       >
                                         <Icon name="DocumentArrowDownIcon" size={16} />
                                         <span className="truncate max-w-[160px]">{msg.attachment_name || 'تحميل المرفق'}</span>
-                                      </a>
+                                      </SignedChatLink>
                                     )}
                                   </div>
                                 )}

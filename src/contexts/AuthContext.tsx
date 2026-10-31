@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import LoginModal from '@/components/LoginModal';
-import { clearRoleCookies, syncRoleCookies } from '@/lib/roleCookies';
+import { clearRoleCookies, syncRoleCookies, persistActiveRole, clearActiveRole } from '@/lib/roleCookies';
 
 const AuthContext = createContext<any>({});
 
@@ -79,6 +79,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       seller_category: sellerCategory,
       account_role: accountRole,
     });
+
+    // Persist the active role so reloads keep suppliers inside /supplier.
+    const isSupplier =
+      (role || '').toLowerCase() !== 'admin' &&
+      ['commercial_supplier', 'local_supplier'].some(
+        (v) => (accountRole || '').toLowerCase() === v || (sellerCategory || '').toLowerCase() === v
+      );
+    if (isSupplier) persistActiveRole('supplier');
+    else clearActiveRole();
   }, [supabase]);
 
   useEffect(() => {
@@ -181,6 +190,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const signUp = async (email: string, password: string, metadata: any = {}) => {
+    // Wipe any previous account's session/role hints so a stale user
+    // (e.g. a previously tested field agent) can never override the new one.
+    clearRoleCookies();
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch {
+      // ignore — no active session to clear
+    }
+    setSession(null);
+    setUser(null);
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -199,6 +219,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     });
     if (error) throw error;
+
+    // If Supabase auto-signed the new user in, end that session so the user
+    // logs in explicitly and is routed by their own freshly saved role.
+    if (data?.session) {
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch {
+        // ignore
+      }
+      clearRoleCookies();
+      setSession(null);
+      setUser(null);
+    }
     return data;
   };
 

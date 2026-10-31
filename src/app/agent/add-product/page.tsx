@@ -10,6 +10,14 @@ import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
+import {
+  PRODUCT_UNIT_OPTIONS,
+  CUSTOM_UNIT_VALUE,
+  CUSTOM_UNIT_LABEL,
+  CUSTOM_UNIT_PLACEHOLDER,
+  CUSTOM_UNIT_REQUIRED_ERROR,
+  resolveProductUnit,
+} from '@/lib/productUnits';
 
 interface AgentFactory {
   id: string;
@@ -128,7 +136,10 @@ const INITIAL_FORM = {
   currency: 'SAR',
   moq: '1',
   unit: 'piece',
+  custom_unit: '',
   specifications: '',
+  gross_weight_kg: '',
+  carton_volume_cbm: '',
   shipping_terms: 'CALCULATED_SHIPPING',
   shipping_port: '',
 };
@@ -405,6 +416,7 @@ function AddProductPageInner() {
     if (!form.wholesale_price || isNaN(Number(form.wholesale_price)) || Number(form.wholesale_price) <= 0) { setError(ap.errorWholesale); return; }
     if (form.target_market !== 'B2B' && (!form.retail_price || isNaN(Number(form.retail_price)) || Number(form.retail_price) <= 0)) { setError(ap.errorRetail); return; }
     if (!form.moq || isNaN(Number(form.moq))) { setError(ap.errorMoq); return; }
+    if (form.unit === CUSTOM_UNIT_VALUE && !form.custom_unit.trim()) { setError(CUSTOM_UNIT_REQUIRED_ERROR); return; }
 
     const cleanedTiers = tiers
       .filter(r => r.min_qty || r.max_qty || r.price)
@@ -449,6 +461,7 @@ function AddProductPageInner() {
         .from('agent_products')
         .insert({
           agent_id: user.id,
+          attributed_agent_id: user.id,
           factory_id: factory.id,
           name_ar: form.name_ar.trim(),
           name_en: form.name_en.trim(),
@@ -463,7 +476,7 @@ function AddProductPageInner() {
           price_tiers: cleanedTiers,
           currency: form.currency,
           moq: Number(form.moq),
-          unit: form.unit,
+          unit: resolveProductUnit(form.unit, form.custom_unit),
           specifications: specs,
           images: imageUrls,
           video_url: videoUrl,
@@ -718,11 +731,23 @@ function AddProductPageInner() {
                 <select
                   value={form.unit}
                   onChange={e => update('unit', e.target.value)}
-                  className="w-full sm:w-28 px-2 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
+                  className="w-full sm:w-56 px-2 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground focus:outline-none focus:border-primary"
                 >
-                  {['piece', 'kg', 'ton', 'box', 'pallet', 'set', 'meter', 'liter'].map(u => <option key={u} value={u}>{u}</option>)}
+                  {PRODUCT_UNIT_OPTIONS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
                 </select>
               </div>
+              {form.unit === CUSTOM_UNIT_VALUE && (
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-foreground mb-1.5">{CUSTOM_UNIT_LABEL}</label>
+                  <input
+                    type="text"
+                    value={form.custom_unit}
+                    onChange={e => update('custom_unit', e.target.value)}
+                    placeholder={CUSTOM_UNIT_PLACEHOLDER}
+                    className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                  />
+                </div>
+              )}
             </div>
 
             <div>

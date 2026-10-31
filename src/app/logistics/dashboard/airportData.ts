@@ -109,6 +109,26 @@ export function normalizeSearch(s: string): string {
     .trim();
 }
 
+const AIRPORT_COUNTRY_BY_IATA: Record<string, string> = {
+  HKG: 'China', PVG: 'China', CAN: 'China', SZX: 'China', PEK: 'China', PKX: 'China',
+  NGB: 'China', HGH: 'China', TAO: 'China', XMN: 'China',
+  ICN: 'South Korea', NRT: 'Japan', HND: 'Japan', TPE: 'Taiwan',
+  DXB: 'UAE', DWC: 'UAE', SHJ: 'UAE', AUH: 'UAE',
+  RUH: 'Saudi Arabia', JED: 'Saudi Arabia', DMM: 'Saudi Arabia',
+  DOH: 'Qatar', MCT: 'Oman', KWI: 'Kuwait', BAH: 'Bahrain', AMM: 'Jordan', CAI: 'Egypt',
+  IST: 'Turkey', SAW: 'Turkey', FRA: 'Germany', AMS: 'Netherlands', LHR: 'UK',
+  CDG: 'France', MXP: 'Italy', MAD: 'Spain',
+  BOM: 'India', DEL: 'India', MAA: 'India', KHI: 'Pakistan', DAC: 'Bangladesh',
+  JFK: 'USA', ORD: 'USA', LAX: 'USA', MIA: 'USA', YYZ: 'Canada',
+  ADD: 'Ethiopia', NBO: 'Kenya', JNB: 'South Africa',
+  SAH: 'Yemen', ADE: 'Yemen', GXF: 'Yemen', RIY: 'Yemen',
+};
+
+export function getAirportCountry(value: string): string | null {
+  if (!value) return null;
+  return AIRPORT_COUNTRY_BY_IATA[value.toUpperCase()] ?? null;
+}
+
 export function filterAirports(list: AirportOption[], query: string): AirportOption[] {
   const q = normalizeSearch(query);
   if (q.length < 2) return list;

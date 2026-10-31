@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import Icon from '@/components/ui/AppIcon';
 import { createClient } from '@/lib/supabase/client';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { copyAgentProductLink } from './AgentProductShareModal';
 
 export interface EditableAgentProduct {
   id: string;
@@ -225,9 +226,10 @@ interface PreviewProps {
   factoryName?: string;
   onClose: () => void;
   onEdit: () => void;
+  onShare?: () => void;
 }
 
-export function AgentProductPreviewModal({ product, factoryName, onClose, onEdit }: PreviewProps) {
+export function AgentProductPreviewModal({ product, factoryName, onClose, onEdit, onShare }: PreviewProps) {
   const { t, dir } = useLanguage();
   const pa = t.agentProductActions;
   const images = (product.images || []).filter(Boolean);
@@ -340,6 +342,24 @@ export function AgentProductPreviewModal({ product, factoryName, onClose, onEdit
               <Icon name="ArrowTopRightOnSquareIcon" size={15} />
               {pa.viewInStore}
             </Link>
+          )}
+          <button
+            type="button"
+            onClick={() => copyAgentProductLink(product.id, pa.linkCopied, pa.linkCopyFailed)}
+            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-border rounded-xl text-sm font-semibold text-foreground hover:bg-muted"
+          >
+            <Icon name="LinkIcon" size={15} />
+            {pa.copyLink}
+          </button>
+          {onShare && (
+            <button
+              type="button"
+              onClick={onShare}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-border rounded-xl text-sm font-semibold text-foreground hover:bg-muted"
+            >
+              <Icon name="QrCodeIcon" size={15} />
+              {pa.shareQr}
+            </button>
           )}
         </div>
       </div>

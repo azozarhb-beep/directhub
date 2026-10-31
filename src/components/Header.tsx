@@ -50,6 +50,7 @@ const Header: React.FC = () => {
     '/admin',
     '/my-account/add-product',
     '/my-account/edit-profile',
+    '/disputes',
     // Dashboard routes — hide marketplace search & category bar
     '/logistics',
     '/supplier',
@@ -95,7 +96,6 @@ const Header: React.FC = () => {
     { path: '/checkout',               labelKey: 'checkout',             icon: 'CreditCardIcon' },
     { path: '/my-account',             labelKey: 'myAccount',            icon: 'UserCircleIcon' },
     { path: '/login',                  labelKey: 'login',                icon: 'ArrowRightOnRectangleIcon' },
-    { path: '/simulation',             labelKey: 'simulation',           icon: 'BeakerIcon' },
     { path: '/financial-accounts',     labelKey: 'financialAccounts',    icon: 'BanknotesIcon' },
     { path: '/agent/dashboard',        labelKey: 'agentDashboard',       icon: 'UserGroupIcon' },
     { path: '/seller/onboarding',      labelKey: 'sellerOnboarding',     icon: 'RocketLaunchIcon' },

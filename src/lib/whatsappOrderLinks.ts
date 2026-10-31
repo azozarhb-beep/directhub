@@ -299,9 +299,10 @@ export function buildProductShareLinkNoPhone(
   productUrl: string,
   isArabic: boolean
 ): string {
+  const cleanUrl = productUrl.replace(/[\s\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '');
   const message = isArabic
-    ? `اكتشف هذا المنتج الحصري وأفضل عروض المصانع العالمية في دايركت هب:\n${productUrl}`
-    : `Check out this exclusive product and top global factory offers on DirectHub:\n${productUrl}`;
+    ? `اكتشف هذا المنتج الحصري وأفضل عروض المصانع العالمية في دايركت هب:\n${cleanUrl}`
+    : `Check out this exclusive product and top global factory offers on DirectHub:\n${cleanUrl}`;
 
   return `https://wa.me/?text=${encodeURIComponent(message)}`;
 }

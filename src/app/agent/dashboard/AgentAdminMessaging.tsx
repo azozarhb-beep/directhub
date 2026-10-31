@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 import AgentLanguageSelector, { CHAT_LANGUAGES, ChatLanguage } from './AgentLanguageSelector';
+import { SignedChatImage, SignedChatLink } from '@/components/SignedChatMedia';
 
 interface AdminMessage {
   id: string;
@@ -120,8 +121,8 @@ export default function AgentAdminMessaging({ userId }: Props) {
         return;
       }
       if (uploadData) {
-        const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(filePath);
-        attachmentUrl = urlData?.publicUrl || '';
+        // Private bucket: store the object reference; it is signed at render time
+        attachmentUrl = `chat-media/${filePath}`;
         attachmentName = pendingAttachment.file.name;
       }
       clearAttachment();
@@ -316,7 +317,7 @@ export default function AgentAdminMessaging({ userId }: Props) {
                   {/* Image attachment preview */}
                   {msg.attachment_url && msg.attachment_type?.startsWith('image/') && (
                     <div className="rounded-xl overflow-hidden max-w-[200px] border border-[#D4AF37]/20">
-                      <img
+                      <SignedChatImage
                         src={msg.attachment_url}
                         alt={msg.attachment_name || 'صورة مرفقة'}
                         className="w-full h-auto object-cover max-h-40"
@@ -325,10 +326,8 @@ export default function AgentAdminMessaging({ userId }: Props) {
                   )}
                   {/* PDF / other attachment */}
                   {msg.attachment_url && !msg.attachment_type?.startsWith('image/') && (
-                    <a
+                    <SignedChatLink
                       href={msg.attachment_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
                       className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors ${
                         isAgent
                           ? 'bg-[#D4AF37]/20 border-[#D4AF37]/40 text-[#0A192F]'
@@ -338,7 +337,7 @@ export default function AgentAdminMessaging({ userId }: Props) {
                       <Icon name="DocumentTextIcon" size={13} className="shrink-0" />
                       <span className="truncate max-w-[140px]">{msg.attachment_name || 'مرفق'}</span>
                       <Icon name="ArrowTopRightOnSquareIcon" size={11} className="shrink-0 ml-auto" />
-                    </a>
+                    </SignedChatLink>
                   )}
                   <div
                     className={`px-3.5 py-2.5 rounded-2xl text-sm ${

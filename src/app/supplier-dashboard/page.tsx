@@ -490,7 +490,7 @@ export default function SupplierDashboardPage() {
                   { href: '/orders', icon: 'TruckIcon', label: isRTL ? 'تتبع الطلبات' : 'Track Orders', color: '#1e3a5f' },
                   { href: '/financial-accounts', icon: 'BanknotesIcon', label: isRTL ? 'الحسابات المالية' : 'Financial Accounts', color: '#D4AF37' },
                   { href: '/kyc', icon: 'ShieldCheckIcon', label: isRTL ? 'التحقق KYC' : 'KYC Verification', color: '#374151' },
-                  { href: '/supplier/local-dashboard', icon: 'BuildingStorefrontIcon', label: isRTL ? 'غرفة التحكم المحلية' : 'Local Control Room', color: '#065f46' },
+                  { href: '/supplier', icon: 'BuildingStorefrontIcon', label: isRTL ? 'غرفة التحكم المحلية' : 'Local Control Room', color: '#065f46' },
                   { href: '/my-account', icon: 'UserCircleIcon', label: isRTL ? 'الملف الشخصي' : 'My Profile', color: '#533483' },
                 ].map(action => (
                   <Link

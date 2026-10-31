@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import Icon from '@/components/ui/AppIcon';
 
 type TabKey = 'infra' | 'gateways' | 'errors' | 'audit' | 'devops';
@@ -84,6 +85,7 @@ export default function AdminSystemPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const { user, loading: authLoading } = useAuth();
+  const { dir } = useLanguage();
 
   const role = (user?.user_metadata?.role || user?.app_metadata?.role || '') as string;
   const staffRole = (user?.user_metadata?.staff_role || user?.app_metadata?.staff_role || '') as string;
@@ -464,7 +466,7 @@ export default function AdminSystemPage() {
   const visibleIncidents = incidents.filter((i) => !dismissed.includes(i.id) && (showResolved || !i.resolved));
 
   return (
-    <div dir="rtl" className="fixed inset-0 w-full h-[100dvh] bg-slate-950 text-white flex flex-col z-50 overflow-hidden">
+    <div dir={dir} className="fixed inset-0 w-full h-[100dvh] bg-slate-950 text-white flex flex-col z-50 overflow-hidden">
       <header className="sticky top-0 z-20 shrink-0 bg-slate-900 border-b border-slate-800 px-4 py-3 flex flex-wrap items-center gap-3">
         {isMasterAdmin && (
           <Link

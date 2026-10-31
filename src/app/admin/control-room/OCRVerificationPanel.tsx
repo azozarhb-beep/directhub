@@ -6,6 +6,8 @@ import { getChatCompletion } from '@/lib/ai/chatCompletion';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 import TrustScoreBadge from '@/components/TrustScoreBadge';
+import SignedDocLink from '@/components/SignedDocLink';
+import { getFactoryDocumentSignedUrl } from '@/lib/factoryDocuments';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -262,7 +264,8 @@ export default function OCRVerificationPanel() {
   const runAIAnalysis = async (verif: OCRVerification) => {
     setAiLoading(verif.id);
     try {
-      const result = await analyzeDocumentWithAI(verif.document_url, verif.document_type);
+      const signedDocUrl = (await getFactoryDocumentSignedUrl(verif.document_url, 300)) || verif.document_url;
+      const result = await analyzeDocumentWithAI(signedDocUrl, verif.document_type);
 
       await supabase.from('ocr_license_verifications').update({
         ai_summary: result.summary,
@@ -552,11 +555,11 @@ export default function OCRVerificationPanel() {
 
                     {/* Actions */}
                     <div className="flex items-center gap-2 flex-wrap">
-                      <a href={v.document_url} target="_blank" rel="noopener noreferrer"
+                      <SignedDocLink url={v.document_url}
                         className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 flex items-center gap-1">
                         <Icon name="EyeIcon" size={13} />
                         عرض الوثيقة
-                      </a>
+                      </SignedDocLink>
                       {!v.ai_summary && (
                         <button
                           onClick={() => runAIAnalysis(v)}

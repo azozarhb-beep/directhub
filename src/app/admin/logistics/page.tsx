@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import Icon from '@/components/ui/AppIcon';
+import AdminLogisticsFinanceCompliance from './AdminLogisticsFinanceCompliance';
 
 type TabKey = 'b2b' | 'b2c';
 type DirKey = 'carriers' | 'customs' | 'couriers';
@@ -508,6 +509,9 @@ export default function AdminLogisticsPage() {
             })}
           </section>
         )}
+
+        {/* Payout approvals + licence review (admin only: dispatchers cannot see finance data) */}
+        {isAdmin && <AdminLogisticsFinanceCompliance onToast={showToast} />}
 
         {/* Partner & Fleet Directory */}
         <section className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">

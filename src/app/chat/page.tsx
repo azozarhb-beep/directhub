@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import Icon from '@/components/ui/AppIcon';
+import { SignedChatVideo, SignedChatLink } from '@/components/SignedChatMedia';
+import ChatAttachmentView, { isImageAttachmentMeta } from '@/components/ChatAttachmentView';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import { useAuth } from '@/contexts/AuthContext';
@@ -151,7 +153,7 @@ async function translateText(text: string, targetLanguage: SupportedLang): Promi
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function ChatHubPage() {
+function ChatHubPageLegacyUnused() {
   const { t, dir, isRTL, language } = useLanguage();
   const M = t.messaging;
   const threadLabel = (type: string) => ({ negotiation: M.negotiation, rfq: M.rfq, order: M.order } as Record<string, string>)[type] || type;
@@ -583,8 +585,8 @@ export default function ChatHubPage() {
           .from('chat-media')
           .upload(filePath, fileWithResolvedType(attachment.file, attachment.type), { contentType: attachment.type, upsert: false });
         if (!uploadError && uploadData) {
-          const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(filePath);
-          attachmentUrl = urlData?.publicUrl;
+          // Private bucket: store a "bucket/path" reference; it is signed at render time
+          attachmentUrl = `chat-media/${filePath}`;
           attachmentType = attachment.type;
           attachmentName = attachment.file.name;
           // Update the optimistic message with the real public URL before revoking the blob
@@ -1057,27 +1059,26 @@ export default function ChatHubPage() {
 
                           <div className={`max-w-[72%] space-y-1 flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
                             {/* Image attachment */}
-                            {msg.attachment_url && msg.attachment_type?.startsWith('image/') && (
+                            {msg.attachment_url && isImageAttachmentMeta(msg.attachment_url, msg.attachment_name, msg.attachment_type) && (
                               <div className="rounded-xl overflow-hidden border border-border max-w-[220px]">
-                                <img
-                                  src={msg.attachment_url}
-                                  alt={msg.attachment_name || 'Attachment'}
-                                  className="w-full h-auto object-cover max-h-44"
+                                <ChatAttachmentView
+                                  url={msg.attachment_url}
+                                  name={msg.attachment_name}
+                                  type={msg.attachment_type}
+                                  className="!mb-0"
                                 />
                               </div>
                             )}
                             {/* Video attachment */}
                             {msg.attachment_url && msg.attachment_type?.startsWith('video/') && (
                               <div className="rounded-xl overflow-hidden border border-border max-w-[220px]">
-                                <video src={msg.attachment_url} controls className="w-full max-h-44" preload="metadata" />
+                                <SignedChatVideo src={msg.attachment_url} className="w-full max-h-44" />
                               </div>
                             )}
                             {/* PDF attachment */}
                             {msg.attachment_url && msg.attachment_type === 'application/pdf' && (
-                              <a
+                              <SignedChatLink
                                 href={msg.attachment_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
                                 className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors ${
                                   isUser
                                     ? 'bg-primary/20 border-primary/30 text-primary' : 'bg-muted border-border text-foreground hover:bg-muted/70'
@@ -1086,7 +1087,7 @@ export default function ChatHubPage() {
                                 <Icon name="DocumentTextIcon" size={14} className="shrink-0" />
                                 <span className="truncate max-w-[140px]">{msg.attachment_name || 'Document.pdf'}</span>
                                 <Icon name="ArrowTopRightOnSquareIcon" size={11} className="shrink-0 ml-auto" />
-                              </a>
+                              </SignedChatLink>
                             )}
                             {/* Pending attachment (no URL) */}
                             {msg.attachment_name && !msg.attachment_url && (
@@ -1411,4 +1412,17 @@ export default function ChatHubPage() {
       <BottomNav />
     </div>
   );
+}
+
+export default function LegacyChatHubPage() {
+  const router = useRouter();
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const conv = sp.get('conv');
+    const productId = sp.get('productId');
+    if (conv) router.replace(`/messaging?conv=${encodeURIComponent(conv)}`);
+    else if (productId) router.replace(`/messaging?productId=${encodeURIComponent(productId)}`);
+    else router.replace('/messaging');
+  }, [router]);
+  return null;
 }

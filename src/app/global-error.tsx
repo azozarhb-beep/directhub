@@ -2,6 +2,23 @@
 
 import React, { useEffect } from 'react';
 
+const CHUNK_ERROR_RE =
+  /ChunkLoadError|Loading chunk .* failed|Loading CSS chunk|timeout: .*\/_next\/static\/chunks|__webpack_modules__\[[^\]]*\] is not a function|reading 'call'/i;
+
+function isChunkErr(error: Error | undefined): boolean {
+  return CHUNK_ERROR_RE.test(`${error?.name || ''} ${error?.message || ''}`);
+}
+
+function hardReload() {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('_cb', String(Date.now()));
+    window.location.replace(url.toString());
+  } catch {
+    window.location.reload();
+  }
+}
+
 export default function GlobalError({
   error,
   reset,
@@ -11,18 +28,38 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error('[Global Error Boundary]', error);
-    if (/ChunkLoadError|Loading chunk .* failed/i.test(`${error?.name} ${error?.message}`)) {
-      try {
-        const last = Number(sessionStorage.getItem('dh_chunk_reload_at') || '0');
-        if (Date.now() - last > 10000) {
-          sessionStorage.setItem('dh_chunk_reload_at', String(Date.now()));
-          window.location.reload();
-        }
-      } catch {
-        window.location.reload();
+    if (!isChunkErr(error)) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const now = Date.now();
+      const last = Number(sessionStorage.getItem('dh_chunk_reload_at') || '0');
+      let count = Number(sessionStorage.getItem('dh_ge_reload_count') || '0');
+      if (now - last > 60000) count = 0;
+      if (count < 3) {
+        sessionStorage.setItem('dh_chunk_reload_at', String(now));
+        sessionStorage.setItem('dh_ge_reload_count', String(count + 1));
+        timer = setTimeout(() => hardReload(), 1000 + count * 2000);
       }
+    } catch {
+      timer = setTimeout(() => hardReload(), 1500);
     }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [error]);
+
+  const handleRetry = () => {
+    if (isChunkErr(error)) {
+      try {
+        sessionStorage.removeItem('dh_ge_reload_count');
+      } catch {
+        // ignore
+      }
+      hardReload();
+      return;
+    }
+    reset();
+  };
 
   return (
     <html lang="en">
@@ -76,7 +113,7 @@ export default function GlobalError({
           >
             <button
               type="button"
-              onClick={() => reset()}
+              onClick={handleRetry}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',

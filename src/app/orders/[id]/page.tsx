@@ -109,7 +109,7 @@ export default function OrderDetailPage() {
 
       const { data, error: fetchError } = await supabase
         .from('orders')
-        .select('*')
+        .select('id, order_number, status, escrow_status, items, shipping_address, payment_method, subtotal, shipping_cost, total, notes, confirmed_at, shipped_at, delivered_at, created_at, updated_at, tracking_code, receipt_url, payment_verified, payment_verified_at, admin_note, agreed_delivery_days, expected_delivery_date, dispute_status, refund_status')
         .eq('id', orderId)
         .single();
 
