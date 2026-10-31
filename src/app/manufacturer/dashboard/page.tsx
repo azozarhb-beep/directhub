@@ -15,7 +15,7 @@ import ManufacturerMessagingHub from '@/components/manufacturer/ManufacturerMess
 
 import { MultilingualProductFields, SupplierLanguageBadge } from '@/components/LocalizedProductDisplay';
 import toast, { Toaster } from 'react-hot-toast';
-import { Area } from 'recharts';
+
 import { useLanguage } from '@/contexts/LanguageContext';
 import AllSalesMethodsPanel from '@/components/AllSalesMethodsPanel';
 import AIContractAssistant from '@/components/AIContractAssistant';
@@ -24,7 +24,7 @@ import FactoryTeamManagement from '@/components/manufacturer/FactoryTeamManageme
 import TieredPricingManager from '@/components/international-factory/TieredPricingManager';
 import ChatImageAttachment, { uploadChatImage, isImageAttachment, type AttachmentState } from '@/components/ChatImageAttachment';
 
-import ChatAttachmentView from '@/components/ChatAttachmentView';
+
 
 
 
@@ -48,257 +48,18 @@ import ShipmentBidsPanel from '@/components/ShipmentBidsPanel';
 import DealLinkGeneratorModal from '@/components/manufacturer/DealLinkGeneratorModal';
 import FinancialSummaryHeader from '@/app/manufacturer/dashboard/FinancialSummaryHeader';
 
+import { useSalesRepsManagement } from './useSalesRepsManagement';
+import type {
+  SalesRep,
+  Product,
+  ProductFormData,
+  PaymentSettings,
+  BankAccount,
+  DashboardTab,
+  ManufacturerDashboardProps,
+} from './dashboardTypes';
+import { EMPTY_BANK_ACCOUNT, CATEGORIES, EMPTY_FORM, EMPTY_PAYMENT_SETTINGS, MODULE_ROUTES,  } from './dashboardConfig';
 
-// ── Sales Rep interfaces ─────────────────────────────────────────────────────
-interface SalesRep {
-  id: string;
-  factory_owner_id: string;
-  rep_user_id: string | null;
-  invited_email: string;
-  full_name: string;
-  role: 'sales_rep' | 'senior_sales_rep';
-  status: 'pending' | 'active' | 'suspended' | 'revoked';
-  invitation_sent_at: string;
-  accepted_at: string | null;
-  can_manage_products: boolean;
-  can_view_inventory: boolean;
-  can_respond_rfq: boolean;
-  can_view_orders: boolean;
-  notes: string | null;
-}
-
-interface Product {
-  id: string;
-  name: string;
-  name_ar: string;
-  description: string;
-  description_ar: string;
-  category: string;
-  sku: string;
-  unit: string;
-  unit_price: number;
-  minimum_order_qty: number;
-  stock_quantity: number;
-  inventory_status: 'in_stock' | 'low_stock' | 'out_of_stock' | 'discontinued';
-  origin_country: string;
-  is_active: boolean;
-  created_at: string;
-  created_by_role?: 'agent' | 'manufacturer' | null;
-  created_by_id?: string | null;
-  created_by_name?: string | null;
-  approval_status?: 'approved' | 'pending_factory_approval' | null;
-}
-
-interface ProductFormData {
-  name: string;
-  name_ar: string;
-  name_zh: string;
-  name_tr: string;
-  description: string;
-  description_ar: string;
-  description_zh: string;
-  description_tr: string;
-  specifications_en: string;
-  specifications_ar: string;
-  category: string;
-  sku: string;
-  unit: string;
-  unit_price: string;
-  minimum_order_qty: string;
-  stock_quantity: string;
-  inventory_status: string;
-  origin_country: string;
-}
-
-interface PaymentSettings {
-  id?: string;
-  bank_name: string;
-  bank_account_holder: string;
-  iban: string;
-  swift_code: string;
-  account_number: string;
-  bank_country: string;
-  bank_city: string;
-  bank_branch: string;
-  bank_currency: string;
-  usdt_trc20_address: string;
-  usdt_erc20_address: string;
-  bitcoin_address: string;
-  ethereum_address: string;
-  other_wallet_label: string;
-  other_wallet_address: string;
-  is_verified?: boolean;
-  verified_at?: string | null;
-  admin_note?: string;
-  // ── Local Payment Services ──
-  jawali_phone: string;
-  jawali_account_name: string;
-  jawali_pos_number: string;
-  jawali_pos_name: string;
-  jeeb_phone: string;
-  jeeb_account_name: string;
-  jeeb_pos_number: string;
-  jeeb_pos_name: string;
-  cash_phone: string;
-  cash_account_name: string;
-  cash_pos_number: string;
-  cash_pos_name: string;
-  floosk_phone: string;
-  floosk_account_name: string;
-  floosk_pos_number: string;
-  floosk_pos_name: string;
-  mobile_money_phone: string;
-  mobile_money_account_name: string;
-  mobile_money_pos_number: string;
-  mobile_money_pos_name: string;
-  kuraimi_phone: string;
-  kuraimi_account_name: string;
-  kuraimi_pos_number: string;
-  kuraimi_pos_name: string;
-}
-
-interface BankAccount {
-  id: string;
-  manufacturer_id: string;
-  account_holder_name: string;
-  bank_name: string;
-  account_number: string;
-  iban: string;
-  swift_bic: string;
-  currency: string;
-  account_type: string;
-  account_type_label: string;
-  status: 'pending_review' | 'approved' | 'rejected';
-  admin_note: string;
-  is_primary: boolean;
-  created_at: string;
-}
-
-const EMPTY_BANK_ACCOUNT = {
-  account_holder_name: '',
-  bank_name: '',
-  account_number: '',
-  iban: '',
-  swift_bic: '',
-  currency: 'SAR',
-  account_type: 'local_collection',
-  account_type_label: '',
-};
-
-const ACCOUNT_TYPE_OPTIONS = [
-  { value: 'local_collection', labelKey: 'dealLocalCollection' as const, labelEn: 'Local Collection Account' },
-  { value: 'international_supply', labelKey: 'dealIntlSupply' as const, labelEn: 'International Supply Account' },
-  { value: 'local_general', labelKey: 'dealLocalGeneral' as const, labelEn: 'Local General Account' },
-  { value: 'international_general', labelKey: 'dealIntlGeneral' as const, labelEn: 'International General Account' },
-];
-
-const CURRENCIES = ['YER', 'SAR', 'USD', 'EUR', 'GBP', 'AED', 'CNY', 'TRY', 'EGP', 'KWD', 'QAR', 'BHD', 'OMR'];
-
-const CATEGORIES = [
-  { value: 'raw_materials', label: 'مواد خام أولية' },
-  { value: 'packaging', label: 'مواد تعبئة وتغليف' },
-  { value: 'consumables', label: 'مستهلكات' },
-  { value: 'furniture_furnishings', label: 'مفروشات وأثاث' },
-  { value: 'household_products', label: 'منتجات منزلية' },
-  { value: 'clothing_textiles', label: 'ملابس ونسيج' },
-  { value: 'food_beverages', label: 'أغذية ومشروبات' },
-  { value: 'cosmetics_personal_care', label: 'مستحضرات تجميل وعناية' },
-  { value: 'construction_materials', label: 'مواد بناء وإنشاءات' },
-  { value: 'heavy_equipment', label: 'معدات وآليات ثقيلة' },
-  { value: 'spare_parts', label: 'قطع غيار' },
-  { value: 'pharma_medical', label: 'أدوية ومستلزمات طبية' },
-  { value: 'plastics_industries', label: 'بلاستيك وصناعات بلاستيكية' },
-];
-
-const STATUS_CONFIG = {
-  in_stock: { label: 'in_stock', color: 'bg-green-100 text-green-700' },
-  low_stock: { label: 'low_stock', color: 'bg-yellow-100 text-yellow-700' },
-  out_of_stock: { label: 'out_of_stock', color: 'bg-red-100 text-red-700' },
-  discontinued: { label: 'discontinued', color: 'bg-gray-100 text-gray-600' },
-};
-
-const EMPTY_FORM: ProductFormData = {
-  name: '', name_ar: '', name_zh: '', name_tr: '',
-  description: '', description_ar: '', description_zh: '', description_tr: '',
-  specifications_en: '', specifications_ar: '',
-  category: 'raw_materials', sku: '',
-  unit: 'kg', unit_price: '', minimum_order_qty: '1',
-  stock_quantity: '', inventory_status: 'in_stock', origin_country: '',
-};
-
-const EMPTY_PAYMENT_SETTINGS: PaymentSettings = {
-  bank_name: '',
-  bank_account_holder: '',
-  iban: '',
-  swift_code: '',
-  account_number: '',
-  bank_country: 'Yemen',
-  bank_city: '',
-  bank_branch: '',
-  bank_currency: 'YER',
-  usdt_trc20_address: '',
-  usdt_erc20_address: '',
-  bitcoin_address: '',
-  ethereum_address: '',
-  other_wallet_label: '',
-  other_wallet_address: '',
-  // ── Local Payment Services ──
-  jawali_phone: '',
-  jawali_account_name: '',
-  jawali_pos_number: '',
-  jawali_pos_name: '',
-  jeeb_phone: '',
-  jeeb_account_name: '',
-  jeeb_pos_number: '',
-  jeeb_pos_name: '',
-  cash_phone: '',
-  cash_account_name: '',
-  cash_pos_number: '',
-  cash_pos_name: '',
-  floosk_phone: '',
-  floosk_account_name: '',
-  floosk_pos_number: '',
-  floosk_pos_name: '',
-  mobile_money_phone: '',
-  mobile_money_account_name: '',
-  mobile_money_pos_number: '',
-  mobile_money_pos_name: '',
-  kuraimi_phone: '',
-  kuraimi_account_name: '',
-  kuraimi_pos_number: '',
-  kuraimi_pos_name: '',
-};
-
-type DashboardTab = 'products' | 'financial_hub' | 'escrow_orders' | 'disputes' | 'analytics' | 'admin_messaging' | 'finance' | 'inventory' | 'archive' | 'sales_team' | 'factory_orders' | 'seller_fulfillment' | 'freight_bids' | 'contracts' | 'factory_settings' | 'invoicing' | 'production';
-
-/** Dedicated full-screen routes for each dashboard card (card key → href + page title). */
-const MODULE_ROUTES: Partial<Record<DashboardTab, { href: string; title: string }>> = {
-  products: { href: '/manufacturer/products', title: 'المنتجات للبيع' },
-  finance: { href: '/manufacturer/finance?view=revenue', title: 'المالية والأرباح' },
-  escrow_orders: { href: '/manufacturer/escrow', title: 'طلبات الضمان' },
-  admin_messaging: { href: '/manufacturer/messages', title: 'مراسلات الإدارة' },
-  archive: { href: '/manufacturer/archive', title: 'الأرشيف' },
-  all_sales: { href: '/manufacturer/sales-channels', title: 'صفقات وقنوات البيع' },
-  contracts: { href: '/manufacturer/contracts', title: 'العقود والاتفاقيات' },
-  invoicing: { href: '/manufacturer/invoicing', title: 'فوترة التصدير الدولية' },
-  production: { href: '/manufacturer/production-lines', title: 'خطوط الإنتاج والجودة' },
-  factory_settings: { href: '/manufacturer/settings', title: 'إعدادات وتوثيق المصنع' },
-  analytics: { href: '/manufacturer/analytics', title: 'التحليلات' },
-  inventory: { href: '/manufacturer/materials', title: 'مواد الإنتاج والخامات' },
-  seller_fulfillment: { href: '/manufacturer/logistics', title: 'الشحن والخدمات اللوجستية' },
-  freight_bids: { href: '/manufacturer/logistics?view=bids', title: 'الشحن والخدمات اللوجستية' },
-  sales_team: { href: '/manufacturer/team', title: 'فريق المبيعات' },
-  disputes: { href: '/manufacturer/disputes', title: 'الشكاوى والنزاعات' },
-  financial_hub: { href: '/manufacturer/finance', title: 'المالية والأرباح' },
-  factory_orders: { href: '/manufacturer/orders', title: 'إدارة الطلبات' },
-};
-
-interface ManufacturerDashboardProps {
-  /** When set, renders only this module full-screen with a sticky back header. */
-  moduleTab?: DashboardTab;
-  /** Optional sub-view for modules that merge several tabs (e.g. logistics). */
-  moduleView?: string;
-}
 
 /**
  * Route default export. Module pages (/manufacturer/analytics, /orders, …) render
@@ -525,15 +286,24 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   const [isSalesRep, setIsSalesRep] = useState(false);
   const [salesRepRecord, setSalesRepRecord] = useState<SalesRep | null>(null);
   const [salesRepLoading, setSalesRepLoading] = useState(true);
-  // Factory owner's team management
-  const [salesReps, setSalesReps] = useState<SalesRep[]>([]);
-  const [salesRepsLoading, setSalesRepsLoading] = useState(false);
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ email: '', full_name: '', role: 'sales_rep', notes: '' });
-  const [inviteLoading, setInviteLoading] = useState(false);
-  const [inviteError, setInviteError] = useState('');
-  const [inviteSuccess, setInviteSuccess] = useState('');
-  const [repActionLoading, setRepActionLoading] = useState<string | null>(null);
+  // Factory owner's team management (extracted hook — all writes pinned to the owner id)
+  const {
+    salesReps,
+    salesRepsLoading,
+    showInviteModal,
+    setShowInviteModal,
+    inviteForm,
+    setInviteForm,
+    inviteLoading,
+    inviteError,
+    setInviteError,
+    inviteSuccess,
+    repActionLoading,
+    fetchSalesReps,
+    handleInviteSalesRep,
+    handleRepStatusChange,
+    handleDeleteRep,
+  } = useSalesRepsManagement({ userId: user?.id, supabase, md });
   /** Local ERP room link — hidden for international / non-local entities */
   const [canShowLocalErp, setCanShowLocalErp] = useState(false);
   /** Whether the factory settings panel resolved the account as a supplier (vs factory) */
@@ -727,96 +497,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     };
     runGuard();
   }, [user, authLoading, router, supabase]);
-
-  const fetchSalesReps = useCallback(async () => {
-    if (!user) return;
-    setSalesRepsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('factory_sales_reps')
-        .select('*')
-        .eq('factory_owner_id', user.id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      setSalesReps(data || []);
-    } catch (err) {
-      console.error('Failed to fetch sales reps:', err);
-    } finally {
-      setSalesRepsLoading(false);
-    }
-  }, [user, supabase]);
-
-  const handleInviteSalesRep = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setInviteError('');
-    setInviteSuccess('');
-    if (!inviteForm.email.trim()) { setInviteError(md.emailRequiredMsg); return; }
-    if (!inviteForm.full_name.trim()) { setInviteError(md.fullNameRequiredMsg); return; }
-    setInviteLoading(true);
-    try {
-      // Generate a simple invitation token
-      const token = `inv_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
-      const { error } = await supabase.from('factory_sales_reps').insert({
-        factory_owner_id: user!.id,
-        invited_email: inviteForm.email.trim().toLowerCase(),
-        full_name: inviteForm.full_name.trim(),
-        role: inviteForm.role,
-        status: 'pending',
-        invitation_token: token,
-        notes: inviteForm.notes.trim() || null,
-        can_manage_products: true,
-        can_view_inventory: true,
-        can_respond_rfq: true,
-        can_view_orders: true,
-      });
-      if (error) throw error;
-      setInviteSuccess((md.inviteSuccessMsg || '').replace('{name}', inviteForm.full_name));
-      setInviteForm({ email: '', full_name: '', role: 'sales_rep', notes: '' });
-      await fetchSalesReps();
-      setTimeout(() => { setShowInviteModal(false); setInviteSuccess(''); }, 2500);
-    } catch (err: any) {
-      setInviteError(err.message || md.addRepFailed);
-    } finally {
-      setInviteLoading(false);
-    }
-  };
-
-  const handleRepStatusChange = async (repId: string, newStatus: 'active' | 'suspended' | 'revoked') => {
-    setRepActionLoading(repId);
-    try {
-      const updateData: any = { status: newStatus };
-      if (newStatus === 'suspended') updateData.suspended_at = new Date().toISOString();
-      const { error } = await supabase
-        .from('factory_sales_reps')
-        .update(updateData)
-        .eq('id', repId)
-        .eq('factory_owner_id', user!.id);
-      if (error) throw error;
-      await fetchSalesReps();
-    } catch (err) {
-      console.error('Failed to update rep status:', err);
-    } finally {
-      setRepActionLoading(null);
-    }
-  };
-
-  const handleDeleteRep = async (repId: string) => {
-    if (!confirm(md.confirmDeleteRep)) return;
-    setRepActionLoading(repId);
-    try {
-      const { error } = await supabase
-        .from('factory_sales_reps')
-        .delete()
-        .eq('id', repId)
-        .eq('factory_owner_id', user!.id);
-      if (error) throw error;
-      setSalesReps(prev => prev.filter(r => r.id !== repId));
-    } catch (err) {
-      console.error('Failed to delete rep:', err);
-    } finally {
-      setRepActionLoading(null);
-    }
-  };
 
   const fetchProducts = useCallback(async () => {
     if (!user) return;
@@ -1022,12 +702,13 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         .eq('factory_user_id', user.id);
       if (error) throw error;
 
-      // Insert status history record
-      await supabase.from('order_status_history').insert({
+      // Insert status history record (server RLS: only the owning factory / buyer may write)
+      const { error: historyError } = await supabase.from('order_status_history').insert({
         order_id: orderId,
         status: newStatus,
         note: factoryOrderNoteInput.trim() || `Status updated to ${newStatus} by factory`,
       });
+      if (historyError) throw historyError;
 
       // ── Auto-create dispatch room when status → ready_for_dispatch ──────────
       if (newStatus === 'ready_for_dispatch') {
@@ -1051,24 +732,16 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
             .select()
             .single();
 
-          // Send in-app notifications to all parties
+          // Notify the dispatch-room parties via the guarded server RPC.
+          // Recipients are resolved in the database from the room — never supplied by the browser.
           if (newRoom) {
-            const recipients = [
-              orderData?.agent_id,
-              orderData?.logistics_partner_id,
-            ].filter(Boolean) as string[];
-
-            if (recipients.length > 0) {
-              await supabase.from('notifications').insert(
-                recipients.map((uid: string) => ({
-                  user_id: uid,
-                  title: '🚚 البضاعة جاهزة للشحن — غرفة التنسيق الميداني',
-                  message: `تم فتح غرفة تنسيق ميداني للطلب ${orderData?.order_number ?? orderId}. يرجى الانضمام والتنسيق الفوري.`,
-                  type: 'dispatch_room_created',
-                  is_read: false,
-                }))
-              );
-            }
+            const { error: notifyError } = await supabase.rpc('notify_order_parties', {
+              p_order_id: orderId,
+              p_title: md.dispatchRoomNotifTitle,
+              p_message: (md.dispatchRoomNotifBody || '').replace('{order}', String(orderData?.order_number ?? orderId)),
+              p_type: 'order_update',
+            });
+            if (notifyError) console.error('Dispatch notification failed:', notifyError.message);
           }
         }
       }
@@ -2955,269 +2628,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
           <TieredPricingManager
             productName={factoryRegistration?.company_name || undefined}
           />
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Factory ↔ Admin Messaging Component (factory side) ──────────────────────
-function FactoryAdminMessaging({
-  user,
-  supabase,
-  adminConv,
-  adminConvLoading,
-  adminMessages,
-  setAdminMessages,
-  adminMsgsLoading,
-  adminMsgInput,
-  setAdminMsgInput,
-  adminMsgSending,
-  sendAdminMessage,
-  fetchAdminConversation,
-  adminMsgsEndRef,
-  md,
-  adminMsgAttachment,
-  setAdminMsgAttachment,
-}: {
-  user: any;
-  supabase: any;
-  adminConv: any | null;
-  adminConvLoading: boolean;
-  adminMessages: any[];
-  setAdminMessages: (v: any[]) => void;
-  adminMsgsLoading: boolean;
-  adminMsgInput: string;
-  setAdminMsgInput: (v: string) => void;
-  adminMsgSending: boolean;
-  sendAdminMessage: () => void;
-  fetchAdminConversation: () => void;
-  adminMsgsEndRef: React.RefObject<HTMLDivElement>;
-  md: any;
-  adminMsgAttachment: any;
-  setAdminMsgAttachment: (v: any) => void;
-}) {
-  const { dir, isRTL } = useLanguage();
-  // Scroll to bottom on new messages
-  React.useEffect(() => {
-    adminMsgsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [adminMessages]);
-
-  // Realtime subscription
-  React.useEffect(() => {
-    if (!adminConv?.id || !user) return;
-    const channel = supabase
-      .channel(`factory-admin-msgs:${adminConv.id}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'admin_factory_messages',
-        filter: `conversation_id=eq.${adminConv.id}`,
-      }, (payload: any) => {
-        const msg = payload.new;
-        setAdminMessages((prev: any[]) => prev.some((m: any) => m.id === msg.id) ? prev : [...prev, msg]);
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [adminConv?.id, user]);
-
-  const MSG_TYPE_LABELS: Record<string, string> = {
-    text: md.typeMessage,
-    order: md.typeOrder,
-    instruction: md.typeDirective,
-    file: md.typeFile,
-    system: md.typeSystem,
-  };
-
-  const PRIORITY_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
-    normal: { label: md.priorityNormal, color: 'text-gray-500', dot: 'bg-gray-400' },
-    high: { label: md.priorityImportant, color: 'text-amber-600', dot: 'bg-amber-500' },
-    urgent: { label: md.priorityUrgent, color: 'text-red-600', dot: 'bg-red-500' },
-  };
-
-  return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl p-5 text-white">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
-            <Icon name="ChatBubbleLeftRightIcon" size={24} className="text-white" />
-          </div>
-          <div className="flex-1">
-            <h2 className="text-lg font-bold">{md.adminMessagingHeading}</h2>
-            <p className="text-sm text-white/80">{md.adminDirectChatHint}</p>
-          </div>
-          <div className="shrink-0 flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs font-semibold text-white/90">{md.officialChannel}</span>
-          </div>
-        </div>
-      </div>
-
-      {adminConvLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <Icon name="ArrowPathIcon" size={28} className="animate-spin text-primary" />
-        </div>
-      ) : !adminConv ? (
-        /* No conversation yet — prompt factory to initiate */
-        <div className="bg-card border border-border rounded-2xl p-10 text-center">
-          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center mx-auto mb-4">
-            <Icon name="ChatBubbleLeftRightIcon" size={36} className="text-slate-500" />
-          </div>
-          <p className="text-base font-bold text-foreground mb-2">{md.noConversationYet2}</p>
-          <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-6">
-            {md.adminChatEmptyHint}
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-md mx-auto">
-            {[
-              { icon: 'ClipboardDocumentListIcon', label: md.recvProductionOrders, color: 'text-red-600 bg-red-50 border-red-200' },
-              { icon: 'InformationCircleIcon', label: md.officialDirectives, color: 'text-blue-600 bg-blue-50 border-blue-200' },
-              { icon: 'ChatBubbleLeftIcon', label: md.directContact, color: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
-            ].map(item => (
-              <div key={item.label} className={`flex items-center gap-2 p-3 rounded-xl border text-xs font-semibold ${item.color}`}>
-                <Icon name={item.icon as any} size={16} />
-                {item.label}
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground mt-6">
-            {md.contactAdminHint}
-          </p>
-        </div>
-      ) : (
-        /* Conversation exists */
-        <div className="bg-card border border-border rounded-2xl overflow-hidden flex flex-col" style={{ minHeight: '560px' }}>
-          {/* Chat Header */}
-          <div className="px-4 py-3 border-b border-border bg-muted/20 shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shrink-0">
-                <Icon name="BuildingOfficeIcon" size={18} className="text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-foreground">{md.directHubAdmin}</p>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  <p className="text-[10px] text-muted-foreground">{md.privateAdminOnly}</p>
-                </div>
-              </div>
-              <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
-                {md.officialChannel}
-              </span>
-            </div>
-          </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-            {adminMsgsLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Icon name="ArrowPathIcon" size={22} className="animate-spin text-primary" />
-              </div>
-            ) : adminMessages.length === 0 ? (
-              <div className="text-center py-10">
-                <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3">
-                  <Icon name="ChatBubbleLeftRightIcon" size={24} className="text-muted-foreground" />
-                </div>
-                <p className="text-sm font-semibold text-foreground mb-1">{md.noMessagesYet2}</p>
-                <p className="text-xs text-muted-foreground">{md.adminMessagesWillAppear}</p>
-              </div>
-            ) : adminMessages.map((msg: any) => {
-              const isAdmin = msg.sender_role === 'admin';
-              const prioConf = PRIORITY_CONFIG[msg.priority] || PRIORITY_CONFIG.normal;
-              return (
-                <div key={msg.id} className={`flex ${isAdmin ? 'justify-start' : 'justify-end'}`}>
-                  <div className="max-w-[78%]">
-                    {/* Sender label + badges */}
-                    <div className={`flex items-center gap-1.5 mb-1 ${isAdmin ? 'justify-start' : 'justify-end'}`}>
-                      {isAdmin && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                          {md.adminLabel}
-                        </span>
-                      )}
-                      {msg.msg_type && msg.msg_type !== 'text' && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                          {MSG_TYPE_LABELS[msg.msg_type] || msg.msg_type}
-                        </span>
-                      )}
-                      {msg.priority && msg.priority !== 'normal' && (
-                        <span className={`flex items-center gap-1 text-[9px] font-bold ${prioConf.color}`}>
-                          <div className={`w-1.5 h-1.5 rounded-full ${prioConf.dot}`} />
-                          {prioConf.label}
-                        </span>
-                      )}
-                      <span className="text-[9px] text-muted-foreground">
-                        {new Date(msg.created_at).toLocaleTimeString(isRTL ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                    {/* Bubble */}
-                    <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-                      isAdmin
-                        ? 'bg-muted text-foreground rounded-tl-sm'
-                        : 'bg-primary text-primary-foreground rounded-tr-sm'
-                    }`}>
-                      {msg.attachment_url && (
-                        <ChatAttachmentView
-                          url={msg.attachment_url}
-                          name={msg.attachment_name || md.attachment}
-                          tone="dark"
-                        />
-                      )}
-                      <p className="whitespace-pre-wrap text-xs">{msg.message}</p>
-                    </div>
-                    {/* Read status for factory messages */}
-                    {!isAdmin && (
-                      <div className="flex justify-end mt-0.5">
-                        <span className={`text-[9px] ${msg.is_read_by_admin ? 'text-emerald-500' : 'text-muted-foreground'}`}>
-                          {msg.is_read_by_admin ? md.adminRead : md.msgSent}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-            <div ref={adminMsgsEndRef} />
-          </div>
-
-          {/* Input Area */}
-          <div className="px-4 py-3 border-t border-border bg-card shrink-0">
-            <div className="flex items-end gap-2">
-              <textarea
-                value={adminMsgInput}
-                onChange={e => setAdminMsgInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendAdminMessage();
-                  }
-                }}
-                placeholder={md.adminReplyPh}
-                rows={2}
-                dir={dir}
-                className="flex-1 px-3 py-2 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary resize-none"
-              />
-              <div className="flex flex-col gap-1.5 shrink-0">
-                <ChatImageAttachment
-                  attachment={adminMsgAttachment}
-                  onAttach={setAdminMsgAttachment}
-                  onRemove={() => setAdminMsgAttachment(null)}
-                  disabled={adminMsgSending}
-                />
-                <button
-                  onClick={sendAdminMessage}
-                  disabled={adminMsgSending || (!adminMsgInput.trim() && !adminMsgAttachment)}
-                  className="h-10 w-10 bg-primary text-primary-foreground rounded-xl flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-40"
-                >
-                  {adminMsgSending
-                    ? <Icon name="ArrowPathIcon" size={16} className="animate-spin" />
-                    : <Icon name="PaperAirplaneIcon" size={16} />
-                  }
-                </button>
-              </div>
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-1.5 text-right">
-              {md.privateChatFooter}
-            </p>
-          </div>
         </div>
       )}
     </div>
