@@ -1160,6 +1160,7 @@ const AccountDashboard: React.FC = () => {
   const isProfileIncomplete = !dataLoading && profile !== null && (
     !profile.full_name?.trim() || !profile.company_name?.trim() || !profile.country?.trim() || !profile.city?.trim() || !profile.phone?.trim()
   );
+  const isSupplierAccount = (profile?.account_role || '').toLowerCase().trim() === 'commercial_supplier';
 
   const handleUploadSuccess = () => {
     setUploadSuccess(true);
@@ -1284,7 +1285,7 @@ const AccountDashboard: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
-              <button onClick={() => setActiveTab('settings')} className="px-4 py-2 bg-white text-orange-600 text-xs font-extrabold rounded-xl hover:bg-orange-50 transition-colors whitespace-nowrap">
+              <button onClick={() => (isSupplierAccount ? router.push('/supplier/settings') : setActiveTab('settings'))} className="px-4 py-2 bg-white text-orange-600 text-xs font-extrabold rounded-xl hover:bg-orange-50 transition-colors whitespace-nowrap">
                 {t.myAccount.completeNow}
               </button>
               <button onClick={() => setBannerDismissed(true)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 transition-colors" aria-label="Dismiss">
@@ -1333,6 +1334,7 @@ const AccountDashboard: React.FC = () => {
             </div>
             {/* Actions */}
             <div className="flex gap-2 shrink-0">
+              {!isSupplierAccount && (
               <button
                 onClick={() => {
                   const workspaceRole = getUserWorkspaceRole(profile);
@@ -1346,6 +1348,7 @@ const AccountDashboard: React.FC = () => {
               >
                 {t.myAccount.editProfile}
               </button>
+              )}
             </div>
           </div>
 
