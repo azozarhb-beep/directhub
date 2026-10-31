@@ -87,7 +87,10 @@ const YEMEN_GOVERNORATES: string[] = [
 
 const DELIVERY_TIMES: Array<{ value: string; label: string; days: number }> = [
   { value: 'same_day', label: 'نفس اليوم', days: 1 },
-  { value: 'within_48h', label: 'خلال 24-48 ساعة', days: 2 },
+  { value: 'within_48h', label: 'خلال 24 - 48 ساعة', days: 2 },
+  { value: 'days_3_5', label: 'من 3 إلى 5 أيام', days: 5 },
+  { value: 'days_5_7', label: 'من 5 إلى 7 أيام', days: 7 },
+  { value: 'custom_schedule', label: 'حسب جدول مكتب الشحن / مخصص', days: 7 },
 ];
 
 const EMPTY_PROFILE: ProfileForm = {
