@@ -56,19 +56,19 @@ interface ProductFormData {
 }
 
 const CATEGORIES = [
-  { value: 'electronics', label: 'Electronics & Technology' },
-  { value: 'machinery', label: 'Industrial Machinery' },
-  { value: 'textiles', label: 'Textiles & Apparel' },
-  { value: 'building', label: 'Building Materials' },
-  { value: 'food', label: 'Food & Agriculture' },
-  { value: 'chemicals', label: 'Chemicals & Plastics' },
-  { value: 'auto', label: 'Auto Parts & Accessories' },
-  { value: 'packaging', label: 'Packaging Solutions' },
-  { value: 'energy', label: 'Energy & Power' },
-  { value: 'medical', label: 'Medical & Healthcare' },
-  { value: 'furniture', label: 'Furniture & Interiors' },
-  { value: 'raw_materials', label: 'Raw Materials' },
-  { value: 'other', label: 'Other' },
+  { value: 'raw_materials', label: 'مواد خام أولية' },
+  { value: 'packaging', label: 'مواد تعبئة وتغليف' },
+  { value: 'consumables', label: 'مستهلكات' },
+  { value: 'furniture_furnishings', label: 'مفروشات وأثاث' },
+  { value: 'household_products', label: 'منتجات منزلية' },
+  { value: 'clothing_textiles', label: 'ملابس ونسيج' },
+  { value: 'food_beverages', label: 'أغذية ومشروبات' },
+  { value: 'cosmetics_personal_care', label: 'مستحضرات تجميل وعناية' },
+  { value: 'construction_materials', label: 'مواد بناء وإنشاءات' },
+  { value: 'heavy_equipment', label: 'معدات وآليات ثقيلة' },
+  { value: 'spare_parts', label: 'قطع غيار' },
+  { value: 'pharma_medical', label: 'أدوية ومستلزمات طبية' },
+  { value: 'plastics_industries', label: 'بلاستيك وصناعات بلاستيكية' },
 ];
 
 const STATUS_CONFIG = {

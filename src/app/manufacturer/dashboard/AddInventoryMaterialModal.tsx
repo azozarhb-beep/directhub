@@ -40,8 +40,18 @@ const EMPTY_FORM: MaterialFormState = {
 
 const CATEGORIES = [
   { value: 'raw_material', ar: 'مواد خام أولية', en: 'Primary raw materials' },
-  { value: 'packaging', ar: 'تعبئة وتغليف', en: 'Packaging' },
+  { value: 'packaging', ar: 'مواد تعبئة وتغليف', en: 'Packaging materials' },
   { value: 'consumables', ar: 'مستهلكات', en: 'Consumables' },
+  { value: 'furniture_furnishings', ar: 'مفروشات وأثاث', en: 'Furnishings & furniture' },
+  { value: 'household_products', ar: 'منتجات منزلية', en: 'Household products' },
+  { value: 'clothing_textiles', ar: 'ملابس ونسيج', en: 'Clothing & textiles' },
+  { value: 'food_beverages', ar: 'أغذية ومشروبات', en: 'Food & beverages' },
+  { value: 'cosmetics_personal_care', ar: 'مستحضرات تجميل وعناية', en: 'Cosmetics & personal care' },
+  { value: 'construction_materials', ar: 'مواد بناء وإنشاءات', en: 'Building & construction materials' },
+  { value: 'heavy_equipment', ar: 'معدات وآليات ثقيلة', en: 'Heavy equipment & machinery' },
+  { value: 'spare_parts', ar: 'قطع غيار', en: 'Spare parts' },
+  { value: 'pharma_medical', ar: 'أدوية ومستلزمات طبية', en: 'Pharmaceuticals & medical supplies' },
+  { value: 'plastics_industries', ar: 'بلاستيك وصناعات بلاستيكية', en: 'Plastics & plastic industries' },
 ];
 
 const UNITS = [
