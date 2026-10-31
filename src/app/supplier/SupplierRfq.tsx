@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { categoryToArabic, buildArabicCategoryOptions } from './supplierCategories';
 
@@ -38,13 +39,6 @@ interface MyResponse {
   is_accepted: boolean | null;
   created_at: string | null;
   rfq: RfqRow | null;
-}
-
-interface ChatMsg {
-  id: string;
-  sender_id: string;
-  message: string;
-  created_at: string;
 }
 
 type TabKey = 'open' | 'submitted' | 'accepted' | 'archived';
@@ -116,6 +110,7 @@ const SELECT_SM =
 
 export default function SupplierRfq({ userId }: SupplierRfqProps) {
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
   const [rfqs, setRfqs] = useState<RfqRow[]>([]);
   const [mine, setMine] = useState<MyResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,10 +132,6 @@ export default function SupplierRfq({ userId }: SupplierRfqProps) {
   const [formError, setFormError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatConvId, setChatConvId] = useState<string | null>(null);
-  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
-  const [chatText, setChatText] = useState('');
   const [chatBusy, setChatBusy] = useState(false);
   const [chatError, setChatError] = useState('');
 
@@ -250,17 +241,13 @@ export default function SupplierRfq({ userId }: SupplierRfqProps) {
       notes: '',
     });
     setFormError('');
-    setChatOpen(false);
-    setChatConvId(null);
-    setChatMsgs([]);
-    setChatText('');
     setChatError('');
   };
 
   const closeForm = () => {
     if (submitting) return;
     setSelected(null);
-    setChatOpen(false);
+    setChatError('');
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -287,7 +274,6 @@ export default function SupplierRfq({ userId }: SupplierRfqProps) {
       });
       if (insErr) throw insErr;
       setSelected(null);
-      setChatOpen(false);
       setSuccess('تم إرسال عرض السعر بنجاح');
       setTimeout(() => setSuccess(''), 4000);
       await load();
@@ -299,31 +285,17 @@ export default function SupplierRfq({ userId }: SupplierRfqProps) {
     }
   };
 
-  const loadChat = useCallback(
-    async (convId: string) => {
-      const { data } = await supabase
-        .from('chat_messages')
-        .select('id, sender_id, message, created_at')
-        .eq('conversation_id', convId)
-        .order('created_at', { ascending: true })
-        .limit(100);
-      setChatMsgs((data as ChatMsg[]) ?? []);
-    },
-    [supabase],
-  );
-
   const openChat = async () => {
     if (!selected) return;
     if (!selected.buyer_id) {
       setChatError('لا يمكن بدء المحادثة: بيانات المشتري غير متاحة');
-      setChatOpen(true);
       return;
     }
-    setChatOpen(true);
     setChatBusy(true);
     setChatError('');
     try {
       const productKey = `rfq-${selected.id}`;
+      const productTitle = selected.product_name || selected.custom_product_description || 'طلب عرض سعر';
       const { data: existing } = await supabase
         .from('chat_conversations')
         .select('id')
@@ -339,44 +311,48 @@ export default function SupplierRfq({ userId }: SupplierRfqProps) {
             buyer_id: selected.buyer_id,
             manufacturer_id: userId,
             product_id: productKey,
-            product_name: selected.product_name || selected.custom_product_description || 'طلب عرض سعر',
+            product_name: productTitle,
           })
           .select('id')
           .single();
         if (cErr) throw cErr;
         convId = (created as { id: string }).id;
       }
-      setChatConvId(convId);
-      await loadChat(convId);
+
+      // Post the RFQ details context message once per conversation
+      const { data: prior } = await supabase
+        .from('chat_messages')
+        .select('id')
+        .eq('conversation_id', convId)
+        .eq('attachment_type', 'rfq_context')
+        .limit(1);
+      if (!prior || prior.length === 0) {
+        const qtyText = `${selected.quantity ?? '-'} ${unitAr(selected.unit)}`.trim();
+        const targetText = selected.target_price ? fmtMoney(selected.target_price, selected.currency) : 'غير محدد';
+        const contextText = [
+          '📋 تفاصيل طلب عرض السعر (RFQ)',
+          `• المنتج: ${productTitle}`,
+          `• الكمية: ${qtyText}`,
+          `• السعر المستهدف: ${targetText}`,
+        ].join('\n');
+        const { error: mErr } = await supabase.from('chat_messages').insert({
+          conversation_id: convId,
+          sender_id: userId,
+          sender_role: 'manufacturer',
+          message: contextText,
+          attachment_type: 'rfq_context',
+          is_read: false,
+        });
+        if (mErr) throw mErr;
+        await supabase
+          .from('chat_conversations')
+          .update({ last_message: contextText, last_message_at: new Date().toISOString() })
+          .eq('id', convId);
+      }
+
+      router.push(`/messaging?conv=${encodeURIComponent(convId)}`);
     } catch (err: any) {
       setChatError(err?.message || 'تعذر فتح المحادثة');
-    } finally {
-      setChatBusy(false);
-    }
-  };
-
-  const sendChat = async () => {
-    const text = chatText.trim();
-    if (!text || !chatConvId) return;
-    setChatBusy(true);
-    setChatError('');
-    try {
-      const { error: mErr } = await supabase.from('chat_messages').insert({
-        conversation_id: chatConvId,
-        sender_id: userId,
-        sender_role: 'manufacturer',
-        message: text,
-      });
-      if (mErr) throw mErr;
-      await supabase
-        .from('chat_conversations')
-        .update({ last_message: text, last_message_at: new Date().toISOString() })
-        .eq('id', chatConvId);
-      setChatText('');
-      await loadChat(chatConvId);
-    } catch (err: any) {
-      setChatError(err?.message || 'فشل إرسال الرسالة');
-    } finally {
       setChatBusy(false);
     }
   };
@@ -601,14 +577,15 @@ export default function SupplierRfq({ userId }: SupplierRfqProps) {
                 </p>
               ) : null}
               {formError && <div className="text-red-300 text-xs bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{formError}</div>}
+              {chatError && <div className="text-red-300 text-xs bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{chatError}</div>}
 
               <button
                 type="button"
                 onClick={openChat}
                 disabled={chatBusy}
-                className="w-full h-11 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 text-sm font-bold border border-cyan-500/30"
+                className="w-full h-11 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 disabled:opacity-60 text-cyan-300 text-sm font-bold border border-cyan-500/30"
               >
-                💬 مفاوضة مباشرة مع المشتري
+                {chatBusy ? 'جاري فتح المحادثة...' : '💬 مفاوضة مباشرة مع المشتري'}
               </button>
 
               <div className="flex gap-2">
@@ -620,47 +597,6 @@ export default function SupplierRfq({ userId }: SupplierRfqProps) {
                 </button>
               </div>
             </form>
-
-            {chatOpen && (
-              <div className="border-t border-slate-800 pt-4 space-y-3">
-                <h5 className="text-sm font-bold text-white">محادثة المشتري</h5>
-                {chatError && <div className="text-red-300 text-xs bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{chatError}</div>}
-                <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 h-40 overflow-y-auto space-y-2">
-                  {chatBusy && chatMsgs.length === 0 ? (
-                    <p className="text-xs text-slate-500 text-center">جاري التحميل...</p>
-                  ) : chatMsgs.length === 0 ? (
-                    <p className="text-xs text-slate-500 text-center">ابدأ التفاوض مع المشتري بإرسال رسالة</p>
-                  ) : (
-                    chatMsgs.map((m) => (
-                      <div key={m.id} className={`flex ${m.sender_id === userId ? 'justify-start' : 'justify-end'}`}>
-                        <div className={`max-w-[80%] px-3 py-1.5 rounded-xl text-xs break-words ${m.sender_id === userId ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-100'}`}>
-                          {m.message}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-                {chatConvId && (
-                  <div className="flex gap-2">
-                    <input
-                      value={chatText}
-                      onChange={(e) => setChatText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          sendChat();
-                        }
-                      }}
-                      placeholder="اكتب رسالتك..."
-                      className={INPUT}
-                    />
-                    <button type="button" onClick={sendChat} disabled={chatBusy || !chatText.trim()} className="px-4 h-11 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-60 text-white text-sm font-bold whitespace-nowrap">
-                      إرسال
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
       )}
