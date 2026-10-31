@@ -10,10 +10,8 @@ import { createClient } from '@/lib/supabase/client';
 import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
 import Icon from '@/components/ui/AppIcon';
 import AppLogo from '@/components/ui/AppLogo';
-import AIProductAssistant from '@/components/AIProductAssistant';
-import ManufacturerMessagingHub from '@/components/manufacturer/ManufacturerMessagingHub';
+import FactoryAdminMessaging from './FactoryAdminMessaging';
 
-import { MultilingualProductFields, SupplierLanguageBadge } from '@/components/LocalizedProductDisplay';
 import toast, { Toaster } from 'react-hot-toast';
 
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -58,7 +56,11 @@ import type {
   DashboardTab,
   ManufacturerDashboardProps,
 } from './dashboardTypes';
-import { EMPTY_BANK_ACCOUNT, CATEGORIES, EMPTY_FORM, EMPTY_PAYMENT_SETTINGS, MODULE_ROUTES,  } from './dashboardConfig';
+import { EMPTY_BANK_ACCOUNT, EMPTY_FORM, EMPTY_PAYMENT_SETTINGS, MODULE_ROUTES } from './dashboardConfig';
+import ProductFormModal from '@/app/manufacturer/dashboard/ProductFormModal';
+import DeleteProductModal from '@/app/manufacturer/dashboard/DeleteProductModal';
+
+
 
 
 /**
@@ -1561,52 +1563,16 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     setInquirySending(true);
     setInquiryError('');
     try {
-      // Find admin users to notify
-      const { data: admins } = await supabase
-        .from('user_profiles')
-        .select('id')
-        .eq('role', 'admin')
-        .limit(5);
-
       const companyLabel = companyName || factoryRegistration?.company_name || user.email || 'مصنع';
-      const notifTitle = `🔔 استفسار عن حالة الاعتماد — ${companyLabel}`;
-      const notifBody = `المصنع "${companyLabel}" يستفسر عن حالة مراجعة مستنداته (الرخصة التجارية وترخيص التصنيع). يرجى المتابعة الفورية.`;
-
-      // Insert notification for each admin
-      if (admins && admins.length > 0) {
-        const results = await Promise.all(
-          admins.map(admin =>
-            supabase.from('notifications').insert({
-              user_id: admin.id,
-              type: 'accreditation_inquiry',
-              title: notifTitle,
-              body: notifBody,
-              message: notifBody,
-              data: {
-                factory_user_id: user.id,
-                company_name: companyLabel,
-                inquiry_type: 'accreditation_status',
-                submitted_at: new Date().toISOString(),
-              },
-              is_read: false,
-              created_at: new Date().toISOString(),
-            })
-          )
-        );
-        const failed = results.find((r: any) => r?.error);
-        if (failed?.error) throw failed.error;
-      }
-
-      // Also insert into admin_notifications table if it exists (fallback)
-      await supabase.from('notifications').insert({
-        user_id: user.id,
-        type: 'accreditation_inquiry_sent',
-        title: '✅ تم إرسال استفسارك بنجاح',
-        body: 'تم إشعار فريق الإدارة باستفسارك. سيتواصل معك المسؤول قريباً.',
-        message: 'تم إشعار فريق الإدارة باستفسارك. سيتواصل معك المسؤول قريباً.',
-        is_read: false,
-        created_at: new Date().toISOString(),
+      const res = await fetch('/api/manufacturer/accreditation-inquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ companyName: companyLabel }),
       });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload?.error || 'Request failed');
+      }
 
       setInquirySent(true);
       setTimeout(() => setInquirySent(false), 8000);
@@ -2355,194 +2321,44 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
 
         {/* ── ADMIN MESSAGING TAB (factory side) ── */}
         {activeTab === 'admin_messaging' && user && (
-          <ManufacturerMessagingHub userId={user.id} />
+          <FactoryAdminMessaging
+            user={user}
+            supabase={supabase}
+            adminConv={adminConv}
+            adminConvLoading={adminConvLoading}
+            adminMessages={adminMessages}
+            setAdminMessages={setAdminMessages}
+            adminMsgsLoading={adminMsgsLoading}
+            adminMsgInput={adminMsgInput}
+            setAdminMsgInput={setAdminMsgInput}
+            adminMsgSending={adminMsgSending}
+            sendAdminMessage={sendAdminMessage}
+            fetchAdminConversation={fetchAdminConversation}
+            adminMsgsEndRef={adminMsgsEndRef}
+            md={md}
+            adminMsgAttachment={adminMsgAttachment}
+            setAdminMsgAttachment={setAdminMsgAttachment}
+          />
         )}
       </main>
 
-      {/* Add/Edit Product Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 px-4 pb-4 sm:pb-0">
-          <div className="w-full max-w-lg bg-card rounded-2xl border border-border shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-card z-10">
-              <h2 className="font-bold text-foreground">{editingProduct ? 'تعديل المنتج' : 'إضافة منتج جديد'}</h2>
-              <div className="flex items-center gap-2">
-                <AIProductAssistant
-                  categorySlug={formData.category}
-                  categoryName={CATEGORIES.find((c) => c.value === formData.category)?.label}
-                  productName={formData.name}
-                />
-                <button type="button" aria-label="إغلاق" onClick={() => setShowAddModal(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-                  <Icon name="XMarkIcon" size={18} />
-                </button>
-              </div>
-            </div>
-
-            <form onSubmit={handleFormSubmit} className="p-5 space-y-4">
-              {formError && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
-                  <Icon name="ExclamationCircleIcon" size={16} />
-                  {formError}
-                </div>
-              )}
-
-              {/* Multilingual Name & Description Fields */}
-              <MultilingualProductFields
-                originCountry={formData.origin_country}
-                fields={{
-                  name: formData.name,
-                  name_ar: formData.name_ar,
-                  name_zh: formData.name_zh,
-                  name_tr: formData.name_tr,
-                  description: formData.description,
-                  description_ar: formData.description_ar,
-                  description_zh: formData.description_zh,
-                  description_tr: formData.description_tr,
-                }}
-                onChange={(field, value) => setFormData({ ...formData, [field]: value })}
-                disabled={formLoading}
-              />
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">الفئة *</label>
-                  <select value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
-                    {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">رمز المنتج (SKU)</label>
-                  <input type="text" value={formData.sku} onChange={(e) => setFormData({ ...formData, sku: e.target.value })} placeholder="e.g. STL-001" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">الوحدة</label>
-                  <select value={formData.unit} onChange={(e) => setFormData({ ...formData, unit: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
-                    {['kg', 'ton', 'liter', 'piece', 'meter', 'sheet', 'roll', 'box', 'pallet'].map((u) => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">سعر الوحدة</label>
-                  <input type="number" min="0" step="0.01" value={formData.unit_price} onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })} placeholder="0.00" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">الحد الأدنى للطلب</label>
-                  <input type="number" min="1" value={formData.minimum_order_qty} onChange={(e) => setFormData({ ...formData, minimum_order_qty: e.target.value })} placeholder="1" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">كمية المخزون</label>
-                  <input type="number" min="0" step="0.01" value={formData.stock_quantity} onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })} placeholder="0" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">حالة المخزون</label>
-                  <select value={formData.inventory_status} onChange={(e) => setFormData({ ...formData, inventory_status: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
-                    <option value="in_stock">متوفر</option>
-                    <option value="low_stock">مخزون منخفض</option>
-                    <option value="out_of_stock">نفد المخزون</option>
-                    <option value="discontinued">متوقف</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">
-                  Origin Country
-                  {formData.origin_country && <SupplierLanguageBadge originCountry={formData.origin_country} size="sm" />}
-                </label>
-                <select value={formData.origin_country} onChange={(e) => setFormData({ ...formData, origin_country: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
-                  <option value="">اختر الدولة</option>
-                  <optgroup label="🌏 Asia">
-                    <option value="China">🇨🇳 China</option>
-                    <option value="India">🇮🇳 India</option>
-                    <option value="Turkey">🇹🇷 Turkey</option>
-                    <option value="Japan">🇯🇵 Japan</option>
-                    <option value="South Korea">🇰🇷 South Korea</option>
-                    <option value="Taiwan">🇹🇼 Taiwan</option>
-                    <option value="Vietnam">🇻🇳 Vietnam</option>
-                    <option value="Bangladesh">🇧🇩 Bangladesh</option>
-                    <option value="Pakistan">🇵🇰 Pakistan</option>
-                    <option value="Indonesia">🇮🇩 Indonesia</option>
-                    <option value="Malaysia">🇲🇾 Malaysia</option>
-                    <option value="Thailand">🇹🇭 Thailand</option>
-                  </optgroup>
-                  <optgroup label="🌍 Arab Countries">
-                    <option value="Saudi Arabia">🇸🇦 Saudi Arabia</option>
-                    <option value="UAE">🇦🇪 UAE</option>
-                    <option value="Kuwait">🇰🇼 Kuwait</option>
-                    <option value="Qatar">🇶🇦 Qatar</option>
-                    <option value="Bahrain">🇧🇭 Bahrain</option>
-                    <option value="Oman">🇴🇲 Oman</option>
-                    <option value="Egypt">🇪🇬 Egypt</option>
-                    <option value="Jordan">🇯🇴 Jordan</option>
-                    <option value="Iraq">🇮🇶 Iraq</option>
-                    <option value="Yemen">🇾🇪 Yemen</option>
-                    <option value="Morocco">🇲🇦 Morocco</option>
-                    <option value="Algeria">🇩🇿 Algeria</option>
-                    <option value="Tunisia">🇹🇳 Tunisia</option>
-                    <option value="Libya">🇱🇾 Libya</option>
-                  </optgroup>
-                  <optgroup label="🌍 Europe">
-                    <option value="Germany">🇩🇪 Germany</option>
-                    <option value="Italy">🇮🇹 Italy</option>
-                    <option value="France">🇫🇷 France</option>
-                    <option value="UK">🇬🇧 UK</option>
-                    <option value="Spain">🇪🇸 Spain</option>
-                    <option value="Poland">🇵🇱 Poland</option>
-                    <option value="Netherlands">🇳🇱 Netherlands</option>
-                  </optgroup>
-                  <optgroup label="🌎 Americas">
-                    <option value="USA">🇺🇸 USA</option>
-                    <option value="Canada">🇨🇦 Canada</option>
-                    <option value="Brazil">🇧🇷 Brazil</option>
-                    <option value="Mexico">🇲🇽 Mexico</option>
-                  </optgroup>
-                  <option value="Other">Other</option>
-                </select>
-                {formData.origin_country && ['China', 'Turkey', 'Taiwan', 'Hong Kong'].includes(formData.origin_country) && (
-                  <p className="text-[11px] text-blue-600 mt-1 flex items-center gap-1">
-                    <span>🌐</span>
-                    {formData.origin_country === 'China' || formData.origin_country === 'Taiwan' || formData.origin_country === 'Hong Kong'
-                      ? 'Chinese (中文) fields will appear in the language tabs above' :'Turkish (Türkçe) fields will appear in the language tabs above'}
-                  </p>
-                )}
-              </div>
-
-              <div className="flex gap-3 pt-1">
-                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 h-10 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-                  إلغاء
-                </button>
-                <button type="submit" disabled={formLoading} className="flex-1 h-10 bg-primary text-primary-foreground rounded-lg text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2 transition-opacity active:opacity-80">
-                  {formLoading ? <><Icon name="ArrowPathIcon" size={15} className="animate-spin" /> جارٍ الحفظ...</> : (editingProduct ? 'حفظ التعديلات' : 'إضافة المنتج')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <ProductFormModal
+          isEditing={!!editingProduct}
+          formData={formData}
+          setFormData={setFormData}
+          formError={formError}
+          formLoading={formLoading}
+          onClose={() => setShowAddModal(false)}
+          onSubmit={handleFormSubmit}
+        />
       )}
 
-      {/* Delete Confirmation Modal */}
       {deleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-sm bg-card rounded-2xl border border-border shadow-xl p-6">
-            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
-              <Icon name="TrashIcon" size={22} className="text-red-600" />
-            </div>
-            <h3 className="text-center font-bold text-foreground mb-1">حذف المنتج؟</h3>
-            <p className="text-center text-sm text-muted-foreground mb-5">لا يمكن التراجع عن هذا الإجراء. سيتم حذف المنتج نهائياً.</p>
-            <div className="flex gap-3">
-              <button type="button" onClick={() => setDeleteId(null)} className="flex-1 h-10 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">
-                إلغاء
-              </button>
-              <button type="button" onClick={() => handleDelete(deleteId)} className="flex-1 h-10 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors">
-                حذف
-              </button>
-            </div>
-          </div>
-        </div>
+        <DeleteProductModal
+          onCancel={() => setDeleteId(null)}
+          onConfirm={() => handleDelete(deleteId)}
+        />
       )}
 
       {/* Document Gate Modal — handled inside ProductsPanel (FactoryDocumentUploadPanel) */}
