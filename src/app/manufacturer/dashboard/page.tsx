@@ -22,11 +22,13 @@ import ManufacturerAdvancedModules from '@/components/manufacturer/ManufacturerA
 import FactoryTeamManagement from '@/components/manufacturer/FactoryTeamManagement';
 import TieredPricingManager from '@/components/international-factory/TieredPricingManager';
 
-
-
-
-
-import { resolvePlatformRole, getHomeRoomForRole, canAccessLocalErp, resolveManufacturerRoomForUser, INTERNATIONAL_FACTORY_ROOM_PATH } from '@/lib/roomIsolation';
+import { 
+  resolvePlatformRole, 
+  getHomeRoomForRole, 
+  canAccessLocalErp, 
+  resolveManufacturerRoomForUser, 
+  INTERNATIONAL_FACTORY_ROOM_PATH 
+} from '@/lib/roomIsolation';
 
 import PaymentSettingsPanel from './PaymentSettingsPanel';
 import FinancePanel from './FinancePanel';
@@ -60,12 +62,8 @@ import { EMPTY_BANK_ACCOUNT, EMPTY_FORM, EMPTY_PAYMENT_SETTINGS } from './dashbo
 import ProductFormModal from '@/app/manufacturer/dashboard/ProductFormModal';
 import DeleteProductModal from '@/app/manufacturer/dashboard/DeleteProductModal';
 
-
-
-
 /**
- * Route default export. Module pages (/manufacturer/analytics, /orders, …) render
- * this same component through `ManufacturerModulePage`, passing `moduleTab`.
+ * Route default export for Manufacturer Dashboard & Operation Room
  */
 export default function ManufacturerDashboard({ moduleTab, moduleView }: ManufacturerDashboardProps) {
   const router = useRouter();
@@ -84,7 +82,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     const id = localStorage.getItem('impersonated_factory_id');
     const name = localStorage.getItem('impersonated_factory_name');
     if (!id) return;
-    // Only real admins may keep an impersonation session; stale keys are purged for everyone else.
     let cancelled = false;
     (async () => {
       const { data } = await supabase
@@ -104,7 +101,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user?.id]);
 
   const handleEndImpersonation = () => {
@@ -132,7 +128,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = React.useRef<HTMLDivElement>(null);
 
-  // Close the user menu on outside click / Escape
   useEffect(() => {
     if (!userMenuOpen) return;
     const onPointer = (ev: MouseEvent | TouchEvent) => {
@@ -151,11 +146,9 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     };
   }, [userMenuOpen]);
 
-  // Bulk selection
+  // Bulk selection & Sorting
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
-
-  // Sorting
   const [productSort, setProductSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'created_at', dir: 'desc' });
 
   // Product listing gate state
@@ -179,10 +172,9 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   // Payment settings state
   const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(EMPTY_PAYMENT_SETTINGS);
   const [paymentLoading, setPaymentLoading] = useState(false);
-  const [factoryCurrency, setFactoryCurrency] = useState<string | null>(null);
+  const [factoryCurrency, setFactoryCurrency] = useState<string | null>('YER');
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [paymentError, setPaymentError] = useState('');
-
   const [paymentSuccess, setPaymentSuccess] = useState('');
 
   // Bank accounts state
@@ -195,16 +187,12 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   const [bankFormSuccess, setBankFormSuccess] = useState('');
   const [deletingBankId, setDeletingBankId] = useState<string | null>(null);
 
-  // Analytics period (data lives in useFactoryOperationsData)
+  // Analytics & Operation state
   const [analyticsPeriod, setAnalyticsPeriod] = useState<'7d' | '30d' | '90d'>('30d');
   const adminMsgsEndRef = React.useRef<HTMLDivElement>(null);
-
-  // Accreditation inquiry state
   const [inquirySending, setInquirySending] = useState(false);
   const [inquirySent, setInquirySent] = useState(false);
   const [inquiryError, setInquiryError] = useState('');
-
-  // Trust score state
   const [trustPercentage, setTrustPercentage] = useState(0);
   const [verifiedTier, setVerifiedTier] = useState<'unverified' | 'partial' | 'verified'>('unverified');
   const [missingDocuments, setMissingDocuments] = useState<string[]>([]);
@@ -218,11 +206,11 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   const [inventoryFormLoading, setInventoryFormLoading] = useState(false);
   const [inventoryFormError, setInventoryFormError] = useState('');
 
-  // ── Sales Rep / Enterprise Multi-User state ──────────────────────────────
+  // Sales Rep / Enterprise Multi-User state
   const [isSalesRep, setIsSalesRep] = useState(false);
   const [salesRepRecord, setSalesRepRecord] = useState<SalesRep | null>(null);
   const [salesRepLoading, setSalesRepLoading] = useState(true);
-  // Factory owner's team management (extracted hook — all writes pinned to the owner id)
+
   const {
     salesReps,
     salesRepsLoading,
@@ -240,12 +228,11 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     handleRepStatusChange,
     handleDeleteRep,
   } = useSalesRepsManagement({ userId: user?.id, supabase, md });
-  /** Local ERP room link — hidden for international / non-local entities */
+
   const [canShowLocalErp, setCanShowLocalErp] = useState(false);
-  /** Whether the factory settings panel resolved the account as a supplier (vs factory) */
   const [isSupplierSettings, setIsSupplierSettings] = useState(false);
 
-  // Orders / escrow / disputes / analytics / finance / inventory / archive / admin messaging
+  // Operation Hook
   const {
     escrowOrders, escrowOrdersLoading, fetchEscrowOrders,
     selectedEscrowOrder, setSelectedEscrowOrder,
@@ -284,12 +271,9 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     analyticsPeriod,
   });
 
-  // ── Detect if current user is a sales rep (not factory owner) ────────────
   const detectSalesRepRole = useCallback(async () => {
     if (!user) { setSalesRepLoading(false); return; }
     try {
-      // Authoritative: an active factory_sales_reps row ALWAYS makes the user a sales rep,
-      // regardless of user_metadata.role.
       const { data } = await supabase
         .from('factory_sales_reps')
         .select('*')
@@ -324,7 +308,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Manufacturer';
   const companyName = user?.user_metadata?.company_name || '';
 
-  // ── Sort helper ─────────────────────────────────────────────────────────────
   const toggleProductSort = (col: string) =>
     setProductSort(s => ({ col, dir: s.col === col && s.dir === 'asc' ? 'desc' : 'asc' }));
 
@@ -335,7 +318,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       <Icon name="ChevronUpDownIcon" size={11} className="text-muted-foreground opacity-40" />
     );
 
-  // ── Bulk Actions ────────────────────────────────────────────────────────────
   const handleBulkToggleActive = async (isActive: boolean) => {
     if (selectedProducts.size === 0 || !user || isSalesRep) return;
     setBulkActionLoading(true);
@@ -377,7 +359,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     }
   };
 
-  // Auth guard — wrong roles go to their own room (sales reps stay); never 403
   useEffect(() => {
     const runGuard = async () => {
       if (authLoading) return;
@@ -391,7 +372,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         null;
       const platformRole = resolvePlatformRole({ metadataRole });
       if (platformRole === 'manufacturer' || platformRole === 'admin') {
-        // International factories are routed strictly to their own control room.
         const accountRoleMeta = user.user_metadata?.account_role as string | undefined;
         if (
           platformRole === 'manufacturer' &&
@@ -405,7 +385,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         }
         return;
       }
-      // Verify the user is an active sales rep linked to a factory
       const { data: repData } = await supabase
         .from('factory_sales_reps')
         .select('id')
@@ -439,10 +418,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   }, [user, supabase]);
 
   const fetchPaymentSettings = useCallback(async () => {
-    if (!user) {
-      setPaymentLoading(false);
-      return;
-    }
+    if (!user) { setPaymentLoading(false); return; }
     setPaymentLoading(true);
     try {
       const { data, error } = await supabase
@@ -525,7 +501,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
 
   useEffect(() => {
     if (!user) return;
-    // Load critical data in parallel on mount
     Promise.all([
       fetchProducts(),
       fetchPaymentSettings(),
@@ -534,7 +509,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     detectSalesRepRole();
   }, [user, fetchProducts, fetchPaymentSettings, detectSalesRepRole]);
 
-  // ── Real-time order sync ─────────────────────────────────────────────────
   useRealtimeOrders({
     channelName: 'manufacturer-dashboard-orders-rt',
     filterColumn: 'factory_user_id',
@@ -542,6 +516,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     onOrderChange: () => {
       fetchEscrowOrders();
       fetchFactoryOrders();
+      fetchFinanceRecords();
     },
     enabled: !!user,
   });
@@ -586,12 +561,10 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         })
       );
 
-      // ── Trust Score ──────────────────────────────────────────────────────
       const pct = typeof data?.trust_percentage === 'number' ? data.trust_percentage : 0;
       const tier = (data?.verified_tier as 'unverified' | 'partial' | 'verified') || 'unverified';
       setTrustPercentage(pct);
       setVerifiedTier(tier);
-      // Parse missing documents
       const missing: string[] = [];
       if (!data?.trade_license_url) missing.push('trade_license');
       if (!data?.manufacturing_license_url) missing.push('manufacturing_license');
@@ -610,24 +583,20 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     setDocUploadSuccess('');
 
     if (!user) {
-      setDocUploadError('You must be logged in to upload documents. Please log in and try again.');
+      setDocUploadError('يجب تسجيل الدخول لرفع الوثائق.');
       return;
     }
 
     const secondDoc = accountType === 'factory' ? mfgLicenseFile : secondDocFile;
     if (!tradeLicenseFile || !secondDoc) {
-      const secondLabel = accountType === 'factory' ? 'Manufacturing License' : 'Import License / Trade Agency Certificate';
-      setDocUploadError(`Both Trade License and ${secondLabel} are required.`);
+      const secondLabel = accountType === 'factory' ? 'رخصة مزاولة المهنة' : 'شهادة الاستيراد / الوكالة التجارية';
+      setDocUploadError(`مطلوب إرفاق السجل التجاري و ${secondLabel}.`);
       return;
     }
 
-    const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB
-    if (tradeLicenseFile.size > MAX_FILE_SIZE) {
-      setDocUploadError('Trade License file exceeds the 15MB size limit. Please upload a smaller file.');
-      return;
-    }
-    if (secondDoc.size > MAX_FILE_SIZE) {
-      setDocUploadError('Second document file exceeds the 15MB size limit. Please upload a smaller file.');
+    const MAX_FILE_SIZE = 15 * 1024 * 1024;
+    if (tradeLicenseFile.size > MAX_FILE_SIZE || secondDoc.size > MAX_FILE_SIZE) {
+      setDocUploadError('حجم الملف يتجاوز 15 ميجابايت.');
       return;
     }
 
@@ -636,7 +605,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       let tradeLicenseUrl = '';
       let secondDocUrl = '';
 
-      // Attempt storage uploads — gracefully skip if bucket unavailable
       try {
         const tlExt = tradeLicenseFile.name.split('.').pop();
         const tlPath = `factory-docs/${user.id}/trade_license.${tlExt}`;
@@ -646,8 +614,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         if (!tlErr) {
           const { data: tlUrlData } = supabase.storage.from('factory-documents').getPublicUrl(tlPath);
           tradeLicenseUrl = tlUrlData?.publicUrl || '';
-        } else {
-          console.warn('Trade License storage upload failed:', tlErr.message);
         }
 
         const secondDocKey = accountType === 'factory' ? 'manufacturing_license' : 'import_agency_license';
@@ -659,14 +625,11 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         if (!mlErr) {
           const { data: mlUrlData } = supabase.storage.from('factory-documents').getPublicUrl(mlPath);
           secondDocUrl = mlUrlData?.publicUrl || '';
-        } else {
-          console.warn('Second document storage upload failed:', mlErr.message);
         }
       } catch (storageErr: any) {
-        console.warn('Storage upload skipped:', storageErr?.message);
+        console.warn('Storage upload note:', storageErr?.message);
       }
 
-      // Always save the registration record regardless of storage outcome
       const updatePayload: any = {
         trade_license_url: tradeLicenseUrl,
         manufacturing_license_url: secondDocUrl,
@@ -682,7 +645,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
           .from('factory_registrations')
           .update(updatePayload)
           .eq('user_id', user.id);
-        if (updateErr) throw new Error(`Failed to save document records: ${updateErr.message}`);
+        if (updateErr) throw new Error(updateErr.message);
       } else {
         const { error: insertErr } = await supabase
           .from('factory_registrations')
@@ -692,7 +655,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
             contact_email: user.email || '',
             ...updatePayload,
           });
-        if (insertErr) throw new Error(`Failed to create registration record: ${insertErr.message}`);
+        if (insertErr) throw new Error(insertErr.message);
       }
 
       setShowDocGate(false);
@@ -701,7 +664,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       await fetchFactoryRegistration();
     } catch (err: any) {
       console.error('Document upload error:', err);
-      setDocUploadError(err?.message || 'Upload failed. Please try again.');
+      setDocUploadError(err?.message || 'فشل رفع الوثائق.');
     } finally {
       setUploadingDocs(false);
     }
@@ -712,15 +675,15 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       setShowDocGate(true);
       return;
     }
-    router.push('/seller/products?add=1');
+    openAddModal();
   };
 
   const handleSavePaymentSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setPaymentError('');
     setPaymentSuccess('');
-    if (!paymentSettings.bank_name.trim() && !paymentSettings.iban.trim() && !paymentSettings.usdt_trc20_address.trim()) {
-      setPaymentError(t.paymentSettings?.errorAtLeastOne || 'Please fill in at least one payment method (bank account or digital wallet).');
+    if (!paymentSettings.bank_name.trim() && !paymentSettings.iban.trim() && !paymentSettings.kuraimi_account_name.trim()) {
+      setPaymentError('يرجى تعبئة وسيلة سحب واحدة على الأقل (حساب بنكي أو محفظة إلكترونية).');
       return;
     }
     setPaymentSaving(true);
@@ -735,7 +698,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         bank_country: paymentSettings.bank_country,
         bank_city: paymentSettings.bank_city.trim(),
         bank_branch: paymentSettings.bank_branch.trim(),
-        bank_currency: paymentSettings.bank_currency,
+        bank_currency: paymentSettings.bank_currency || 'YER',
         usdt_trc20_address: paymentSettings.usdt_trc20_address.trim(),
         usdt_erc20_address: paymentSettings.usdt_erc20_address.trim(),
         bitcoin_address: paymentSettings.bitcoin_address.trim(),
@@ -784,10 +747,10 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         if (error) throw error;
         if (data) setPaymentSettings((prev) => ({ ...prev, id: data.id }));
       }
-      setPaymentSuccess(t.paymentSettings?.successSaved || 'Payment settings saved successfully. The platform will use these details for settlements.');
+      setPaymentSuccess('تم حفظ إعدادات الدفع والمحافظ بنجاح.');
       await fetchPaymentSettings();
     } catch (err: any) {
-      setPaymentError(err.message || t.paymentSettings?.errorSaveFailed || 'Failed to save payment settings.');
+      setPaymentError(err.message || 'فشل حفظ إعدادات الدفع.');
     } finally {
       setPaymentSaving(false);
     }
@@ -811,7 +774,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         account_number: bankFormData.account_number.trim(),
         iban: bankFormData.iban.trim().toUpperCase(),
         swift_bic: bankFormData.swift_bic.trim().toUpperCase(),
-        currency: bankFormData.currency,
+        currency: bankFormData.currency || 'YER',
         account_type: bankFormData.account_type,
         account_type_label: bankFormData.account_type_label.trim() || null,
         status: 'pending_review',
@@ -891,7 +854,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     const priceNum = parseFloat(formData.unit_price);
     const moqNum = parseInt(formData.minimum_order_qty);
     const stockNum = parseFloat(formData.stock_quantity);
-    if (formData.unit_price.trim() && (!Number.isFinite(priceNum) || priceNum < 0)) { setFormError('سعر الوحدة يجب أن يكون رقماً صحيحاً غير سالب.'); return; }
+    if (formData.unit_price.trim() && (!Number.isFinite(priceNum) || priceNum < 0)) { setFormError('سعر الوحدة يجب أن يكون رقماً صحيحاً.'); return; }
     if (formData.minimum_order_qty.trim() && (!Number.isFinite(moqNum) || moqNum < 1)) { setFormError('الحد الأدنى للطلب يجب أن يكون 1 على الأقل.'); return; }
     if (formData.stock_quantity.trim() && (!Number.isFinite(stockNum) || stockNum < 0)) { setFormError('كمية المخزون يجب ألا تكون سالبة.'); return; }
     setFormLoading(true);
@@ -937,7 +900,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       setShowAddModal(false);
       await fetchProducts();
     } catch (err: any) {
-      setFormError(err.message || 'Failed to save product.');
+      setFormError(err.message || 'فشل حفظ المنتج.');
     } finally {
       setFormLoading(false);
     }
@@ -994,7 +957,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     router.push('/manufacturer/login');
   };
 
-  // ── Accreditation Inquiry — sends real-time notification to admin ────────────
   const handleAccreditationInquiry = async () => {
     if (!user || inquirySending || inquirySent) return;
     setInquirySending(true);
@@ -1008,7 +970,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       });
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
-        throw new Error(payload?.error || 'Request failed');
+        throw new Error(payload?.error || 'فشل إرسال الطلب');
       }
 
       setInquirySent(true);
@@ -1022,20 +984,19 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     }
   };
 
-  const filteredProducts = products
-    .filter(p => {
-      const matchStatus = filterStatus === 'all' || p.inventory_status === filterStatus;
-      const matchCategory = filterCategory === 'all' || p.category === filterCategory;
-      const matchSource =
-        filterSource === 'all' ||
-        (filterSource === 'mine' && p.created_by_role !== 'agent') ||
-        (filterSource === 'agent' && p.created_by_role === 'agent');
-      const matchSearch = !searchQuery ||
-        p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.name_ar?.includes(searchQuery) ||
-        p.sku?.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchStatus && matchCategory && matchSource && matchSearch;
-    });
+  const filteredProducts = products.filter(p => {
+    const matchStatus = filterStatus === 'all' || p.inventory_status === filterStatus;
+    const matchCategory = filterCategory === 'all' || p.category === filterCategory;
+    const matchSource =
+      filterSource === 'all' ||
+      (filterSource === 'mine' && p.created_by_role !== 'agent') ||
+      (filterSource === 'agent' && p.created_by_role === 'agent');
+    const matchSearch = !searchQuery ||
+      p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.name_ar?.includes(searchQuery) ||
+      p.sku?.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchStatus && matchCategory && matchSource && matchSearch;
+  });
 
   const sortedProducts = [...filteredProducts].sort((a: any, b: any) => {
     const av = a[productSort.col] ?? '';
@@ -1053,7 +1014,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     outOfStock: products.filter((p) => p.inventory_status === 'out_of_stock').length,
   };
 
-  // ── Module (full-screen) mode: load only the data this module needs ──────────
+  // Module mode: load requested module data
   useEffect(() => {
     if (!moduleTab || !user || salesRepLoading) return;
     switch (moduleTab) {
@@ -1062,14 +1023,14 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       case 'escrow_orders': fetchEscrowOrders(); break;
       case 'factory_orders': fetchFactoryOrders(); break;
       case 'disputes': fetchFactoryDisputes(); break;
-            case 'analytics':
+      case 'analytics':
         fetchAnalytics();
         supabase
           .from('manufacturer_payment_settings')
           .select('bank_currency')
           .eq('manufacturer_id', user.id)
           .maybeSingle()
-          .then(({ data }: any) => setFactoryCurrency(data?.bank_currency || null));
+          .then(({ data }: any) => setFactoryCurrency(data?.bank_currency || 'YER'));
         break;
       case 'admin_messaging': fetchAdminConversation(); break;
       case 'inventory': fetchInventoryItems(); break;
@@ -1077,15 +1038,12 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       case 'sales_team': fetchSalesReps(); break;
       default: break;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleTab, user?.id, salesRepLoading]);
 
-  // Logistics merges two cards: ?view=bids selects the shipment-bids sub-view
   useEffect(() => {
     if (moduleTab === 'seller_fulfillment' && moduleView === 'bids') setActiveTab('freight_bids');
   }, [moduleTab, moduleView]);
 
-  // Finance module: two main tabs. Default = wallet (finance); ?view=bank selects bank accounts & security
   useEffect(() => {
     if (moduleTab === 'financial_hub') {
       if (moduleView === 'bank') {
@@ -1094,10 +1052,8 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         setActiveTab('finance');
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleTab, moduleView]);
 
-  // ── Hard RBAC: sub-accounts can never reach restricted modules ───────────
   const SALES_REP_RESTRICTED_TABS: string[] = [
     'financial_hub', 'finance', 'escrow_orders', 'factory_settings', 'sales_team',
     'contracts', 'analytics', 'all_sales', 'invoicing', 'production',
@@ -1112,7 +1068,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     if (SALES_REP_RESTRICTED_TABS.includes(activeTab)) {
       setActiveTab('products');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [salesRepLoading, isSalesRep, moduleTab, activeTab]);
 
   if (authLoading || (user && salesRepLoading) || (isSalesRep && moduleTab && SALES_REP_RESTRICTED_TABS.includes(moduleTab))) {
@@ -1124,7 +1079,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   }
 
   return (
-    <div className={`min-h-screen ${isModuleMode ? 'bg-background' : 'bg-slate-950 pb-16'}`} dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className={`min-h-screen ${isModuleMode ? 'bg-background' : 'bg-slate-950 pb-28'}`} dir={isRTL ? 'rtl' : 'ltr'}>
       <Toaster position={isRTL ? 'top-left' : 'top-right'} />
 
       <DashboardChrome
@@ -1151,7 +1106,8 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         md={md}
       />
 
-      <main className="max-w-7xl mx-auto px-4 md:px-6 py-6">
+      {/* ── Main Container: all panels reside cleanly inside ── */}
+      <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 pb-24 space-y-6">
         {!isModuleMode && (
           <DashboardHub
             userId={user?.id ?? null}
@@ -1174,9 +1130,9 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         )}
         <DealLinkGeneratorModal open={showDealLinkModal} onClose={() => setShowDealLinkModal(false)} />
 
-        {/* ── FINANCIAL ACCESS GUARD — shown if sales rep tries to access financial tabs ── */}
+        {/* ── FINANCIAL ACCESS GUARD ── */}
         {isSalesRep && (activeTab === 'financial_hub' || activeTab === 'finance') && (
-          <div className="flex flex-col items-center justify-center py-24 text-center">
+          <div className="flex flex-col items-center justify-center py-24 text-center bg-card border border-border rounded-2xl p-6">
             <div className="w-20 h-20 rounded-3xl bg-red-50 border-2 border-red-200 flex items-center justify-center mx-auto mb-5">
               <Icon name="LockClosedIcon" size={36} className="text-red-500" />
             </div>
@@ -1194,20 +1150,16 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         {/* ── SALES TEAM TAB ── */}
         {activeTab === 'sales_team' && !isSalesRep && (
           <div className="space-y-5">
-            {/* ── Factory Team Management (manufacturer_agent sub-accounts) ── */}
-            <FactoryTeamManagement
-              factoryOwnerId={user!.id}
-              isRTL={isRTL}
-            />
+            <FactoryTeamManagement factoryOwnerId={user!.id} isRTL={isRTL} />
           </div>
         )}
 
-        {/* ── TAB 1: المحفظة والأرباح (wallet + transactions) ── */}
-        {moduleTab === 'financial_hub' && activeTab === 'finance' && !isSalesRep && user?.id && (
+        {/* ── FINANCIAL HUB: WALLET & EARNINGS ── */}
+        {((moduleTab === 'financial_hub' && activeTab === 'finance') || (activeTab === 'finance' && !isSalesRep)) && user?.id && (
           <FinancialSummaryHeader userId={user.id} currency={bankAccounts?.[0]?.currency || 'YER'} />
         )}
 
-        {/* ── TAB 2: الحسابات البنكية والأمان (bank accounts + PIN) ── */}
+        {/* ── FINANCIAL HUB: BANK & PIN ── */}
         {activeTab === 'financial_hub' && !isSalesRep && (
           <div className="space-y-6">
             <FinancialHubPanel
@@ -1228,9 +1180,24 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
             {user?.id && <FactoryPinPayoutPanel userId={user.id} />}
           </div>
         )}
+
+        {/* ── FINANCE RECORDS PANEL ── */}
+        {activeTab === 'finance' && !isSalesRep && (
+          <FinancePanel
+            financeRecords={financeRecords}
+            financeLoading={financeLoading}
+            financeFilter={financeFilter}
+            setFinanceFilter={setFinanceFilter}
+            md={md}
+          />
+        )}
+
+        {/* ── SETTINGS TAB ── */}
         {activeTab === 'factory_settings' && !isSalesRep && (
           <FactorySettingsPanel userId={user?.id ?? null} onRoleResolved={setIsSupplierSettings} />
         )}
+
+        {/* ── PRODUCTS TAB ── */}
         {activeTab === 'products' && (
           <ProductsPanel
             products={products}
@@ -1340,7 +1307,10 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
             markReadySuccess={markReadySuccess}
             setMarkReadyMsg={setMarkReadyMsg}
             setMarkReadySuccess={setMarkReadySuccess}
-            handleDeliveryPinVerify={handleDeliveryPinVerify}
+            handleDeliveryPinVerify={async (orderId) => {
+              await handleDeliveryPinVerify(orderId);
+              fetchFinanceRecords();
+            }}
             handleMarkReady={handleMarkReady}
             fetchEscrowOrders={fetchEscrowOrders}
             user={user}
@@ -1382,7 +1352,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
           />
         )}
 
-        {/* ── DISPUTES TAB — Level 1: Factory Resolution Panel ── */}
+        {/* ── DISPUTES TAB ── */}
         {activeTab === 'disputes' && (
           <DisputesPanel
             localMode
@@ -1421,7 +1391,66 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
           />
         )}
 
-        {/* ── ADMIN MESSAGING TAB (factory side) ── */}
+        {/* ── INVENTORY TAB ── */}
+        {activeTab === 'inventory' && (
+          <InventoryPanel
+            inventoryItems={inventoryItems}
+            inventoryLoading={inventoryLoading}
+            showAddInventoryModal={showAddInventoryModal}
+            setShowAddInventoryModal={setShowAddInventoryModal}
+            inventoryForm={inventoryForm}
+            setInventoryForm={setInventoryForm}
+            inventoryFormLoading={inventoryFormLoading}
+            inventoryFormError={inventoryFormError}
+            md={md}
+            onSaved={fetchInventoryItems}
+          />
+        )}
+
+        {/* ── ARCHIVE TAB ── */}
+        {activeTab === 'archive' && (
+          <ArchivePanel
+            archiveRecords={archiveRecords}
+            archiveLoading={archiveLoading}
+            archiveType={archiveType}
+            setArchiveType={setArchiveType}
+            md={md}
+          />
+        )}
+
+        {/* ── ALL SALES METHODS TAB ── */}
+        {activeTab === 'all_sales' && !isSalesRep && (
+          <div className="bg-card border border-border rounded-2xl p-4 md:p-6 shadow-sm">
+            <AllSalesMethodsPanel />
+          </div>
+        )}
+
+        {/* ── CONTRACTS TAB ── */}
+        {activeTab === 'contracts' && !isSalesRep && (
+          <div className="bg-card border border-border rounded-2xl p-4 md:p-6 shadow-sm">
+            <AIContractAssistant
+              onPushedToInvoice={() => {
+                setActiveTab('invoicing');
+              }}
+            />
+          </div>
+        )}
+
+        {/* ── INVOICING MODULE (Unlocked & Integrated) ── */}
+        {(activeTab === 'invoicing' || moduleTab === 'invoicing') && !isSalesRep && user && (
+          <div id="manufacturer-invoicing-anchor" className="bg-card border border-border rounded-2xl p-4 md:p-6 shadow-sm">
+            <ManufacturerAdvancedModules userId={user.id} mode="finance" />
+          </div>
+        )}
+
+        {/* ── PRODUCTION CAPACITY & QC MODULE (Unlocked & Integrated) ── */}
+        {(activeTab === 'production' || moduleTab === 'production') && !isSalesRep && user && (
+          <div className="bg-card border border-border rounded-2xl p-4 md:p-6 shadow-sm">
+            <ManufacturerAdvancedModules userId={user.id} mode="production" />
+          </div>
+        )}
+
+        {/* ── ADMIN MESSAGING TAB ── */}
         {activeTab === 'admin_messaging' && user && (
           <FactoryAdminMessaging
             user={user}
@@ -1442,8 +1471,23 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
             setAdminMsgAttachment={setAdminMsgAttachment}
           />
         )}
+
+        {/* ── TIERED PRICING MANAGER (International only) ── */}
+        {!isSalesRep && user && !isModuleMode && factoryRegistration?.factory_type === 'international' && (
+          <div className="bg-card border border-border rounded-2xl p-4 md:p-6 shadow-sm mt-4">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+                🌐 International Factory Module
+              </span>
+            </div>
+            <TieredPricingManager
+              productName={factoryRegistration?.company_name || undefined}
+            />
+          </div>
+        )}
       </main>
 
+      {/* ── Dialog Modals ── */}
       {showAddModal && (
         <ProductFormModal
           isEditing={!!editingProduct}
@@ -1461,92 +1505,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
           onCancel={() => setDeleteId(null)}
           onConfirm={() => handleDelete(deleteId)}
         />
-      )}
-
-      {/* Document Gate Modal — handled inside ProductsPanel (FactoryDocumentUploadPanel) */}
-
-      {/* ── FINANCE TAB ── */}
-      {activeTab === 'finance' && !isSalesRep && moduleTab !== 'financial_hub' && (
-        <FinancePanel
-          financeRecords={financeRecords}
-          financeLoading={financeLoading}
-          financeFilter={financeFilter}
-          setFinanceFilter={setFinanceFilter}
-          md={md}
-        />
-      )}
-
-      {/* ── INVENTORY TAB ── */}
-      {activeTab === 'inventory' && (
-        <InventoryPanel
-          inventoryItems={inventoryItems}
-          inventoryLoading={inventoryLoading}
-          showAddInventoryModal={showAddInventoryModal}
-          setShowAddInventoryModal={setShowAddInventoryModal}
-          inventoryForm={inventoryForm}
-          setInventoryForm={setInventoryForm}
-          inventoryFormLoading={inventoryFormLoading}
-          inventoryFormError={inventoryFormError}
-          md={md}
-          onSaved={fetchInventoryItems}
-        />
-      )}
-
-      {/* ── ARCHIVE TAB ── */}
-      {activeTab === 'archive' && (
-        <ArchivePanel
-          archiveRecords={archiveRecords}
-          archiveLoading={archiveLoading}
-          archiveType={archiveType}
-          setArchiveType={setArchiveType}
-          md={md}
-        />
-      )}
-
-      {/* ── ALL SALES METHODS TAB ── */}
-      {activeTab === 'all_sales' && !isSalesRep && (
-        <div className="p-4 md:p-6">
-          <AllSalesMethodsPanel />
-        </div>
-      )}
-
-      {/* ── CONTRACTS TAB ── */}
-      {activeTab === 'contracts' && !isSalesRep && (
-        <div className="p-4 md:p-6">
-          <AIContractAssistant
-            onPushedToInvoice={() => {
-              router.push('/manufacturer/invoicing');
-            }}
-          />
-        </div>
-      )}
-
-      {/* ── INVOICING MODULE (dedicated card / sub-route only) ── */}
-      {moduleTab === 'invoicing' && !isSalesRep && user && (
-        <div id="manufacturer-invoicing-anchor" className="p-4 md:p-6">
-          <ManufacturerAdvancedModules userId={user.id} mode="finance" />
-        </div>
-      )}
-
-      {/* ── PRODUCTION CAPACITY & QC MODULE (dedicated card / sub-route only) ── */}
-      {moduleTab === 'production' && !isSalesRep && user && (
-        <div className="p-4 md:p-6">
-          <ManufacturerAdvancedModules userId={user.id} mode="production" />
-        </div>
-      )}
-
-      {/* ── TIERED PRICING MANAGER (International Factories only) ── */}
-      {!isSalesRep && user && !isModuleMode && factoryRegistration?.factory_type === 'international' && (
-        <div className="p-4 md:p-6 border-t border-border mt-2">
-          <div className="mb-3 flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
-              🌐 International Factory Module
-            </span>
-          </div>
-          <TieredPricingManager
-            productName={factoryRegistration?.company_name || undefined}
-          />
-        </div>
       )}
     </div>
   );
