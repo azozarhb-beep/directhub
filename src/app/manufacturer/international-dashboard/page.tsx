@@ -3,7 +3,6 @@
 export const dynamic = 'force-dynamic';
 
 import React, { useEffect, useState, useMemo } from 'react';
-
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -11,9 +10,11 @@ import AppLogo from '@/components/ui/AppLogo';
 import { useLanguage } from '@/contexts/LanguageContext';
 import DealLinkGeneratorModal from '@/components/manufacturer/DealLinkGeneratorModal';
 import FactoryControlHub from '@/components/manufacturer/FactoryControlHub';
+import TieredPricingManager from '@/components/international-factory/TieredPricingManager';
+import SupplyChainPanel from './SupplyChainPanel';
 import { SUPPORTED_LANGUAGES } from '@/lib/i18n';
 import { getIntlRoomStrings } from '@/lib/internationalRoomI18n';
-import { Globe, TrendingUp, Ship, AlertTriangle, Link2, Check } from 'lucide-react';
+import { Globe, TrendingUp, Ship, AlertTriangle, Link2, Check, Layers, Anchor } from 'lucide-react';
 import { resolveManufacturerRoomForUser, INTERNATIONAL_FACTORY_ROOM_PATH } from '@/lib/roomIsolation';
 
 // ─── Local Room Guard Helpers ────────────────────────────────────────────────
@@ -70,22 +71,25 @@ export default function InternationalDashboardPage() {
   const { dir, language, setLanguage } = useLanguage();
   const [showDealLinkModal, setShowDealLinkModal] = React.useState(false);
   const [showLangMenu, setShowLangMenu] = React.useState(false);
+  const [activeTab, setActiveTab] = useState<'overview' | 'supply_chain' | 'pricing'>('overview');
   const [metrics, setMetrics] = useState<ExportMetrics>(EMPTY_METRICS);
+  const [factoryName, setFactoryName] = useState<string>('');
+
   const supabase = React.useMemo(() => {
     const { createClient } = require('@/lib/supabase/client');
     return createClient();
   }, []);
   const s = getIntlRoomStrings(language);
 
-  // Live metric aggregation from orders + international_shipments
+  // Load Factory Name & Live metric aggregation
   useEffect(() => {
     if (!user?.id) return;
     let cancelled = false;
     const userId = user.id;
 
-    const loadMetrics = async () => {
+    const loadInitialData = async () => {
       try {
-        const [ordersRes, shipmentsRes] = await Promise.all([
+        const [ordersRes, shipmentsRes, factoryRes] = await Promise.all([
           supabase
             .from('orders')
             .select('total, total_amount, status')
@@ -94,8 +98,18 @@ export default function InternationalDashboardPage() {
             .from('international_shipments')
             .select('status')
             .eq('created_by', userId),
+          supabase
+            .from('factory_registrations')
+            .select('company_name')
+            .eq('user_id', userId)
+            .maybeSingle(),
         ]);
         if (cancelled) return;
+
+        if (factoryRes?.data?.company_name) {
+          setFactoryName(factoryRes.data.company_name);
+        }
+
         const orderRows = (ordersRes?.data || []) as Array<{ total?: number | string | null; total_amount?: number | string | null; status?: string | null }>;
         const shipmentRows = (shipmentsRes?.data || []) as Array<{ status?: string | null }>;
         const totalExportValue = orderRows
@@ -111,11 +125,11 @@ export default function InternationalDashboardPage() {
       }
     };
 
-    loadMetrics();
+    loadInitialData();
     const channel = supabase
       .channel(`intl-dashboard-metrics-${userId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `manufacturer_id=eq.${userId}` }, () => loadMetrics())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'international_shipments', filter: `created_by=eq.${userId}` }, () => loadMetrics())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `manufacturer_id=eq.${userId}` }, () => loadInitialData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'international_shipments', filter: `created_by=eq.${userId}` }, () => loadInitialData())
       .subscribe();
 
     return () => {
@@ -130,7 +144,7 @@ export default function InternationalDashboardPage() {
     }
   }, [user, authLoading, router]);
 
-  // Strict room guard: only international factories (or admins) may stay here.
+  // Strict room guard
   useEffect(() => {
     if (authLoading || !user) return;
     let cancelled = false;
@@ -164,8 +178,6 @@ export default function InternationalDashboardPage() {
         router.replace(getHomeRoomForRole(platformRole));
         return;
       }
-      // Users who explicitly chose "international manufacturer" at registration
-      // (account_role) always stay in the International Factory Control Room.
       const metaAccountRole = String(
         (user.user_metadata?.account_role as string | undefined) ||
           (user.app_metadata?.account_role as string | undefined) ||
@@ -207,7 +219,7 @@ export default function InternationalDashboardPage() {
             </div>
             <div>
               <h2 className="text-sm font-bold text-white leading-tight">{s.roomTitle}</h2>
-              <p className="text-cyan-400 text-xs">{s.roomSubtitle}</p>
+              <p className="text-cyan-400 text-xs">{factoryName ? `${factoryName} • ` : ''}{s.roomSubtitle}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -220,6 +232,7 @@ export default function InternationalDashboardPage() {
           </div>
         </div>
       </div>
+
       {/* Header */}
       <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-40">
         <div className="max-w-screen-2xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
@@ -297,56 +310,112 @@ export default function InternationalDashboardPage() {
       </header>
 
       <div className="max-w-screen-2xl mx-auto px-4 py-6 space-y-6">
-        {/* Page Title */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-white">{s.pageTitle}</h1>
-            <p className="text-slate-400 text-sm mt-1">{s.pageSubtitle}</p>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span>{s.lastUpdate}: {s.now}</span>
-          </div>
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+          <button
+            type="button"
+            onClick={() => setActiveTab('overview')}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all ${
+              activeTab === 'overview'
+                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+            }`}
+          >
+            <Globe size={16} />
+            <span>نظرة عامة والعمليات</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('supply_chain')}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all ${
+              activeTab === 'supply_chain'
+                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+            }`}
+          >
+            <Anchor size={16} />
+            <span>سلاسل الإمداد والحاويات</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('pricing')}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all ${
+              activeTab === 'pricing'
+                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+            }`}
+          >
+            <Layers size={16} />
+            <span>تسعير الكميات (USD)</span>
+          </button>
         </div>
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {[
-            { key: 'exports', href: '/manufacturer/finance', label: s.kpiTotalExport, value: `$${(totalExportValue / 1000).toFixed(0)}K`, icon: TrendingUp, color: 'from-cyan-600 to-cyan-800', sub: s.kpiThisMonth },
-            { key: 'in_transit', href: '/manufacturer/logistics', label: s.kpiInTransit, value: inTransitCount.toString(), icon: Ship, color: 'from-indigo-600 to-indigo-800', sub: s.kpiActiveShipment },
-            { key: 'held', href: '/manufacturer/logistics', label: s.kpiHeld, value: heldCount.toString(), icon: AlertTriangle, color: 'from-red-600 to-red-800', sub: s.kpiNeedsReview },
-          ].map((kpi) => (
-            <button
-              type="button"
-              key={kpi.key}
-              onClick={() => router.push(kpi.href)}
-              className={`bg-gradient-to-br ${kpi.color} rounded-xl p-4 border border-white/10 text-start w-full cursor-pointer transition-all duration-150 hover:scale-[1.02] hover:shadow-lg hover:border-white/30 active:scale-95 active:brightness-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60`}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-white/70 text-xs mb-1">{kpi.label}</p>
-                  <p className="text-2xl font-bold text-white">{kpi.value}</p>
-                  <p className="text-white/50 text-xs mt-1">{kpi.sub}</p>
-                </div>
-                <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center">
-                  <kpi.icon size={18} className="text-white" />
-                </div>
+        {activeTab === 'overview' && (
+          <>
+            {/* Page Title */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h1 className="text-2xl font-bold text-white">{s.pageTitle}</h1>
+                <p className="text-slate-400 text-sm mt-1">{s.pageSubtitle}</p>
               </div>
-            </button>
-          ))}
-        </div>
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>{s.lastUpdate}: {s.now}</span>
+              </div>
+            </div>
 
-        {/* Factory Control Room Hub — 4-category grid */}
-        <div className="scroll-mt-20">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="flex-1 h-px bg-slate-700/60" />
-            <span className="text-xs text-slate-500 font-medium px-3 py-1 bg-slate-800 rounded-full border border-slate-700 whitespace-nowrap">
-              {s.toolsDivider}
-            </span>
-            <div className="flex-1 h-px bg-slate-700/60" />
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {[
+                { key: 'exports', href: '/manufacturer/finance', label: s.kpiTotalExport, value: `$${(totalExportValue / 1000).toFixed(0)}K`, icon: TrendingUp, color: 'from-cyan-600 to-cyan-800', sub: s.kpiThisMonth },
+                { key: 'in_transit', href: '#', label: s.kpiInTransit, value: inTransitCount.toString(), icon: Ship, color: 'from-indigo-600 to-indigo-800', sub: s.kpiActiveShipment, action: () => setActiveTab('supply_chain') },
+                { key: 'held', href: '#', label: s.kpiHeld, value: heldCount.toString(), icon: AlertTriangle, color: 'from-red-600 to-red-800', sub: s.kpiNeedsReview, action: () => setActiveTab('supply_chain') },
+              ].map((kpi) => (
+                <button
+                  type="button"
+                  key={kpi.key}
+                  onClick={() => (kpi.action ? kpi.action() : router.push(kpi.href))}
+                  className={`bg-gradient-to-br ${kpi.color} rounded-xl p-4 border border-white/10 text-start w-full cursor-pointer transition-all duration-150 hover:scale-[1.02] hover:shadow-lg hover:border-white/30 active:scale-95 active:brightness-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-white/70 text-xs mb-1">{kpi.label}</p>
+                      <p className="text-2xl font-bold text-white">{kpi.value}</p>
+                      <p className="text-white/50 text-xs mt-1">{kpi.sub}</p>
+                    </div>
+                    <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center">
+                      <kpi.icon size={18} className="text-white" />
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* Factory Control Room Hub */}
+            <div className="scroll-mt-20">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="flex-1 h-px bg-slate-700/60" />
+                <span className="text-xs text-slate-500 font-medium px-3 py-1 bg-slate-800 rounded-full border border-slate-700 whitespace-nowrap">
+                  {s.toolsDivider}
+                </span>
+                <div className="flex-1 h-px bg-slate-700/60" />
+              </div>
+              <FactoryControlHub userId={user?.id} />
+            </div>
+          </>
+        )}
+
+        {activeTab === 'supply_chain' && (
+          <div className="space-y-4">
+            <SupplyChainPanel />
           </div>
-          <FactoryControlHub userId={user?.id} />
-        </div>
+        )}
+
+        {activeTab === 'pricing' && (
+          <div className="space-y-4">
+            <TieredPricingManager productName={factoryName || undefined} />
+          </div>
+        )}
       </div>
     </div>
   );
