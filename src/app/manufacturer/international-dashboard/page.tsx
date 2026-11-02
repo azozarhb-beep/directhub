@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -12,9 +12,10 @@ import DealLinkGeneratorModal from '@/components/manufacturer/DealLinkGeneratorM
 import FactoryControlHub from '@/components/manufacturer/FactoryControlHub';
 import TieredPricingManager from '@/components/international-factory/TieredPricingManager';
 import SupplyChainPanel from './SupplyChainPanel';
+import { NewShipmentModal, type NewShipmentPayload } from '@/components/international-factory/ExportShipmentModals';
 import { SUPPORTED_LANGUAGES } from '@/lib/i18n';
 import { getIntlRoomStrings } from '@/lib/internationalRoomI18n';
-import { Globe, TrendingUp, Ship, AlertTriangle, Link2, Check, Layers, Anchor } from 'lucide-react';
+import { Globe, TrendingUp, Ship, AlertTriangle, Link2, Check, Layers, Anchor, Plus } from 'lucide-react';
 import { resolveManufacturerRoomForUser, INTERNATIONAL_FACTORY_ROOM_PATH } from '@/lib/roomIsolation';
 
 // ─── Local Room Guard Helpers ────────────────────────────────────────────────
@@ -69,74 +70,78 @@ export default function InternationalDashboardPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { dir, language, setLanguage } = useLanguage();
-  const [showDealLinkModal, setShowDealLinkModal] = React.useState(false);
-  const [showLangMenu, setShowLangMenu] = React.useState(false);
+  const [showDealLinkModal, setShowDealLinkModal] = useState(false);
+  const [showNewShipmentModal, setShowNewShipmentModal] = useState(false);
+  const [showLangMenu, setShowLangMenu] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'supply_chain' | 'pricing'>('overview');
   const [metrics, setMetrics] = useState<ExportMetrics>(EMPTY_METRICS);
   const [factoryName, setFactoryName] = useState<string>('');
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
-  const supabase = React.useMemo(() => {
+  const supabase = useMemo(() => {
     const { createClient } = require('@/lib/supabase/client');
     return createClient();
   }, []);
   const s = getIntlRoomStrings(language);
 
+  const flashNotice = useCallback((msg: string) => {
+    setActionNotice(msg);
+    setTimeout(() => setActionNotice(null), 4000);
+  }, []);
+
   // Load Factory Name & Live metric aggregation
-  useEffect(() => {
+  const loadInitialData = useCallback(async () => {
     if (!user?.id) return;
-    let cancelled = false;
-    const userId = user.id;
+    try {
+      const [ordersRes, shipmentsRes, factoryRes] = await Promise.all([
+        supabase
+          .from('orders')
+          .select('total, total_amount, status')
+          .eq('manufacturer_id', user.id),
+        supabase
+          .from('international_shipments')
+          .select('status')
+          .eq('created_by', user.id),
+        supabase
+          .from('factory_registrations')
+          .select('company_name')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+      ]);
 
-    const loadInitialData = async () => {
-      try {
-        const [ordersRes, shipmentsRes, factoryRes] = await Promise.all([
-          supabase
-            .from('orders')
-            .select('total, total_amount, status')
-            .eq('manufacturer_id', userId),
-          supabase
-            .from('international_shipments')
-            .select('status')
-            .eq('created_by', userId),
-          supabase
-            .from('factory_registrations')
-            .select('company_name')
-            .eq('user_id', userId)
-            .maybeSingle(),
-        ]);
-        if (cancelled) return;
-
-        if (factoryRes?.data?.company_name) {
-          setFactoryName(factoryRes.data.company_name);
-        }
-
-        const orderRows = (ordersRes?.data || []) as Array<{ total?: number | string | null; total_amount?: number | string | null; status?: string | null }>;
-        const shipmentRows = (shipmentsRes?.data || []) as Array<{ status?: string | null }>;
-        const totalExportValue = orderRows
-          .filter((o) => (o.status || '').toLowerCase() !== 'cancelled')
-          .reduce((sum, o) => sum + (Number(o.total ?? o.total_amount) || 0), 0);
-        setMetrics({
-          totalExportValue,
-          inTransitCount: shipmentRows.filter((r) => isInTransitStatus(r.status)).length,
-          heldCount: shipmentRows.filter((r) => isHeldStatus(r.status)).length,
-        });
-      } catch (e) {
-        console.error('Failed to load export metrics', e);
+      if (factoryRes?.data?.company_name) {
+        setFactoryName(factoryRes.data.company_name);
       }
-    };
 
+      const orderRows = (ordersRes?.data || []) as Array<{ total?: number | string | null; total_amount?: number | string | null; status?: string | null }>;
+      const shipmentRows = (shipmentsRes?.data || []) as Array<{ status?: string | null }>;
+      const totalExportValue = orderRows
+        .filter((o) => (o.status || '').toLowerCase() !== 'cancelled')
+        .reduce((sum, o) => sum + (Number(o.total ?? o.total_amount) || 0), 0);
+
+      setMetrics({
+        totalExportValue,
+        inTransitCount: shipmentRows.filter((r) => isInTransitStatus(r.status)).length,
+        heldCount: shipmentRows.filter((r) => isHeldStatus(r.status)).length,
+      });
+    } catch (e) {
+      console.error('Failed to load export metrics', e);
+    }
+  }, [user?.id, supabase]);
+
+  useEffect(() => {
     loadInitialData();
+    if (!user?.id) return;
     const channel = supabase
-      .channel(`intl-dashboard-metrics-${userId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `manufacturer_id=eq.${userId}` }, () => loadInitialData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'international_shipments', filter: `created_by=eq.${userId}` }, () => loadInitialData())
+      .channel(`intl-dashboard-metrics-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `manufacturer_id=eq.${user.id}` }, () => loadInitialData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'international_shipments', filter: `created_by=eq.${user.id}` }, () => loadInitialData())
       .subscribe();
 
     return () => {
-      cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [user?.id, supabase]);
+  }, [user?.id, supabase, loadInitialData]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -196,6 +201,43 @@ export default function InternationalDashboardPage() {
     };
   }, [user, authLoading, router, supabase]);
 
+  // Handler to create new export shipment in Supabase
+  const handleCreateShipment = async (payload: NewShipmentPayload) => {
+    if (!user?.id) return;
+    try {
+      const { error } = await supabase.from('international_shipments').insert({
+        created_by: user.id,
+        buyer_name: payload.buyer_name,
+        product_name: payload.product_name,
+        destination_country: payload.destination_country,
+        quantity: payload.quantity,
+        unit: payload.unit,
+        total_value: payload.total_value,
+        incoterm: payload.incoterm,
+        container_count: payload.container_count,
+        hs_code: payload.hs_code || null,
+        origin_port: payload.origin_port || null,
+        destination_port: payload.destination_port || null,
+        bl_number: payload.bl_number || null,
+        shipping_line: payload.shipping_line || null,
+        shipment_date: payload.shipment_date || null,
+        eta: payload.eta || null,
+        status: 'in_transit',
+      });
+
+      if (error) {
+        flashNotice(`خطأ أثناء إضافة الشحنة: ${error.message}`);
+        return;
+      }
+
+      setShowNewShipmentModal(false);
+      flashNotice('تم تسجيل شحنة التصدير بنجاح');
+      loadInitialData();
+    } catch (err: any) {
+      flashNotice(`فشل الحفظ: ${err?.message || err}`);
+    }
+  };
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -245,6 +287,14 @@ export default function InternationalDashboardPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowNewShipmentModal(true)}
+              className="flex items-center gap-2 px-3 py-2 border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 rounded-lg text-sm font-semibold hover:bg-cyan-500/20 transition-colors"
+            >
+              <Ship size={15} />
+              <span className="hidden sm:inline">تسجيل شحنة تصدير</span>
+            </button>
             <button
               type="button"
               onClick={() => setShowDealLinkModal(true)}
@@ -308,6 +358,16 @@ export default function InternationalDashboardPage() {
         </div>
         <DealLinkGeneratorModal open={showDealLinkModal} onClose={() => setShowDealLinkModal(false)} />
       </header>
+
+      {/* Floating Notice */}
+      {actionNotice && (
+        <div className="max-w-screen-2xl mx-auto px-4 pt-4">
+          <div className="p-3 bg-cyan-950/80 border border-cyan-500/50 rounded-xl text-cyan-200 text-sm flex items-center justify-between">
+            <span>{actionNotice}</span>
+            <button type="button" onClick={() => setActionNotice(null)} className="text-slate-400 hover:text-white">✕</button>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-screen-2xl mx-auto px-4 py-6 space-y-6">
         {/* Navigation Tabs */}
@@ -417,6 +477,16 @@ export default function InternationalDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* New Shipment Modal */}
+      {showNewShipmentModal && (
+        <NewShipmentModal
+          s={s}
+          dir={dir}
+          onClose={() => setShowNewShipmentModal(false)}
+          onSubmit={handleCreateShipment}
+        />
+      )}
     </div>
   );
 }
