@@ -23,6 +23,9 @@ interface Product {
   category: string;
   sku: string;
   stock_quantity: number;
+  unit?: string;
+  unit_price: number;
+  currency?: string | null;
   inventory_status: 'in_stock' | 'low_stock' | 'out_of_stock' | 'discontinued';
   origin_country: string;
   is_active: boolean;
@@ -51,7 +54,7 @@ interface ProductFormData {
   name: string; name_ar: string; name_zh: string; name_tr: string;
   description: string; description_ar: string; description_zh: string; description_tr: string;
   specifications_en: string; specifications_ar: string;
-  category: string; sku: string; unit: string; unit_price: string;
+  category: string; sku: string; unit: string; unit_price: string; currency?: string;
   minimum_order_qty: string; stock_quantity: string; inventory_status: string; origin_country: string;
 }
 
@@ -245,7 +248,6 @@ export default function ProductsPanel({
       document.body.style.overflow = prevOverflow;
       window.removeEventListener('keydown', onKey);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sheetFilter]);
 
   const SHEET_META: Record<'all' | 'in_stock' | 'low_stock' | 'out_of_stock', { title: string; iconName: string; iconBg: string; badge: string }> = {
@@ -258,18 +260,30 @@ export default function ProductsPanel({
     ? (sheetFilter === 'all' ? products : products.filter((p) => p.inventory_status === sheetFilter))
     : [];
   const formatNum = (n: number) => new Intl.NumberFormat('en-US').format(Number(n) || 0);
-  const unitLabelAr = (u: string) => {
+
+  const unitLabelAr = (u?: string) => {
     const k = (u || '').toLowerCase();
-    if (k === 'carton' || k === 'cartons' || k === 'box' || k === 'boxes' || k === 'كرتون') return 'كرتون';
+    if (k === 'piece') return 'قطعة';
+    if (k === 'kg') return 'كجم';
+    if (k === 'ton') return 'طن';
+    if (k === 'carton' || k === 'box') return 'كرتون';
+    if (k === 'meter') return 'متر';
+    if (k === 'sheet') return 'لوح';
+    if (k === 'roll') return 'لفة';
+    if (k === 'liter') return 'لتر';
+    if (k === 'pallet') return 'طبلية';
     return u || 'وحدة';
   };
+
   const currencyAr = (c?: string | null) => {
-    const k = String(c || 'YER').toUpperCase();
-    if (k === 'YER') return 'ر.ي';
-    if (k === 'SAR') return 'ر.س';
+    const k = String(c || 'YER_SANAA').toUpperCase();
+    if (k === 'YER_SANAA' || k === 'YER') return 'ر.ي (صنعاء)';
+    if (k === 'YER_ADEN') return 'ر.ي (عدن)';
     if (k === 'USD') return '$';
+    if (k === 'SAR') return 'ر.س';
     return k;
   };
+
   const sheetStatusText = (p: Product) => {
     if (p.inventory_status === 'in_stock') return 'متوفر';
     if (p.inventory_status === 'low_stock') return 'مخزون منخفض';
@@ -295,9 +309,9 @@ export default function ProductsPanel({
     factoryRegistration?.referred_by_agent_code ||
     factoryRegistration?.registration_type === 'agent'
   );
-  const noopUploadDocs = () => {};
   const isAr = language === 'ar';
   const isPending = (p: Product) => p.approval_status === 'pending_factory_approval';
+
   const renderOriginBadge = (p: Product) =>
     p.created_by_role === 'agent' ? (
       <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
@@ -310,6 +324,7 @@ export default function ProductsPanel({
         {isAr ? 'إدراج ذاتي' : 'Self-listed'}
       </span>
     );
+
   const renderStatus = (p: Product) =>
     isPending(p) ? (
       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
@@ -317,9 +332,10 @@ export default function ProductsPanel({
       </span>
     ) : (
       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CONFIG[p.inventory_status]?.color || 'bg-gray-100 text-gray-600'}`}>
-        {t.status[p.inventory_status as keyof typeof t.status] || p.inventory_status}
+        {t?.status?.[p.inventory_status as keyof typeof t.status] || p.inventory_status}
       </span>
     );
+
   const renderReviewButton = (p: Product, full?: boolean) =>
     isPending(p) ? (
       <>
@@ -383,6 +399,7 @@ export default function ProductsPanel({
           )}
         </div>
       )}
+
       {!docGateLoading && factoryRegistration && !isFullyVerified && (
         <div className="relative mb-4 overflow-hidden rounded-2xl border shadow-md" style={{ background: verifiedTier === 'verified' ? 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)' : verifiedTier === 'partial' ? 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)' : 'linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%)', borderColor: verifiedTier === 'verified' ? '#6ee7b7' : verifiedTier === 'partial' ? '#fcd34d' : '#e5e7eb' }}>
           <div className="absolute top-0 left-0 right-0 h-0.5" style={{ background: verifiedTier === 'verified' ? 'linear-gradient(90deg, transparent, #10B981, transparent)' : verifiedTier === 'partial' ? 'linear-gradient(90deg, transparent, #F59E0B, transparent)' : 'linear-gradient(90deg, transparent, #9CA3AF, transparent)' }} />
@@ -451,7 +468,7 @@ export default function ProductsPanel({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <p className="font-bold text-amber-900 text-base leading-tight">
-                    {hasDocuments ? t.manufacturerDashboard.documentsUnderReview : t.manufacturerDashboard.completeDocuments}
+                    {hasDocuments ? t?.manufacturerDashboard?.documentsUnderReview : t?.manufacturerDashboard?.completeDocuments}
                   </p>
                   {hasDocuments && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white">
@@ -462,16 +479,16 @@ export default function ProductsPanel({
                 </div>
                 <p className="text-xs text-amber-700 leading-relaxed">
                   {hasDocuments
-                    ? t.manufacturerDashboard.documentsUnderReviewDesc
+                    ? t?.manufacturerDashboard?.documentsUnderReviewDesc
                     : isAgentManaged
-                    ? (language === 'ar' ?'مندوبك المعتمد مسؤول عن جمع ورفع مستندات التوثيق الخاصة بمصنعك. لا حاجة لرفعها بنفسك.' :'Your assigned agent is responsible for collecting and uploading your KYC documents. No action is needed from you.')
-                    : t.manufacturerDashboard.completeDocumentsDesc}
+                    ? (language === 'ar' ? 'مندوبك المعتمد مسؤول عن جمع ورفع مستندات التوثيق الخاصة بمصنعك. لا حاجة لرفعها بنفسك.' : 'Your assigned agent is responsible for collecting and uploading your KYC documents. No action is needed from you.')
+                    : t?.manufacturerDashboard?.completeDocumentsDesc}
                 </p>
                 <div className="flex flex-wrap items-center gap-2.5 mt-3">
                   {!hasDocuments && !isAgentManaged && (
                     <button onClick={() => setShowDocGate(true)} className="inline-flex items-center gap-1.5 px-4 py-2 text-white text-xs font-bold rounded-xl shadow-sm transition-all hover:shadow-md active:scale-95" style={{ background: 'linear-gradient(135deg, #D97706, #B45309)' }}>
                       <Icon name="ArrowUpTrayIcon" size={13} />
-                      {t.manufacturerDashboard.uploadDocumentsNow}
+                      {t?.manufacturerDashboard?.uploadDocumentsNow || 'رفع الوثائق الآن'}
                     </button>
                   )}
                   {hasDocuments && (
@@ -523,7 +540,7 @@ export default function ProductsPanel({
                   <Icon name={stat.icon as any} size={16} className="text-white" />
                 </div>
                 <span className="text-xs text-muted-foreground font-semibold leading-tight">
-                  {t.manufacturerDashboard[stat.labelKey as keyof typeof t.manufacturerDashboard] as string}
+                  {t?.manufacturerDashboard?.[stat.labelKey as keyof typeof t.manufacturerDashboard] || stat.labelKey}
                 </span>
               </div>
               <p className="relative text-3xl font-black text-foreground tracking-tight leading-none">{stat.value}</p>
@@ -537,18 +554,18 @@ export default function ProductsPanel({
         <div className="flex-1 min-w-[180px]">
           <div className="relative">
             <Icon name="MagnifyingGlassIcon" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input type="text" placeholder={t.manufacturerDashboard.searchByNameOrSku} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full h-9 pl-9 pr-4 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors" />
+            <input type="text" placeholder={t?.manufacturerDashboard?.searchByNameOrSku || 'بحث بالاسم أو الكود...'} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full h-9 pl-9 pr-4 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors" />
           </div>
         </div>
         <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="h-9 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
-          <option value="all">{t.manufacturerDashboard.allStatuses}</option>
-          <option value="in_stock">{t.manufacturerDashboard.inStock}</option>
-          <option value="low_stock">{t.manufacturerDashboard.lowStock}</option>
-          <option value="out_of_stock">{t.manufacturerDashboard.outOfStock}</option>
-          <option value="discontinued">{t.manufacturerDashboard.discontinued}</option>
+          <option value="all">{t?.manufacturerDashboard?.allStatuses || 'كل الحالات'}</option>
+          <option value="in_stock">{t?.manufacturerDashboard?.inStock || 'متوفر'}</option>
+          <option value="low_stock">{t?.manufacturerDashboard?.lowStock || 'مخزون منخفض'}</option>
+          <option value="out_of_stock">{t?.manufacturerDashboard?.outOfStock || 'نفد المخزون'}</option>
+          <option value="discontinued">{t?.manufacturerDashboard?.discontinued || 'متوقف'}</option>
         </select>
         <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="h-9 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
-          <option value="all">{t.manufacturerDashboard.allCategories}</option>
+          <option value="all">{t?.manufacturerDashboard?.allCategories || 'جميع الفئات'}</option>
           {CATEGORIES.map((c) => (<option key={c.value} value={c.value}>{c.label}</option>))}
         </select>
         <select value={filterSource} onChange={(e) => setFilterSource(e.target.value)} className="h-9 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
@@ -569,14 +586,14 @@ export default function ProductsPanel({
             <Icon name="CubeIcon" size={28} className="text-muted-foreground" />
           </div>
           <h3 className="font-semibold text-foreground mb-1">
-            {products.length === 0 ? t.manufacturerDashboard.noProductsYet : t.manufacturerDashboard.noProductsMatch}
+            {products.length === 0 ? (t?.manufacturerDashboard?.noProductsYet || 'لا توجد منتجات مسجلة بعد') : (t?.manufacturerDashboard?.noProductsMatch || 'لا توجد نتائج مطابقة')}
           </h3>
           <p className="text-sm text-muted-foreground mb-4">
-            {products.length === 0 ? t.manufacturerDashboard.addFirstProduct : t.manufacturerDashboard.tryAdjustingFilters}
+            {products.length === 0 ? (t?.manufacturerDashboard?.addFirstProduct || 'ابدأ بإضافة أول منتج لمصنعك') : (t?.manufacturerDashboard?.tryAdjustingFilters || 'جرب تغيير معايير البحث')}
           </p>
           {products.length === 0 && (
             <button onClick={handleOpenAddModal} className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-lg">
-              <Icon name="PlusIcon" size={16} /> {t.manufacturerDashboard.addFirstProductBtn}
+              <Icon name="PlusIcon" size={16} /> {t?.manufacturerDashboard?.addFirstProductBtn || 'إضافة منتج الآن'}
             </button>
           )}
         </div>
@@ -587,13 +604,13 @@ export default function ProductsPanel({
             <table className="w-full text-sm min-w-[500px]">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t.manufacturerDashboard.product}</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t.manufacturerDashboard.category}</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t.manufacturerDashboard.sku}</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t.manufacturerDashboard.pricePerUnit}</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t.manufacturerDashboard.stock}</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t.manufacturerDashboard.status}</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t.manufacturerDashboard.actions}</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t?.manufacturerDashboard?.product || 'المنتج'}</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t?.manufacturerDashboard?.category || 'الفئة'}</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t?.manufacturerDashboard?.sku || 'الكود'}</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t?.manufacturerDashboard?.pricePerUnit || 'السعر'}</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t?.manufacturerDashboard?.stock || 'المخزون'}</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t?.manufacturerDashboard?.status || 'الحالة'}</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t?.manufacturerDashboard?.actions || 'الإجراءات'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -603,27 +620,33 @@ export default function ProductsPanel({
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-xl bg-muted overflow-hidden shrink-0 border border-border flex items-center justify-center">
                           {getProductThumb(product) ? (
-                            <img src={getProductThumb(product) as string} alt={product.name} className="w-full h-full object-cover" />
+                            <img src={getProductThumb(product) as string} alt={product.name_ar || product.name} className="w-full h-full object-cover" />
                           ) : (
                             <Icon name="PhotoIcon" size={20} className="text-muted-foreground" />
                           )}
                         </div>
                         <div className="min-w-0">
-                      <p className="font-medium text-foreground break-words">{product.name}</p>
-                      {renderOriginBadge(product)}
-                      {product.origin_country && (
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <p className="text-xs text-muted-foreground">{product.origin_country}</p>
-                          <SupplierLanguageBadge originCountry={product.origin_country} size="sm" />
-                        </div>
-                      )}
+                          <p className="font-bold text-foreground break-words">{product.name_ar || product.name}</p>
+                          {renderOriginBadge(product)}
+                          {product.origin_country && (
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <p className="text-xs text-muted-foreground">{product.origin_country}</p>
+                              <SupplierLanguageBadge originCountry={product.origin_country} size="sm" />
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3"><span className="text-xs text-muted-foreground capitalize">{product.category.replace('_', ' ')}</span></td>
+                    <td className="px-4 py-3"><span className="text-xs text-muted-foreground capitalize">{(product.category || '').replace('_', ' ')}</span></td>
                     <td className="px-4 py-3"><span className="font-mono text-xs text-muted-foreground">{product.sku || '—'}</span></td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap" dir="ltr"><span className="font-semibold text-foreground">${product.unit_price.toFixed(2)}</span><span className="text-xs text-muted-foreground"> / {product.unit}</span></td>
-                    <td className="px-4 py-3 text-right"><span className="font-medium text-foreground">{product.stock_quantity}</span><span className="text-xs text-muted-foreground"> {product.unit}</span></td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <span className="font-bold text-primary">{formatNum(product.unit_price)} {currencyAr(product.currency)}</span>
+                      <span className="text-xs text-muted-foreground"> / {unitLabelAr(product.unit)}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="font-medium text-foreground">{formatNum(product.stock_quantity)}</span>
+                      <span className="text-xs text-muted-foreground"> {unitLabelAr(product.unit)}</span>
+                    </td>
                     <td className="px-4 py-3">
                       {renderStatus(product)}
                     </td>
@@ -631,29 +654,29 @@ export default function ProductsPanel({
                       <div className="flex items-center justify-end gap-1">
                         {renderReviewButton(product)}
                         <a href={`/p/${product.id}`} target="_blank" rel="noopener noreferrer" className="px-2 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-xs font-semibold text-primary whitespace-nowrap">
-                          معاينة صفحة المنتج ↗
+                          معاينة ↗
                         </a>
                         <button
                           type="button"
                           onClick={async () => {
-                            const ok = await copyProductShareText({ id: product.id, name: product.name, name_ar: (product as any).name_ar, sku: product.sku, short_id: product.short_id, slug: product.slug, currency: (product as any).currency || 'YER' });
+                            const ok = await copyProductShareText({ id: product.id, name: product.name, name_ar: product.name_ar, sku: product.sku, short_id: product.short_id, slug: product.slug, currency: product.currency || 'YER_SANAA' });
                             if (ok) { setCopiedProductId(product.id); setTimeout(() => setCopiedProductId(null), 2500); }
                           }}
                           title="نسخ رابط وكود المنتج"
                           className="px-2 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-xs font-semibold text-foreground whitespace-nowrap"
                         >
-                          {copiedProductId === product.id ? '✓ تم النسخ' : '🔗 نسخ رابط وكود المنتج'}
+                          {copiedProductId === product.id ? '✓ تم النسخ' : '🔗 نسخ الرابط'}
                         </button>
                         <a href={buildProductShareLinkNoPhone(buildPublicProductUrl(product), language === 'ar')} target="_blank" rel="noopener noreferrer" title={language === 'ar' ? 'مشاركة عبر واتساب' : 'Share via WhatsApp'} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-green-50 transition-colors text-muted-foreground hover:text-green-600">
                           <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
                         </a>
-                        <button onClick={() => handleToggleActive(product)} title={product.is_active ? t.manufacturerDashboard.deactivate : t.manufacturerDashboard.activate} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+                        <button onClick={() => handleToggleActive(product)} title={product.is_active ? (t?.manufacturerDashboard?.deactivate || 'إلغاء التفعيل') : (t?.manufacturerDashboard?.activate || 'تفعيل')} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
                           <Icon name={product.is_active ? 'EyeIcon' : 'EyeSlashIcon'} size={15} />
                         </button>
-                        <button onClick={() => openEditModal(product)} title={t.manufacturerDashboard.edit} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+                        <button onClick={() => openEditModal(product)} title={t?.manufacturerDashboard?.edit || 'تعديل'} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
                           <Icon name="PencilSquareIcon" size={15} />
                         </button>
-                        <button onClick={() => setDeleteId(product.id)} title={t.manufacturerDashboard.delete} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 transition-colors text-muted-foreground hover:text-red-600">
+                        <button onClick={() => setDeleteId(product.id)} title={t?.manufacturerDashboard?.delete || 'حذف'} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 transition-colors text-muted-foreground hover:text-red-600">
                           <Icon name="TrashIcon" size={15} />
                         </button>
                       </div>
@@ -671,32 +694,32 @@ export default function ProductsPanel({
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="w-14 h-14 rounded-xl bg-muted overflow-hidden shrink-0 border border-border flex items-center justify-center">
                     {getProductThumb(product) ? (
-                      <img src={getProductThumb(product) as string} alt={product.name} className="w-full h-full object-cover" />
+                      <img src={getProductThumb(product) as string} alt={product.name_ar || product.name} className="w-full h-full object-cover" />
                     ) : (
                       <Icon name="PhotoIcon" size={22} className="text-muted-foreground" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-foreground break-words">{product.name}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{product.category.replace('_', ' ')}</p>
+                    <p className="font-bold text-foreground break-words">{product.name_ar || product.name}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{(product.category || '').replace('_', ' ')}</p>
                     {renderOriginBadge(product)}
                   </div>
                   <span className="shrink-0">{renderStatus(product)}</span>
                 </div>
-                <div className="flex items-center gap-4 text-sm mb-3">
-                  <span dir="ltr" className="whitespace-nowrap"><span className="font-semibold text-foreground">${product.unit_price.toFixed(2)}</span><span className="text-muted-foreground"> / {product.unit}</span></span>
-                  <span className="text-muted-foreground">Stock: <span className="text-foreground font-medium">{product.stock_quantity} {product.unit}</span></span>
+                <div className="flex items-center gap-3 text-sm mb-3">
+                  <span className="font-black text-primary">{formatNum(product.unit_price)} {currencyAr(product.currency)} <span className="text-xs font-normal text-muted-foreground">/ {unitLabelAr(product.unit)}</span></span>
+                  <span className="text-muted-foreground">المخزون: <span className="text-foreground font-medium">{formatNum(product.stock_quantity)} {unitLabelAr(product.unit)}</span></span>
                 </div>
                 {isPending(product) && (
                   <div className="flex items-center gap-2 mb-2">{renderReviewButton(product, true)}</div>
                 )}
-                <a href={`/product/${product.id}`} target="_blank" rel="noopener noreferrer" className="mb-2 h-8 flex items-center justify-center rounded-lg border border-primary/30 text-xs font-semibold text-primary hover:bg-primary/5 transition-colors">
+                <a href={`/p/${product.id}`} target="_blank" rel="noopener noreferrer" className="mb-2 h-8 flex items-center justify-center rounded-lg border border-primary/30 text-xs font-semibold text-primary hover:bg-primary/5 transition-colors">
                   معاينة صفحة المنتج ↗
                 </a>
                 <button
                   type="button"
                   onClick={async () => {
-                    const ok = await copyProductShareText({ id: product.id, name: product.name, name_ar: (product as any).name_ar, sku: product.sku, short_id: product.short_id, slug: product.slug, currency: (product as any).currency || 'YER' });
+                    const ok = await copyProductShareText({ id: product.id, name: product.name, name_ar: product.name_ar, sku: product.sku, short_id: product.short_id, slug: product.slug, currency: product.currency || 'YER_SANAA' });
                     if (ok) { setCopiedProductId(product.id); setTimeout(() => setCopiedProductId(null), 2500); }
                   }}
                   className="mb-2 w-full h-8 flex items-center justify-center rounded-lg border border-border text-xs font-semibold text-foreground hover:bg-muted transition-colors"
@@ -706,16 +729,16 @@ export default function ProductsPanel({
                 <div className="flex items-center gap-2">
                   <button onClick={() => handleToggleActive(product)} className="flex-1 h-8 flex items-center justify-center gap-1 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
                     <Icon name={product.is_active ? 'EyeIcon' : 'EyeSlashIcon'} size={13} />
-                    {product.is_active ? (isAr ? 'نشط' : 'Active') : (isAr ? 'غير نشط' : 'Inactive')}
+                    {product.is_active ? 'نشط' : 'غير نشط'}
                   </button>
                   <button onClick={() => openEditModal(product)} className="flex-1 h-8 flex items-center justify-center gap-1 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
-                    <Icon name="PencilSquareIcon" size={13} /> {isAr ? 'تعديل' : 'Edit'}
+                    <Icon name="PencilSquareIcon" size={13} /> تعديل
                   </button>
                   <button onClick={() => setDeleteId(product.id)} className="flex-1 h-8 flex items-center justify-center gap-1 rounded-lg border border-red-200 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors">
-                    <Icon name="TrashIcon" size={13} /> {isAr ? 'حذف' : 'Delete'}
+                    <Icon name="TrashIcon" size={13} /> حذف
                   </button>
                 </div>
-                <div className="mt-3 pt-3 border-t border-slate-700">
+                <div className="mt-3 pt-3 border-t border-border">
                   <WarrantyInlineForm productId={product.id} />
                 </div>
               </div>
@@ -724,119 +747,18 @@ export default function ProductsPanel({
         </div>
       )}
 
-      {/* Add/Edit Product Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 px-4 pb-4 sm:pb-0">
-          <div className="w-full max-w-lg bg-card rounded-2xl border border-border shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-card z-10">
-              <h2 className="font-bold text-foreground">{editingProduct ? 'Edit Product' : 'Add New Product'}</h2>
-              <div className="flex items-center gap-2">
-                <AIProductAssistant categorySlug={formData.category} categoryName={CATEGORIES.find((c) => c.value === formData.category)?.label} productName={formData.name} />
-                <button onClick={() => setShowAddModal(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground">
-                  <Icon name="XMarkIcon" size={18} />
-                </button>
-              </div>
-            </div>
-            <form onSubmit={handleFormSubmit} className="p-5 space-y-4">
-              {formError && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
-                  <Icon name="ExclamationCircleIcon" size={16} /> {formError}
-                </div>
-              )}
-              <MultilingualProductFields
-                originCountry={formData.origin_country}
-                fields={{ name: formData.name, name_ar: formData.name_ar, name_zh: formData.name_zh, name_tr: formData.name_tr, description: formData.description, description_ar: formData.description_ar, description_zh: formData.description_zh, description_tr: formData.description_tr }}
-                onChange={(field, value) => setFormData({ ...formData, [field]: value })}
-                disabled={formLoading}
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Category *</label>
-                  <select value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
-                    {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">SKU / Code</label>
-                  <input type="text" value={formData.sku} onChange={(e) => setFormData({ ...formData, sku: e.target.value })} placeholder="e.g. STL-001" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Unit</label>
-                  <select value={formData.unit} onChange={(e) => setFormData({ ...formData, unit: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
-                    {['kg', 'ton', 'liter', 'piece', 'meter', 'sheet', 'roll', 'box', 'pallet'].map((u) => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Unit Price ($)</label>
-                  <input type="number" min="0" step="0.01" value={formData.unit_price} onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })} placeholder="0.00" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Min. Order</label>
-                  <input type="number" min="1" value={formData.minimum_order_qty} onChange={(e) => setFormData({ ...formData, minimum_order_qty: e.target.value })} placeholder="1" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Stock Quantity</label>
-                  <input type="number" min="0" step="0.01" value={formData.stock_quantity} onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })} placeholder="0" className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Inventory Status</label>
-                  <select value={formData.inventory_status} onChange={(e) => setFormData({ ...formData, inventory_status: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
-                    <option value="in_stock">In Stock</option>
-                    <option value="low_stock">Low Stock</option>
-                    <option value="out_of_stock">Out of Stock</option>
-                    <option value="discontinued">Discontinued</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">
-                  Origin Country
-                  {formData.origin_country && <SupplierLanguageBadge originCountry={formData.origin_country} size="sm" />}
-                </label>
-                <select value={formData.origin_country} onChange={(e) => setFormData({ ...formData, origin_country: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary transition-colors">
-                  <option value="">Select country</option>
-                  <optgroup label="🌏 Asia">
-                    <option value="China">🇨🇳 China</option><option value="India">🇮🇳 India</option><option value="Turkey">🇹🇷 Turkey</option><option value="Japan">🇯🇵 Japan</option><option value="South Korea">🇰🇷 South Korea</option><option value="Taiwan">🇹🇼 Taiwan</option><option value="Vietnam">🇻🇳 Vietnam</option><option value="Bangladesh">🇧🇩 Bangladesh</option><option value="Pakistan">🇵🇰 Pakistan</option><option value="Indonesia">🇮🇩 Indonesia</option><option value="Malaysia">🇲🇾 Malaysia</option><option value="Thailand">🇹🇭 Thailand</option>
-                  </optgroup>
-                  <optgroup label="🌍 Arab Countries">
-                    <option value="Saudi Arabia">🇸🇦 Saudi Arabia</option><option value="UAE">🇦🇪 UAE</option><option value="Kuwait">🇰🇼 Kuwait</option><option value="Qatar">🇶🇦 Qatar</option><option value="Bahrain">🇧🇭 Bahrain</option><option value="Oman">🇴🇲 Oman</option><option value="Egypt">🇪🇬 Egypt</option><option value="Jordan">🇯🇴 Jordan</option><option value="Iraq">🇮🇶 Iraq</option><option value="Yemen">🇾🇪 Yemen</option><option value="Morocco">🇲🇦 Morocco</option><option value="Algeria">🇩🇿 Algeria</option><option value="Tunisia">🇹🇳 Tunisia</option><option value="Libya">🇱🇾 Libya</option>
-                  </optgroup>
-                  <optgroup label="🌍 Europe">
-                    <option value="Germany">🇩🇪 Germany</option><option value="Italy">🇮🇹 Italy</option><option value="France">🇫🇷 France</option><option value="UK">🇬🇧 UK</option><option value="Spain">🇪🇸 Spain</option><option value="Poland">🇵🇱 Poland</option><option value="Netherlands">🇳🇱 Netherlands</option>
-                  </optgroup>
-                  <optgroup label="🌎 Americas">
-                    <option value="USA">🇺🇸 USA</option><option value="Canada">🇨🇦 Canada</option><option value="Brazil">🇧🇷 Brazil</option><option value="Mexico">🇲🇽 Mexico</option>
-                  </optgroup>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-              <div className="flex gap-3 pt-1">
-                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 h-10 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">Cancel</button>
-                <button type="submit" disabled={formLoading} className="flex-1 h-10 bg-primary text-primary-foreground rounded-lg text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2 transition-opacity active:opacity-80">
-                  {formLoading ? <><Icon name="ArrowPathIcon" size={15} className="animate-spin" /> Saving...</> : (editingProduct ? (editingProduct.approval_status === 'pending_factory_approval' ? (isAr ? 'حفظ واعتماد' : 'Save & Approve') : 'Save Changes') : 'Add Product')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Delete Confirmation Modal */}
       {deleteId && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-sm bg-card rounded-2xl border border-border shadow-xl p-6">
+          <div className="w-full max-w-sm bg-card rounded-2xl border border-border shadow-xl p-6" dir="rtl">
             <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
               <Icon name="TrashIcon" size={22} className="text-red-600" />
             </div>
-            <h3 className="text-center font-bold text-foreground mb-1">{isAr ? 'حذف المنتج؟' : 'Delete Product?'}</h3>
-            <p className="text-center text-sm text-muted-foreground mb-5">{isAr ? 'لا يمكن التراجع عن هذا الإجراء. سيتم حذف المنتج نهائياً.' : 'This action cannot be undone. The product will be permanently removed.'}</p>
+            <h3 className="text-center font-bold text-foreground mb-1">حذف المنتج؟</h3>
+            <p className="text-center text-sm text-muted-foreground mb-5">لا يمكن التراجع عن هذا الإجراء. سيتم حذف المنتج نهائياً من الكتالوج.</p>
             <div className="flex gap-3">
-              <button onClick={() => setDeleteId(null)} className="flex-1 h-10 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">{isAr ? 'إلغاء' : 'Cancel'}</button>
-              <button onClick={() => handleDelete(deleteId)} className="flex-1 h-10 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors">{isAr ? 'حذف' : 'Delete'}</button>
+              <button onClick={() => setDeleteId(null)} className="flex-1 h-10 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">إلغاء</button>
+              <button onClick={() => handleDelete(deleteId)} className="flex-1 h-10 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors">حذف نهائي</button>
             </div>
           </div>
         </div>
@@ -845,16 +767,16 @@ export default function ProductsPanel({
       {/* Document Gate Modal */}
       {showDocGate && !isAgentManaged && (
         <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/60 px-4 py-6 overflow-y-auto">
-          <div className="w-full max-w-3xl bg-card rounded-2xl border border-border shadow-xl overflow-hidden">
+          <div className="w-full max-w-3xl bg-card rounded-2xl border border-border shadow-xl overflow-hidden" dir="rtl">
             <div className="bg-amber-50 border-b border-amber-200 px-6 py-4 flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
                 <Icon name="LockClosedIcon" size={20} className="text-amber-600" />
               </div>
               <div>
-                <h3 className="font-bold text-amber-900 text-base">{md.completeDocsActivate}</h3>
-                <p className="text-xs text-amber-700 mt-0.5">Upload your legal documents to unlock product listings</p>
+                <h3 className="font-bold text-amber-900 text-base">{md?.completeDocsActivate || 'توثيق حساب المصنع وتفعيل المنتجات'}</h3>
+                <p className="text-xs text-amber-700 mt-0.5">يرجى رفع السجل التجاري والترخيص الصناعي لاعتماد حسابك وتفعيل عرض المنتجات في السوق</p>
               </div>
-              <button onClick={() => setShowDocGate(false)} className="ml-auto text-amber-600 hover:text-amber-800">
+              <button onClick={() => setShowDocGate(false)} className="mr-auto text-amber-600 hover:text-amber-800">
                 <Icon name="XMarkIcon" size={20} />
               </button>
             </div>
@@ -864,7 +786,7 @@ export default function ProductsPanel({
               )}
               <div className="flex justify-end pt-4">
                 <button type="button" onClick={() => setShowDocGate(false)} className="h-10 px-5 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">
-                  {t?.common?.close || 'Close'}
+                  إغلاق
                 </button>
               </div>
             </div>
@@ -918,7 +840,7 @@ export default function ProductsPanel({
               ) : (
                 sheetProducts.map((product) => {
                   const thumb = getProductThumb(product);
-                  const cur = currencyAr((product as any).currency);
+                  const cur = currencyAr(product.currency);
                   return (
                     <div key={product.id} className={`w-full bg-card border border-border rounded-2xl p-3.5 shadow-sm ${!product.is_active ? 'opacity-60' : ''}`}>
                       <div className="flex items-start gap-3">
@@ -957,7 +879,7 @@ export default function ProductsPanel({
                         <button
                           type="button"
                           onClick={async () => {
-                            const ok = await copyProductShareText({ id: product.id, name: product.name, name_ar: (product as any).name_ar, sku: product.sku, short_id: product.short_id, slug: product.slug, currency: (product as any).currency || 'YER' });
+                            const ok = await copyProductShareText({ id: product.id, name: product.name, name_ar: product.name_ar, sku: product.sku, short_id: product.short_id, slug: product.slug, currency: product.currency || 'YER_SANAA' });
                             if (ok) { setCopiedProductId(product.id); setTimeout(() => setCopiedProductId(null), 2500); }
                           }}
                           className="flex-1 h-10 inline-flex items-center justify-center gap-1.5 rounded-xl border border-primary text-primary text-xs sm:text-sm font-bold hover:bg-primary/5 transition-colors"
