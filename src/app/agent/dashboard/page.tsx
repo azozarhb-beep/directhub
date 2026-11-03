@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
 import { formatCoverageLabel } from '@/lib/territoryData';
-import Header from '@/components/Header';
+import AppLogo from '@/components/ui/AppLogo';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import UnifiedMessagingEngine from '@/components/UnifiedMessagingEngine';
@@ -61,8 +61,6 @@ interface AgentFactory {
   agent_notes: string;
   admin_note: string;
 }
-
-// ─── Inspection Task Types ────────────────────────────────────────────────────
 
 interface InspectionTask {
   id: string;
@@ -127,9 +125,12 @@ const FACTORY_TYPE_KEYS: Record<string, 'typeLocalFactory' | 'typeIntlFactory' |
   local_supplier: 'typeLocalSupplier',
 };
 
-// ─── Anti-bypass helpers ─────────────────────────────────────────────────────
-
-const COORDINATION_ROOM_HREF = '/agent/dashboard?tab=admin-msg';
+const LANGUAGES = [
+  { code: 'ar', label: 'العربية' },
+  { code: 'zh', label: '中文' },
+  { code: 'tr', label: 'Türkçe' },
+  { code: 'en', label: 'English' },
+];
 
 function maskPhone(phone: string | null | undefined): string {
   const raw = (phone || '').trim();
@@ -168,15 +169,32 @@ function buildMapsUrl(parts: Array<string | null | undefined>): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 }
 
-function SecureContactActions({ mapQueryParts }: { mapQueryParts: Array<string | null | undefined> }) {
+function SecureContactActions({ 
+  mapQueryParts, 
+  lang 
+}: { 
+  mapQueryParts: Array<string | null | undefined>; 
+  lang: string;
+}) {
+  const coordText =
+    lang === 'zh' ? '💬 内部直接对接协调' :
+    lang === 'tr' ? '💬 Doğrudan Dahili Koordinasyon' :
+    lang === 'en' ? '💬 Direct Internal Coordination' :
+    '💬 محادثة التنسيق الداخلي المباشر';
+
+  const mapText =
+    lang === 'zh' ? '📍 在 GPS 地图中查看位置' :
+    lang === 'tr' ? '📍 Konumu GPS Haritada Aç' :
+    lang === 'en' ? '📍 Open in GPS Maps' :
+    '📍 فتح الموقع في الخريطة GPS';
+
   return (
     <div className="flex flex-col sm:flex-row gap-2 pt-1">
       <Link
-        href={COORDINATION_ROOM_HREF}
+        href="/agent/dashboard?tab=admin-msg"
         className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-primary text-white hover:bg-primary/90 transition-colors"
       >
-        <span aria-hidden="true">💬</span>
-        محادثة التنسيق الداخلي المباشر
+        <span>{coordText}</span>
       </Link>
       <a
         href={buildMapsUrl(mapQueryParts)}
@@ -184,8 +202,7 @@ function SecureContactActions({ mapQueryParts }: { mapQueryParts: Array<string |
         rel="noopener noreferrer"
         className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 transition-colors"
       >
-        <span aria-hidden="true">📍</span>
-        فتح الموقع في الخريطة GPS
+        <span>{mapText}</span>
       </a>
     </div>
   );
@@ -254,15 +271,12 @@ function ReviewModal({
     }
   };
 
-  const regInfo = REG_STATUS_LABELS[registrationStatus] || REG_STATUS_LABELS.pending;
-
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div
         className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center">
@@ -280,7 +294,6 @@ function ReviewModal({
           </button>
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-1 bg-muted mx-4 mt-4 p-1 rounded-xl shrink-0">
           <button
             onClick={() => setActiveSection('details')}
@@ -304,11 +317,10 @@ function ReviewModal({
               activeSection === 'payout' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
             }`}
           >
-            الحسابات البنكية / التحصيل
+            {language === 'zh' ? '收款账户 / 结算' : language === 'tr' ? 'Banka Hesapları / Tahsilat' : language === 'en' ? 'Payout Accounts' : 'الحسابات البنكية / التحصيل'}
           </button>
         </div>
 
-        {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {activeSection === 'payout' ? (
             <ReceivingAccountPanel
@@ -319,7 +331,6 @@ function ReviewModal({
             />
           ) : activeSection === 'details' ? (
             <>
-              {/* Registration Info */}
               <div className="bg-muted/50 rounded-xl p-4 space-y-3">
                 <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{ad.regInfo}</h4>
                 <div className="grid grid-cols-2 gap-3">
@@ -339,22 +350,9 @@ function ReviewModal({
                     <p className="text-xs text-muted-foreground">{ad.country}</p>
                     <p className="text-sm font-semibold text-foreground">{factory.country}</p>
                   </div>
-                  {factory.employee_count && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">{ad.employees}</p>
-                      <p className="text-sm font-semibold text-foreground">{factory.employee_count}</p>
-                    </div>
-                  )}
-                  {factory.annual_capacity && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">{ad.capacity}</p>
-                      <p className="text-sm font-semibold text-foreground">{factory.annual_capacity}</p>
-                    </div>
-                  )}
                 </div>
               </div>
 
-              {/* Contact Info */}
               <div className="bg-muted/50 rounded-xl p-4 space-y-3">
                 <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{ad.contactData}</h4>
                 <div className="space-y-2">
@@ -372,11 +370,10 @@ function ReviewModal({
                       <span className="text-sm text-foreground">{formatCityAddress([factory.city, factory.region, factory.address])}</span>
                     </div>
                   )}
-                  <SecureContactActions mapQueryParts={[factory.address, factory.city, factory.region, factory.country]} />
+                  <SecureContactActions mapQueryParts={[factory.address, factory.city, factory.region, factory.country]} lang={language} />
                 </div>
               </div>
 
-              {/* Documents */}
               <div className="bg-muted/50 rounded-xl p-4 space-y-2">
                 <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{ad.tabDocuments}</h4>
                 {factory.trade_license_url ? (
@@ -395,50 +392,10 @@ function ReviewModal({
                     {ad.noLicenseYet}
                   </p>
                 )}
-                {factory.license_submitted_at && (
-                  <p className="text-xs text-muted-foreground">
-                    {(ad.uploadDate || '').replace('{date}', formatSafeDate(factory.license_submitted_at))}
-                  </p>
-                )}
-                {factory.license_reviewed_at && (
-                  <p className="text-xs text-muted-foreground">
-                    {(ad.reviewDate || '').replace('{date}', formatSafeDate(factory.license_reviewed_at))}
-                  </p>
-                )}
-                {factory.license_rejection_reason && (
-                  <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
-                    {ad.rejectReason.replace('{reason}', factory.license_rejection_reason)}
-                  </p>
-                )}
               </div>
-
-              {/* Existing Notes */}
-              {factory.agent_notes && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                  <p className="text-xs font-semibold text-blue-700 mb-1">{ad.prevAgentNotes}</p>
-                  <p className="text-sm text-blue-800 italic">"{factory.agent_notes}"</p>
-                </div>
-              )}
-              {factory.admin_note && (
-                <div className="bg-purple-50 border border-purple-200 rounded-xl p-3">
-                  <p className="text-xs font-semibold text-purple-700 mb-1">{ad.prevReviewNotes}</p>
-                  <p className="text-sm text-purple-800 italic">"{factory.admin_note}"</p>
-                </div>
-              )}
             </>
           ) : (
             <>
-              {/* Current Status Summary */}
-              <div className="flex gap-2 flex-wrap">
-                <span className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${CONTACT_STATUS_LABELS[factory.contact_status]?.color || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
-                  {ad.contactStatus.replace('{status}', CONTACT_STATUS_LABELS[factory.contact_status]?.label || factory.contact_status)}
-                </span>
-                <span className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${REG_STATUS_LABELS[factory.registration_status]?.color || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
-                  {ad.regStatus.replace('{status}', REG_STATUS_LABELS[factory.registration_status]?.label || factory.registration_status)}
-                </span>
-              </div>
-
-              {/* Contact Status */}
               <div>
                 <label className="block text-sm font-semibold text-foreground mb-2">{ad.contactStatusLabel}</label>
                 <div className="space-y-2">
@@ -448,7 +405,7 @@ function ReviewModal({
                       onClick={() => setContactStatus(key)}
                       className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
                         contactStatus === key
-                          ? info.color + 'border-2' :'bg-background border-border text-muted-foreground hover:bg-muted'
+                          ? info.color + ' border-2' : 'bg-background border-border text-muted-foreground hover:bg-muted'
                       }`}
                     >
                       <div className={`w-3 h-3 rounded-full border-2 flex items-center justify-center shrink-0 ${contactStatus === key ? 'border-current' : 'border-muted-foreground'}`}>
@@ -460,7 +417,6 @@ function ReviewModal({
                 </div>
               </div>
 
-              {/* Registration Status (Approval) */}
               <div>
                 <label className="block text-sm font-semibold text-foreground mb-2">
                   {ad.regApprovalStatus}
@@ -473,7 +429,7 @@ function ReviewModal({
                       onClick={() => setRegistrationStatus(key)}
                       className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
                         registrationStatus === key
-                          ? info.color + 'border-2' :'bg-background border-border text-muted-foreground hover:bg-muted'
+                          ? info.color + ' border-2' : 'bg-background border-border text-muted-foreground hover:bg-muted'
                       }`}
                     >
                       <div className={`w-3 h-3 rounded-full border-2 flex items-center justify-center shrink-0 ${registrationStatus === key ? 'border-current' : 'border-muted-foreground'}`}>
@@ -487,7 +443,6 @@ function ReviewModal({
                 </div>
               </div>
 
-              {/* Agent Notes */}
               <div>
                 <label className="block text-sm font-semibold text-foreground mb-2">{ad.agentNotes}</label>
                 <textarea
@@ -499,12 +454,8 @@ function ReviewModal({
                 />
               </div>
 
-              {/* Review / Admin Note */}
               <div>
-                <label className="block text-sm font-semibold text-foreground mb-2">
-                  {ad.reviewNotes}
-                  <span className="text-xs font-normal text-muted-foreground mr-2">{ad.reviewNotesHint}</span>
-                </label>
+                <label className="block text-sm font-semibold text-foreground mb-2">{ad.reviewNotes}</label>
                 <textarea
                   value={adminNote}
                   onChange={e => setAdminNote(e.target.value)}
@@ -513,61 +464,36 @@ function ReviewModal({
                   className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none"
                 />
               </div>
-
-              {/* Quick Approve / Reject Buttons */}
-              <div className="flex gap-3 pt-1">
-                <button
-                  onClick={() => {
-                    setRegistrationStatus('approved');
-                    setContactStatus('approved');
-                  }}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-sm font-semibold hover:bg-emerald-100 transition-colors"
-                >
-                  <Icon name="CheckBadgeIcon" size={15} />
-                  {ad.quickApprove}
-                </button>
-                <button
-                  onClick={() => {
-                    setRegistrationStatus('rejected');
-                    setContactStatus('rejected');
-                  }}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm font-semibold hover:bg-red-100 transition-colors"
-                >
-                  <Icon name="XCircleIcon" size={15} />
-                  {ad.reject}
-                </button>
-              </div>
             </>
           )}
         </div>
 
-        {/* Footer Actions */}
         {activeSection !== 'payout' && (
-        <div className="flex gap-3 px-5 py-4 border-t border-border shrink-0">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors"
-          >
-            {ad.cancel}
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {saving ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                {ad.saving}
-              </>
-            ) : (
-              <>
-                <Icon name="CheckIcon" size={15} />
-                {ad.saveApprove}
-              </>
-            )}
-          </button>
-        </div>
+          <div className="flex gap-3 px-5 py-4 border-t border-border shrink-0">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors"
+            >
+              {ad.cancel}
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {saving ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  {ad.saving}
+                </>
+              ) : (
+                <>
+                  <Icon name="CheckIcon" size={15} />
+                  {ad.saveApprove}
+                </>
+              )}
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -577,8 +503,9 @@ function ReviewModal({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AgentDashboardPage() {
-  const { t, dir, language } = useLanguage();
+  const { t, dir, language, setLanguage } = useLanguage();
   const ad = t.agentDashboard;
+
   const CONTACT_STATUS_LABELS: Record<string, { label: string; color: string }> = {
     contacting: { label: ad.contactContacting, color: CONTACT_STATUS_COLORS.contacting },
     awaiting_license_approval: { label: ad.contactAwaitingLicense, color: CONTACT_STATUS_COLORS.awaiting_license_approval },
@@ -586,12 +513,31 @@ export default function AgentDashboardPage() {
     approved: { label: ad.contactApproved, color: CONTACT_STATUS_COLORS.approved },
     rejected: { label: ad.contactRejected, color: CONTACT_STATUS_COLORS.rejected },
   };
+
   const REG_STATUS_LABELS: Record<string, { label: string; color: string; icon: string }> = {
     pending: { label: ad.regPending, ...REG_STATUS_META.pending },
     under_review: { label: ad.regUnderReview, ...REG_STATUS_META.under_review },
     approved: { label: ad.regApproved, ...REG_STATUS_META.approved },
     rejected: { label: ad.regRejected, ...REG_STATUS_META.rejected },
   };
+
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const langMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!langMenuOpen) return;
+    const handleClick = (e: MouseEvent | TouchEvent) => {
+      if (langMenuRef.current && !langMenuRef.current.contains(e.target as Node)) {
+        setLangMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('touchstart', handleClick);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('touchstart', handleClick);
+    };
+  }, [langMenuOpen]);
 
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -609,8 +555,7 @@ export default function AgentDashboardPage() {
       }
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, supabase]);
 
   const [factories, setFactories] = useState<AgentFactory[]>([]);
   const [products, setProducts] = useState<AgentProduct[]>([]);
@@ -619,6 +564,7 @@ export default function AgentDashboardPage() {
   const [editProduct, setEditProduct] = useState<AgentProduct | null>(null);
   const [shareProduct, setShareProduct] = useState<AgentProduct | null>(null);
   const [loading, setLoading] = useState(true);
+
   type AgentTabId = 'factories' | 'products' | 'messaging' | 'documents' | 'exchange' | 'complaints' | 'sales' | 'admin_msg' | 'commission' | 'enhanced' | 'inspections' | 'earnings' | 'referral' | 'dispatch_rooms' | 'order_tracking';
   const VALID_TABS: AgentTabId[] = ['factories', 'products', 'messaging', 'documents', 'exchange', 'complaints', 'sales', 'admin_msg', 'commission', 'enhanced', 'inspections', 'earnings', 'referral', 'dispatch_rooms', 'order_tracking'];
   const TAB_URL_KEYS: Record<AgentTabId, string> = {
@@ -644,7 +590,6 @@ export default function AgentDashboardPage() {
     if (!key) return null;
     const found = VALID_TABS.find(id => TAB_URL_KEYS[id] === key);
     return found ?? null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -663,7 +608,6 @@ export default function AgentDashboardPage() {
     setDeepLink(null);
     router.push(`/agent/dashboard?tab=${TAB_URL_KEYS[id]}`, { scroll: false });
     if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   const closeTab = useCallback(() => {
@@ -671,6 +615,7 @@ export default function AgentDashboardPage() {
     router.push('/agent/dashboard', { scroll: false });
     if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
   }, [router]);
+
   const [reviewModal, setReviewModal] = useState<AgentFactory | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -683,16 +628,8 @@ export default function AgentDashboardPage() {
     () => CHAT_LANGUAGES.find(l => l.code === 'ar') || CHAT_LANGUAGES[0]
   );
   const [inspectionTasks, setInspectionTasks] = useState<InspectionTask[]>([]);
-  const [inspectionLoading, setInspectionLoading] = useState(false);
-  const [greenLightLoading, setGreenLightLoading] = useState<string | null>(null);
-  const [greenLightNote, setGreenLightNote] = useState<Record<string, string>>({});
-  const [expandedTask, setExpandedTask] = useState<string | null>(null);
-  const [milestoneModal, setMilestoneModal] = useState<{ taskId: string; currentStage: number } | null>(null);
-  const [milestoneNote, setMilestoneNote] = useState('');
-  const [milestoneUpdating] = useState(false);
   const hasLoadedOnceRef = React.useRef(false);
 
-  // Auth guard — wrong roles redirect to their room (never 403)
   useEffect(() => {
     if (authLoading) return;
     if (!user) {
@@ -745,14 +682,12 @@ export default function AgentDashboardPage() {
       hasLoadedOnceRef.current = true;
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [user?.id, supabase]);
 
   useEffect(() => {
     if (user?.id) fetchData();
   }, [user?.id, fetchData]);
 
-  // Full review save: updates contact_status, registration_status, agent_notes, admin_note
   const handleReviewSave = async (
     factoryId: string,
     contactStatus: string,
@@ -769,7 +704,6 @@ export default function AgentDashboardPage() {
         updated_at: new Date().toISOString(),
       };
 
-      // If approving, record reviewer info and timestamp
       if (registrationStatus === 'approved' || registrationStatus === 'rejected') {
         updatePayload.license_reviewed_by = user?.id;
         updatePayload.license_reviewed_at = new Date().toISOString();
@@ -786,8 +720,7 @@ export default function AgentDashboardPage() {
 
       if (error) throw error;
 
-      const statusLabel = REG_STATUS_LABELS[registrationStatus]?.label || registrationStatus;
-      setSuccessMsg(ad.saveSuccess.replace('{status}', statusLabel));
+      setSuccessMsg(ad.saveSuccess.replace('{status}', registrationStatus));
       setTimeout(() => setSuccessMsg(''), 4000);
       fetchData();
     } catch (err: unknown) {
@@ -799,7 +732,6 @@ export default function AgentDashboardPage() {
 
   const agentName = user?.user_metadata?.full_name || ad.defaultAgentName;
 
-  // Fetch agent unread message count and subscribe to realtime updates
   useEffect(() => {
     if (!user) return;
     const fetchAgentUnread = async () => {
@@ -839,7 +771,6 @@ export default function AgentDashboardPage() {
     return () => { supabase.removeChannel(channel); };
   }, [user, supabase]);
 
-  // Unread admin → agent messages (agent_admin_messages) for the "المراسلة مع الإدارة" card
   useEffect(() => {
     if (!user) return;
     const fetchAdminUnread = async () => {
@@ -870,89 +801,6 @@ export default function AgentDashboardPage() {
     return () => { supabase.removeChannel(channel); };
   }, [user, supabase]);
 
-  const fetchInspectionTasks = useCallback(async () => {
-    if (!user) return;
-    setInspectionLoading(true);
-    try {
-      // Masked RPC: only order number, items, pallet counts and PSI checkpoints.
-      // No shipping address, buyer details, or escrow splits reach the agent.
-      const { data: viewRows } = await supabase.rpc('get_agent_assigned_inspection_view');
-
-      if (viewRows && (viewRows as any[]).length > 0) {
-        const tasks: InspectionTask[] = (viewRows as any[]).map((row: any) => {
-          const itemsArr = Array.isArray(row.items) ? row.items : [];
-          const itemsSummary = itemsArr.slice(0, 2).map((it: any) => it?.name || '').filter(Boolean).join('، ') || 'منتجات متعددة';
-          return {
-            id: row.task_id,
-            order_id: row.order_id || '',
-            order_number: row.order_number || String(row.task_id).slice(0, 8).toUpperCase(),
-            factory_id: null,
-            factory_name: row.factory_name || 'مصنع غير محدد',
-            factory_city: row.city || '—',
-            factory_country: '—',
-            factory_address: '—',
-            factory_contact_person: '—',
-            factory_contact_phone: '—',
-            factory_industry: '—',
-            escrow_status: row.status,
-            order_total: 0,
-            currency: '',
-            created_at: row.created_at,
-            delivery_deadline: null,
-            items_summary: itemsSummary,
-          };
-        });
-        setInspectionTasks(tasks);
-      } else {
-        // Production: never fabricate inspection tasks. Real tasks only.
-        setInspectionTasks([]);
-      }
-    } catch (err) {
-      console.error('Error fetching inspection tasks:', err);
-      setInspectionTasks([]);
-    } finally {
-      setInspectionLoading(false);
-    }
-  }, [user, supabase, factories]);
-
-  useEffect(() => {
-    if (activeTab === 'inspections' && user) {
-      fetchInspectionTasks();
-    }
-  }, [activeTab, user, fetchInspectionTasks]);
-
-  const handleGreenLight = async (task: InspectionTask) => {
-    setGreenLightLoading(task.id);
-    try {
-      const res = await fetch('/api/escrow/green-light', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          order_id: task.order_id,
-          release_note: greenLightNote[task.id] || `تم التحقق الميداني من قِبل المندوب — الضوء الأخضر للطلب ${task.order_number}`,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'فشل إرسال الإشارة الخضراء');
-      setSuccessMsg(`🟢 ${data.message || 'تم إعطاء الضوء الأخضر بنجاح'}`);
-      setTimeout(() => setSuccessMsg(''), 5000);
-      fetchInspectionTasks();
-    } catch (err: any) {
-      setErrorMsg(err.message || 'حدث خطأ أثناء إرسال الإشارة الخضراء');
-      setTimeout(() => setErrorMsg(''), 5000);
-    } finally {
-      setGreenLightLoading(null);
-    }
-  };
-
-  const ESCROW_STATUS_META: Record<string, { label: string; color: string; icon: string }> = {
-    funds_secured: { label: 'الأموال محجوزة', color: 'bg-blue-50 text-blue-700 border-blue-200', icon: 'LockClosedIcon' },
-    ready_for_inspection: { label: 'جاهز للتفتيش', color: 'bg-amber-50 text-amber-700 border-amber-200', icon: 'MagnifyingGlassIcon' },
-    shipped: { label: 'تم الشحن', color: 'bg-purple-50 text-purple-700 border-purple-200', icon: 'TruckIcon' },
-    pending_admin_payout: { label: 'في انتظار الصرف', color: 'bg-orange-50 text-orange-700 border-orange-200', icon: 'ClockIcon' },
-  };
-
-  // Stats (manually registered + referral-link facilities)
   const totalFactories = factories.length;
   const approvedFactories = factories.filter(f => f.registration_status === 'approved').length;
   const pendingReview = factories.filter(f => f.registration_status === 'pending' || f.registration_status === 'under_review').length;
@@ -960,7 +808,6 @@ export default function AgentDashboardPage() {
   const statTotalFactories = totalFactories + referredStats.total;
   const statApprovedFactories = approvedFactories + referredStats.approved;
 
-  // Filtered factories
   const filteredFactories = filterStatus
     ? factories.filter(f => f.registration_status === filterStatus)
     : factories;
@@ -989,6 +836,37 @@ export default function AgentDashboardPage() {
     setActiveStatCard(null);
   }, []);
 
+  // Multi-language text maps
+  const roomTitle =
+    language === 'zh' ? '实地代表控制室' :
+    language === 'tr' ? 'Saha Temsilcisi Odası' :
+    language === 'en' ? 'Field Representative Room' :
+    'غرفة تحكم المندوب الميداني';
+
+  const backToStoreText =
+    language === 'zh' ? '返回商城' :
+    language === 'tr' ? 'Mağazaya Dön' :
+    language === 'en' ? 'Back to Store' :
+    'العودة للمتجر';
+
+  const bannerDesc =
+    language === 'zh' ? '实地代表控制台 · 工厂入驻与现场验货核验' :
+    language === 'tr' ? 'Saha Temsilcisi Paneli · Fabrika Kaydı ve Saha Doğrulaması' :
+    language === 'en' ? 'Field Agent Dashboard · Factory Onboarding & Field Verification' :
+    'Field Agent Dashboard · تسجيل المصانع والتحقق الميداني';
+
+  const agentRoleBadge =
+    language === 'zh' ? '🕵️ 实地代表' :
+    language === 'tr' ? '🕵️ Saha Temsilcisi' :
+    language === 'en' ? '🕵️ Field Agent' :
+    '🕵️ مندوب ميداني';
+
+  const coverageBadgeText =
+    language === 'zh' ? `📍 覆盖区域: ${coverageLabel}` :
+    language === 'tr' ? `📍 Kapsama Alanı: ${coverageLabel}` :
+    language === 'en' ? `📍 Field Territory: ${coverageLabel}` :
+    `📍 نطاق التغطية الميداني: ${coverageLabel}`;
+
   if ((authLoading || loading) && !hasLoadedOnceRef.current) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -1002,7 +880,83 @@ export default function AgentDashboardPage() {
 
   return (
     <div className="min-h-screen bg-background" dir={dir}>
-      <Header />
+      {/* ── Top Navigation Bar ── */}
+      <header className="sticky top-0 z-50 backdrop-blur-md border-b shadow-sm bg-slate-900/95 border-slate-800">
+        <div className="max-w-5xl mx-auto px-3 sm:px-6 flex items-center gap-2 sm:gap-3 h-14">
+          <Link href="/" className="flex items-center gap-2 shrink-0">
+            <AppLogo size={28} />
+            <div className="flex flex-col leading-none">
+              <span className="font-bold text-sm tracking-tight text-white" translate="no">Direct Hub</span>
+              <span className="text-[9px] font-medium hidden sm:block text-cyan-300">{roomTitle}</span>
+            </div>
+          </Link>
+
+          <div className="flex-1" />
+
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <Link
+              href="/"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
+              title={backToStoreText}
+            >
+              <Icon name="BuildingStorefrontIcon" size={16} />
+              <span className="hidden sm:inline">{backToStoreText}</span>
+            </Link>
+
+            <Link
+              href="/chat"
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+              title="الدردشة والمحادثات"
+            >
+              <Icon name="ChatBubbleLeftRightIcon" size={18} />
+            </Link>
+
+            <Link
+              href="/notifications"
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800 transition-colors relative"
+              title="الإشعارات"
+            >
+              <Icon name="BellIcon" size={18} />
+            </Link>
+
+            <div className="relative" ref={langMenuRef}>
+              <button
+                type="button"
+                onClick={() => setLangMenuOpen(!langMenuOpen)}
+                className={`w-9 h-9 rounded-xl flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800 transition-colors ${langMenuOpen ? 'ring-2 ring-primary/40' : ''}`}
+                title="تغيير اللغة"
+                aria-label="Language Selector"
+              >
+                <Icon name="GlobeAltIcon" size={19} />
+              </button>
+
+              {langMenuOpen && (
+                <div className="absolute end-0 top-full mt-2 w-36 bg-card border border-border rounded-xl shadow-xl py-1.5 z-50">
+                  {LANGUAGES.map((lang) => (
+                    <button
+                      key={lang.code}
+                      type="button"
+                      onClick={() => {
+                        setLanguage(lang.code as any);
+                        setLangMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold transition-colors ${
+                        language === lang.code
+                          ? 'bg-primary/10 text-primary font-bold'
+                          : 'text-foreground hover:bg-muted'
+                      }`}
+                    >
+                      <span>{lang.label}</span>
+                      {language === lang.code && <Icon name="CheckIcon" size={14} className="text-primary" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
       {/* ── Room Identity Banner ── */}
       <div className="bg-gradient-to-r from-violet-700 to-violet-900 text-white px-4 py-3">
         <div className="max-w-5xl mx-auto flex items-center justify-between flex-wrap gap-2">
@@ -1011,552 +965,234 @@ export default function AgentDashboardPage() {
               <Icon name="UserCheckIcon" size={18} className="text-white" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white leading-tight">لوحة تحكم المندوب الميداني</h2>
-              <p className="text-violet-200 text-xs">Field Agent Dashboard · تسجيل المصانع والتحقق الميداني</p>
+              <h2 className="text-sm font-bold text-white leading-tight">{roomTitle}</h2>
+              <p className="text-violet-200 text-xs">{bannerDesc}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="bg-white/20 text-white text-xs px-3 py-1 rounded-full border border-white/30">
-              🕵️ مندوب ميداني
+              {agentRoleBadge}
             </span>
             <span className="bg-white/10 text-violet-200 text-xs px-3 py-1 rounded-full border border-white/20">
               ID: field-agent-dashboard
             </span>
             {coverageLabel && (
               <span className="bg-emerald-500/30 text-white text-xs px-3 py-1 rounded-full border border-emerald-300/50 font-bold">
-                📍 نطاق التغطية الميداني: {coverageLabel}
+                {coverageBadgeText}
               </span>
             )}
           </div>
         </div>
       </div>
+
       <main className="max-w-5xl mx-auto px-4 py-6 mobile-safe-bottom">
-
         {activeTab === null && (
-        <>
-        {/* Header */}
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">{ad.title}</h1>
-            <p className="text-sm text-muted-foreground mt-1">{ad.welcomeLine.replace('{name}', agentName)}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/agent/register-facility"
-              className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors"
-            >
-              <Icon name="PlusIcon" size={16} />
-              {ad.newRegistration}
-            </Link>
-          </div>
-        </div>
-
-        {/* Alerts */}
-        {successMsg && (
-          <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-sm">
-            <Icon name="CheckCircleIcon" size={16} />
-            {successMsg}
-          </div>
-        )}
-        {errorMsg && (
-          <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
-            <Icon name="ExclamationCircleIcon" size={16} />
-            {errorMsg}
-          </div>
-        )}
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          {([
-            { id: 'total', label: ad.statTotal, value: statTotalFactories, icon: 'BuildingOffice2Icon', color: 'text-blue-600', bg: 'bg-blue-50', activeBorder: 'border-blue-400 ring-2 ring-blue-400/25' },
-            { id: 'approved', label: ad.statApproved, value: statApprovedFactories, icon: 'CheckBadgeIcon', color: 'text-emerald-600', bg: 'bg-emerald-50', activeBorder: 'border-emerald-400 ring-2 ring-emerald-400/25' },
-            { id: 'pending', label: ad.statPendingReview, value: pendingReview, icon: 'ClockIcon', color: 'text-amber-600', bg: 'bg-amber-50', activeBorder: 'border-amber-400 ring-2 ring-amber-400/25' },
-            { id: 'products', label: ad.statProducts, value: totalProducts, icon: 'CubeIcon', color: 'text-indigo-600', bg: 'bg-indigo-50', activeBorder: 'border-indigo-400 ring-2 ring-indigo-400/25' },
-          ] as const).map(stat => {
-            const isStatActive = activeStatCard === stat.id;
-            return (
-              <button
-                key={stat.label}
-                type="button"
-                onClick={() => handleStatCardClick(stat.id)}
-                aria-pressed={isStatActive}
-                className={`text-start cursor-pointer bg-white border rounded-2xl p-4 min-h-[88px] shadow-sm hover:shadow-md transition-all duration-200 active:scale-[0.98] ${
-                  isStatActive ? `${stat.activeBorder} border-2` : 'border-slate-200'
-                }`}
-              >
-                <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center mb-3`}>
-                  <Icon name={stat.icon as any} size={18} className={stat.color} />
-                </div>
-                <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{stat.label}</p>
-              </button>
-            );
-          })}
-        </div>
-
-        {activeStatCard !== null && (
-          <div className="-mt-3 mb-5 flex justify-end">
-            <button
-              type="button"
-              onClick={resetStatFilter}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card text-xs font-semibold text-foreground hover:bg-muted active:scale-[0.98] transition-all"
-            >
-              <Icon name="ArrowPathIcon" size={14} />
-              عرض الكل / إعادة ضبط
-            </button>
-          </div>
-        )}
-
-        {/* Tabs — 5 Grouped Sections as Grid Cards */}
-        <div className="space-y-5 mb-5">
-          {([
-            {
-              key: 'overview',
-              title: 'لوحة الأداء',
-              items: [
-                { id: 'sales', icon: 'ChartBarIcon', label: ad.tabSales, badge: 0, badgeColor: '', iconColor: 'bg-emerald-50 text-emerald-600', cardTint: 'bg-white border-slate-200' },
-                { id: 'referral', icon: 'LinkIcon', label: 'الإحالات والتتبع', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600', cardTint: 'bg-white border-slate-200' },
-              ],
-            },
-            {
-              key: 'factories',
-              title: 'المصانع والعمليات',
-              items: [
-                { id: 'factories', icon: 'BuildingOffice2Icon', label: '🏭 شبكة المصانع والتوثيق (KYC)', sub: 'إدارة المصانع، إضافة مصنع جديد، وتوثيق السجلات الجغرافية', pills: `${statApprovedFactories} معتمد | ${pendingReview} قيد التوثيق`, badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600', cardTint: 'bg-white border-slate-200' },
-                { id: 'order_tracking', icon: 'TruckIcon', label: '📦 العمليات والتفتيش الميداني', sub: 'متابعة خطوط الإنتاج، طلبات الشحن، ومعاينة البليتات', pills: '', badge: inspectionTasks.length, badgeColor: 'bg-amber-500', iconColor: 'bg-amber-50 text-amber-600', cardTint: 'bg-white border-slate-200' },
-                { id: 'products', icon: 'CubeIcon', label: '🏷️ كتالوج المنتجات', sub: ad.tabProducts.replace('{count}', String(totalProducts)), pills: '', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600', cardTint: 'bg-white border-slate-200' },
-                { id: 'dispatch_rooms', icon: 'TruckIcon', label: '🚚 غرف التنسيق الميداني', badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600', cardTint: 'bg-white border-slate-200' },
-              ],
-            },
-            {
-              key: 'messaging',
-              title: 'المراسلات',
-              items: [
-                { id: 'messaging', icon: 'ChatBubbleLeftRightIcon', label: ad.tabMessaging, badge: agentUnreadCount, badgeColor: 'bg-red-500', iconColor: 'bg-emerald-50 text-emerald-600', cardTint: 'bg-white border-slate-200' },
-                { id: 'admin_msg', icon: 'ShieldCheckIcon', label: ad.tabAdminMsg, badge: adminUnreadCount, badgeColor: 'bg-red-500', iconColor: 'bg-indigo-50 text-indigo-600', cardTint: 'bg-white border-slate-200' },
-              ],
-            },
-            {
-              key: 'accounts',
-              title: 'الحسابات والعمولات',
-              items: [
-                { id: 'earnings', icon: 'BanknotesIcon', label: 'الأرباح والعمولات', badge: 0, badgeColor: '', iconColor: 'bg-amber-50 text-amber-600', cardTint: 'bg-white border-slate-200' },
-                { id: 'exchange', icon: 'ArrowsRightLeftIcon', label: ad.tabInfoExchange, badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600', cardTint: 'bg-white border-slate-200' },
-              ],
-            },
-            {
-              key: 'tools',
-              title: 'الأدوات والشكاوى',
-              items: [
-                { id: 'documents', icon: 'FolderOpenIcon', label: ad.tabDocuments, badge: 0, badgeColor: '', iconColor: 'bg-emerald-50 text-emerald-600', cardTint: 'bg-white border-slate-200' },
-                { id: 'complaints', icon: 'ExclamationTriangleIcon', label: ad.tabComplaints, badge: 0, badgeColor: '', iconColor: 'bg-amber-50 text-amber-600', cardTint: 'bg-white border-slate-200' },
-              ],
-            },
-          ]).map(section => (
-            <div key={section.key}>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2 px-1">{section.title}</p>
-              <div className="grid grid-cols-2 gap-3">
-                {section.items.map((item: any) => {
-                  const isActive = activeTab === item.id || (item.id === 'factories' && activeTab === 'enhanced') || (item.id === 'order_tracking' && activeTab === 'inspections');
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => openTab(item.id as AgentTabId)}
-                      aria-pressed={isActive}
-                      className={`relative flex flex-col items-center justify-center p-3 min-h-[96px] rounded-2xl border text-center shadow-sm hover:shadow-md transition-all duration-200 active:scale-[0.98] ${
-                        isActive
-                          ? 'bg-white border-[#D4AF37] border-2 ring-2 ring-[#D4AF37]/25'
-                          : `${item.cardTint || 'bg-white border-slate-200'}`
-                      }`}
-                    >
-                      <span className={`w-11 h-11 rounded-xl flex items-center justify-center mb-2.5 ${item.iconColor}`}>
-                        <Icon name={item.icon as any} size={22} />
-                      </span>
-                      <span className="leading-tight text-sm text-slate-900 font-semibold">{item.label}</span>
-                      {item.sub && (
-                        <span className="mt-1 text-xs leading-snug text-slate-500">{item.sub}</span>
-                      )}
-                      {item.pills && (
-                        <span className="mt-2 inline-flex items-center rounded-full bg-slate-100 text-slate-500 px-2.5 py-0.5 text-xs font-medium">
-                          {item.pills}
-                        </span>
-                      )}
-                      {item.badge > 0 && (
-                        <span className={`absolute top-2 end-2 min-w-[18px] h-[18px] ${item.badgeColor} text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1`}>
-                          {item.badge > 99 ? '99+' : item.badge}
-                        </span>
-                      )}
-                      {isActive && (
-                        <span className="absolute top-2 start-2 w-2 h-2 rounded-full bg-[#D4AF37]" aria-hidden="true" />
-                      )}
-                    </button>
-                  );
-                })}
+          <>
+            <div className="flex items-start justify-between mb-6">
+              <div>
+                <h1 className="text-2xl font-bold text-foreground">{ad.title}</h1>
+                <p className="text-sm text-muted-foreground mt-1">{ad.welcomeLine.replace('{name}', agentName)}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/agent/register-facility"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors"
+                >
+                  <Icon name="PlusIcon" size={16} />
+                  {ad.newRegistration}
+                </Link>
               </div>
             </div>
-          ))}
-        </div>
-        </>
+
+            {successMsg && (
+              <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-sm">
+                <Icon name="CheckCircleIcon" size={16} />
+                {successMsg}
+              </div>
+            )}
+            {errorMsg && (
+              <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
+                <Icon name="ExclamationCircleIcon" size={16} />
+                {errorMsg}
+              </div>
+            )}
+
+            {/* Stats Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              {([
+                { id: 'total', label: ad.statTotal, value: statTotalFactories, icon: 'BuildingOffice2Icon', color: 'text-blue-600', bg: 'bg-blue-50', activeBorder: 'border-blue-400 ring-2 ring-blue-400/25' },
+                { id: 'approved', label: ad.statApproved, value: statApprovedFactories, icon: 'CheckBadgeIcon', color: 'text-emerald-600', bg: 'bg-emerald-50', activeBorder: 'border-emerald-400 ring-2 ring-emerald-400/25' },
+                { id: 'pending', label: ad.statPendingReview, value: pendingReview, icon: 'ClockIcon', color: 'text-amber-600', bg: 'bg-amber-50', activeBorder: 'border-amber-400 ring-2 ring-amber-400/25' },
+                { id: 'products', label: ad.statProducts, value: totalProducts, icon: 'CubeIcon', color: 'text-indigo-600', bg: 'bg-indigo-50', activeBorder: 'border-indigo-400 ring-2 ring-indigo-400/25' },
+              ] as const).map(stat => {
+                const isStatActive = activeStatCard === stat.id;
+                return (
+                  <button
+                    key={stat.label}
+                    type="button"
+                    onClick={() => handleStatCardClick(stat.id)}
+                    aria-pressed={isStatActive}
+                    className={`text-start cursor-pointer bg-white border rounded-2xl p-4 min-h-[88px] shadow-sm hover:shadow-md transition-all duration-200 active:scale-[0.98] ${
+                      isStatActive ? `${stat.activeBorder} border-2` : 'border-slate-200'
+                    }`}
+                  >
+                    <div className={`w-9 h-9 rounded-lg ${stat.bg} flex items-center justify-center mb-3`}>
+                      <Icon name={stat.icon as any} size={18} className={stat.color} />
+                    </div>
+                    <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{stat.label}</p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {activeStatCard !== null && (
+              <div className="-mt-3 mb-5 flex justify-end">
+                <button
+                  type="button"
+                  onClick={resetStatFilter}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card text-xs font-semibold text-foreground hover:bg-muted active:scale-[0.98] transition-all"
+                >
+                  <Icon name="ArrowPathIcon" size={14} />
+                  {language === 'zh' ? '重置筛选' : language === 'tr' ? 'Filtreyi Sıfırla' : language === 'en' ? 'Reset Filter' : 'عرض الكل / إعادة ضبط'}
+                </button>
+              </div>
+            )}
+
+            {/* Grouped Tabs */}
+            <div className="space-y-5 mb-5">
+              {([
+                {
+                  key: 'overview',
+                  title: language === 'zh' ? '业绩看板' : language === 'tr' ? 'Performans Paneli' : language === 'en' ? 'Performance Board' : 'لوحة الأداء',
+                  items: [
+                    { id: 'sales', icon: 'ChartBarIcon', label: ad.tabSales, badge: 0, badgeColor: '', iconColor: 'bg-emerald-50 text-emerald-600', cardTint: 'bg-white border-slate-200' },
+                    { id: 'referral', icon: 'LinkIcon', label: language === 'zh' ? '推荐与跟踪' : language === 'tr' ? 'Yönlendirmeler' : language === 'en' ? 'Referrals & Tracking' : 'الإحالات والتتبع', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600', cardTint: 'bg-white border-slate-200' },
+                  ],
+                },
+                {
+                  key: 'factories',
+                  title: language === 'zh' ? '工厂与运营' : language === 'tr' ? 'Fabrikalar ve Operasyonlar' : language === 'en' ? 'Factories & Operations' : 'المصانع والعمليات',
+                  items: [
+                    { id: 'factories', icon: 'BuildingOffice2Icon', label: language === 'zh' ? '🏭 工厂网络与 KYC 实名' : language === 'tr' ? '🏭 Fabrika Ağı ve KYC' : language === 'en' ? '🏭 Factory Network & KYC' : '🏭 شبكة المصانع والتوثيق (KYC)', sub: language === 'zh' ? '管理工厂、新增工厂与实地审核' : language === 'tr' ? 'Fabrika yönetimi, yeni ekleme ve doğrulama' : language === 'en' ? 'Manage factories, add new, and field verification' : 'إدارة المصانع، إضافة مصنع جديد، وتوثيق السجلات الجغرافية', pills: `${statApprovedFactories} | ${pendingReview}`, badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600', cardTint: 'bg-white border-slate-200' },
+                    { id: 'order_tracking', icon: 'TruckIcon', label: language === 'zh' ? '📦 运营与实地验货' : language === 'tr' ? '📦 Operasyonlar ve Muayene' : language === 'en' ? '📦 Operations & Field Inspection' : '📦 العمليات والتفتيش الميداني', sub: language === 'zh' ? '跟踪生产线、运输与托盘检验' : language === 'tr' ? 'Üretim hatları, sevkiyat ve denetim' : language === 'en' ? 'Production lines, shipping, and pallet checks' : 'متابعة خطوط الإنتاج، طلبات الشحن، ومعاينة البليتات', pills: '', badge: inspectionTasks.length, badgeColor: 'bg-amber-500', iconColor: 'bg-amber-50 text-amber-600', cardTint: 'bg-white border-slate-200' },
+                    { id: 'products', icon: 'CubeIcon', label: language === 'zh' ? '🏷️ 产品目录' : language === 'tr' ? '🏷️ Ürün Kataloğu' : language === 'en' ? '🏷️ Products Catalog' : '🏷️ كتالوج المنتجات', sub: ad.tabProducts.replace('{count}', String(totalProducts)), pills: '', badge: 0, badgeColor: '', iconColor: 'bg-indigo-50 text-indigo-600', cardTint: 'bg-white border-slate-200' },
+                    { id: 'dispatch_rooms', icon: 'TruckIcon', label: language === 'zh' ? '🚚 现场调度室' : language === 'tr' ? '🚚 Saha Koordinasyonu' : language === 'en' ? '🚚 Field Dispatch Rooms' : '🚚 غرف التنسيق الميداني', badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600', cardTint: 'bg-white border-slate-200' },
+                  ],
+                },
+                {
+                  key: 'messaging',
+                  title: language === 'zh' ? '消息沟通' : language === 'tr' ? 'Mesajlaşma' : language === 'en' ? 'Messaging' : 'المراسلات',
+                  items: [
+                    { id: 'messaging', icon: 'ChatBubbleLeftRightIcon', label: ad.tabMessaging, badge: agentUnreadCount, badgeColor: 'bg-red-500', iconColor: 'bg-emerald-50 text-emerald-600', cardTint: 'bg-white border-slate-200' },
+                    { id: 'admin_msg', icon: 'ShieldCheckIcon', label: ad.tabAdminMsg, badge: adminUnreadCount, badgeColor: 'bg-red-500', iconColor: 'bg-indigo-50 text-indigo-600', cardTint: 'bg-white border-slate-200' },
+                  ],
+                },
+                {
+                  key: 'accounts',
+                  title: language === 'zh' ? '账户与佣金' : language === 'tr' ? 'Hesaplar ve Komisyonlar' : language === 'en' ? 'Accounts & Commissions' : 'الحسابات والعمولات',
+                  items: [
+                    { id: 'earnings', icon: 'BanknotesIcon', label: language === 'zh' ? '收益与佣金' : language === 'tr' ? 'Kazançlar ve Komisyon' : language === 'en' ? 'Earnings & Commissions' : 'الأرباح والعمولات', badge: 0, badgeColor: '', iconColor: 'bg-amber-50 text-amber-600', cardTint: 'bg-white border-slate-200' },
+                    { id: 'exchange', icon: 'ArrowsRightLeftIcon', label: ad.tabInfoExchange, badge: 0, badgeColor: '', iconColor: 'bg-blue-50 text-blue-600', cardTint: 'bg-white border-slate-200' },
+                  ],
+                },
+                {
+                  key: 'tools',
+                  title: language === 'zh' ? '工具与申诉' : language === 'tr' ? 'Araçlar ve Şikayetler' : language === 'en' ? 'Tools & Complaints' : 'الأدوات والشكاوى',
+                  items: [
+                    { id: 'documents', icon: 'FolderOpenIcon', label: ad.tabDocuments, badge: 0, badgeColor: '', iconColor: 'bg-emerald-50 text-emerald-600', cardTint: 'bg-white border-slate-200' },
+                    { id: 'complaints', icon: 'ExclamationTriangleIcon', label: ad.tabComplaints, badge: 0, badgeColor: '', iconColor: 'bg-amber-50 text-amber-600', cardTint: 'bg-white border-slate-200' },
+                  ],
+                },
+              ]).map(section => (
+                <div key={section.key}>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2 px-1">{section.title}</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {section.items.map((item: any) => {
+                      const isActive = activeTab === item.id || (item.id === 'factories' && activeTab === 'enhanced') || (item.id === 'order_tracking' && activeTab === 'inspections');
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => openTab(item.id as AgentTabId)}
+                          aria-pressed={isActive}
+                          className={`relative flex flex-col items-center justify-center p-3 min-h-[96px] rounded-2xl border text-center shadow-sm hover:shadow-md transition-all duration-200 active:scale-[0.98] ${
+                            isActive
+                              ? 'bg-white border-[#D4AF37] border-2 ring-2 ring-[#D4AF37]/25'
+                              : `${item.cardTint || 'bg-white border-slate-200'}`
+                          }`}
+                        >
+                          <span className={`w-11 h-11 rounded-xl flex items-center justify-center mb-2.5 ${item.iconColor}`}>
+                            <Icon name={item.icon as any} size={22} />
+                          </span>
+                          <span className="leading-tight text-sm text-slate-900 font-semibold">{item.label}</span>
+                          {item.sub && (
+                            <span className="mt-1 text-xs leading-snug text-slate-500">{item.sub}</span>
+                          )}
+                          {item.pills && (
+                            <span className="mt-2 inline-flex items-center rounded-full bg-slate-100 text-slate-500 px-2.5 py-0.5 text-xs font-medium">
+                              {item.pills}
+                            </span>
+                          )}
+                          {item.badge > 0 && (
+                            <span className={`absolute top-2 end-2 min-w-[18px] h-[18px] ${item.badgeColor} text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1`}>
+                              {item.badge > 99 ? '99+' : item.badge}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         {activeTab !== null && (() => {
           const TAB_META: Record<AgentTabId, { icon: string; title: string; iconColor: string }> = {
-            sales: { icon: 'ChartBarIcon', title: ad.tabSales, iconColor: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' },
-            earnings: { icon: 'BanknotesIcon', title: 'الأرباح والعمولات', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
-            factories: { icon: 'BuildingOffice2Icon', title: '🏭 شبكة المصانع والتوثيق (KYC)', iconColor: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' },
-            products: { icon: 'CubeIcon', title: '🏷️ كتالوج المنتجات', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
-            inspections: { icon: 'ClipboardDocumentListIcon', title: '📦 العمليات والتفتيش الميداني', iconColor: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' },
-            enhanced: { icon: 'BriefcaseIcon', title: '🏭 شبكة المصانع والتوثيق (KYC)', iconColor: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' },
-            messaging: { icon: 'ChatBubbleLeftRightIcon', title: ad.tabMessaging, iconColor: 'bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400' },
-            admin_msg: { icon: 'ShieldCheckIcon', title: ad.tabAdminMsg, iconColor: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' },
-            complaints: { icon: 'ExclamationTriangleIcon', title: ad.tabComplaints, iconColor: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' },
-            dispatch_rooms: { icon: 'TruckIcon', title: 'غرف التنسيق الميداني', iconColor: 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400' },
-            order_tracking: { icon: 'TruckIcon', title: '📦 العمليات والتفتيش الميداني', iconColor: 'bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400' },
-            commission: { icon: 'BanknotesIcon', title: 'الأرباح والعمولات', iconColor: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' },
-            exchange: { icon: 'ArrowsRightLeftIcon', title: ad.tabInfoExchange, iconColor: 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-950/40 dark:text-fuchsia-400' },
-            documents: { icon: 'FolderOpenIcon', title: ad.tabDocuments, iconColor: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400' },
-            referral: { icon: 'LinkIcon', title: 'الإحالات والتتبع', iconColor: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400' },
+            sales: { icon: 'ChartBarIcon', title: ad.tabSales, iconColor: 'bg-emerald-50 text-emerald-600' },
+            earnings: { icon: 'BanknotesIcon', title: language === 'zh' ? '收益与佣金' : language === 'tr' ? 'Kazançlar ve Komisyon' : language === 'en' ? 'Earnings & Commissions' : 'الأرباح والعمولات', iconColor: 'bg-amber-50 text-amber-600' },
+            factories: { icon: 'BuildingOffice2Icon', title: language === 'zh' ? '🏭 工厂网络与 KYC' : language === 'tr' ? '🏭 Fabrika Ağı ve KYC' : language === 'en' ? '🏭 Factory Network & KYC' : '🏭 شبكة المصانع والتوثيق (KYC)', iconColor: 'bg-blue-50 text-blue-600' },
+            products: { icon: 'CubeIcon', title: language === 'zh' ? '🏷️ 产品目录' : language === 'tr' ? '🏷️ Ürün Kataloğu' : language === 'en' ? '🏷️ Products Catalog' : '🏷️ كتالوج المنتجات', iconColor: 'bg-purple-50 text-purple-600' },
+            inspections: { icon: 'ClipboardDocumentListIcon', title: language === 'zh' ? '📦 运营与实地验货' : language === 'tr' ? '📦 Operasyonlar ve Muayene' : language === 'en' ? '📦 Operations & Field Inspection' : '📦 العمليات والتفتيش الميداني', iconColor: 'bg-orange-50 text-orange-600' },
+            enhanced: { icon: 'BriefcaseIcon', title: language === 'zh' ? '🏭 工厂网络与 KYC' : language === 'tr' ? '🏭 Fabrika Ağı ve KYC' : language === 'en' ? '🏭 Factory Network & KYC' : '🏭 شبكة المصانع والتوثيق (KYC)', iconColor: 'bg-indigo-50 text-indigo-600' },
+            messaging: { icon: 'ChatBubbleLeftRightIcon', title: ad.tabMessaging, iconColor: 'bg-teal-50 text-teal-600' },
+            admin_msg: { icon: 'ShieldCheckIcon', title: ad.tabAdminMsg, iconColor: 'bg-rose-50 text-rose-600' },
+            complaints: { icon: 'ExclamationTriangleIcon', title: ad.tabComplaints, iconColor: 'bg-red-50 text-red-600' },
+            dispatch_rooms: { icon: 'TruckIcon', title: language === 'zh' ? '现场调度室' : language === 'tr' ? 'Saha Koordinasyonu' : language === 'en' ? 'Field Dispatch Rooms' : 'غرف التنسيق الميداني', iconColor: 'bg-sky-50 text-sky-600' },
+            order_tracking: { icon: 'TruckIcon', title: language === 'zh' ? '📦 运营与实地验货' : language === 'tr' ? '📦 Operasyonlar ve Muayene' : language === 'en' ? '📦 Operations & Field Inspection' : '📦 العمليات والتفتيش الميداني', iconColor: 'bg-purple-50 text-purple-600' },
+            commission: { icon: 'BanknotesIcon', title: language === 'zh' ? '收益与佣金' : language === 'tr' ? 'Kazançlar ve Komisyon' : language === 'en' ? 'Earnings & Commissions' : 'الأرباح والعمولات', iconColor: 'bg-amber-50 text-amber-600' },
+            exchange: { icon: 'ArrowsRightLeftIcon', title: ad.tabInfoExchange, iconColor: 'bg-fuchsia-50 text-fuchsia-600' },
+            documents: { icon: 'FolderOpenIcon', title: ad.tabDocuments, iconColor: 'bg-cyan-50 text-cyan-600' },
+            referral: { icon: 'LinkIcon', title: language === 'zh' ? '推荐与跟踪' : language === 'tr' ? 'Yönlendirmeler' : language === 'en' ? 'Referrals & Tracking' : 'الإحالات والتتبع', iconColor: 'bg-violet-50 text-violet-600' },
           };
           const meta = TAB_META[activeTab];
           return (
-            <div className="sticky top-0 z-30 -mx-4 px-4 py-3 mb-4 bg-background/95 backdrop-blur border-b border-border flex items-center gap-2 sm:gap-3">
+            <div className="sticky top-14 z-30 -mx-4 px-4 py-3 mb-4 bg-background/95 backdrop-blur border-b border-border flex items-center gap-2 sm:gap-3">
               <button
                 type="button"
                 onClick={closeTab}
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 text-xs sm:text-sm font-semibold hover:shadow-sm active:scale-[0.98] transition-all shrink-0"
-                aria-label="العودة للوحة التحكم"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 text-xs sm:text-sm font-semibold hover:shadow-sm active:scale-[0.98] transition-all shrink-0"
               >
                 <Icon name={dir === 'rtl' ? 'ArrowRightIcon' : 'ArrowLeftIcon'} size={16} />
-                <span className="hidden sm:inline">العودة للوحة التحكم</span>
-                <span className="sm:hidden">رجوع</span>
+                <span className="hidden sm:inline">{language === 'zh' ? '返回控制面板' : language === 'tr' ? 'Panele Dön' : language === 'en' ? 'Back to Dashboard' : 'العودة للوحة التحكم'}</span>
+                <span className="sm:hidden">{language === 'zh' ? '返回' : language === 'tr' ? 'Geri' : language === 'en' ? 'Back' : 'رجوع'}</span>
               </button>
               <div className="flex items-center gap-2 min-w-0 flex-1">
                 <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${meta.iconColor}`}>
                   <Icon name={meta.icon as any} size={18} />
                 </span>
-                <h2 className="text-sm font-bold text-slate-800 dark:text-zinc-100 leading-snug break-words min-w-0">{meta.title}</h2>
+                <h2 className="text-sm font-bold text-slate-800 leading-snug break-words min-w-0">{meta.title}</h2>
               </div>
             </div>
           );
         })()}
 
-        {/* Inspection Tasks Tab — now rendered inside the Operations Hub */}
-        {false && activeTab === 'inspections' && user && (
-          <AgentInspectionTasksPanel userId={user.id} />
-        )}
-
-        {/* Legacy escrow-order inspection view (superseded by AgentInspectionTasksPanel) */}
-        {false && activeTab === 'inspections' && (
-          <div className="space-y-4">
-            {/* Section Header */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-bold text-foreground flex items-center gap-2">
-                  <Icon name="ClipboardDocumentListIcon" size={18} className="text-amber-600" />
-                  تتبع مراحل التنفيذ والتفتيش
-                </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  الطلبات التي تتطلب زيارة ميدانية وإعطاء الضوء الأخضر لتحرير الأموال
-                </p>
-              </div>
-              <button
-                onClick={fetchInspectionTasks}
-                disabled={inspectionLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-muted border border-border rounded-lg text-xs font-semibold text-muted-foreground hover:bg-muted/80 transition-colors disabled:opacity-50"
-              >
-                <Icon name="ArrowPathIcon" size={13} className={inspectionLoading ? 'animate-spin' : ''} />
-                تحديث
-              </button>
-            </div>
-
-            {/* Summary Row */}
-            {!inspectionLoading && (
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: 'إجمالي المهام النشطة', value: inspectionTasks.length, color: 'text-blue-600', bg: 'bg-blue-50' },
-                  { label: 'في انتظار التفتيش', value: inspectionTasks.filter(t => t.escrow_status === 'ready_for_inspection').length, color: 'text-amber-600', bg: 'bg-amber-50' },
-                  { label: 'مكتملة هذا الشهر', value: 0, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                ].map(s => (
-                  <div key={s.label} className="bg-card border border-border rounded-xl p-3 text-center">
-                    <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">{s.label}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {inspectionLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                  <p className="text-sm text-muted-foreground">جارٍ تحميل مهام التفتيش...</p>
-                </div>
-              </div>
-            ) : inspectionTasks.length === 0 ? (
-              <div className="bg-card border border-border rounded-xl p-12 text-center">
-                <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                  <Icon name="CheckCircleIcon" size={28} className="text-emerald-500" />
-                </div>
-                <p className="font-semibold text-foreground mb-1">لا توجد مهام تفتيش نشطة حالياً</p>
-                <p className="text-sm text-muted-foreground">ستظهر هنا الطلبات التي تحتاج إلى تفتيش ميداني</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {inspectionTasks.map(task => {
-                  const MILESTONE_STAGES = [
-                    { key: 'confirmed', label: 'طلب مؤكد' },
-                    { key: 'funds_secured', label: 'تمويل محجوز' },
-                    { key: 'ready_for_inspection', label: 'جاهز للتفتيش' },
-                    { key: 'shipped', label: 'تفتيش مكتمل' },
-                    { key: 'pending_admin_payout', label: 'تسليم نهائي' },
-                  ];
-                  const currentStageIdx = MILESTONE_STAGES.findIndex(s => s.key === task.escrow_status);
-                  const activeStageIdx = currentStageIdx >= 0 ? currentStageIdx : 1;
-
-                  const statusMeta = ESCROW_STATUS_META[task.escrow_status] || {
-                    label: task.escrow_status,
-                    color: 'bg-gray-50 text-gray-600 border-gray-200',
-                    icon: 'ClockIcon',
-                  };
-                  const isExpanded = expandedTask === task.id;
-                  const isGreenLighting = greenLightLoading === task.id;
-
-                  return (
-                    <div key={task.id} className="bg-card border border-border rounded-xl overflow-hidden">
-                      <div className="p-4">
-                        {/* Order & Status Row */}
-                        <div className="flex items-start justify-between gap-3 mb-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap mb-1">
-                              <span className="text-xs font-bold text-foreground bg-muted px-2 py-0.5 rounded-md border border-border">
-                                #{task.order_number}
-                              </span>
-                              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${statusMeta.color}`}>
-                                <span className="flex items-center gap-1">
-                                  <Icon name={statusMeta.icon as any} size={10} />
-                                  {statusMeta.label}
-                                </span>
-                              </span>
-                            </div>
-                            <h3 className="font-bold text-foreground text-sm flex items-center gap-1.5">
-                              <Icon name="BuildingOffice2Icon" size={14} className="text-muted-foreground shrink-0" />
-                              {task.factory_name}
-                            </h3>
-                            <p className="text-xs text-muted-foreground mt-0.5">{task.factory_city}{task.factory_country && task.factory_country !== '—' ? `, ${task.factory_country}` : ''}</p>
-                          </div>
-                          {task.order_total > 0 && (
-                            <div className="text-right shrink-0">
-                              <p className="text-xs text-muted-foreground">قيمة الطلب</p>
-                              <p className="text-sm font-bold text-foreground">{task.order_total.toLocaleString()} {task.currency}</p>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Milestone Timeline */}
-                        <div className="mb-4">
-                          <div className="flex items-center justify-between relative">
-                            {/* Connecting line */}
-                            <div className="absolute top-4 left-4 right-4 h-0.5 bg-border z-0" />
-                            {MILESTONE_STAGES.map((stage, idx) => {
-                              const isCompleted = idx < activeStageIdx;
-                              const isCurrent = idx === activeStageIdx;
-                              const isFuture = idx > activeStageIdx;
-                              return (
-                                <div key={stage.key} className="flex flex-col items-center gap-1.5 z-10 flex-1">
-                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 text-xs font-bold transition-all ${
-                                    isCompleted
-                                      ? 'bg-emerald-500 border-emerald-500 text-white'
-                                      : isCurrent
-                                      ? 'bg-blue-500 border-blue-500 text-white ring-4 ring-blue-100' :'bg-background border-border text-muted-foreground'
-                                  }`}>
-                                    {isCompleted ? '✓' : idx + 1}
-                                  </div>
-                                  <p className={`text-[9px] font-semibold text-center leading-tight max-w-[60px] ${
-                                    isCompleted ? 'text-emerald-600' : isCurrent ? 'text-blue-600' : 'text-muted-foreground'
-                                  }`}>
-                                    {stage.label}
-                                  </p>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Expanded Details */}
-                        {isExpanded && (
-                          <div className="mt-3 pt-3 border-t border-border space-y-3">
-                            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
-                              <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wide flex items-center gap-1.5">
-                                <Icon name="MapPinIcon" size={12} />
-                                تفاصيل موقع المصنع
-                              </h4>
-                              <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                  <p className="text-[10px] text-amber-700 font-medium">المدينة / المنطقة</p>
-                                  <p className="text-xs font-semibold text-amber-900">{formatCityAddress([task.factory_city]) || '—'}</p>
-                                </div>
-                                <div>
-                                  <p className="text-[10px] text-amber-700 font-medium">الدولة</p>
-                                  <p className="text-xs font-semibold text-amber-900">{task.factory_country}</p>
-                                </div>
-                                {task.factory_address !== '—' && (
-                                  <div className="col-span-2">
-                                    <p className="text-[10px] text-amber-700 font-medium">العنوان التفصيلي</p>
-                                    <p className="text-xs font-semibold text-amber-900">{formatCityAddress([task.factory_address])}</p>
-                                  </div>
-                                )}
-                                <div>
-                                  <p className="text-[10px] text-amber-700 font-medium">جهة الاتصال</p>
-                                  <p className="text-xs font-semibold text-amber-900">{task.factory_contact_person}</p>
-                                </div>
-                                <div>
-                                  <p className="text-[10px] text-amber-700 font-medium">رقم الهاتف</p>
-                                  <p className="text-xs font-semibold text-amber-900 font-mono" dir="ltr">{maskPhone(task.factory_contact_phone)}</p>
-                                </div>
-                              </div>
-                              <SecureContactActions mapQueryParts={[task.factory_address, task.factory_city, task.factory_country]} />
-                            </div>
-
-                            {task.delivery_deadline && (
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
-                                <Icon name="CalendarDaysIcon" size={13} className="text-primary shrink-0" />
-                                <span>الموعد النهائي للتسليم:</span>
-                                <span className="font-semibold text-foreground">
-                                  {new Date(task.delivery_deadline).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}
-                                </span>
-                              </div>
-                            )}
-
-                            <div>
-                              <label className="block text-xs font-semibold text-foreground mb-1.5">
-                                ملاحظة التفتيش الميداني (اختياري)
-                              </label>
-                              <textarea
-                                value={greenLightNote[task.id] || ''}
-                                onChange={e => setGreenLightNote(prev => ({ ...prev, [task.id]: e.target.value }))}
-                                rows={2}
-                                placeholder="أدخل ملاحظات التفتيش الميداني قبل إعطاء الضوء الأخضر..."
-                                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none"
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Action Buttons */}
-                        <div className="flex gap-2 mt-3 pt-3 border-t border-border">
-                          {/* Update Milestone Button */}
-                          <button
-                            onClick={() => setMilestoneModal({ taskId: task.id, currentStage: activeStageIdx })}
-                            className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-xl text-xs font-semibold hover:bg-blue-100 transition-colors"
-                          >
-                            <Icon name="PencilSquareIcon" size={13} />
-                            تحديث الحالة
-                          </button>
-
-                          {/* Green Light Button */}
-                          <button
-                            onClick={() => handleGreenLight(task)}
-                            disabled={isGreenLighting}
-                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-                            style={{
-                              background: isGreenLighting ? '#6b7280' : 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
-                              color: '#ffffff',
-                              boxShadow: isGreenLighting ? 'none' : '0 2px 8px rgba(22,163,74,0.35)',
-                            }}
-                          >
-                            {isGreenLighting ? (
-                              <>
-                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                جارٍ الإرسال...
-                              </>
-                            ) : (
-                              <>
-                                <span className="text-base">🟢</span>
-                                إعطاء الضوء الأخضر
-                              </>
-                            )}
-                          </button>
-
-                          <button
-                            onClick={() => setExpandedTask(isExpanded ? null : task.id)}
-                            className="flex items-center gap-1.5 px-3 py-2.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-xl text-xs font-semibold hover:bg-amber-100 transition-colors"
-                          >
-                            <Icon name="MapPinIcon" size={13} />
-                            {isExpanded ? 'إخفاء' : 'الموقع'}
-                          </button>
-
-                          {task.order_id && (
-                            <a
-                              href={`/order-tracking?order=${task.order_id}`}
-                              className="flex items-center gap-1.5 px-3 py-2.5 bg-muted border border-border text-muted-foreground rounded-xl text-xs font-semibold hover:bg-muted/80 transition-colors"
-                            >
-                              <Icon name="EyeIcon" size={13} />
-                              الطلب
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Milestone Update Modal */}
-        {milestoneModal && (
-          <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setMilestoneModal(null)}>
-            <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-foreground">تحديث حالة المرحلة</h3>
-                <button onClick={() => setMilestoneModal(null)} className="w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center">
-                  <Icon name="XMarkIcon" size={16} className="text-muted-foreground" />
-                </button>
-              </div>
-              <p className="text-xs text-muted-foreground mb-3">
-                المرحلة الحالية: <span className="font-semibold text-foreground">
-                  {['طلب مؤكد', 'تمويل محجوز', 'جاهز للتفتيش', 'تفتيش مكتمل', 'تسليم نهائي'][milestoneModal.currentStage] || '—'}
-                </span>
-              </p>
-              <textarea
-                value={milestoneNote}
-                onChange={e => setMilestoneNote(e.target.value)}
-                rows={3}
-                placeholder="أضف ملاحظة حول إتمام هذه المرحلة..."
-                className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none mb-4"
-              />
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setMilestoneModal(null)}
-                  className="flex-1 px-4 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors"
-                >
-                  إلغاء
-                </button>
-                <button
-                  onClick={() => {
-                    setSuccessMsg('✅ تم تحديث حالة المرحلة بنجاح');
-                    setTimeout(() => setSuccessMsg(''), 4000);
-                    setMilestoneModal(null);
-                    setMilestoneNote('');
-                  }}
-                  disabled={milestoneUpdating}
-                  className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
-                >
-                  تأكيد التحديث
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Referral & Tracking Tab */}
         {activeTab === 'referral' && user && (
           <ReferralTrackingPanel userId={user.id} />
         )}
 
-        {/* Messaging Tab */}
         {activeTab === 'messaging' && user && (
           <UnifiedMessagingEngine
             userId={user.id}
@@ -1579,7 +1215,6 @@ export default function AgentDashboardPage() {
           />
         )}
 
-        {/* Documents Tab */}
         {activeTab === 'documents' && user && (
           <DocumentUploadPanel
             userId={user.id}
@@ -1595,7 +1230,6 @@ export default function AgentDashboardPage() {
           />
         )}
 
-        {/* Info Exchange Tab */}
         {activeTab === 'exchange' && user && (
           <InfoExchangePanel
             userId={user.id}
@@ -1607,7 +1241,6 @@ export default function AgentDashboardPage() {
           />
         )}
 
-        {/* Complaints Tab */}
         {activeTab === 'complaints' && user && (
           <AgentComplaintsPanel
             userId={user.id}
@@ -1619,7 +1252,6 @@ export default function AgentDashboardPage() {
           />
         )}
 
-        {/* Sales Dashboard Tab */}
         {activeTab === 'sales' && user && (
           <AgentSalesDashboard
             userId={user.id}
@@ -1631,7 +1263,6 @@ export default function AgentDashboardPage() {
           />
         )}
 
-        {/* Admin Messaging Tab */}
         {activeTab === 'admin_msg' && user && (
           <UnifiedMessagingEngine
             userId={user.id}
@@ -1644,12 +1275,10 @@ export default function AgentDashboardPage() {
           />
         )}
 
-        {/* Unified Earnings, Referral & Payout Account Tab ('commission' kept as legacy alias) */}
         {(activeTab === 'earnings' || activeTab === 'commission') && user && (
           <AgentUnifiedEarningsCard userId={user.id} />
         )}
 
-        {/* Operations Hub — unified order preparation, PSI inspections, freight-ready shipments */}
         {(activeTab === 'order_tracking' || activeTab === 'inspections') && user && (
           <AgentOperationsHub
             userId={user.id}
@@ -1657,7 +1286,6 @@ export default function AgentDashboardPage() {
           />
         )}
 
-        {/* Factories & KYC switch (merged card) */}
         {(activeTab === 'factories' || activeTab === 'enhanced') && (
           <div
             className="flex gap-1.5 p-1 mb-4 bg-muted rounded-xl"
@@ -1665,8 +1293,8 @@ export default function AgentDashboardPage() {
             aria-label="المصانع والتوثيق"
           >
             {([
-              { id: 'factories', label: '🏭 المصانع والموردون' },
-              { id: 'enhanced', label: '🛡️ التوثيق (KYC)' },
+              { id: 'factories', label: language === 'zh' ? '🏭 工厂与供应商' : language === 'tr' ? '🏭 Fabrikalar ve Tedarikçiler' : language === 'en' ? '🏭 Factories & Suppliers' : '🏭 المصانع والموردون' },
+              { id: 'enhanced', label: language === 'zh' ? '🛡️ KYC 实名认证' : language === 'tr' ? '🛡️ KYC Doğrulama' : language === 'en' ? '🛡️ KYC Verification' : '🛡️ التوثيق (KYC)' },
             ] as const).map(t => (
               <button
                 key={t.id}
@@ -1686,21 +1314,17 @@ export default function AgentDashboardPage() {
           </div>
         )}
 
-        {/* Enhanced Agent Dashboard Tab */}
         {activeTab === 'enhanced' && user && (
           <EnhancedAgentDashboard userId={user.id} />
         )}
 
-        {/* Dispatch Rooms Tab */}
         {activeTab === 'dispatch_rooms' && user && (
           <AgentDispatchRoomsTab userId={user.id} />
         )}
 
-        {/* Factories Tab */}
         {activeTab === 'factories' && (
           <>
             <div ref={factoryListRef} className="scroll-mt-20" />
-            {/* Filter Bar */}
             {factories.length > 0 && (
               <div className="flex gap-2 mb-4 overflow-x-auto pb-1 items-center">
                 {[
@@ -1714,11 +1338,11 @@ export default function AgentDashboardPage() {
                     key={f.value}
                     onClick={() => {
                       setFilterStatus(f.value);
-                      setActiveStatCard(f.value === 'approved' ? 'approved' : f.value === 'pending' ? 'pending' : f.value === '' ? null : null);
+                      setActiveStatCard(f.value === 'approved' ? 'approved' : f.value === 'pending' ? 'pending' : null);
                     }}
                     className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                       filterStatus === f.value
-                        ? 'bg-primary text-white border-primary' :'bg-card border-border text-muted-foreground hover:bg-muted'
+                        ? 'bg-primary text-white border-primary' : 'bg-card border-border text-muted-foreground hover:bg-muted'
                     }`}
                   >
                     {f.label}
@@ -1729,16 +1353,6 @@ export default function AgentDashboardPage() {
                     )}
                   </button>
                 ))}
-                {(filterStatus !== '' || activeStatCard !== null) && (
-                  <button
-                    type="button"
-                    onClick={resetStatFilter}
-                    className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border border-primary/40 text-primary bg-primary/5 hover:bg-primary/10 transition-colors"
-                  >
-                    <Icon name="ArrowPathIcon" size={12} />
-                    عرض الكل / إعادة ضبط
-                  </button>
-                )}
               </div>
             )}
 
@@ -1766,8 +1380,8 @@ export default function AgentDashboardPage() {
                 </div>
               ) : (
                 filteredFactories.map(factory => {
-                  const contactStatus = CONTACT_STATUS_LABELS[factory.contact_status] || CONTACT_STATUS_LABELS.contacting;
-                  const regStatus = REG_STATUS_LABELS[factory.registration_status] || REG_STATUS_LABELS.pending;
+                  const contactStatus = CONTACT_STATUS_LABELS[factory.contact_status] || { label: factory.contact_status, color: 'bg-gray-50 text-gray-700 border-gray-200' };
+                  const regStatus = REG_STATUS_LABELS[factory.registration_status] || { label: factory.registration_status, color: 'bg-gray-50 text-gray-700 border-gray-200' };
                   const factoryProducts = products.filter(p => p.factory_id === factory.id);
                   return (
                     <div key={factory.id} className="bg-card border border-border rounded-xl p-4">
@@ -1791,33 +1405,16 @@ export default function AgentDashboardPage() {
                           <p className="text-xs text-muted-foreground mt-0.5">
                             {factory.contact_person} · <span dir="ltr" className="font-mono">{maskPhone(factory.contact_phone)}</span>
                           </p>
-                          {factory.agent_notes && (
-                            <p className="text-xs text-blue-600 mt-1 italic">📝 {factory.agent_notes}</p>
-                          )}
-                          {factory.admin_note && (
-                            <p className="text-xs text-purple-600 mt-0.5 italic">🔍 {factory.admin_note}</p>
-                          )}
                           <div className="flex items-center gap-3 mt-2 flex-wrap">
                             <span className="text-xs text-muted-foreground flex items-center gap-1">
                               <Icon name="CubeIcon" size={12} />
                               {ad.productCount.replace('{count}', String(factoryProducts.length))}
                             </span>
-                            {factory.trade_license_url && (
-                              <span className="text-xs text-emerald-600 flex items-center gap-1">
-                                <Icon name="DocumentCheckIcon" size={12} />
-                                {ad.licenseUploaded}
-                              </span>
-                            )}
-                            {factory.license_reviewed_at && (
-                              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Icon name="ClockIcon" size={12} />
-                                {ad.reviewedAt.replace('{date}', new Date(factory.license_reviewed_at).toLocaleDateString(language === 'ar' ? 'ar' : language))}
-                              </span>
-                            )}
                           </div>
                         </div>
+
+                        {/* All Quick Action Buttons Restored */}
                         <div className="flex flex-col gap-2 shrink-0">
-                          {/* Primary: Review & Approve */}
                           <button
                             onClick={() => setReviewModal(factory)}
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-semibold hover:bg-primary/90 transition-colors"
@@ -1825,7 +1422,7 @@ export default function AgentDashboardPage() {
                             <Icon name="ClipboardDocumentCheckIcon" size={13} />
                             {ad.reviewApprove}
                           </button>
-                          {/* Internal coordination (replaces direct WhatsApp) */}
+                          
                           {factory.registration_status === 'approved' && (
                             <Link
                               href={`/agent/messages?recipientId=${encodeURIComponent(factory.id)}&name=${encodeURIComponent(factory.company_name || '')}`}
@@ -1833,9 +1430,10 @@ export default function AgentDashboardPage() {
                               style={{ backgroundColor: '#1E1E1E', color: '#D4AF37', border: '1px solid #D4AF37' }}
                             >
                               <span aria-hidden="true">💬</span>
-                              محادثة التنسيق الداخلي المباشر
+                              {language === 'zh' ? '直接沟通协调' : language === 'tr' ? 'Koordinasyon' : language === 'en' ? 'Direct Chat' : 'التنسيق المباشر'}
                             </Link>
                           )}
+
                           <Link
                             href={`/agent/add-product?factoryId=${factory.id}`}
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 border border-purple-200 text-purple-700 rounded-lg text-xs font-semibold hover:bg-purple-100 transition-colors"
@@ -1843,6 +1441,7 @@ export default function AgentDashboardPage() {
                             <Icon name="PlusIcon" size={13} />
                             {ad.addProduct}
                           </Link>
+
                           <Link
                             href={`/agent/upload-license?factoryId=${factory.id}`}
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-xs font-semibold hover:bg-amber-100 transition-colors"
@@ -1860,7 +1459,6 @@ export default function AgentDashboardPage() {
           </>
         )}
 
-        {/* Products Tab */}
         {activeTab === 'products' && (
           <div className="space-y-3">
             {products.length === 0 ? (
@@ -1885,14 +1483,6 @@ export default function AgentDashboardPage() {
                           ) : (
                             <Icon name="PhotoIcon" size={22} className="text-muted-foreground" />
                           )}
-                          {product.video_url && (
-                            <span
-                              title={t.agentAddProduct.badgeVideo}
-                              className="absolute bottom-0.5 end-0.5 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center"
-                            >
-                              <Icon name="VideoCameraIcon" size={11} />
-                            </span>
-                          )}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-foreground text-sm">{product.name_ar}</p>
@@ -1904,11 +1494,6 @@ export default function AgentDashboardPage() {
                             </p>
                           )}
                         </div>
-                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
-                          product.is_active ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-50 text-gray-500 border-gray-200'
-                        }`}>
-                          {product.is_active ? ad.regApproved : ad.regPending}
-                        </span>
                       </div>
                       <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border">
                         <div className="text-center">
@@ -1918,10 +1503,6 @@ export default function AgentDashboardPage() {
                         <div className="text-center">
                           <p className="text-xs text-muted-foreground">{t.agentAddProduct.moq}</p>
                           <p className="text-sm font-bold text-foreground">{product.moq} {product.unit}</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-xs text-muted-foreground">{t.agentAddProduct.category}</p>
-                          <p className="text-sm font-bold text-foreground">{product.category || '—'}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border">
@@ -1940,24 +1521,6 @@ export default function AgentDashboardPage() {
                         >
                           <Icon name="PencilSquareIcon" size={14} />
                           {t.agentProductActions.edit}
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-2 mt-2">
-                        <button
-                          type="button"
-                          onClick={() => copyAgentProductLink(product.id, t.agentProductActions.linkCopied, t.agentProductActions.linkCopyFailed)}
-                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 border border-border rounded-lg text-xs font-semibold text-foreground hover:bg-muted transition-colors"
-                        >
-                          <Icon name="LinkIcon" size={14} />
-                          {t.agentProductActions.copyLink}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShareProduct(product)}
-                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 border border-border rounded-lg text-xs font-semibold text-foreground hover:bg-muted transition-colors"
-                        >
-                          <Icon name="QrCodeIcon" size={14} />
-                          {t.agentProductActions.shareQr}
                         </button>
                       </div>
                     </div>
