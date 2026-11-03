@@ -67,7 +67,6 @@ export default function DashboardChrome({
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const langMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close language dropdown on outside click
   useEffect(() => {
     if (!langMenuOpen) return;
     const handleClick = (e: MouseEvent | TouchEvent) => {
@@ -85,7 +84,6 @@ export default function DashboardChrome({
 
   return (
     <>
-      {/* ── Admin Impersonation Sticky Banner ── */}
       {impersonatedFactoryId && (
         <div className="sticky top-0 z-[60] w-full bg-amber-400 border-b-2 border-amber-500 shadow-md">
           <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
@@ -111,11 +109,8 @@ export default function DashboardChrome({
         </div>
       )}
 
-      {/* Top Nav */}
       <header className={`sticky top-0 z-50 backdrop-blur-md border-b shadow-sm ${isModuleMode ? 'bg-card/95 border-border/60' : 'bg-slate-900/95 border-slate-800'}`}>
         <div className="max-w-7xl mx-auto px-3 sm:px-6 flex items-center gap-2 sm:gap-3 h-14">
-          
-          {/* Logo & Platform Name */}
           <Link href="/" className="flex items-center gap-2 shrink-0">
             <AppLogo size={28} />
             <div className="flex flex-col leading-none">
@@ -126,7 +121,6 @@ export default function DashboardChrome({
 
           <div className="flex-1" />
 
-          {/* Sales rep badge */}
           {isSalesRep && salesRepRecord && (
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs font-semibold text-blue-700">
               <Icon name="UserGroupIcon" size={13} />
@@ -134,10 +128,8 @@ export default function DashboardChrome({
             </div>
           )}
 
-          {/* Action Icons & Navigation Controls */}
           <div className="flex items-center gap-1.5 sm:gap-2">
-
-            {/* 1. زر العودة للمتجر */}
+            {/* زر العودة للمتجر */}
             <Link
               href="/"
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
@@ -147,7 +139,7 @@ export default function DashboardChrome({
               <span className="hidden sm:inline">العودة للمتجر</span>
             </Link>
 
-            {/* 2. أيقونة الدردشة */}
+            {/* أيقونة الدردشة */}
             <Link
               href="/chat"
               className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
@@ -160,7 +152,7 @@ export default function DashboardChrome({
               <Icon name="ChatBubbleLeftRightIcon" size={18} />
             </Link>
 
-            {/* 3. أيقونة الجرس (الإشعارات) */}
+            {/* أيقونة الجرس (الإشعارات) */}
             <Link
               href="/notifications"
               className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors relative ${
@@ -173,7 +165,7 @@ export default function DashboardChrome({
               <Icon name="BellIcon" size={18} />
             </Link>
 
-            {/* 4. أيقونة الكرة الأرضية (محدد اللغات) */}
+            {/* أيقونة الكرة الأرضية (محدد اللغات) */}
             <div className="relative" ref={langMenuRef}>
               <button
                 type="button"
@@ -212,23 +204,10 @@ export default function DashboardChrome({
                 </div>
               )}
             </div>
-
-            {/* 5. زر تسجيل الخروج */}
-            <button
-              type="button"
-              onClick={onSignOut}
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
-              title="تسجيل الخروج"
-              aria-label="تسجيل الخروج"
-            >
-              <Icon name="ArrowRightOnRectangleIcon" size={18} />
-            </button>
-
           </div>
         </div>
       </header>
 
-      {/* ── Module (full-screen) sticky header ── */}
       {isModuleMode && (
         <div className="sticky top-14 z-40 bg-card/95 backdrop-blur-md border-b border-border/60 shadow-sm">
           <div className="max-w-7xl mx-auto px-4 md:px-6 py-2 sm:py-0 sm:h-14 flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3">
