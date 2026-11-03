@@ -226,7 +226,8 @@ export default function InventoryPanel({
                 onClick={() => setSelectedItem(item)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault> = () => setSelectedItem(item);
+                    e.preventDefault();
+                    setSelectedItem(item);
                   }
                 }}
                 className="bg-card border border-border rounded-xl p-4 cursor-pointer hover:border-amber-400 hover:shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-amber-500 text-right"
