@@ -1,1 +1,19 @@
 @import './tailwind.css';
+/* ضبط موضع ودجت المساعد الذكي (أمل) لعدم التداخل مع الشريط السفلي */
+.amal-widget-container,
+[class*="amal-bot"],
+[class*="ai-assistant-bubble"],
+#amal-chat-widget {
+  bottom: 85px !important;
+  z-index: 40 !important;
+}
+
+/* في الشاشات العريضة ترجع لوضعها الطبيعي */
+@media (min-width: 768px) {
+  .amal-widget-container,
+  [class*="amal-bot"],
+  [class*="ai-assistant-bubble"],
+  #amal-chat-widget {
+    bottom: 24px !important;
+  }
+}
