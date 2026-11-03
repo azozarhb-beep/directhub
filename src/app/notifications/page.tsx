@@ -78,6 +78,69 @@ const FILTER_KEYS = [
   { key: 'system', labelKey: 'filterSystem' },
 ] as const;
 
+// ── Common DB Notification Text Localizer ──────────────────────────────────
+function localizeNotificationText(text: string, lang: string): string {
+  if (!text) return '';
+  if (lang === 'ar') return text;
+
+  const dictionary: Record<string, { zh: string; tr: string; en: string }> = {
+    'رسالة جديدة': {
+      zh: '新消息',
+      tr: 'Yeni Mesaj',
+      en: 'New Message',
+    },
+    'لديك رسالة جديدة في صندوق الوارد': {
+      zh: '您的收件箱收到了一条新消息',
+      tr: 'Gelen kutunuzda yeni bir mesajınız var',
+      en: 'You have a new message in your inbox',
+    },
+    'تم استلام طلب جديد': {
+      zh: '收到新订单',
+      tr: 'Yeni sipariş alındı',
+      en: 'New order received',
+    },
+    'تم تحديث حالة الطلب': {
+      zh: '订单状态已更新',
+      tr: 'Sipariş durumu güncellendi',
+      en: 'Order status updated',
+    },
+    'تم تأكيد الدفع بنجاح': {
+      zh: '付款已确认成功',
+      tr: 'Ödeme başarıyla onaylandı',
+      en: 'Payment successfully confirmed',
+    },
+    'طلب عرض أسعار جديد': {
+      zh: '新的 RFQ 询价申请',
+      tr: 'Yeni RFQ Fiyat Teklifi Talebi',
+      en: 'New RFQ quote request',
+    },
+    'تمت الموافقة على المصنع': {
+      zh: '工厂入驻申请已获批准',
+      tr: 'Fabrika kaydı onaylandı',
+      en: 'Factory registration approved',
+    },
+  };
+
+  const clean = text.trim();
+  if (dictionary[clean]) {
+    return dictionary[clean][lang as 'zh' | 'tr' | 'en'] || clean;
+  }
+
+  // Partial match fallback for dynamic message previews
+  if (clean.includes('لديك رسالة جديدة')) {
+    if (lang === 'zh') return '您的收件箱收到了一条新消息';
+    if (lang === 'tr') return 'Gelen kutunuzda yeni bir mesajınız var';
+    if (lang === 'en') return 'You have a new message in your inbox';
+  }
+  if (clean.includes('رسالة جديدة')) {
+    if (lang === 'zh') return '新消息';
+    if (lang === 'tr') return 'Yeni Mesaj';
+    if (lang === 'en') return 'New Message';
+  }
+
+  return text;
+}
+
 function timeAgo(dateStr: string, n: { justNow: string; minutesAgo: string; hoursAgo: string; daysAgo: string }, language: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
@@ -97,19 +160,23 @@ function NotificationItem({
   onDelete,
   typeLabel,
   timeLabel,
+  language,
 }: {
   notification: Notification;
   onMarkRead: (id: string) => void;
   onDelete: (id: string) => void;
   typeLabel: string;
   timeLabel: string;
+  language: string;
 }) {
   const cfg = TYPE_CONFIG[notification.type] || TYPE_CONFIG.system;
+  const displayTitle = localizeNotificationText(notification.title, language);
+  const displayBody = localizeNotificationText(notification.body, language);
 
   const content = (
     <div className={`group flex items-start gap-3 p-4 rounded-2xl border transition-all duration-200 ${
       notification.is_read
-        ? 'bg-card border-border' :'bg-primary/3 border-primary/20 shadow-sm'
+        ? 'bg-card border-border' : 'bg-primary/3 border-primary/20 shadow-sm'
     }`}>
       <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${cfg.bg}`}>
         <Icon name={cfg.icon as any} size={20} className={cfg.color} />
@@ -119,7 +186,7 @@ function NotificationItem({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <p className="text-sm font-semibold text-foreground">
-                {notification.title}
+                {displayTitle}
               </p>
               {!notification.is_read && (
                 <span className="inline-block w-2 h-2 bg-primary rounded-full shrink-0" />
@@ -128,7 +195,7 @@ function NotificationItem({
                 {typeLabel}
               </span>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{notification.body}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{displayBody}</p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <span className="text-[10px] text-muted-foreground whitespace-nowrap">{timeLabel}</span>
@@ -418,6 +485,7 @@ export default function NotificationsPage() {
                         onDelete={deleteNotification}
                         typeLabel={(t.notifications.types as any)[(TYPE_CONFIG[n.type] || TYPE_CONFIG.system).labelKey] || TYPE_CONFIG.system.labelKey}
                         timeLabel={timeAgo(n.created_at, t.notifications, language)}
+                        language={language}
                       />
                     ))}
                   </div>
