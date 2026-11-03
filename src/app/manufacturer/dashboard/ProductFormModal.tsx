@@ -10,7 +10,7 @@ import type { ProductFormData } from './dashboardTypes';
 interface ProductFormModalProps {
   isEditing: boolean;
   formData: ProductFormData;
-  setFormData: (data: ProductFormData) => void;
+  setFormData: (data: any) => void;
   formError: string;
   formLoading: boolean;
   onClose: () => void;
@@ -27,6 +27,12 @@ const UNIT_OPTIONS = [
   { value: 'roll', label: 'لفة / رول (Roll)' },
   { value: 'liter', label: 'لتر (Liter)' },
   { value: 'pallet', label: 'طبلية / بالتة (Pallet)' },
+];
+
+const CURRENCY_OPTIONS = [
+  { value: 'YER_SANAA', label: 'ر.ي (صنعاء - طبعة قديمة)', symbol: 'ر.ي (صنعاء)', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { value: 'YER_ADEN', label: 'ر.ي (عدن - طبعة جديدة)', symbol: 'ر.ي (عدن)', badge: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { value: 'USD', label: 'دولار أمريكي ($ USD)', symbol: '$', badge: 'bg-amber-50 text-amber-700 border-amber-200' },
 ];
 
 const ORIGIN_GROUPS: { label: string; options: { value: string; label: string }[] }[] = [
@@ -89,16 +95,24 @@ export default function ProductFormModal({
   const origin = formData.origin_country || 'Yemen';
   const isChineseLang = ['China', 'Taiwan', 'Hong Kong'].includes(origin);
 
+  // عملة التسعير الحالية (الافتراضية: طبعة صنعاء)
+  const currentCurrency = (formData as any).currency || 'YER_SANAA';
+  const selectedCurrencyConfig = CURRENCY_OPTIONS.find(c => c.value === currentCurrency) || CURRENCY_OPTIONS[0];
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 px-4 pb-4 sm:pb-0 backdrop-blur-sm">
       <div className="w-full max-w-lg bg-card rounded-2xl border border-border shadow-xl max-h-[90vh] overflow-y-auto" dir="rtl">
-        {/* Header */}
+        {/* Modal Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-card z-10">
           <div>
             <h2 className="font-bold text-foreground text-base">
               {isEditing ? 'تعديل بيانات المنتج' : 'إضافة منتج محلي جديد'}
             </h2>
-            <p className="text-[11px] text-muted-foreground">التسعير بالريال اليمني (ر.ي / YER)</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${selectedCurrencyConfig.badge}`}>
+                التسعير: {selectedCurrencyConfig.symbol}
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <AIProductAssistant
@@ -126,7 +140,7 @@ export default function ProductFormModal({
           )}
 
           <MultilingualProductFields
-            originCountry={formData.origin_country || 'Yemen'}
+            originCountry={origin}
             fields={{
               name: formData.name,
               name_ar: formData.name_ar,
@@ -141,9 +155,10 @@ export default function ProductFormModal({
             disabled={formLoading}
           />
 
+          {/* الفئة ورمز SKU */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">الفئة / التصنيف *</label>
+              <label className="block text-xs font-medium text-foreground mb-1">الفئة والتصنيف *</label>
               <select
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
@@ -157,7 +172,7 @@ export default function ProductFormModal({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">رمز المنتج (SKU / الكود)</label>
+              <label className="block text-xs font-medium text-foreground mb-1">كود المنتج (SKU)</label>
               <input
                 type="text"
                 value={formData.sku}
@@ -168,53 +183,78 @@ export default function ProductFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-foreground mb-1">وحدة القياس</label>
-              <select
-                value={formData.unit || 'piece'}
-                onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                className={selectCls}
-              >
-                {UNIT_OPTIONS.map((u) => (
-                  <option key={u.value} value={u.value}>
-                    {u.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-foreground mb-1">
-                سعر الوحدة <span className="text-primary font-bold">(ر.ي)</span> *
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={formData.unit_price}
-                  onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })}
-                  placeholder="0.00"
-                  className={`${inputCls} pl-10`}
-                />
-                <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 text-[11px] font-bold text-muted-foreground pointer-events-none">
-                  ر.ي
-                </span>
+          {/* عملة التسعير وسعر الوحدة والوحدة */}
+          <div className="p-3.5 bg-muted/40 rounded-xl border border-border space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-foreground mb-1 flex items-center gap-1">
+                  <span>عملة التسعير</span>
+                  <span className="text-primary">*</span>
+                </label>
+                <select
+                  value={currentCurrency}
+                  onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+                  className={`${selectCls} font-semibold`}
+                >
+                  {CURRENCY_OPTIONS.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-foreground mb-1">
+                  سعر الوحدة ({selectedCurrencyConfig.symbol}) *
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={formData.unit_price}
+                    onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })}
+                    placeholder="0.00"
+                    className={`${inputCls} pl-16 font-bold`}
+                  />
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-2 text-[10px] font-bold text-muted-foreground pointer-events-none">
+                    {selectedCurrencyConfig.symbol}
+                  </span>
+                </div>
               </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-foreground mb-1">أدنى طلب (MOQ)</label>
-              <input
-                type="number"
-                min="1"
-                value={formData.minimum_order_qty}
-                onChange={(e) => setFormData({ ...formData, minimum_order_qty: e.target.value })}
-                placeholder="1"
-                className={inputCls}
-              />
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">وحدة القياس</label>
+                <select
+                  value={formData.unit || 'piece'}
+                  onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                  className={selectCls}
+                >
+                  {UNIT_OPTIONS.map((u) => (
+                    <option key={u.value} value={u.value}>
+                      {u.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">أدنى كمية للطلب (MOQ)</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={formData.minimum_order_qty}
+                  onChange={(e) => setFormData({ ...formData, minimum_order_qty: e.target.value })}
+                  placeholder="1"
+                  className={inputCls}
+                />
+              </div>
             </div>
           </div>
 
+          {/* المخزون والتوفر */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-foreground mb-1">الكمية المتوفرة بالمخزون</label>
@@ -243,6 +283,7 @@ export default function ProductFormModal({
             </div>
           </div>
 
+          {/* بلد المنشأ */}
           <div>
             <label className="block text-xs font-medium text-foreground mb-1">
               بلد المنشأ / التصنيع
@@ -274,6 +315,7 @@ export default function ProductFormModal({
             )}
           </div>
 
+          {/* Action Buttons */}
           <div className="flex gap-3 pt-2">
             <button
               type="button"
