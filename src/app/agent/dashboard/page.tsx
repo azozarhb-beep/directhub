@@ -229,16 +229,7 @@ function ReviewModal({
 }) {
   const { t, language } = useLanguage();
   const ad = t.agentDashboard;
-  const formatSafeDate = (value: string | null | undefined): string => {
-    if (!value) return '—';
-    try {
-      const d = new Date(value);
-      if (Number.isNaN(d.getTime())) return '—';
-      return d.toLocaleDateString(language === 'ar' ? 'ar' : language);
-    } catch {
-      return '—';
-    }
-  };
+
   const CONTACT_STATUS_LABELS: Record<string, { label: string; color: string }> = {
     contacting: { label: ad.contactContacting, color: CONTACT_STATUS_COLORS.contacting },
     awaiting_license_approval: { label: ad.contactAwaitingLicense, color: CONTACT_STATUS_COLORS.awaiting_license_approval },
@@ -246,12 +237,14 @@ function ReviewModal({
     approved: { label: ad.contactApproved, color: CONTACT_STATUS_COLORS.approved },
     rejected: { label: ad.contactRejected, color: CONTACT_STATUS_COLORS.rejected },
   };
+
   const REG_STATUS_LABELS: Record<string, { label: string; color: string; icon: string }> = {
     pending: { label: ad.regPending, ...REG_STATUS_META.pending },
     under_review: { label: ad.regUnderReview, ...REG_STATUS_META.under_review },
     approved: { label: ad.regApproved, ...REG_STATUS_META.approved },
     rejected: { label: ad.regRejected, ...REG_STATUS_META.rejected },
   };
+
   const [contactStatus, setContactStatus] = useState(factory.contact_status || 'contacting');
   const [registrationStatus, setRegistrationStatus] = useState(factory.registration_status || 'pending');
   const [agentNotes, setAgentNotes] = useState(factory.agent_notes || '');
@@ -396,6 +389,32 @@ function ReviewModal({
             </>
           ) : (
             <>
+              {/* Quick Status Buttons */}
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRegistrationStatus('approved');
+                    setContactStatus('approved');
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-sm font-bold hover:bg-emerald-100 transition-colors shadow-sm"
+                >
+                  <Icon name="CheckBadgeIcon" size={16} />
+                  {language === 'zh' ? '⚡ 快速通过审核' : language === 'tr' ? '⚡ Hızlı Onayla' : language === 'en' ? '⚡ Quick Approve' : '⚡ اعتماد فوري للمصنع'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRegistrationStatus('rejected');
+                    setContactStatus('rejected');
+                  }}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-semibold hover:bg-red-100 transition-colors"
+                >
+                  <Icon name="XCircleIcon" size={14} />
+                  {ad.reject}
+                </button>
+              </div>
+
               <div>
                 <label className="block text-sm font-semibold text-foreground mb-2">{ad.contactStatusLabel}</label>
                 <div className="space-y-2">
@@ -459,7 +478,7 @@ function ReviewModal({
                 <textarea
                   value={adminNote}
                   onChange={e => setAdminNote(e.target.value)}
-                  rows={3}
+                  rows={2}
                   placeholder={ad.reviewNotesPlaceholder}
                   className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary resize-none"
                 />
@@ -720,7 +739,8 @@ export default function AgentDashboardPage() {
 
       if (error) throw error;
 
-      setSuccessMsg(ad.saveSuccess.replace('{status}', registrationStatus));
+      const statusLabel = REG_STATUS_LABELS[registrationStatus]?.label || registrationStatus;
+      setSuccessMsg(ad.saveSuccess.replace('{status}', statusLabel));
       setTimeout(() => setSuccessMsg(''), 4000);
       fetchData();
     } catch (err: unknown) {
@@ -1413,11 +1433,11 @@ export default function AgentDashboardPage() {
                           </div>
                         </div>
 
-                        {/* All Quick Action Buttons Restored */}
+                        {/* Quick Action Buttons for Growth Hacking */}
                         <div className="flex flex-col gap-2 shrink-0">
                           <button
                             onClick={() => setReviewModal(factory)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-semibold hover:bg-primary/90 transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-semibold hover:bg-primary/90 transition-colors shadow-sm"
                           >
                             <Icon name="ClipboardDocumentCheckIcon" size={13} />
                             {ad.reviewApprove}
@@ -1434,6 +1454,7 @@ export default function AgentDashboardPage() {
                             </Link>
                           )}
 
+                          {/* رفع المنتجات المباشر بواسطة المندوب */}
                           <Link
                             href={`/agent/add-product?factoryId=${factory.id}`}
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 border border-purple-200 text-purple-700 rounded-lg text-xs font-semibold hover:bg-purple-100 transition-colors"
@@ -1442,6 +1463,7 @@ export default function AgentDashboardPage() {
                             {ad.addProduct}
                           </Link>
 
+                          {/* رفع التراخيص المتاح لاحقاً */}
                           <Link
                             href={`/agent/upload-license?factoryId=${factory.id}`}
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-xs font-semibold hover:bg-amber-100 transition-colors"
