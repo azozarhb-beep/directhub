@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
-import Header from '@/components/Header';
+import AppLogo from '@/components/ui/AppLogo';
 import BottomNav from '@/components/BottomNav';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -34,6 +34,13 @@ interface LogisticsPartner {
   created_at: string;
 }
 
+const LANGUAGES = [
+  { code: 'ar', label: 'العربية' },
+  { code: 'zh', label: '中文' },
+  { code: 'tr', label: 'Türkçe' },
+  { code: 'en', label: 'English' },
+];
+
 // ── 3 Main Category Groups ────────────────────────────────────────────────────
 const CATEGORY_GROUPS = [
   { key: 'all', labelKey: 'allPartners' as const, icon: 'Squares2X2Icon', color: 'text-gray-600', activeBg: 'bg-gray-800 text-white' },
@@ -41,16 +48,6 @@ const CATEGORY_GROUPS = [
   { key: 'local', labelKey: 'localDist' as const, descKey: 'localDistDesc' as const, icon: 'TruckIcon', color: 'text-emerald-600', activeBg: 'bg-emerald-600 text-white' },
   { key: 'customs', labelKey: 'customs' as const, descKey: 'customsDesc' as const, icon: 'DocumentCheckIcon', color: 'text-violet-600', activeBg: 'bg-violet-600 text-white' },
 ];
-
-const PARTNER_TYPE_KEYS: Record<string, string> = {
-  international_shipping_office: 'typeIntlOffice',
-  local_shipping_distribution: 'typeLocalDist',
-  customs_broker: 'typeCustomsBroker',
-  freight_forwarder: 'typeFreightForwarder',
-  logistics_company: 'typeLogisticsCompany',
-  shipping_office: 'typeShippingOffice',
-  sourcing_agent: 'typeSourcingAgent',
-};
 
 const PARTNER_TYPE_ICONS: Record<string, string> = {
   international_shipping_office: 'GlobeAltIcon',
@@ -100,14 +97,14 @@ function getCategoryGroup(partner: LogisticsPartner): string {
   return 'other';
 }
 
-// ── HS Code duty rates (simplified common rates for Yemen) ────────────────────
+// ── HS Code duty rates ────────────────────────────────────────────────────────
 const HS_DUTY_RATES: { code: string; desc: string; rate: number }[] = [
   { code: '8471', desc: 'Computers & Laptops', rate: 5 },
   { code: '8517', desc: 'Mobile Phones & Telecom', rate: 5 },
   { code: '8703', desc: 'Passenger Vehicles', rate: 25 },
   { code: '8704', desc: 'Commercial Trucks', rate: 15 },
   { code: '6109', desc: 'T-shirts & Knit Apparel', rate: 30 },
-  { code: '6204', desc: 'Women\'s Suits & Dresses', rate: 30 },
+  { code: '6204', desc: "Women's Suits & Dresses", rate: 30 },
   { code: '0901', desc: 'Coffee', rate: 10 },
   { code: '1701', desc: 'Sugar', rate: 15 },
   { code: '1001', desc: 'Wheat', rate: 5 },
@@ -125,7 +122,7 @@ const HS_DUTY_RATES: { code: string; desc: string; rate: number }[] = [
 ];
 
 // ── Customs Duty Calculator ───────────────────────────────────────────────────
-function CustomsDutyCalculator() {
+function CustomsDutyCalculator({ lang, dir }: { lang: string; dir: string }) {
   const { user } = useAuth();
   const supabase = createClient();
 
@@ -152,10 +149,7 @@ function CustomsDutyCalculator() {
   const [saved, setSaved] = useState(false);
 
   const selectedHS = HS_DUTY_RATES.find(h => h.code === hsCode);
-
-  const effectiveDutyRate = customDutyRate !== ''
-    ? parseFloat(customDutyRate)
-    : (selectedHS?.rate ?? 0);
+  const effectiveDutyRate = customDutyRate !== '' ? parseFloat(customDutyRate) : (selectedHS?.rate ?? 0);
 
   const calculate = () => {
     const gv = parseFloat(goodsValue) || 0;
@@ -168,7 +162,6 @@ function CustomsDutyCalculator() {
     const vat = ((cif + duty) * vr) / 100;
     const of = parseFloat(otherFees) || 0;
     const rawTotal = cif + duty + vat + of;
-    // 5% safety buffer — non-binding estimate
     const safetyBuffer = rawTotal * 0.05;
     const total = rawTotal + safetyBuffer;
     setResult({ cifValue: cif, dutyRate: dr, dutyAmount: duty, vatAmount: vat, otherFees: of, totalLanded: total, safetyBuffer, isBinding: false });
@@ -200,32 +193,43 @@ function CustomsDutyCalculator() {
     setTimeout(() => setSaved(false), 3000);
   };
 
+  const calcTitle =
+    lang === 'zh' ? '关税与进口税费估算器' :
+    lang === 'tr' ? 'Gümrük Vergisi ve Harç Hesaplayıcı' :
+    lang === 'en' ? 'Customs Duty & Import Tax Calculator' :
+    'حاسبة الرسوم الجمركية والضرائب';
+
+  const calcSub =
+    lang === 'zh' ? '快速计算到港全成本与关税估算' :
+    lang === 'tr' ? 'Tahmini gümrük ve toplam maliyet hesabı' :
+    lang === 'en' ? 'Estimate total landed cost & import duties' :
+    'احسب التكلفة الإجمالية للاستيراد والرسوم الجمركية';
+
   return (
-    <div className="space-y-5" dir="rtl">
-      {/* Header Banner */}
+    <div className="space-y-5" dir={dir}>
       <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl p-5 text-white">
         <div className="flex items-center gap-3 mb-2">
           <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
             <Icon name="CalculatorIcon" size={22} className="text-white" />
           </div>
           <div>
-            <h2 className="font-bold text-lg">حاسبة الرسوم الجمركية والضرائب</h2>
-            <p className="text-white/80 text-xs">احسب التكلفة الإجمالية للاستيراد إلى اليمن</p>
+            <h2 className="font-bold text-lg">{calcTitle}</h2>
+            <p className="text-white/80 text-xs">{calcSub}</p>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* Input Panel */}
         <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
           <h3 className="font-bold text-foreground text-sm flex items-center gap-2">
             <Icon name="PencilSquareIcon" size={15} className="text-violet-600" />
-            بيانات الشحنة
+            {lang === 'zh' ? '货物与单证数据' : lang === 'tr' ? 'Sevkiyat Bilgileri' : lang === 'en' ? 'Shipment Details' : 'بيانات الشحنة'}
           </h3>
 
-          {/* HS Code Selector */}
           <div>
-            <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">كود HS (اختياري)</label>
+            <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
+              {lang === 'zh' ? 'HS 海关编码' : lang === 'tr' ? 'HS Kodu' : lang === 'en' ? 'HS Code' : 'كود HS (اختياري)'}
+            </label>
             <select
               value={hsCode}
               onChange={e => {
@@ -236,27 +240,29 @@ function CustomsDutyCalculator() {
               }}
               className="w-full h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
             >
-              <option value="">-- اختر كود HS --</option>
+              <option value="">-- {lang === 'zh' ? '选择常见编码' : lang === 'tr' ? 'HS Kodu Seçin' : lang === 'en' ? 'Select HS Code' : 'اختر كود HS'} --</option>
               {HS_DUTY_RATES.map(h => (
                 <option key={h.code} value={h.code}>{h.code} — {h.desc} ({h.rate}%)</option>
               ))}
             </select>
           </div>
 
-          {/* Product Description */}
           <div>
-            <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">وصف البضاعة</label>
+            <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
+              {lang === 'zh' ? '商品描述' : lang === 'tr' ? 'Ürün Açıklaması' : lang === 'en' ? 'Goods Description' : 'وصف البضاعة'}
+            </label>
             <input
               value={productDesc}
               onChange={e => setProductDesc(e.target.value)}
-              placeholder="مثال: أجهزة إلكترونية، ملابس، مواد بناء..."
+              placeholder={lang === 'zh' ? '如：电子设备、服装、机械...' : lang === 'tr' ? 'Örn: Elektronik, Tekstil...' : lang === 'en' ? 'e.g. Electronics, Garments...' : 'مثال: أجهزة إلكترونية، ملابس، مواد بناء...'}
               className="w-full h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
             />
           </div>
 
-          {/* Origin Country */}
           <div>
-            <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">بلد المنشأ</label>
+            <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
+              {lang === 'zh' ? '原产国' : lang === 'tr' ? 'Menşei Ülke' : lang === 'en' ? 'Origin Country' : 'بلد المنشأ'}
+            </label>
             <select
               value={originCountry}
               onChange={e => setOriginCountry(e.target.value)}
@@ -268,53 +274,54 @@ function CustomsDutyCalculator() {
             </select>
           </div>
 
-          {/* Values */}
           <div className="grid grid-cols-1 gap-3">
             <div>
-              <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">قيمة البضاعة (USD)</label>
+              <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
+                {lang === 'zh' ? '货物价值 (USD)' : lang === 'tr' ? 'Mal Değeri (USD)' : lang === 'en' ? 'Goods Value (USD)' : 'قيمة البضاعة (USD)'}
+              </label>
               <input
                 type="number"
                 min="0"
                 value={goodsValue}
                 onChange={e => setGoodsValue(e.target.value)}
                 placeholder="0.00"
-                className="w-full h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
+                className="w-full h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary font-mono"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">تكلفة الشحن (USD)</label>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
+                  {lang === 'zh' ? '运费 (USD)' : lang === 'tr' ? 'Navlun (USD)' : lang === 'en' ? 'Freight (USD)' : 'تكلفة الشحن (USD)'}
+                </label>
                 <input
                   type="number"
                   min="0"
                   value={freightCost}
                   onChange={e => setFreightCost(e.target.value)}
                   placeholder="0.00"
-                  className="w-full h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
+                  className="w-full h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary font-mono"
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">التأمين (USD)</label>
+                <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
+                  {lang === 'zh' ? '保险费 (USD)' : lang === 'tr' ? 'Sigorta (USD)' : lang === 'en' ? 'Insurance (USD)' : 'التأمين (USD)'}
+                </label>
                 <input
                   type="number"
                   min="0"
                   value={insurance}
                   onChange={e => setInsurance(e.target.value)}
                   placeholder="0.00"
-                  className="w-full h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
+                  className="w-full h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary font-mono"
                 />
               </div>
             </div>
           </div>
 
-          {/* Rates */}
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
-                نسبة الجمارك %
-                {selectedHS && !customDutyRate && (
-                  <span className="text-violet-600 mr-1">(تلقائي: {selectedHS.rate}%)</span>
-                )}
+                {lang === 'zh' ? '关税率 %' : lang === 'tr' ? 'Gümrük %' : lang === 'en' ? 'Duty %' : 'نسبة الجمارك %'}
               </label>
               <input
                 type="number"
@@ -323,28 +330,32 @@ function CustomsDutyCalculator() {
                 value={customDutyRate}
                 onChange={e => setCustomDutyRate(e.target.value)}
                 placeholder={String(selectedHS?.rate ?? 0)}
-                className="w-full h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
+                className="w-full h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary font-mono"
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">ضريبة القيمة %</label>
+              <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
+                {lang === 'zh' ? '增值税 %' : lang === 'tr' ? 'KDV %' : lang === 'en' ? 'VAT %' : 'ضريبة القيمة %'}
+              </label>
               <input
                 type="number"
                 min="0"
                 max="100"
                 value={vatRate}
                 onChange={e => setVatRate(e.target.value)}
-                className="w-full h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
+                className="w-full h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary font-mono"
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">رسوم أخرى (USD)</label>
+              <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
+                {lang === 'zh' ? '其他费用' : lang === 'tr' ? 'Diğer Harçlar' : lang === 'en' ? 'Other Fees' : 'رسوم أخرى (USD)'}
+              </label>
               <input
                 type="number"
                 min="0"
                 value={otherFees}
                 onChange={e => setOtherFees(e.target.value)}
-                className="w-full h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
+                className="w-full h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary font-mono"
               />
             </div>
           </div>
@@ -352,87 +363,57 @@ function CustomsDutyCalculator() {
           <button
             onClick={calculate}
             disabled={!goodsValue}
-            className="w-full h-11 bg-violet-600 text-white rounded-xl text-sm font-bold hover:bg-violet-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+            className="w-full h-11 bg-violet-600 text-white rounded-xl text-sm font-bold hover:bg-violet-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 shadow-sm"
           >
             <Icon name="CalculatorIcon" size={16} />
-            احسب الرسوم الجمركية
+            {lang === 'zh' ? '计算关税与总费用' : lang === 'tr' ? 'Vergileri Hesapla' : lang === 'en' ? 'Calculate Landed Cost' : 'احسب الرسوم الجمركية'}
           </button>
         </div>
 
         {/* Result Panel */}
         <div className="space-y-4">
           {result ? (
-            <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
+            <div className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-sm">
               <h3 className="font-bold text-foreground text-sm flex items-center gap-2">
                 <Icon name="DocumentTextIcon" size={15} className="text-emerald-600" />
-                نتيجة الحساب
+                {lang === 'zh' ? '核算清单结果' : lang === 'tr' ? 'Hesaplama Sonucu' : lang === 'en' ? 'Calculation Breakdown' : 'نتيجة الحساب'}
               </h3>
 
               <div className="space-y-2.5">
                 {[
-                  { label: 'قيمة CIF (البضاعة + شحن + تأمين)', value: result.cifValue, color: 'text-foreground' },
-                  { label: `رسوم جمركية (${result.dutyRate}%)`, value: result.dutyAmount, color: 'text-violet-600' },
-                  { label: `ضريبة القيمة المضافة (${vatRate}%)`, value: result.vatAmount, color: 'text-blue-600' },
-                  { label: 'رسوم أخرى', value: result.otherFees, color: 'text-amber-600' },
+                  { label: lang === 'zh' ? 'CIF 到岸价 (货值+运保费)' : lang === 'tr' ? 'CIF Değeri' : lang === 'en' ? 'CIF Value' : 'قيمة CIF (البضاعة + شحن + تأمين)', value: result.cifValue, color: 'text-foreground' },
+                  { label: `${lang === 'zh' ? '进口关税' : lang === 'tr' ? 'Gümrük Vergisi' : lang === 'en' ? 'Customs Duty' : 'رسوم جمركية'} (${result.dutyRate}%)`, value: result.dutyAmount, color: 'text-violet-600' },
+                  { label: `${lang === 'zh' ? '增值税' : lang === 'tr' ? 'KDV' : lang === 'en' ? 'VAT' : 'ضريبة القيمة المضافة'} (${vatRate}%)`, value: result.vatAmount, color: 'text-blue-600' },
+                  { label: lang === 'zh' ? '港口与其他规费' : lang === 'tr' ? 'Diğer Harçlar' : lang === 'en' ? 'Other Port Fees' : 'رسوم أخرى', value: result.otherFees, color: 'text-amber-600' },
                 ].map((row, i) => (
                   <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                     <span className="text-xs text-muted-foreground">{row.label}</span>
-                    <span className={`text-sm font-bold ${row.color}`}>${row.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className={`text-sm font-bold font-mono ${row.color}`}>${row.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 ))}
               </div>
 
-              {/* Total */}
               <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-emerald-800">إجمالي التكلفة الكاملة</span>
-                  <span className="text-xl font-bold text-emerald-700">
+                  <span className="text-sm font-bold text-emerald-800">
+                    {lang === 'zh' ? '预估总落地成本 (Total Landed)' : lang === 'tr' ? 'Toplam Maliyet' : lang === 'en' ? 'Total Landed Cost' : 'إجمالي التكلفة الكاملة'}
+                  </span>
+                  <span className="text-xl font-bold text-emerald-700 font-mono">
                     ${result.totalLanded.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
-                <p className="text-[11px] text-emerald-600 mt-1">
-                  نسبة الرسوم والضرائب: {result.cifValue > 0 ? (((result.totalLanded - result.cifValue) / result.cifValue) * 100).toFixed(1) : 0}% من قيمة CIF
-                </p>
-                {/* Safety buffer line */}
                 <div className="mt-2 flex items-center justify-between border-t border-emerald-200 pt-2">
-                  <span className="text-[11px] text-amber-700 font-semibold">هامش الأمان الطارئ (5%)</span>
-                  <span className="text-[11px] font-bold text-amber-700">
+                  <span className="text-[11px] text-amber-700 font-semibold">{lang === 'zh' ? '应急安全缓冲金 (5%)' : lang === 'tr' ? 'Acil Durum Tamponu (5%)' : lang === 'en' ? 'Safety Contingency Buffer (5%)' : 'هامش الأمان الطارئ (5%)'}</span>
+                  <span className="text-[11px] font-bold text-amber-700 font-mono">
                     +${result.safetyBuffer.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
-                {/* Non-binding badge */}
                 <div className="mt-2 flex items-center gap-1.5">
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-[10px] font-bold text-amber-800">
-                    ⚠ تقدير غير ملزم — Non-Binding Estimate
+                    ⚠ 非具有约束力估算 — Non-Binding Estimate
                   </span>
                 </div>
               </div>
-
-              {/* Breakdown Bar */}
-              {result.totalLanded > 0 && (
-                <div>
-                  <p className="text-[11px] font-semibold text-muted-foreground mb-2">توزيع التكلفة</p>
-                  <div className="flex h-3 rounded-full overflow-hidden gap-0.5">
-                    <div className="bg-blue-400 transition-all" style={{ width: `${(result.cifValue / result.totalLanded) * 100}%` }} title="CIF" />
-                    <div className="bg-violet-500 transition-all" style={{ width: `${(result.dutyAmount / result.totalLanded) * 100}%` }} title="Duty" />
-                    <div className="bg-amber-400 transition-all" style={{ width: `${(result.vatAmount / result.totalLanded) * 100}%` }} title="VAT" />
-                    {result.otherFees > 0 && <div className="bg-red-400 transition-all" style={{ width: `${(result.otherFees / result.totalLanded) * 100}%` }} title="Other" />}
-                  </div>
-                  <div className="flex gap-3 mt-1.5 flex-wrap">
-                    {[
-                      { label: 'CIF', color: 'bg-blue-400' },
-                      { label: 'جمارك', color: 'bg-violet-500' },
-                      { label: 'ضريبة', color: 'bg-amber-400' },
-                      { label: 'أخرى', color: 'bg-red-400' },
-                    ].map(l => (
-                      <div key={l.label} className="flex items-center gap-1">
-                        <div className={`w-2 h-2 rounded-full ${l.color}`} />
-                        <span className="text-[10px] text-muted-foreground">{l.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {user && (
                 <button
@@ -441,11 +422,11 @@ function CustomsDutyCalculator() {
                   className="w-full h-9 border border-violet-200 text-violet-700 bg-violet-50 rounded-xl text-xs font-bold hover:bg-violet-100 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
                 >
                   {saved ? (
-                    <><Icon name="CheckCircleIcon" size={14} className="text-emerald-600" /> تم الحفظ</>
+                    <><Icon name="CheckCircleIcon" size={14} className="text-emerald-600" /> {lang === 'zh' ? '已成功保存' : lang === 'tr' ? 'Kaydedildi' : lang === 'en' ? 'Saved' : 'تم الحفظ'}</>
                   ) : saving ? (
-                    <><Icon name="ArrowPathIcon" size={14} className="animate-spin" /> جاري الحفظ...</>
+                    <><Icon name="ArrowPathIcon" size={14} className="animate-spin" /> {lang === 'zh' ? '正在保存...' : lang === 'tr' ? 'Kaydediliyor...' : lang === 'en' ? 'Saving...' : 'جاري الحفظ...'}</>
                   ) : (
-                    <><Icon name="BookmarkIcon" size={14} /> حفظ الحساب</>
+                    <><Icon name="BookmarkIcon" size={14} /> {lang === 'zh' ? '保存核算记录' : lang === 'tr' ? 'Hesaplamayı Kaydet' : lang === 'en' ? 'Save Estimate' : 'حفظ الحساب'}</>
                   )}
                 </button>
               )}
@@ -455,39 +436,14 @@ function CustomsDutyCalculator() {
               <div className="w-14 h-14 rounded-2xl bg-violet-50 flex items-center justify-center">
                 <Icon name="CalculatorIcon" size={28} className="text-violet-400" />
               </div>
-              <p className="text-sm font-semibold text-foreground">أدخل بيانات الشحنة</p>
-              <p className="text-xs text-muted-foreground">سيظهر هنا تفصيل كامل للرسوم الجمركية والضرائب وإجمالي التكلفة</p>
+              <p className="text-sm font-semibold text-foreground">
+                {lang === 'zh' ? '请输入货值并点击计算' : lang === 'tr' ? 'Lütfen sevkiyat değerlerini girin' : lang === 'en' ? 'Enter shipment values & calculate' : 'أدخل بيانات الشحنة'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {lang === 'zh' ? '系统将为您展示关税、增值税与到岸全成本明细' : lang === 'tr' ? 'Detaylı gümrük ve vergi dökümü burada görünecek' : lang === 'en' ? 'Full breakdown will appear here' : 'سيظهر هنا تفصيل كامل للرسوم الجمركية والضرائب وإجمالي التكلفة'}
+              </p>
             </div>
           )}
-
-          {/* Info Card */}
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-            <div className="flex items-start gap-2">
-              <Icon name="InformationCircleIcon" size={15} className="text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-bold text-amber-800 mb-1">ملاحظة</p>
-                <p className="text-[11px] text-amber-700">
-                  هذه الحاسبة للأغراض التقديرية فقط. الأرقام الفعلية قد تختلف بناءً على قرارات الجمارك اليمنية والاتفاقيات التجارية المعمول بها.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Legal Disclaimer */}
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-            <div className="flex items-start gap-2">
-              <Icon name="ExclamationTriangleIcon" size={15} className="text-red-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-bold text-red-800 mb-1">إخلاء المسؤولية القانونية — Legal Disclaimer</p>
-                <p className="text-[11px] text-red-700 leading-relaxed">
-                  جميع الأرقام الواردة في هذه الحاسبة هي <strong>تقديرات غير ملزمة (isBinding: false)</strong> وتشمل هامش أمان طارئ بنسبة 5%. الأرقام الفعلية للرسوم الجمركية تخضع لاعتماد المخلص الجمركي المعتمد والسلطات الجمركية المختصة. لا تُعدّ هذه الأرقام التزاماً قانونياً أو مالياً من قِبَل منصة DirectHub.
-                </p>
-                <p className="text-[10px] text-red-600 mt-1.5 font-medium">
-                  All figures are non-binding estimates subject to licensed customs broker approval. Actual duties may vary at port.
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -508,11 +464,9 @@ interface ShippingDocForm {
   quantity: string;
   gross_weight_kg: string;
   net_weight_kg: string;
-  // COO specific
   origin_country: string;
   origin_criterion: string;
   certifying_authority: string;
-  // BOL specific
   vessel_name: string;
   voyage_number: string;
   port_of_loading: string;
@@ -546,7 +500,7 @@ function generateDocNumber(type: string): string {
   return `${prefix}-${ts}`;
 }
 
-function ShippingDocumentGenerator() {
+function ShippingDocumentGenerator({ lang, dir }: { lang: string; dir: string }) {
   const { user } = useAuth();
   const supabase = createClient();
   const printRef = useRef<HTMLDivElement>(null);
@@ -614,9 +568,7 @@ function ShippingDocumentGenerator() {
         th { background: #f0f0f0; font-weight: bold; }
         .header { text-align: center; margin-bottom: 20px; }
         .header h1 { font-size: 20px; text-transform: uppercase; letter-spacing: 2px; }
-        .section-title { background: #1a1a2e; color: white; padding: 6px 10px; font-size: 12px; font-weight: bold; margin-top: 12px; }
         .footer { margin-top: 30px; display: flex; justify-content: space-between; }
-        .sig-box { border-top: 2px solid #333; width: 200px; padding-top: 8px; font-size: 11px; text-align: center; }
       </style></head><body>${content}</body></html>
     `);
     win.document.close();
@@ -626,25 +578,27 @@ function ShippingDocumentGenerator() {
   const isCOO = form.document_type === 'certificate_of_origin';
 
   return (
-    <div className="space-y-5" dir="rtl">
-      {/* Header */}
+    <div className="space-y-5" dir={dir}>
       <div className="bg-gradient-to-r from-blue-600 to-cyan-600 rounded-2xl p-5 text-white">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
             <Icon name="DocumentDuplicateIcon" size={22} className="text-white" />
           </div>
           <div>
-            <h2 className="font-bold text-lg">مولّد مستندات الشحن الرسمية</h2>
-            <p className="text-white/80 text-xs">شهادة المنشأ • بوليصة الشحن</p>
+            <h2 className="font-bold text-lg">
+              {lang === 'zh' ? '官方货运与清关单证生成器' : lang === 'tr' ? 'Resmi Sevkiyat Belgeleri Oluşturucu' : lang === 'en' ? 'Official Shipping Documents Generator' : 'مولّد مستندات الشحن الرسمية'}
+            </h2>
+            <p className="text-white/80 text-xs">
+              {lang === 'zh' ? '原产地证明书 (COO) · 海运提单 (Bill of Lading)' : lang === 'tr' ? 'Menşe Şahadetnamesi (COO) · Konşimento (B/L)' : lang === 'en' ? 'Certificate of Origin (COO) • Bill of Lading (B/L)' : 'شهادة المنشأ • بوليصة الشحن'}
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Doc Type Toggle */}
       <div className="flex gap-2 bg-muted/50 rounded-xl p-1 border border-border">
         {[
-          { key: 'certificate_of_origin', label: 'شهادة المنشأ', icon: 'DocumentCheckIcon' },
-          { key: 'bill_of_lading', label: 'بوليصة الشحن', icon: 'TruckIcon' },
+          { key: 'certificate_of_origin', label: lang === 'zh' ? '原产地证 (COO)' : lang === 'tr' ? 'Menşe Şahadetnamesi' : lang === 'en' ? 'Certificate of Origin' : 'شهادة المنشأ', icon: 'DocumentCheckIcon' },
+          { key: 'bill_of_lading', label: lang === 'zh' ? '海运提单 (B/L)' : lang === 'tr' ? 'Konşimento (B/L)' : lang === 'en' ? 'Bill of Lading (B/L)' : 'بوليصة الشحن', icon: 'TruckIcon' },
         ].map(t => (
           <button
             key={t.key}
@@ -663,45 +617,43 @@ function ShippingDocumentGenerator() {
 
       {step === 'form' ? (
         <div className="space-y-4">
-          {/* Exporter / Consignee */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
               <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
                 <Icon name="BuildingOfficeIcon" size={13} className="text-blue-600" />
-                بيانات المُصدِّر / المصنع
+                {lang === 'zh' ? '发货人 / 出口商' : lang === 'tr' ? 'İhracatçı / Gönderici' : lang === 'en' ? 'Exporter / Shipper' : 'بيانات المُصدِّر / المصنع'}
               </h4>
               {[
-                { field: 'exporter_name', label: 'اسم الشركة / المصنع', placeholder: 'اسم المصنع المُصدِّر' },
-                { field: 'exporter_address', label: 'العنوان', placeholder: 'عنوان المصنع' },
-                { field: 'exporter_country', label: 'الدولة', placeholder: 'CN' },
+                { field: 'exporter_name', label: lang === 'zh' ? '公司名称' : lang === 'tr' ? 'Firma Adı' : lang === 'en' ? 'Company Name' : 'اسم الشركة / المصنع' },
+                { field: 'exporter_address', label: lang === 'zh' ? '地址' : lang === 'tr' ? 'Adres' : lang === 'en' ? 'Address' : 'العنوان' },
+                { field: 'exporter_country', label: lang === 'zh' ? '国家代码' : lang === 'tr' ? 'Ülke Kodu' : lang === 'en' ? 'Country' : 'الدولة' },
               ].map(f => (
                 <div key={f.field}>
                   <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">{f.label}</label>
                   <input
                     value={form[f.field as keyof ShippingDocForm]}
                     onChange={e => update(f.field as keyof ShippingDocForm, e.target.value)}
-                    placeholder={f.placeholder}
                     className="w-full h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
                   />
                 </div>
               ))}
             </div>
+
             <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
               <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
                 <Icon name="UserIcon" size={13} className="text-emerald-600" />
-                بيانات المُستلِم / المستورد
+                {lang === 'zh' ? '收货人 / 进口商' : lang === 'tr' ? 'İthalatçı / Alıcı' : lang === 'en' ? 'Consignee / Importer' : 'بيانات المُستلِم / المستورد'}
               </h4>
               {[
-                { field: 'consignee_name', label: 'اسم المستورد', placeholder: 'اسم الشركة المستوردة' },
-                { field: 'consignee_address', label: 'العنوان', placeholder: 'عنوان المستورد' },
-                { field: 'consignee_country', label: 'الدولة', placeholder: 'YE' },
+                { field: 'consignee_name', label: lang === 'zh' ? '收货企业名称' : lang === 'tr' ? 'Firma Adı' : lang === 'en' ? 'Consignee Name' : 'اسم المستورد' },
+                { field: 'consignee_address', label: lang === 'zh' ? '交货地址' : lang === 'tr' ? 'Teslimat Adresi' : lang === 'en' ? 'Address' : 'العنوان' },
+                { field: 'consignee_country', label: lang === 'zh' ? '目的国代码' : lang === 'tr' ? 'Ülke Kodu' : lang === 'en' ? 'Country' : 'الدولة' },
               ].map(f => (
                 <div key={f.field}>
                   <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">{f.label}</label>
                   <input
                     value={form[f.field as keyof ShippingDocForm]}
                     onChange={e => update(f.field as keyof ShippingDocForm, e.target.value)}
-                    placeholder={f.placeholder}
                     className="w-full h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
                   />
                 </div>
@@ -709,178 +661,90 @@ function ShippingDocumentGenerator() {
             </div>
           </div>
 
-          {/* Goods Info */}
           <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
             <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
               <Icon name="ArchiveBoxIcon" size={13} className="text-amber-600" />
-              بيانات البضاعة
+              {lang === 'zh' ? '货物与包装描述' : lang === 'tr' ? 'Mal ve Paket Detayları' : lang === 'en' ? 'Goods Details' : 'بيانات البضاعة'}
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">وصف البضاعة</label>
+                <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">{lang === 'zh' ? '商品品名描述' : lang === 'tr' ? 'Açıklama' : lang === 'en' ? 'Description' : 'وصف البضاعة'}</label>
                 <input
                   value={form.goods_description}
                   onChange={e => update('goods_description', e.target.value)}
-                  placeholder="وصف تفصيلي للبضاعة"
                   className="w-full h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
                 />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">كود HS</label>
+                <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">HS Code</label>
                 <input
                   value={form.hs_code}
                   onChange={e => update('hs_code', e.target.value)}
-                  placeholder="مثال: 8471.30"
-                  className="w-full h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
+                  className="w-full h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary font-mono"
                 />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">الكمية</label>
+                <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">{lang === 'zh' ? '件数与数量' : lang === 'tr' ? 'Miktar' : lang === 'en' ? 'Quantity' : 'الكمية'}</label>
                 <input
                   value={form.quantity}
                   onChange={e => update('quantity', e.target.value)}
-                  placeholder="مثال: 500 قطعة"
                   className="w-full h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">الوزن الإجمالي (كغ)</label>
+                  <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">{lang === 'zh' ? '毛重 (kg)' : lang === 'tr' ? 'Brüt Ağırlık' : lang === 'en' ? 'Gross Wt' : 'الوزن الإجمالي (كغ)'}</label>
                   <input
                     type="number"
                     value={form.gross_weight_kg}
                     onChange={e => update('gross_weight_kg', e.target.value)}
-                    placeholder="0"
-                    className="w-full h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
+                    className="w-full h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary font-mono"
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">الوزن الصافي (كغ)</label>
+                  <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">{lang === 'zh' ? '净重 (kg)' : lang === 'tr' ? 'Net Ağırlık' : lang === 'en' ? 'Net Wt' : 'الوزن الصافي (كغ)'}</label>
                   <input
                     type="number"
                     value={form.net_weight_kg}
                     onChange={e => update('net_weight_kg', e.target.value)}
-                    placeholder="0"
-                    className="w-full h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
+                    className="w-full h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary font-mono"
                   />
                 </div>
               </div>
             </div>
           </div>
 
-          {/* COO Specific */}
-          {isCOO && (
-            <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
-              <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                <Icon name="FlagIcon" size={13} className="text-violet-600" />
-                بيانات شهادة المنشأ
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">بلد المنشأ</label>
-                  <input value={form.origin_country} onChange={e => update('origin_country', e.target.value)} placeholder="CN" className="w-full h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary" />
-                </div>
-                <div>
-                  <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">معيار المنشأ</label>
-                  <select value={form.origin_criterion} onChange={e => update('origin_criterion', e.target.value)} className="w-full h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary">
-                    <option value="WO">WO — كلياً من المنشأ</option>
-                    <option value="PE">PE — إنتاج كامل</option>
-                    <option value="PSR">PSR — قاعدة خاصة بالمنتج</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">جهة الإصدار</label>
-                  <input value={form.certifying_authority} onChange={e => update('certifying_authority', e.target.value)} placeholder="غرفة التجارة" className="w-full h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary" />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* BOL Specific */}
-          {!isCOO && (
-            <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
-              <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                <Icon name="TruckIcon" size={13} className="text-cyan-600" />
-                بيانات بوليصة الشحن
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {[
-                  { field: 'vessel_name', label: 'اسم السفينة', placeholder: 'MSC DIANA' },
-                  { field: 'voyage_number', label: 'رقم الرحلة', placeholder: 'V.001E' },
-                  { field: 'port_of_loading', label: 'ميناء الشحن', placeholder: 'Shanghai Port' },
-                  { field: 'port_of_discharge', label: 'ميناء التفريغ', placeholder: 'Aden Port' },
-                  { field: 'bl_number', label: 'رقم B/L', placeholder: 'MSCUBL123456' },
-                  { field: 'container_number', label: 'رقم الحاوية', placeholder: 'MSCU1234567' },
-                  { field: 'seal_number', label: 'رقم الختم', placeholder: 'SL-001' },
-                  { field: 'notify_party', label: 'جهة الإشعار', placeholder: 'اسم الشركة' },
-                ].map(f => (
-                  <div key={f.field}>
-                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">{f.label}</label>
-                    <input
-                      value={form[f.field as keyof ShippingDocForm]}
-                      onChange={e => update(f.field as keyof ShippingDocForm, e.target.value)}
-                      placeholder={f.placeholder}
-                      className="w-full h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
-                    />
-                  </div>
-                ))}
-                <div>
-                  <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">شروط الشحن</label>
-                  <select value={form.freight_terms} onChange={e => update('freight_terms', e.target.value)} className="w-full h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary">
-                    <option value="prepaid">Prepaid — مدفوع مسبقاً</option>
-                    <option value="collect">Collect — يُحصَّل عند الوصول</option>
-                    <option value="as_arranged">As Arranged — حسب الاتفاق</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Incoterms</label>
-                  <select value={form.incoterms} onChange={e => update('incoterms', e.target.value)} className="w-full h-9 px-3 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary">
-                    {['EXW', 'FCA', 'FAS', 'FOB', 'CFR', 'CIF', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'].map(t => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-          )}
-
           <button
             onClick={() => setStep('preview')}
             disabled={!form.exporter_name || !form.consignee_name || !form.goods_description}
-            className="w-full h-11 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+            className="w-full h-11 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 shadow-sm"
           >
             <Icon name="EyeIcon" size={16} />
-            معاينة المستند
+            {lang === 'zh' ? '生成并预览单证' : lang === 'tr' ? 'Belgeyi Önizle' : lang === 'en' ? 'Preview Document' : 'معاينة المستند'}
           </button>
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Preview */}
-          <div ref={printRef} className="bg-white border-2 border-gray-300 rounded-2xl p-6 text-gray-900 font-sans">
-            {/* Document Header */}
+          <div ref={printRef} className="bg-white border-2 border-gray-300 rounded-2xl p-6 text-gray-900 font-sans shadow-sm" dir="ltr">
             <div className="text-center border-b-2 border-gray-800 pb-4 mb-4">
               <div className="flex items-center justify-center gap-3 mb-2">
                 <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center">
                   <span className="text-white font-bold text-sm">DH</span>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">DirectHub B2B Platform</p>
-                  <p className="text-[10px] text-gray-400">direct-hub.net</p>
+                  <p className="text-xs text-gray-500 font-semibold">DirectHub Global B2B Platform</p>
+                  <p className="text-[10px] text-gray-400">directhub.net</p>
                 </div>
               </div>
               <h1 className="text-xl font-bold uppercase tracking-widest text-gray-900">
                 {isCOO ? 'CERTIFICATE OF ORIGIN' : 'BILL OF LADING'}
               </h1>
-              <p className="text-sm text-gray-600 mt-0.5">
-                {isCOO ? 'شهادة المنشأ' : 'بوليصة الشحن'}
-              </p>
               <div className="mt-2 flex items-center justify-center gap-4 text-xs text-gray-500">
                 <span>No: <strong className="text-gray-800">{savedDoc?.document_number || docNumber}</strong></span>
                 <span>Date: <strong className="text-gray-800">{new Date().toLocaleDateString('en-GB')}</strong></span>
               </div>
             </div>
 
-            {/* Exporter / Consignee */}
             <table className="w-full border-collapse mb-4 text-xs">
               <tbody>
                 <tr>
@@ -900,7 +764,6 @@ function ShippingDocumentGenerator() {
               </tbody>
             </table>
 
-            {/* Goods */}
             <table className="w-full border-collapse mb-4 text-xs">
               <thead>
                 <tr className="bg-gray-100">
@@ -922,103 +785,27 @@ function ShippingDocumentGenerator() {
               </tbody>
             </table>
 
-            {/* COO Specific Section */}
-            {isCOO && (
-              <table className="w-full border-collapse mb-4 text-xs">
-                <tbody>
-                  <tr>
-                    <td className="border border-gray-300 p-3 w-1/3">
-                      <p className="font-bold text-gray-700 uppercase text-[10px] mb-1">Country of Origin</p>
-                      <p className="font-semibold">{form.origin_country}</p>
-                    </td>
-                    <td className="border border-gray-300 p-3 w-1/3">
-                      <p className="font-bold text-gray-700 uppercase text-[10px] mb-1">Origin Criterion</p>
-                      <p className="font-semibold">{form.origin_criterion}</p>
-                    </td>
-                    <td className="border border-gray-300 p-3 w-1/3">
-                      <p className="font-bold text-gray-700 uppercase text-[10px] mb-1">Certifying Authority</p>
-                      <p className="font-semibold">{form.certifying_authority}</p>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            )}
-
-            {/* BOL Specific Section */}
-            {!isCOO && (
-              <table className="w-full border-collapse mb-4 text-xs">
-                <tbody>
-                  <tr>
-                    <td className="border border-gray-300 p-2">
-                      <p className="font-bold text-[10px] text-gray-600 uppercase mb-0.5">Vessel / Voyage</p>
-                      <p>{form.vessel_name} / {form.voyage_number}</p>
-                    </td>
-                    <td className="border border-gray-300 p-2">
-                      <p className="font-bold text-[10px] text-gray-600 uppercase mb-0.5">Port of Loading</p>
-                      <p>{form.port_of_loading || '—'}</p>
-                    </td>
-                    <td className="border border-gray-300 p-2">
-                      <p className="font-bold text-[10px] text-gray-600 uppercase mb-0.5">Port of Discharge</p>
-                      <p>{form.port_of_discharge || '—'}</p>
-                    </td>
-                    <td className="border border-gray-300 p-2">
-                      <p className="font-bold text-[10px] text-gray-600 uppercase mb-0.5">Incoterms</p>
-                      <p>{form.incoterms}</p>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="border border-gray-300 p-2">
-                      <p className="font-bold text-[10px] text-gray-600 uppercase mb-0.5">B/L Number</p>
-                      <p>{form.bl_number || '—'}</p>
-                    </td>
-                    <td className="border border-gray-300 p-2">
-                      <p className="font-bold text-[10px] text-gray-600 uppercase mb-0.5">Container No.</p>
-                      <p>{form.container_number || '—'}</p>
-                    </td>
-                    <td className="border border-gray-300 p-2">
-                      <p className="font-bold text-[10px] text-gray-600 uppercase mb-0.5">Seal No.</p>
-                      <p>{form.seal_number || '—'}</p>
-                    </td>
-                    <td className="border border-gray-300 p-2">
-                      <p className="font-bold text-[10px] text-gray-600 uppercase mb-0.5">Freight Terms</p>
-                      <p className="capitalize">{form.freight_terms?.replace('_', ' ')}</p>
-                    </td>
-                  </tr>
-                  {form.notify_party && (
-                    <tr>
-                      <td colSpan={4} className="border border-gray-300 p-2">
-                        <p className="font-bold text-[10px] text-gray-600 uppercase mb-0.5">Notify Party</p>
-                        <p>{form.notify_party}</p>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            )}
-
-            {/* Signature */}
             <div className="flex justify-between items-end mt-6 pt-4 border-t border-gray-300">
               <div>
-                <div className="w-40 border-t-2 border-gray-800 pt-2">
-                  <p className="text-[10px] text-gray-600">Authorized Signature</p>
+                <div className="w-44 border-t-2 border-gray-800 pt-2">
+                  <p className="text-[10px] text-gray-600">Authorized Signature & Stamp</p>
                   <p className="text-[10px] text-gray-500">{form.exporter_name}</p>
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-[10px] text-gray-500">Issued via DirectHub Platform</p>
-                <p className="text-[10px] text-gray-400">direct-hub.net</p>
+                <p className="text-[10px] text-gray-500 font-semibold">Verified Electronic Document</p>
+                <p className="text-[10px] text-gray-400">DirectHub Logistics Gateway</p>
               </div>
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="flex gap-3 flex-wrap">
             <button
               onClick={() => setStep('form')}
-              className="flex items-center gap-2 px-4 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+              className="flex items-center gap-2 px-4 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
             >
               <Icon name="PencilSquareIcon" size={14} />
-              تعديل
+              {lang === 'zh' ? '修改资料' : lang === 'tr' ? 'Düzenle' : lang === 'en' ? 'Edit' : 'تعديل'}
             </button>
             {user && (
               <button
@@ -1027,31 +814,22 @@ function ShippingDocumentGenerator() {
                 className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 disabled:opacity-60 transition-colors"
               >
                 {savedDoc ? (
-                  <><Icon name="CheckCircleIcon" size={14} /> تم الحفظ</>
+                  <><Icon name="CheckCircleIcon" size={14} /> {lang === 'zh' ? '已保存单证' : lang === 'tr' ? 'Kaydedildi' : lang === 'en' ? 'Saved' : 'تم الحفظ'}</>
                 ) : saving ? (
-                  <><Icon name="ArrowPathIcon" size={14} className="animate-spin" /> جاري الحفظ...</>
+                  <><Icon name="ArrowPathIcon" size={14} className="animate-spin" /> {lang === 'zh' ? '正在保存...' : lang === 'tr' ? 'Kaydediliyor...' : lang === 'en' ? 'Saving...' : 'جاري الحفظ...'}</>
                 ) : (
-                  <><Icon name="CloudArrowUpIcon" size={14} /> حفظ المستند</>
+                  <><Icon name="CloudArrowUpIcon" size={14} /> {lang === 'zh' ? '保存至云端' : lang === 'tr' ? 'Belgeyi Kaydet' : lang === 'en' ? 'Save Document' : 'حفظ المستند'}</>
                 )}
               </button>
             )}
             <button
               onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors"
+              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm"
             >
               <Icon name="PrinterIcon" size={14} />
-              طباعة / PDF
+              {lang === 'zh' ? '打印 / 导出 PDF' : lang === 'tr' ? 'Yazdır / PDF' : lang === 'en' ? 'Print / PDF' : 'طباعة / PDF'}
             </button>
           </div>
-
-          {savedDoc && (
-            <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
-              <Icon name="CheckCircleIcon" size={16} className="text-emerald-600 shrink-0" />
-              <p className="text-xs text-emerald-800">
-                تم حفظ المستند برقم: <strong>{savedDoc.document_number}</strong>
-              </p>
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -1060,11 +838,29 @@ function ShippingDocumentGenerator() {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function LogisticsMarketplacePage() {
-  const { t, dir } = useLanguage();
+  const { t, dir, language, setLanguage } = useLanguage();
   const lp = t.logisticsPage;
 
   const { user } = useAuth();
   const supabase = createClient();
+
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const langMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!langMenuOpen) return;
+    const handleClick = (e: MouseEvent | TouchEvent) => {
+      if (langMenuRef.current && !langMenuRef.current.contains(e.target as Node)) {
+        setLangMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('touchstart', handleClick);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('touchstart', handleClick);
+    };
+  }, [langMenuOpen]);
 
   const [partners, setPartners] = useState<LogisticsPartner[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1094,7 +890,7 @@ export default function LogisticsMarketplacePage() {
         const role = data?.role || '';
         setIsLogisticsUser(role === 'logistics_rep' || role === 'partner');
       });
-  }, [user]);
+  }, [user, supabase]);
 
   const fetchPartners = async () => {
     setLoading(true);
@@ -1168,17 +964,134 @@ export default function LogisticsMarketplacePage() {
     customs: partners.filter(p => getCategoryGroup(p) === 'customs').length,
   };
 
+  const roomTitle =
+    language === 'zh' ? '物流与货运门户' :
+    language === 'tr' ? 'Lojistik ve Nakliye Portalı' :
+    language === 'en' ? 'Logistics & Freight Hub' :
+    'بوابة الخدمات اللوجستية والشحن';
+
+  const backToStoreText =
+    language === 'zh' ? '返回商城' :
+    language === 'tr' ? 'Mağazaya Dön' :
+    language === 'en' ? 'Back to Store' :
+    'العودة للمتجر';
+
+  const bannerDesc =
+    language === 'zh' ? '国际货运 · 本地分拨 · 清关代理与单证管理' :
+    language === 'tr' ? 'Uluslararası Nakliye · Yerel Dağıtım · Gümrükleme ve Belgeler' :
+    language === 'en' ? 'International Freight · Local Distribution · Customs & Official Docs' :
+    'شحن دولي · توزيع محلي · تخليص جمركي ومستندات رسمية';
+
   const MAIN_TABS = [
-    { key: 'partners', label: 'شركاء اللوجستيات', icon: 'BuildingOffice2Icon' },
-    { key: 'calculator', label: 'حاسبة الجمارك', icon: 'CalculatorIcon' },
-    { key: 'documents', label: 'مستندات الشحن', icon: 'DocumentDuplicateIcon' },
+    { key: 'partners', label: language === 'zh' ? '物流合作伙伴' : language === 'tr' ? 'Lojistik Ortakları' : language === 'en' ? 'Logistics Partners' : 'شركاء اللوجستيات', icon: 'BuildingOffice2Icon' },
+    { key: 'calculator', label: language === 'zh' ? '关税计算器' : language === 'tr' ? 'Gümrük Hesaplayıcı' : language === 'en' ? 'Customs Calculator' : 'حاسبة الجمارك', icon: 'CalculatorIcon' },
+    { key: 'documents', label: language === 'zh' ? '货运单证生成' : language === 'tr' ? 'Sevkiyat Belgeleri' : language === 'en' ? 'Shipping Documents' : 'مستندات الشحن', icon: 'DocumentDuplicateIcon' },
   ] as const;
 
   return (
     <div className="min-h-screen bg-background" dir={dir}>
-      <Header />
-      <div className="max-w-5xl mx-auto px-4 py-8 pb-24">
-        {/* Header */}
+      {/* ── Top Navigation Bar ── */}
+      <header className="sticky top-0 z-50 backdrop-blur-md border-b shadow-sm bg-slate-900/95 border-slate-800">
+        <div className="max-w-5xl mx-auto px-3 sm:px-6 flex items-center gap-2 sm:gap-3 h-14">
+          <Link href="/" className="flex items-center gap-2 shrink-0">
+            <AppLogo size={28} />
+            <div className="flex flex-col leading-none">
+              <span className="font-bold text-sm tracking-tight text-white" translate="no">Direct Hub</span>
+              <span className="text-[9px] font-medium hidden sm:block text-cyan-300">{roomTitle}</span>
+            </div>
+          </Link>
+
+          <div className="flex-1" />
+
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <Link
+              href="/"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
+              title={backToStoreText}
+            >
+              <Icon name="BuildingStorefrontIcon" size={16} />
+              <span className="hidden sm:inline">{backToStoreText}</span>
+            </Link>
+
+            <Link
+              href="/chat"
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+              title="الدردشة والمحادثات"
+            >
+              <Icon name="ChatBubbleLeftRightIcon" size={18} />
+            </Link>
+
+            <Link
+              href="/notifications"
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800 transition-colors relative"
+              title="الإشعارات"
+            >
+              <Icon name="BellIcon" size={18} />
+            </Link>
+
+            <div className="relative" ref={langMenuRef}>
+              <button
+                type="button"
+                onClick={() => setLangMenuOpen(!langMenuOpen)}
+                className={`w-9 h-9 rounded-xl flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800 transition-colors ${langMenuOpen ? 'ring-2 ring-primary/40' : ''}`}
+                title="تغيير اللغة"
+                aria-label="Language Selector"
+              >
+                <Icon name="GlobeAltIcon" size={19} />
+              </button>
+
+              {langMenuOpen && (
+                <div className="absolute end-0 top-full mt-2 w-36 bg-card border border-border rounded-xl shadow-xl py-1.5 z-50">
+                  {LANGUAGES.map((lang) => (
+                    <button
+                      key={lang.code}
+                      type="button"
+                      onClick={() => {
+                        setLanguage(lang.code as any);
+                        setLangMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold transition-colors ${
+                        language === lang.code
+                          ? 'bg-primary/10 text-primary font-bold'
+                          : 'text-foreground hover:bg-muted'
+                      }`}
+                    >
+                      <span>{lang.label}</span>
+                      {language === lang.code && <Icon name="CheckIcon" size={14} className="text-primary" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* ── Room Identity Banner ── */}
+      <div className="bg-gradient-to-r from-cyan-700 via-sky-800 to-slate-900 text-white px-4 py-3">
+        <div className="max-w-5xl mx-auto flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center border border-white/30">
+              <Icon name="TruckIcon" size={18} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white leading-tight">{roomTitle}</h2>
+              <p className="text-cyan-200 text-xs">{bannerDesc}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="bg-white/20 text-white text-xs px-3 py-1 rounded-full border border-white/30">
+              {language === 'zh' ? '🚢 货运与清关中心' : language === 'tr' ? '🚢 Nakliye & Gümrük' : language === 'en' ? '🚢 Freight & Customs' : '🚢 الشحن والتخليص الجمركي'}
+            </span>
+            <span className="bg-white/10 text-cyan-200 text-xs px-3 py-1 rounded-full border border-white/20">
+              ID: logistics-hub
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-4 py-6 pb-24">
+        {/* Header CTA */}
         <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-foreground">{lp.title}</h1>
@@ -1187,15 +1100,15 @@ export default function LogisticsMarketplacePage() {
           {isLogisticsUser ? (
             <Link
               href="/logistics/dashboard"
-              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
+              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shadow-sm"
             >
               <Icon name="ChartBarIcon" size={16} />
-              الذهاب إلى لوحة التحكم اللوجستية
+              {language === 'zh' ? '前往物流控制台' : language === 'tr' ? 'Lojistik Paneline Git' : language === 'en' ? 'Go to Logistics Dashboard' : 'الذهاب إلى لوحة التحكم اللوجستية'}
             </Link>
           ) : (
             <Link
               href="/logistics/register"
-              className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
+              className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shadow-sm"
             >
               <Icon name="UserPlusIcon" size={16} />
               {lp.registerCta}
@@ -1225,7 +1138,6 @@ export default function LogisticsMarketplacePage() {
         {/* Partners Tab */}
         {activeMainTab === 'partners' && (
           <>
-            {/* Category Group Tabs */}
             <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
               {CATEGORY_GROUPS.map(grp => (
                 <button
@@ -1248,16 +1160,15 @@ export default function LogisticsMarketplacePage() {
               ))}
             </div>
 
-            {/* Filters */}
-            <div className="bg-card border border-border rounded-2xl p-4 mb-6">
+            <div className="bg-card border border-border rounded-2xl p-4 mb-6 shadow-sm">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="relative">
-                  <Icon name="MagnifyingGlassIcon" size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Icon name="MagnifyingGlassIcon" size={16} className={`absolute top-1/2 -translate-y-1/2 text-muted-foreground ${dir === 'rtl' ? 'right-3' : 'left-3'}`} />
                   <input
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     placeholder={lp.searchPlaceholder}
-                    className="w-full h-10 pr-9 pl-4 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary"
+                    className={`w-full h-10 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary ${dir === 'rtl' ? 'pr-9 pl-4' : 'pl-9 pr-4'}`}
                   />
                 </div>
                 <input
@@ -1275,7 +1186,6 @@ export default function LogisticsMarketplacePage() {
               </div>
             </div>
 
-            {/* Results */}
             {loading ? (
               <div className="flex items-center justify-center py-20">
                 <Icon name="ArrowPathIcon" size={32} className="animate-spin text-primary" />
@@ -1297,7 +1207,7 @@ export default function LogisticsMarketplacePage() {
                   const typeColor = PARTNER_TYPE_COLORS[partner.partner_type] || 'text-gray-600';
                   const typeBg = PARTNER_BG_COLORS[partner.partner_type] || 'bg-gray-100';
                   return (
-                    <div key={partner.id} className="bg-card border border-border rounded-2xl p-5 hover:border-primary/40 transition-colors">
+                    <div key={partner.id} className="bg-card border border-border rounded-2xl p-5 hover:border-primary/40 transition-colors shadow-sm">
                       <div className="flex items-start gap-3 mb-4">
                         <div className={`w-11 h-11 rounded-xl ${typeBg} flex items-center justify-center shrink-0`}>
                           <Icon name={typeIcon as any} size={22} className={typeColor} />
@@ -1306,7 +1216,9 @@ export default function LogisticsMarketplacePage() {
                           <h3 className="font-bold text-foreground truncate">{partner.company_name}</h3>
                           <p className="text-xs text-muted-foreground">{PARTNER_TYPE_LABELS[partner.partner_type] || partner.partner_type}</p>
                         </div>
-                        <span className="px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-bold shrink-0">{(t.logisticsPage?.verifiedBadge || "Verified")}</span>
+                        <span className="px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-bold shrink-0">
+                          {(t.logisticsPage?.verifiedBadge || "Verified")}
+                        </span>
                       </div>
 
                       <div className="space-y-1.5 mb-4">
@@ -1338,7 +1250,7 @@ export default function LogisticsMarketplacePage() {
                               ))}
                             </div>
                             {partner.origin_countries?.length > 0 && partner.destination_countries?.length > 0 && (
-                              <Icon name="ArrowLeftIcon" size={12} className="text-muted-foreground shrink-0" />
+                              <Icon name={dir === 'rtl' ? 'ArrowLeftIcon' : 'ArrowRightIcon'} size={12} className="text-muted-foreground shrink-0" />
                             )}
                             <div className="flex flex-wrap gap-1">
                               {partner.destination_countries?.slice(0, 3).map(c => (
@@ -1373,13 +1285,13 @@ export default function LogisticsMarketplacePage() {
         )}
 
         {/* Calculator Tab */}
-        {activeMainTab === 'calculator' && <CustomsDutyCalculator />}
+        {activeMainTab === 'calculator' && <CustomsDutyCalculator lang={language} dir={dir} />}
 
         {/* Documents Tab */}
-        {activeMainTab === 'documents' && <ShippingDocumentGenerator />}
+        {activeMainTab === 'documents' && <ShippingDocumentGenerator lang={language} dir={dir} />}
       </div>
 
-      {/* Chat Modal */}
+      {/* Internal Chat Modal */}
       {selectedPartner && (
         <div className="fixed inset-0 z-50 flex flex-col bg-background" dir={dir}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-card shrink-0">
@@ -1424,7 +1336,7 @@ export default function LogisticsMarketplacePage() {
                 <button
                   onClick={startChat}
                   disabled={chatLoading || !chatMessage.trim() || !user}
-                  className="w-full h-11 bg-primary text-primary-foreground rounded-xl text-sm font-bold disabled:opacity-50 hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                  className="w-full h-11 bg-primary text-primary-foreground rounded-xl text-sm font-bold disabled:opacity-50 hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-sm"
                 >
                   {chatLoading ? <Icon name="ArrowPathIcon" size={14} className="animate-spin" /> : <Icon name="PaperAirplaneIcon" size={14} />}
                   {lp.sendMessage}
