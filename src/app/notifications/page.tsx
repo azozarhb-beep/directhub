@@ -14,7 +14,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 interface Notification {
   id: string;
   user_id: string;
-  type: string; // Dynamic — supports all NotificationType values from notificationEngine
+  type: string;
   title: string;
   body: string;
   link: string;
@@ -23,7 +23,6 @@ interface Notification {
   created_at: string;
 }
 
-// ── Tactical Notification Type Config — auto-expandable ──────────────────────
 const TYPE_CONFIG: Record<string, { icon: string; color: string; bg: string; labelKey: string }> = {
   rfq_submitted:    { icon: 'DocumentTextIcon',         color: 'text-blue-600',    bg: 'bg-blue-50',    labelKey: 'rfq_submitted' },
   rfq_responded:    { icon: 'ChatBubbleLeftRightIcon',  color: 'text-purple-600',  bg: 'bg-purple-50',  labelKey: 'rfq_responded' },
@@ -78,95 +77,56 @@ const FILTER_KEYS = [
   { key: 'system', labelKey: 'filterSystem' },
 ] as const;
 
-// ── Common DB Notification Text Localizer ──────────────────────────────────
+// ── Smart Dynamic Notification Text Localizer ─────────────────────────────
 function localizeNotificationText(text: string, lang: string): string {
   if (!text) return '';
   if (lang === 'ar') return text;
 
   const clean = text.trim();
 
-  // Dictionary of exact matches (including emojis)
-  const dictionary: Record<string, { zh: string; tr: string; en: string }> = {
-    'رسالة جديدة': {
-      zh: '新消息',
-      tr: 'Yeni Mesaj',
-      en: 'New Message',
-    },
-    'لديك رسالة جديدة في صندوق الوارد': {
-      zh: '您的收件箱收到了一条新消息',
-      tr: 'Gelen kutunuzda yeni bir mesajınız var',
-      en: 'You have a new message in your inbox',
-    },
-    'تم قبول تسجيل المصنع ✅': {
-      zh: '工厂入驻审核已通过 ✅',
-      tr: 'Fabrika kaydı onaylandı ✅',
-      en: 'Factory registration approved ✅',
-    },
-    'تم قبول تسجيل المصنع': {
-      zh: '工厂入驻审核已通过',
-      tr: 'Fabrika kaydı onaylandı',
-      en: 'Factory registration approved',
-    },
-    'تهانينا! تم قبول تسجيل مصنعك. يمكنك الآن البدء في البيع': {
-      zh: '恭喜！您的工厂注册已获批准，现在可以开始入驻并销售产品。',
-      tr: 'Tebrikler! Fabrika kaydınız onaylandı. Artık satışa başlayabilirsiniz.',
-      en: 'Congratulations! Your factory registration has been approved. You can now start selling.',
-    },
-    'تم التحقق من هويتك ✅': {
-      zh: '身份实名认证已通过 ✅',
-      tr: 'Kimlik doğrulandı ✅',
-      en: 'Identity verified ✅',
-    },
-    'تم التحقق من هويتك': {
-      zh: '身份实名认证已通过',
-      tr: 'Kimlik doğrulandı',
-      en: 'Identity verified',
-    },
-    'تم التحقق من هويتك بنجاح. حسابك مفعل بالكامل': {
-      zh: '您的身份认证已成功通过，账户现已完全激活。',
-      tr: 'Kimliğiniz başarıyla doğrulandı. Hesabınız tamamen aktiftir.',
-      en: 'Your identity has been successfully verified. Your account is fully active.',
-    },
-    'تم استلام طلب جديد': {
-      zh: '收到新订单',
-      tr: 'Yeni sipariş alındı',
-      en: 'New order received',
-    },
-    'تم تحديث حالة الطلب': {
-      zh: '订单状态已更新',
-      tr: 'Sipariş durumu güncellendi',
-      en: 'Order status updated',
-    },
-    'تم تأكيد الدفع بنجاح': {
-      zh: '付款已确认成功',
-      tr: 'Ödeme başarıyla onaylandı',
-      en: 'Payment successfully confirmed',
-    },
-    'طلب عرض أسعار جديد': {
-      zh: '新的 RFQ 询价申请',
-      tr: 'Yeni RFQ Fiyat Teklifi Talebi',
-      en: 'New RFQ quote request',
-    },
-  };
-
-  if (dictionary[clean]) {
-    return dictionary[clean][lang as 'zh' | 'tr' | 'en'] || clean;
+  // 1. المسار السريع
+  if (clean.includes('المسار السريع') || clean.includes('قبولك بالمسار')) {
+    if (lang === 'zh') return '已通过快速绿色通道准入 ⚡！';
+    if (lang === 'tr') return 'Hızlı onay hattına kabul edildiniz ⚡!';
+    if (lang === 'en') return 'Accepted into Fast-Track ⚡!';
+  }
+  if (clean.includes('دخولاً فورياً') || clean.includes('لرفع منتجاتك')) {
+    if (lang === 'zh') return '您已获得立即上传产品和补充商品目录的权限。平台审核将同步进行。';
+    if (lang === 'tr') return 'Ürünlerinizi yüklemek ve kataloğunuzu doldurmak için anında erişim verildi.';
+    if (lang === 'en') return 'Instant access granted to upload your products and complete your catalog.';
   }
 
-  // Fallback pattern matches
-  if (clean.includes('قبول تسجيل المصنع') || clean.includes('تسجيل مصنعك')) {
-    if (lang === 'zh') return clean.includes('تهانينا') ? '恭喜！您的工厂注册已获批准，现在可以开始入驻并销售产品。' : '工厂入驻审核已通过 ✅';
-    if (lang === 'tr') return clean.includes('تهانينا') ? 'Tebrikler! Fabrika kaydınız onaylandı. Artık satışa başlayabilirsiniz.' : 'Fabrika kaydı onaylandı ✅';
-    if (lang === 'en') return clean.includes('تهانينا') ? 'Congratulations! Your factory registration has been approved. You can now start selling.' : 'Factory registration approved ✅';
+  // 2. تسجيل المصنع
+  if (clean.includes('تسجيل المصنع بنجاح') || clean.includes('تسجيل المصنع')) {
+    if (lang === 'zh') return '工厂注册成功 🏭！';
+    if (lang === 'tr') return 'Fabrika kaydı başarılı 🏭!';
+    if (lang === 'en') return 'Factory registered successfully 🏭!';
+  }
+  if (clean.includes('تم قبول تسجيل المصنع') || clean.includes('قبول تسجيل مصنعك')) {
+    if (clean.includes('تهانينا') || clean.includes('البدء في البيع')) {
+      if (lang === 'zh') return '恭喜！您的工厂注册已获批准，现在可以开始入驻并销售产品。';
+      if (lang === 'tr') return 'Tebrikler! Fabrika kaydınız onaylandı. Artık satışa başlayabilirsiniz.';
+      if (lang === 'en') return 'Congratulations! Your factory registration has been approved. You can now start selling.';
+    }
+    if (lang === 'zh') return '工厂入驻审核已通过 ✅';
+    if (lang === 'tr') return 'Fabrika kaydı onaylandı ✅';
+    if (lang === 'en') return 'Factory registration approved ✅';
   }
 
-  if (clean.includes('التحقق من هويتك')) {
-    if (lang === 'zh') return clean.includes('بنجاح') ? '您的身份认证已成功通过，账户现已完全激活。' : '身份实名认证已通过 ✅';
-    if (lang === 'tr') return clean.includes('بنجاح') ? 'Kimliğiniz başarıyla doğrulandı. Hesabınız tamamen aktiftir.' : 'Kimlik doğrulandı ✅';
-    if (lang === 'en') return clean.includes('بنجاح') ? 'Your identity has been successfully verified. Your account is fully active.' : 'Identity verified ✅';
+  // 3. التحقق من الهوية
+  if (clean.includes('التحقق من هويتك') || clean.includes('حسابك مفعل')) {
+    if (clean.includes('بنجاح') || clean.includes('مفعل بالكامل')) {
+      if (lang === 'zh') return '您的身份实名认证已成功通过，账户现已完全激活。';
+      if (lang === 'tr') return 'Kimliğiniz başarıyla doğrulandı. Hesabınız tamamen aktiftir.';
+      if (lang === 'en') return 'Your identity has been successfully verified. Your account is fully active.';
+    }
+    if (lang === 'zh') return '身份实名认证已通过 ✅';
+    if (lang === 'tr') return 'Kimlik doğrulandı ✅';
+    if (lang === 'en') return 'Identity verified ✅';
   }
 
-  if (clean.includes('لديك رسالة جديدة')) {
+  // 4. الرسائل والدردشة
+  if (clean.includes('لديك رسالة جديدة') || clean.includes('صندوق الوارد')) {
     if (lang === 'zh') return '您的收件箱收到了一条新消息';
     if (lang === 'tr') return 'Gelen kutunuzda yeni bir mesajınız var';
     if (lang === 'en') return 'You have a new message in your inbox';
@@ -175,6 +135,28 @@ function localizeNotificationText(text: string, lang: string): string {
     if (lang === 'zh') return '新消息';
     if (lang === 'tr') return 'Yeni Mesaj';
     if (lang === 'en') return 'New Message';
+  }
+
+  // 5. الطلبات والمدفوعات
+  if (clean.includes('طلب جديد')) {
+    if (lang === 'zh') return '收到新订单';
+    if (lang === 'tr') return 'Yeni sipariş alındı';
+    if (lang === 'en') return 'New order received';
+  }
+  if (clean.includes('حالة الطلب')) {
+    if (lang === 'zh') return '订单状态已更新';
+    if (lang === 'tr') return 'Sipariş durumu güncellendi';
+    if (lang === 'en') return 'Order status updated';
+  }
+  if (clean.includes('تأكيد الدفع')) {
+    if (lang === 'zh') return '付款已确认成功';
+    if (lang === 'tr') return 'Ödeme başarıyla onaylandı';
+    if (lang === 'en') return 'Payment successfully confirmed';
+  }
+  if (clean.includes('عرض أسعار')) {
+    if (lang === 'zh') return '新的 RFQ 询价申请';
+    if (lang === 'tr') return 'Yeni RFQ Fiyat Teklifi Talebi';
+    if (lang === 'en') return 'New RFQ quote request';
   }
 
   return text;
@@ -352,7 +334,6 @@ export default function NotificationsPage() {
     return notifications.filter(n => n.type === filter);
   })();
 
-  // Group by date
   const grouped = filtered.reduce<Record<string, Notification[]>>((acc, item) => {
     const date = new Date(item.created_at);
     const today = new Date();
@@ -389,7 +370,6 @@ export default function NotificationsPage() {
     <div className="min-h-screen bg-background flex flex-col" dir={dir}>
       <Header />
       <main className="flex-1">
-        {/* Header */}
         <div className="bg-gradient-to-br from-primary/8 via-background to-background border-b border-border">
           <div className="max-w-3xl mx-auto px-4 md:px-6 py-8 md:py-10">
             <div className="flex items-center justify-between gap-4">
@@ -427,7 +407,6 @@ export default function NotificationsPage() {
               </div>
             </div>
 
-            {/* Stats row */}
             <div className="grid grid-cols-4 gap-3 mt-6">
               {[
                 { label: n.statTotal, count: notifications.length, icon: 'BellIcon', color: 'text-foreground' },
@@ -446,7 +425,6 @@ export default function NotificationsPage() {
         </div>
 
         <div className="max-w-3xl mx-auto px-4 md:px-6 py-6 mobile-safe-bottom md:pb-10">
-          {/* Filter tabs — scrollable on mobile */}
           <div className="flex gap-1 bg-muted p-1 rounded-xl mb-5 overflow-x-auto hide-scrollbar">
             {FILTER_KEYS.map(tab => {
               const count = tab.key === 'all'
@@ -477,7 +455,6 @@ export default function NotificationsPage() {
             })}
           </div>
 
-          {/* Notification list */}
           {loading ? (
             <div className="space-y-3">
               {[...Array(5)].map((_, i) => (
