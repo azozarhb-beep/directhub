@@ -17,62 +17,57 @@ interface ProductFormModalProps {
   onSubmit: (e: React.FormEvent) => void;
 }
 
+const UNIT_OPTIONS = [
+  { value: 'piece', label: 'قطعة (Piece)' },
+  { value: 'kg', label: 'كيلوجرام (Kg)' },
+  { value: 'ton', label: 'طن متري (Ton)' },
+  { value: 'box', label: 'كرتون / صندوق (Box)' },
+  { value: 'meter', label: 'متر (Meter)' },
+  { value: 'sheet', label: 'لوح / شيت (Sheet)' },
+  { value: 'roll', label: 'لفة / رول (Roll)' },
+  { value: 'liter', label: 'لتر (Liter)' },
+  { value: 'pallet', label: 'طبلية / بالتة (Pallet)' },
+];
+
 const ORIGIN_GROUPS: { label: string; options: { value: string; label: string }[] }[] = [
   {
-    label: '🌏 Asia',
+    label: '🌍 الدول العربية والمنطقة',
     options: [
-      { value: 'China', label: '🇨🇳 China' },
-      { value: 'India', label: '🇮🇳 India' },
-      { value: 'Turkey', label: '🇹🇷 Turkey' },
-      { value: 'Japan', label: '🇯🇵 Japan' },
-      { value: 'South Korea', label: '🇰🇷 South Korea' },
-      { value: 'Taiwan', label: '🇹🇼 Taiwan' },
-      { value: 'Vietnam', label: '🇻🇳 Vietnam' },
-      { value: 'Bangladesh', label: '🇧🇩 Bangladesh' },
-      { value: 'Pakistan', label: '🇵🇰 Pakistan' },
-      { value: 'Indonesia', label: '🇮🇩 Indonesia' },
-      { value: 'Malaysia', label: '🇲🇾 Malaysia' },
-      { value: 'Thailand', label: '🇹🇭 Thailand' },
+      { value: 'Yemen', label: '🇾🇪 اليمن (إنتاج محلي)' },
+      { value: 'Saudi Arabia', label: '🇸🇦 السعودية' },
+      { value: 'UAE', label: '🇦🇪 الإمارات' },
+      { value: 'Oman', label: '🇴🇲 عُمان' },
+      { value: 'Kuwait', label: '🇰🇼 الكويت' },
+      { value: 'Qatar', label: '🇶🇦 قطر' },
+      { value: 'Bahrain', label: '🇧🇭 البحرين' },
+      { value: 'Egypt', label: '🇪🇬 مصر' },
+      { value: 'Jordan', label: '🇯🇴 الأردن' },
+      { value: 'Iraq', label: '🇮🇶 العراق' },
+      { value: 'Algeria', label: '🇩🇿 الجزائر' },
+      { value: 'Morocco', label: '🇲🇦 المغرب' },
     ],
   },
   {
-    label: '🌍 Arab Countries',
+    label: '🌏 آسيا',
     options: [
-      { value: 'Saudi Arabia', label: '🇸🇦 Saudi Arabia' },
-      { value: 'UAE', label: '🇦🇪 UAE' },
-      { value: 'Kuwait', label: '🇰🇼 Kuwait' },
-      { value: 'Qatar', label: '🇶🇦 Qatar' },
-      { value: 'Bahrain', label: '🇧🇭 Bahrain' },
-      { value: 'Oman', label: '🇴🇲 Oman' },
-      { value: 'Egypt', label: '🇪🇬 Egypt' },
-      { value: 'Jordan', label: '🇯🇴 Jordan' },
-      { value: 'Iraq', label: '🇮🇶 Iraq' },
-      { value: 'Yemen', label: '🇾🇪 Yemen' },
-      { value: 'Morocco', label: '🇲🇦 Morocco' },
-      { value: 'Algeria', label: '🇩🇿 Algeria' },
-      { value: 'Tunisia', label: '🇹🇳 Tunisia' },
-      { value: 'Libya', label: '🇱🇾 Libya' },
+      { value: 'China', label: '🇨🇳 الصين (China)' },
+      { value: 'Turkey', label: '🇹🇷 تركيا (Turkey)' },
+      { value: 'India', label: '🇮🇳 الهند (India)' },
+      { value: 'South Korea', label: '🇰🇷 كوريا الجنوبية' },
+      { value: 'Japan', label: '🇯🇵 اليابان' },
+      { value: 'Taiwan', label: '🇹🇼 تايوان' },
+      { value: 'Vietnam', label: '🇻🇳 فيتنام' },
+      { value: 'Malaysia', label: '🇲🇾 ماليزيا' },
+      { value: 'Indonesia', label: '🇮🇩 إندونيسيا' },
     ],
   },
   {
-    label: '🌍 Europe',
+    label: '🌍 أوروبا وأمريكا',
     options: [
-      { value: 'Germany', label: '🇩🇪 Germany' },
-      { value: 'Italy', label: '🇮🇹 Italy' },
-      { value: 'France', label: '🇫🇷 France' },
-      { value: 'UK', label: '🇬🇧 UK' },
-      { value: 'Spain', label: '🇪🇸 Spain' },
-      { value: 'Poland', label: '🇵🇱 Poland' },
-      { value: 'Netherlands', label: '🇳🇱 Netherlands' },
-    ],
-  },
-  {
-    label: '🌎 Americas',
-    options: [
-      { value: 'USA', label: '🇺🇸 USA' },
-      { value: 'Canada', label: '🇨🇦 Canada' },
-      { value: 'Brazil', label: '🇧🇷 Brazil' },
-      { value: 'Mexico', label: '🇲🇽 Mexico' },
+      { value: 'Germany', label: '🇩🇪 ألمانيا' },
+      { value: 'Italy', label: '🇮🇹 إيطاليا' },
+      { value: 'UK', label: '🇬🇧 بريطانيا' },
+      { value: 'USA', label: '🇺🇸 أمريكا' },
     ],
   },
 ];
@@ -91,14 +86,20 @@ export default function ProductFormModal({
   onClose,
   onSubmit,
 }: ProductFormModalProps) {
-  const origin = formData.origin_country;
+  const origin = formData.origin_country || 'Yemen';
   const isChineseLang = ['China', 'Taiwan', 'Hong Kong'].includes(origin);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 px-4 pb-4 sm:pb-0">
-      <div className="w-full max-w-lg bg-card rounded-2xl border border-border shadow-xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 px-4 pb-4 sm:pb-0 backdrop-blur-sm">
+      <div className="w-full max-w-lg bg-card rounded-2xl border border-border shadow-xl max-h-[90vh] overflow-y-auto" dir="rtl">
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-card z-10">
-          <h2 className="font-bold text-foreground">{isEditing ? 'تعديل المنتج' : 'إضافة منتج جديد'}</h2>
+          <div>
+            <h2 className="font-bold text-foreground text-base">
+              {isEditing ? 'تعديل بيانات المنتج' : 'إضافة منتج محلي جديد'}
+            </h2>
+            <p className="text-[11px] text-muted-foreground">التسعير بالريال اليمني (ر.ي / YER)</p>
+          </div>
           <div className="flex items-center gap-2">
             <AIProductAssistant
               categorySlug={formData.category}
@@ -125,7 +126,7 @@ export default function ProductFormModal({
           )}
 
           <MultilingualProductFields
-            originCountry={formData.origin_country}
+            originCountry={formData.origin_country || 'Yemen'}
             fields={{
               name: formData.name,
               name_ar: formData.name_ar,
@@ -142,7 +143,7 @@ export default function ProductFormModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">الفئة *</label>
+              <label className="block text-xs font-medium text-foreground mb-1">الفئة / التصنيف *</label>
               <select
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
@@ -156,12 +157,12 @@ export default function ProductFormModal({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">رمز المنتج (SKU)</label>
+              <label className="block text-xs font-medium text-foreground mb-1">رمز المنتج (SKU / الكود)</label>
               <input
                 type="text"
                 value={formData.sku}
                 onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                placeholder="e.g. STL-001"
+                placeholder="مثال: DH-PLAS-01"
                 className={inputCls}
               />
             </div>
@@ -169,33 +170,40 @@ export default function ProductFormModal({
 
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">الوحدة</label>
+              <label className="block text-xs font-medium text-foreground mb-1">وحدة القياس</label>
               <select
-                value={formData.unit}
+                value={formData.unit || 'piece'}
                 onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
                 className={selectCls}
               >
-                {['kg', 'ton', 'liter', 'piece', 'meter', 'sheet', 'roll', 'box', 'pallet'].map((u) => (
-                  <option key={u} value={u}>
-                    {u}
+                {UNIT_OPTIONS.map((u) => (
+                  <option key={u.value} value={u.value}>
+                    {u.label}
                   </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">سعر الوحدة</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={formData.unit_price}
-                onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })}
-                placeholder="0.00"
-                className={inputCls}
-              />
+              <label className="block text-xs font-medium text-foreground mb-1">
+                سعر الوحدة <span className="text-primary font-bold">(ر.ي)</span> *
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={formData.unit_price}
+                  onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })}
+                  placeholder="0.00"
+                  className={`${inputCls} pl-10`}
+                />
+                <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 text-[11px] font-bold text-muted-foreground pointer-events-none">
+                  ر.ي
+                </span>
+              </div>
             </div>
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">الحد الأدنى للطلب</label>
+              <label className="block text-xs font-medium text-foreground mb-1">أدنى طلب (MOQ)</label>
               <input
                 type="number"
                 min="1"
@@ -209,11 +217,11 @@ export default function ProductFormModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">كمية المخزون</label>
+              <label className="block text-xs font-medium text-foreground mb-1">الكمية المتوفرة بالمخزون</label>
               <input
                 type="number"
                 min="0"
-                step="0.01"
+                step="any"
                 value={formData.stock_quantity}
                 onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
                 placeholder="0"
@@ -221,23 +229,23 @@ export default function ProductFormModal({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-foreground mb-1">حالة المخزون</label>
+              <label className="block text-xs font-medium text-foreground mb-1">حالة التوفر</label>
               <select
                 value={formData.inventory_status}
                 onChange={(e) => setFormData({ ...formData, inventory_status: e.target.value })}
                 className={selectCls}
               >
-                <option value="in_stock">متوفر</option>
-                <option value="low_stock">مخزون منخفض</option>
-                <option value="out_of_stock">نفد المخزون</option>
-                <option value="discontinued">متوقف</option>
+                <option value="in_stock">متوفر وجاهز للطلب</option>
+                <option value="low_stock">مخزون محدود</option>
+                <option value="out_of_stock">غير متوفر حالياً</option>
+                <option value="discontinued">إنتاج حسب الطلب / متوقف</option>
               </select>
             </div>
           </div>
 
           <div>
             <label className="block text-xs font-medium text-foreground mb-1">
-              Origin Country
+              بلد المنشأ / التصنيع
               {origin && <SupplierLanguageBadge originCountry={origin} size="sm" />}
             </label>
             <select
@@ -245,7 +253,6 @@ export default function ProductFormModal({
               onChange={(e) => setFormData({ ...formData, origin_country: e.target.value })}
               className={selectCls}
             >
-              <option value="">اختر الدولة</option>
               {ORIGIN_GROUPS.map((group) => (
                 <optgroup key={group.label} label={group.label}>
                   {group.options.map((o) => (
@@ -255,19 +262,19 @@ export default function ProductFormModal({
                   ))}
                 </optgroup>
               ))}
-              <option value="Other">Other</option>
+              <option value="Other">بلد آخر (أخرى)</option>
             </select>
             {origin && ['China', 'Turkey', 'Taiwan', 'Hong Kong'].includes(origin) && (
               <p className="text-[11px] text-blue-600 mt-1 flex items-center gap-1">
                 <span>🌐</span>
                 {isChineseLang
-                  ? 'Chinese (中文) fields will appear in the language tabs above'
-                  : 'Turkish (Türkçe) fields will appear in the language tabs above'}
+                  ? 'ستظهر الحقول باللغة الصينية (中文) في التبويب العلوي تلقائياً'
+                  : 'ستظهر الحقول باللغة التركية (Türkçe) في التبويب العلوي تلقائياً'}
               </p>
             )}
           </div>
 
-          <div className="flex gap-3 pt-1">
+          <div className="flex gap-3 pt-2">
             <button
               type="button"
               onClick={onClose}
@@ -287,7 +294,7 @@ export default function ProductFormModal({
               ) : isEditing ? (
                 'حفظ التعديلات'
               ) : (
-                'إضافة المنتج'
+                'إضافة المنتج إلى الكتالوج'
               )}
             </button>
           </div>
