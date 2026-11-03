@@ -1,9 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Icon from '@/components/ui/AppIcon';
 import AppLogo from '@/components/ui/AppLogo';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { MODULE_ROUTES } from './dashboardConfig';
 import type { DashboardTab, SalesRep } from './dashboardTypes';
 
@@ -31,6 +32,13 @@ interface DashboardChromeProps {
   md: any;
 }
 
+const LANGUAGES = [
+  { code: 'ar', label: 'العربية' },
+  { code: 'zh', label: '中文' },
+  { code: 'tr', label: 'Türkçe' },
+  { code: 'en', label: 'English' },
+];
+
 export default function DashboardChrome({
   isModuleMode,
   isRTL,
@@ -55,6 +63,25 @@ export default function DashboardChrome({
   md,
 }: DashboardChromeProps) {
   const moduleMeta = moduleTab ? MODULE_ROUTES[moduleTab] : undefined;
+  const { language, setLanguage } = useLanguage();
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const langMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close language dropdown on outside click
+  useEffect(() => {
+    if (!langMenuOpen) return;
+    const handleClick = (e: MouseEvent | TouchEvent) => {
+      if (langMenuRef.current && !langMenuRef.current.contains(e.target as Node)) {
+        setLangMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('touchstart', handleClick);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('touchstart', handleClick);
+    };
+  }, [langMenuOpen]);
 
   return (
     <>
@@ -86,7 +113,9 @@ export default function DashboardChrome({
 
       {/* Top Nav */}
       <header className={`sticky top-0 z-50 backdrop-blur-md border-b shadow-sm ${isModuleMode ? 'bg-card/95 border-border/60' : 'bg-slate-900/95 border-slate-800'}`}>
-        <div className="max-w-7xl mx-auto px-4 md:px-6 flex items-center gap-3 h-14">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 flex items-center gap-2 sm:gap-3 h-14">
+          
+          {/* Logo & Platform Name */}
           <Link href="/" className="flex items-center gap-2 shrink-0">
             <AppLogo size={28} />
             <div className="flex flex-col leading-none">
@@ -97,6 +126,7 @@ export default function DashboardChrome({
 
           <div className="flex-1" />
 
+          {/* Sales rep badge */}
           {isSalesRep && salesRepRecord && (
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs font-semibold text-blue-700">
               <Icon name="UserGroupIcon" size={13} />
@@ -104,40 +134,96 @@ export default function DashboardChrome({
             </div>
           )}
 
-          <div className="flex items-center gap-2">
-            <div className="relative" ref={userMenuRef}>
+          {/* Action Icons & Navigation Controls */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+
+            {/* 1. زر العودة للمتجر */}
+            <Link
+              href="/"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white text-xs font-bold transition-all shadow-sm active:scale-95"
+              title="العودة للمتجر الرئيسي"
+            >
+              <Icon name="BuildingStorefrontIcon" size={16} />
+              <span className="hidden sm:inline">العودة للمتجر</span>
+            </Link>
+
+            {/* 2. أيقونة الدردشة */}
+            <Link
+              href="/chat"
+              className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                isModuleMode 
+                  ? 'text-muted-foreground hover:text-foreground hover:bg-muted' 
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+              title="الدردشة والمحادثات"
+            >
+              <Icon name="ChatBubbleLeftRightIcon" size={18} />
+            </Link>
+
+            {/* 3. أيقونة الجرس (الإشعارات) */}
+            <Link
+              href="/notifications"
+              className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors relative ${
+                isModuleMode 
+                  ? 'text-muted-foreground hover:text-foreground hover:bg-muted' 
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+              title="الإشعارات"
+            >
+              <Icon name="BellIcon" size={18} />
+            </Link>
+
+            {/* 4. أيقونة الكرة الأرضية (محدد اللغات) */}
+            <div className="relative" ref={langMenuRef}>
               <button
                 type="button"
-                onClick={() => setUserMenuOpen(!userMenuOpen)}
-                aria-haspopup="menu"
-                aria-expanded={userMenuOpen}
-                aria-label={userName}
-                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${isModuleMode ? 'text-muted-foreground hover:text-foreground hover:bg-muted' : 'text-slate-300 hover:text-white hover:bg-slate-800'}`}
+                onClick={() => setLangMenuOpen(!langMenuOpen)}
+                className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                  isModuleMode 
+                    ? 'text-muted-foreground hover:text-foreground hover:bg-muted' 
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                } ${langMenuOpen ? 'ring-2 ring-primary/40' : ''}`}
+                title="تغيير اللغة"
+                aria-label="Language Selector"
               >
-                <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
-                  {userName.charAt(0).toUpperCase()}
-                </div>
-                <span className="hidden sm:block max-w-[120px] truncate">{userName}</span>
-                <Icon name="ChevronDownIcon" size={14} />
+                <Icon name="GlobeAltIcon" size={19} />
               </button>
-              {userMenuOpen && (
-                <div role="menu" className="absolute end-0 top-full mt-1 w-52 bg-card border border-border rounded-xl shadow-lg py-1 z-50">
-                  <div className="px-4 py-2 border-b border-border">
-                    <p className="text-xs font-semibold text-foreground truncate">{userName}</p>
-                    {companyName && <p className="text-xs text-muted-foreground truncate">{companyName}</p>}
-                    <p className="text-xs text-primary font-medium mt-0.5">
-                      {isSalesRep ? md.salesRep : t.manufacturerDashboard.manufacturer}
-                    </p>
-                  </div>
-                  <Link href="/" role="menuitem" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors">
-                    <Icon name="HomeIcon" size={16} /> {t.manufacturerDashboard.backToMarketplace}
-                  </Link>
-                  <button type="button" role="menuitem" onClick={onSignOut} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors text-start">
-                    <Icon name="ArrowRightOnRectangleIcon" size={16} /> {t.manufacturerDashboard.signOut}
-                  </button>
+
+              {langMenuOpen && (
+                <div className="absolute end-0 top-full mt-2 w-36 bg-card border border-border rounded-xl shadow-xl py-1.5 z-50">
+                  {LANGUAGES.map((lang) => (
+                    <button
+                      key={lang.code}
+                      type="button"
+                      onClick={() => {
+                        setLanguage(lang.code as any);
+                        setLangMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold transition-colors ${
+                        language === lang.code
+                          ? 'bg-primary/10 text-primary font-bold'
+                          : 'text-foreground hover:bg-muted'
+                      }`}
+                    >
+                      <span>{lang.label}</span>
+                      {language === lang.code && <Icon name="CheckIcon" size={14} className="text-primary" />}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
+
+            {/* 5. زر تسجيل الخروج */}
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+              title="تسجيل الخروج"
+              aria-label="تسجيل الخروج"
+            >
+              <Icon name="ArrowRightOnRectangleIcon" size={18} />
+            </button>
+
           </div>
         </div>
       </header>
