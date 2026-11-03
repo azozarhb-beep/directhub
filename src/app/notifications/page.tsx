@@ -83,6 +83,9 @@ function localizeNotificationText(text: string, lang: string): string {
   if (!text) return '';
   if (lang === 'ar') return text;
 
+  const clean = text.trim();
+
+  // Dictionary of exact matches (including emojis)
   const dictionary: Record<string, { zh: string; tr: string; en: string }> = {
     'رسالة جديدة': {
       zh: '新消息',
@@ -93,6 +96,36 @@ function localizeNotificationText(text: string, lang: string): string {
       zh: '您的收件箱收到了一条新消息',
       tr: 'Gelen kutunuzda yeni bir mesajınız var',
       en: 'You have a new message in your inbox',
+    },
+    'تم قبول تسجيل المصنع ✅': {
+      zh: '工厂入驻审核已通过 ✅',
+      tr: 'Fabrika kaydı onaylandı ✅',
+      en: 'Factory registration approved ✅',
+    },
+    'تم قبول تسجيل المصنع': {
+      zh: '工厂入驻审核已通过',
+      tr: 'Fabrika kaydı onaylandı',
+      en: 'Factory registration approved',
+    },
+    'تهانينا! تم قبول تسجيل مصنعك. يمكنك الآن البدء في البيع': {
+      zh: '恭喜！您的工厂注册已获批准，现在可以开始入驻并销售产品。',
+      tr: 'Tebrikler! Fabrika kaydınız onaylandı. Artık satışa başlayabilirsiniz.',
+      en: 'Congratulations! Your factory registration has been approved. You can now start selling.',
+    },
+    'تم التحقق من هويتك ✅': {
+      zh: '身份实名认证已通过 ✅',
+      tr: 'Kimlik doğrulandı ✅',
+      en: 'Identity verified ✅',
+    },
+    'تم التحقق من هويتك': {
+      zh: '身份实名认证已通过',
+      tr: 'Kimlik doğrulandı',
+      en: 'Identity verified',
+    },
+    'تم التحقق من هويتك بنجاح. حسابك مفعل بالكامل': {
+      zh: '您的身份认证已成功通过，账户现已完全激活。',
+      tr: 'Kimliğiniz başarıyla doğrulandı. Hesabınız tamamen aktiftir.',
+      en: 'Your identity has been successfully verified. Your account is fully active.',
     },
     'تم استلام طلب جديد': {
       zh: '收到新订单',
@@ -114,19 +147,25 @@ function localizeNotificationText(text: string, lang: string): string {
       tr: 'Yeni RFQ Fiyat Teklifi Talebi',
       en: 'New RFQ quote request',
     },
-    'تمت الموافقة على المصنع': {
-      zh: '工厂入驻申请已获批准',
-      tr: 'Fabrika kaydı onaylandı',
-      en: 'Factory registration approved',
-    },
   };
 
-  const clean = text.trim();
   if (dictionary[clean]) {
     return dictionary[clean][lang as 'zh' | 'tr' | 'en'] || clean;
   }
 
-  // Partial match fallback for dynamic message previews
+  // Fallback pattern matches
+  if (clean.includes('قبول تسجيل المصنع') || clean.includes('تسجيل مصنعك')) {
+    if (lang === 'zh') return clean.includes('تهانينا') ? '恭喜！您的工厂注册已获批准，现在可以开始入驻并销售产品。' : '工厂入驻审核已通过 ✅';
+    if (lang === 'tr') return clean.includes('تهانينا') ? 'Tebrikler! Fabrika kaydınız onaylandı. Artık satışa başlayabilirsiniz.' : 'Fabrika kaydı onaylandı ✅';
+    if (lang === 'en') return clean.includes('تهانينا') ? 'Congratulations! Your factory registration has been approved. You can now start selling.' : 'Factory registration approved ✅';
+  }
+
+  if (clean.includes('التحقق من هويتك')) {
+    if (lang === 'zh') return clean.includes('بنجاح') ? '您的身份认证已成功通过，账户现已完全激活。' : '身份实名认证已通过 ✅';
+    if (lang === 'tr') return clean.includes('بنجاح') ? 'Kimliğiniz başarıyla doğrulandı. Hesabınız tamamen aktiftir.' : 'Kimlik doğrulandı ✅';
+    if (lang === 'en') return clean.includes('بنجاح') ? 'Your identity has been successfully verified. Your account is fully active.' : 'Identity verified ✅';
+  }
+
   if (clean.includes('لديك رسالة جديدة')) {
     if (lang === 'zh') return '您的收件箱收到了一条新消息';
     if (lang === 'tr') return 'Gelen kutunuzda yeni bir mesajınız var';
