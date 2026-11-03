@@ -22,8 +22,16 @@ interface Movement {
   created_at: string;
 }
 
+const CURRENCY_LABELS: Record<string, string> = {
+  YER_SANAA: 'ر.ي (صنعاء - طبعة قديمة)',
+  YER_ADEN: 'ر.ي (عدن - طبعة جديدة)',
+  YER: 'ر.ي (صنعاء)',
+  USD: 'دولار أمريكي ($ USD)',
+  SAR: 'ريال سعودي (SAR)',
+};
+
 const inputClass =
-  'w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-amber-500';
+  'w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 transition-colors';
 
 export default function MaterialDetailsDrawer({ item, onClose, onChanged }: MaterialDetailsDrawerProps) {
   const supabase = createClient();
@@ -43,16 +51,29 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [coaFile, setCoaFile] = useState<File | null>(null);
   const [current, setCurrent] = useState<any | null>(item);
+
   const [form, setForm] = useState({
     material_name: '',
     material_name_ar: '',
     material_code: '',
     unit_cost: '',
+    currency: 'YER_SANAA',
     warehouse_location: '',
     reorder_level: '',
     supplier_name: '',
     batch_number: '',
   });
+
+  const formatCurrency = (amount?: number | null, cur?: string | null) => {
+    if (amount == null) return '—';
+    const c = String(cur || 'YER_SANAA').toUpperCase();
+    const symbol =
+      c === 'YER_SANAA' || c === 'YER' ? 'ر.ي (صنعاء)' :
+      c === 'YER_ADEN' ? 'ر.ي (عدن)' :
+      c === 'SAR' ? 'ر.س' :
+      c === 'USD' ? '$' : c;
+    return `${Number(amount).toLocaleString('en-US')} ${symbol}`;
+  };
 
   const syncForm = (it: any) =>
     setForm({
@@ -60,6 +81,7 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
       material_name_ar: it?.material_name_ar || '',
       material_code: it?.material_code || '',
       unit_cost: it?.unit_cost != null ? String(it.unit_cost) : '',
+      currency: it?.currency || 'YER_SANAA',
       warehouse_location: it?.warehouse_location || '',
       reorder_level: it?.reorder_level != null ? String(it.reorder_level) : '',
       supplier_name: it?.supplier_name || '',
@@ -81,8 +103,7 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
     } finally {
       setLoadingMoves(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
     setCurrent(item);
@@ -125,7 +146,7 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
       return;
     }
     if (adjustMode === 'out' && amount > qty) {
-      setError(L('الكمية المصروفة أكبر من المتاح', 'Quantity exceeds available stock'));
+      setError(L('الكمية المصروفة أكبر من الرصيد المتوفر في المخزن', 'Quantity exceeds available stock'));
       return;
     }
     setBusy(true);
@@ -137,21 +158,23 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
         .update({ quantity_available: newBalance })
         .eq('id', current.id);
       if (upErr) throw upErr;
+
       const { error: mvErr } = await supabase.from('inventory_movements').insert({
         item_id: current.id,
         manufacturer_id: user.id,
         movement_type: adjustMode === 'in' ? 'purchased' : 'consumed',
         quantity: amount,
         balance_after: newBalance,
-        reference: adjustRef.trim() || null,
+        reference: adjustRef.trim() || (adjustMode === 'in' ? 'توريد مخزني جديد' : 'صرف لخط الإنتاج والتصنيع'),
       });
       if (mvErr) throw mvErr;
+
       setAdjustMode(null);
       setAdjustQty('');
       setAdjustRef('');
       await refresh();
     } catch (e: any) {
-      setError(e?.message || L('فشل تحديث المخزون', 'Failed to update stock'));
+      setError(e?.message || L('فشل تحديث حركة المخزون', 'Failed to update stock'));
     } finally {
       setBusy(false);
     }
@@ -181,6 +204,7 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
         material_name_ar: form.material_name_ar.trim() || null,
         material_code: form.material_code.trim() || null,
         unit_cost: costVal,
+        currency: form.currency,
         warehouse_location: form.warehouse_location.trim() || null,
         reorder_level: reorderVal,
         supplier_name: form.supplier_name.trim() || null,
@@ -226,7 +250,7 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
 
   const fmtDate = (iso: string) => {
     try {
-      return new Date(iso).toLocaleString(isAr ? 'ar' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+      return new Date(iso).toLocaleString(isAr ? 'ar-SA' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
     } catch {
       return iso;
     }
@@ -235,21 +259,22 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
   const name = current.material_name_ar || current.material_name;
 
   return (
-    <div className="fixed inset-0 z-[100] flex justify-end bg-black/60" onClick={onClose} role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[100] flex justify-end bg-black/60 backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true">
       <div
-        className="bg-card border-l border-border w-full max-w-lg h-full overflow-y-auto"
+        className="bg-card border-l border-border w-full max-w-lg h-full overflow-y-auto shadow-2xl"
         dir={isAr ? 'rtl' : 'ltr'}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-card z-10">
           <div className="min-w-0">
             <h3 className="text-base font-bold text-foreground truncate">{name}</h3>
-            <p className="text-xs text-muted-foreground">{L('إدارة المادة', 'Material management')}</p>
+            <p className="text-xs text-muted-foreground">{L('إدارة حركة المخزون وخطوط الإنتاج', 'Stock & Production Movement')}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
+            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground transition-colors"
             aria-label={L('إغلاق', 'Close')}
           >
             <Icon name="XMarkIcon" size={20} />
@@ -258,40 +283,41 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
 
         <div className="p-5 space-y-5">
           {/* Stock summary */}
-          <div className="rounded-xl border border-border p-4 bg-background">
+          <div className="rounded-2xl border border-border p-4 bg-muted/30">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <p className="text-xs text-muted-foreground">{L('الكمية المتاحة', 'Available quantity')}</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {qty} <span className="text-sm font-medium">{current.unit}</span>
+                <p className="text-xs font-semibold text-muted-foreground">{L('الرصيد الفعلي بالمخزن', 'Available stock')}</p>
+                <p className="text-2xl font-black text-foreground mt-0.5">
+                  {qty.toLocaleString('en-US')} <span className="text-xs font-bold text-primary">{current.unit}</span>
                 </p>
               </div>
               <span
-                className={`text-xs px-2.5 py-1 rounded-full font-semibold ${
+                className={`text-xs px-2.5 py-1 rounded-full font-bold border ${
                   qty <= 0
-                    ? 'bg-red-100 text-red-600'
+                    ? 'bg-red-50 text-red-700 border-red-200'
                     : isLow
-                    ? 'bg-amber-100 text-amber-700' :'bg-green-100 text-green-700'
+                    ? 'bg-amber-50 text-amber-800 border-amber-300'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                 }`}
               >
                 {qty <= 0
-                  ? L('نفد', 'Out')
+                  ? L('نفد المخزون', 'Out of Stock')
                   : isLow
-                  ? L('⚠️ منخفض / إعادة طلب', '⚠️ Low / Reorder')
-                  : L('متوفر', 'Available')}
+                  ? L('⚠️ تنبيه: إعادة طلب', '⚠️ Reorder Alert')
+                  : L('متوفر كافي', 'Available')}
               </span>
             </div>
             {reorder != null && (
-              <p className="text-xs text-muted-foreground mt-2">
-                {L('حد إعادة الطلب:', 'Reorder threshold:')}{' '}
+              <p className="text-xs text-muted-foreground mt-2 pt-2 border-t border-border/60">
+                {L('الحد الأدنى للتنبيه:', 'Reorder threshold:')}{' '}
                 <strong className="text-foreground">
-                  {reorder} {current.unit}
+                  {reorder.toLocaleString('en-US')} {current.unit}
                 </strong>
               </p>
             )}
           </div>
 
-          {/* Quick adjust */}
+          {/* Quick adjust (Stock in / Stock out to production) */}
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -300,11 +326,11 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
                   setAdjustMode(adjustMode === 'in' ? null : 'in');
                   setError('');
                 }}
-                className={`px-3 py-2.5 rounded-lg text-sm font-semibold border transition-colors ${
-                  adjustMode === 'in' ?'bg-green-600 text-white border-green-600' :'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                className={`px-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold border transition-all ${
+                  adjustMode === 'in' ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                 }`}
               >
-                + {L('توريد مخزون جديد', 'Stock In')}
+                + {L('توريد خامات جديدة', 'Stock In')}
               </button>
               <button
                 type="button"
@@ -312,22 +338,25 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
                   setAdjustMode(adjustMode === 'out' ? null : 'out');
                   setError('');
                 }}
-                className={`px-3 py-2.5 rounded-lg text-sm font-semibold border transition-colors ${
-                  adjustMode === 'out' ?'bg-red-600 text-white border-red-600' :'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                className={`px-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold border transition-all ${
+                  adjustMode === 'out' ? 'bg-red-600 text-white border-red-600 shadow-sm' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
                 }`}
               >
-                − {L('صرف للإنتاج', 'Stock Out')}
+                − {L('صرف لخط الإنتاج', 'Dispense to Line')}
               </button>
             </div>
             {adjustMode && (
-              <div className="rounded-xl border border-border p-3 space-y-2 bg-background">
+              <div className="rounded-xl border border-border p-3.5 space-y-2.5 bg-card shadow-sm">
+                <label className="block text-xs font-bold text-foreground">
+                  {adjustMode === 'in' ? L('الكمية الواردة للمخزن', 'Quantity In') : L('الكمية المصروفة للتشغيل والتصنيع', 'Quantity Out')} ({current.unit})
+                </label>
                 <input
                   type="number"
                   min="0"
                   step="any"
                   value={adjustQty}
                   onChange={(e) => setAdjustQty(e.target.value)}
-                  placeholder={`${L('الكمية', 'Quantity')} (${current.unit})`}
+                  placeholder={`أدخل الكمية بـ (${current.unit})`}
                   className={inputClass}
                 />
                 <input
@@ -335,8 +364,9 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
                   value={adjustRef}
                   onChange={(e) => setAdjustRef(e.target.value)}
                   placeholder={
-                    adjustMode === 'in' ? L('مرجع التوريد / رقم الفاتورة (اختياري)', 'Purchase ref / invoice no. (optional)')
-                      : L('خط الإنتاج / أمر التصنيع (اختياري)', 'Production line / order (optional)')
+                    adjustMode === 'in'
+                      ? L('رقم فاتورة الشراء / المورد / الشحنة (اختياري)', 'Invoice / Supplier / Batch ref')
+                      : L('أمر التشغيل / خط الإنتاج / رقم الـ Batch (اختياري)', 'Production work order / line / batch')
                   }
                   className={inputClass}
                 />
@@ -344,22 +374,25 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
                   type="button"
                   disabled={busy}
                   onClick={handleAdjust}
-                  className="w-full px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold disabled:opacity-60"
+                  className="w-full h-10 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm font-bold disabled:opacity-60 transition-colors shadow-sm"
                 >
-                  {busy ? L('جارٍ الحفظ...', 'Saving...') : L('تأكيد', 'Confirm')}
+                  {busy ? L('جارٍ التأكيد...', 'Saving...') : L('تأكيد وتسجيل الحركة في السجل', 'Confirm Movement')}
                 </button>
               </div>
             )}
           </div>
 
           {error && (
-            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
+            <div className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 flex items-center gap-1.5">
+              <Icon name="ExclamationCircleIcon" size={15} />
+              {error}
+            </div>
           )}
 
           {/* Supplier & spec details */}
-          <div className="rounded-xl border border-border p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-bold text-foreground">{L('تفاصيل المورد والمواصفات', 'Supplier & spec details')}</h4>
+          <div className="rounded-2xl border border-border p-4 space-y-3 bg-card shadow-sm">
+            <div className="flex items-center justify-between border-b border-border pb-2.5">
+              <h4 className="text-xs sm:text-sm font-bold text-foreground">{L('بيانات التكلفة والموقع والمواصفات', 'Cost, Location & Specs')}</h4>
               {!editing && (
                 <button
                   type="button"
@@ -368,9 +401,10 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
                     setEditing(true);
                     setError('');
                   }}
-                  className="text-xs font-semibold text-amber-600 hover:text-amber-700"
+                  className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1"
                 >
-                  {L('تعديل المادة', 'Edit')}
+                  <Icon name="PencilSquareIcon" size={13} />
+                  {L('تعديل البيانات', 'Edit')}
                 </button>
               )}
             </div>
@@ -379,7 +413,7 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
               <div className="space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{L('الاسم (عربي)', 'Name (Arabic)')}</label>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{L('الاسم (عربي) *', 'Name (Arabic) *')}</label>
                     <input dir="rtl" className={inputClass} value={form.material_name_ar} onChange={(e) => setForm({ ...form, material_name_ar: e.target.value })} />
                   </div>
                   <div>
@@ -387,16 +421,28 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
                     <input dir="ltr" className={inputClass} value={form.material_name} onChange={(e) => setForm({ ...form, material_name: e.target.value })} />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{L('كود المادة', 'Material code')}</label>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{L('كود المادة (SKU)', 'Material code')}</label>
                     <input dir="ltr" className={inputClass} value={form.material_code} onChange={(e) => setForm({ ...form, material_code: e.target.value })} />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{L('موقع التخزين', 'Warehouse')}</label>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{L('موقع التخزين / المستودع', 'Warehouse')}</label>
                     <input className={inputClass} value={form.warehouse_location} onChange={(e) => setForm({ ...form, warehouse_location: e.target.value })} />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{L('سعر التكلفة', 'Unit cost')}</label>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{L('سعر تكلفة الوحدة', 'Unit cost')}</label>
                     <input type="number" min="0" step="any" className={inputClass} value={form.unit_cost} onChange={(e) => setForm({ ...form, unit_cost: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{L('عملة التكلفة', 'Cost Currency')}</label>
+                    <select
+                      className={inputClass}
+                      value={form.currency}
+                      onChange={(e) => setForm({ ...form, currency: e.target.value })}
+                    >
+                      {Object.entries(CURRENCY_LABELS).map(([val, lbl]) => (
+                        <option key={val} value={val}>{lbl}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-muted-foreground mb-1">
@@ -408,26 +454,26 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
                     <label className="block text-xs font-semibold text-muted-foreground mb-1">{L('اسم المورد', 'Supplier name')}</label>
                     <input className={inputClass} value={form.supplier_name} onChange={(e) => setForm({ ...form, supplier_name: e.target.value })} />
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{L('رقم الدفعة (Batch)', 'Batch number')}</label>
-                    <input dir="ltr" className={inputClass} value={form.batch_number} onChange={(e) => setForm({ ...form, batch_number: e.target.value })} />
-                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">{L('رقم الدفعة (Batch Number)', 'Batch number')}</label>
+                  <input dir="ltr" className={inputClass} value={form.batch_number} onChange={(e) => setForm({ ...form, batch_number: e.target.value })} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-muted-foreground mb-1">
-                    {L('شهادة التحليل (COA)', 'Certificate of Analysis (COA)')}
+                    {L('شهادة التحليل / الفحص (COA)', 'Certificate of Analysis (COA)')}
                   </label>
                   <input
                     type="file"
                     accept="application/pdf,image/jpeg,image/png,image/webp"
                     onChange={(e) => setCoaFile(e.target.files?.[0] || null)}
-                    className="block w-full text-xs text-muted-foreground file:mr-3 file:rtl:ml-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-amber-500 file:text-white file:text-xs file:font-semibold"
+                    className="block w-full text-xs text-muted-foreground file:mr-3 file:rtl:ml-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-amber-600 file:text-white file:text-xs file:font-bold"
                   />
                   {current.coa_name && !coaFile && (
-                    <p className="text-[11px] text-muted-foreground mt-1">{L('الملف الحالي:', 'Current file:')} {current.coa_name}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">{L('الملف المرفق حالياً:', 'Current file:')} {current.coa_name}</p>
                   )}
                 </div>
-                <div className="flex items-center justify-end gap-2">
+                <div className="flex items-center justify-end gap-2 pt-2">
                   <button
                     type="button"
                     disabled={busy}
@@ -436,7 +482,7 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
                       setCoaFile(null);
                       setError('');
                     }}
-                    className="px-4 py-2 rounded-lg border border-border text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50"
+                    className="px-4 py-2 rounded-lg border border-border text-xs sm:text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50"
                   >
                     {L('إلغاء', 'Cancel')}
                   </button>
@@ -444,91 +490,84 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
                     type="button"
                     disabled={busy}
                     onClick={handleSaveEdit}
-                    className="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold disabled:opacity-60"
+                    className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm font-bold disabled:opacity-60 transition-colors shadow-sm"
                   >
-                    {busy ? L('جارٍ الحفظ...', 'Saving...') : L('حفظ', 'Save')}
+                    {busy ? L('جارٍ الحفظ...', 'Saving...') : L('حفظ التعديلات', 'Save')}
                   </button>
                 </div>
               </div>
             ) : (
               <dl className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <dt className="text-muted-foreground">{L('المورد', 'Supplier')}</dt>
-                  <dd className="font-semibold text-foreground">{current.supplier_name || '—'}</dd>
+                <div className="bg-muted/30 p-2.5 rounded-xl">
+                  <dt className="text-muted-foreground mb-0.5">{L('تكلفة شراء الوحدة', 'Unit cost')}</dt>
+                  <dd className="font-bold text-primary">{formatCurrency(current.unit_cost, current.currency)}</dd>
                 </div>
-                <div>
-                  <dt className="text-muted-foreground">{L('رقم الدفعة', 'Batch no.')}</dt>
-                  <dd className="font-semibold text-foreground" dir="ltr">{current.batch_number || '—'}</dd>
+                <div className="bg-muted/30 p-2.5 rounded-xl">
+                  <dt className="text-muted-foreground mb-0.5">{L('موقع التخزين والمستودع', 'Warehouse')}</dt>
+                  <dd className="font-bold text-foreground">{current.warehouse_location || '—'}</dd>
                 </div>
-                <div>
-                  <dt className="text-muted-foreground">{L('كود المادة', 'Code')}</dt>
-                  <dd className="font-semibold text-foreground" dir="ltr">{current.material_code || '—'}</dd>
+                <div className="bg-muted/30 p-2.5 rounded-xl">
+                  <dt className="text-muted-foreground mb-0.5">{L('المورد المسجل', 'Supplier')}</dt>
+                  <dd className="font-bold text-foreground">{current.supplier_name || '—'}</dd>
                 </div>
-                <div>
-                  <dt className="text-muted-foreground">{L('موقع التخزين', 'Warehouse')}</dt>
-                  <dd className="font-semibold text-foreground">{current.warehouse_location || '—'}</dd>
+                <div className="bg-muted/30 p-2.5 rounded-xl">
+                  <dt className="text-muted-foreground mb-0.5">{L('رقم الدفعة (Batch)', 'Batch no.')}</dt>
+                  <dd className="font-mono font-bold text-foreground" dir="ltr">{current.batch_number || '—'}</dd>
                 </div>
-                <div>
-                  <dt className="text-muted-foreground">{L('التكلفة', 'Unit cost')}</dt>
-                  <dd className="font-semibold text-foreground">
-                    {current.unit_cost != null ? `${current.unit_cost} ${current.currency || 'USD'}` : '—'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">{L('شهادة التحليل (COA)', 'COA')}</dt>
-                  <dd className="font-semibold text-foreground">
-                    {current.coa_url ? (
-                      <a
-                        href={current.coa_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-amber-600 hover:underline break-all"
-                      >
-                        {current.coa_name || L('عرض الملف', 'View file')}
-                      </a>
-                    ) : (
-                      '—'
-                    )}
-                  </dd>
-                </div>
+                {current.coa_url && (
+                  <div className="col-span-2 bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-800">{L('شهادة الفحص المخبري (COA)', 'COA Document')}</span>
+                    <a
+                      href={current.coa_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-bold text-emerald-700 hover:underline flex items-center gap-1"
+                    >
+                      <Icon name="DocumentArrowDownIcon" size={14} />
+                      {current.coa_name || L('تحميل الملف', 'Download')}
+                    </a>
+                  </div>
+                )}
               </dl>
             )}
           </div>
 
           {/* Movement history */}
-          <div className="rounded-xl border border-border p-4">
-            <h4 className="text-sm font-bold text-foreground mb-3">{L('سجل حركة المخزون', 'Stock movement history')}</h4>
+          <div className="rounded-2xl border border-border p-4 bg-card shadow-sm">
+            <h4 className="text-xs sm:text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+              <Icon name="ClockIcon" size={16} className="text-amber-600" />
+              {L('سجل حركات التوريد والصرف للإنتاج', 'Movement & Consumption Log')}
+            </h4>
             {loadingMoves ? (
               <div className="flex justify-center py-6">
                 <div className="w-6 h-6 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
               </div>
             ) : movements.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-4">
-                {L('لا توجد حركات مسجلة بعد', 'No movements recorded yet')}
+                {L('لا توجد حركات توريد أو صرف مسجلة بعد', 'No movements recorded yet')}
               </p>
             ) : (
               <ul className="space-y-2">
                 {movements.map((m) => {
                   const inbound = m.movement_type === 'purchased' || m.movement_type === 'received';
                   return (
-                    <li key={m.id} className="flex items-start justify-between gap-3 rounded-lg bg-background border border-border px-3 py-2">
+                    <li key={m.id} className="flex items-start justify-between gap-3 rounded-xl bg-muted/30 border border-border/80 px-3 py-2.5">
                       <div className="min-w-0">
-                        <p className={`text-xs font-semibold ${inbound ? 'text-green-700' : 'text-red-600'}`}>
+                        <p className={`text-xs font-bold ${inbound ? 'text-emerald-700' : 'text-red-600'}`}>
                           {inbound
-                            ? L('توريد / استلام', 'Purchased / Received')
-                            : L('صرف لخطوط الإنتاج', 'Consumed by Production Lines')}
+                            ? L('📥 توريد خام للمخزن', 'Stock Received')
+                            : L('📤 صرف لخط الإنتاج والتصنيع', 'Issued to Production')}
                         </p>
-                        {m.reference && <p className="text-[11px] text-muted-foreground truncate">{m.reference}</p>}
-                        <p className="text-[11px] text-muted-foreground">{fmtDate(m.created_at)}</p>
+                        {m.reference && <p className="text-[11px] font-semibold text-foreground/80 truncate mt-0.5">{m.reference}</p>}
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{fmtDate(m.created_at)}</p>
                       </div>
-                      <div className="text-end shrink-0">
-                        <p className={`text-sm font-bold ${inbound ? 'text-green-700' : 'text-red-600'}`} dir="ltr">
-                          {inbound ? '+' : '−'}
-                          {Number(m.quantity)} {current.unit}
+                      <div className="text-left shrink-0">
+                        <p className={`text-sm font-black ${inbound ? 'text-emerald-700' : 'text-red-600'}`} dir="ltr">
+                          {inbound ? '+' : '−'}{Number(m.quantity).toLocaleString('en-US')} {current.unit}
                         </p>
                         {m.balance_after != null && (
-                          <p className="text-[11px] text-muted-foreground" dir="ltr">
-                            = {Number(m.balance_after)}
+                          <p className="text-[10px] text-muted-foreground font-medium" dir="ltr">
+                            الرصيد: {Number(m.balance_after).toLocaleString('en-US')}
                           </p>
                         )}
                       </div>
@@ -539,18 +578,18 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
             )}
           </div>
 
-          {/* Delete */}
-          <div className="flex items-center justify-between gap-2 pt-1">
+          {/* Delete Action */}
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
             {confirmDelete ? (
-              <div className="flex items-center gap-2 w-full">
-                <p className="text-xs text-red-600 flex-1">
-                  {L('سيتم حذف المادة وسجل حركتها نهائياً. هل أنت متأكد؟', 'This permanently deletes the material and its history. Are you sure?')}
+              <div className="flex items-center gap-2 w-full bg-red-50 p-2.5 rounded-xl border border-red-200">
+                <p className="text-xs text-red-700 flex-1 font-bold">
+                  {L('سيتم حذف المادة وكامل سجل حركاتها نهائياً!', 'Confirm permanent deletion?')}
                 </p>
                 <button
                   type="button"
                   disabled={busy}
                   onClick={() => setConfirmDelete(false)}
-                  className="px-3 py-2 rounded-lg border border-border text-xs font-semibold text-foreground hover:bg-muted"
+                  className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-foreground hover:bg-muted"
                 >
                   {L('إلغاء', 'Cancel')}
                 </button>
@@ -558,19 +597,19 @@ export default function MaterialDetailsDrawer({ item, onClose, onChanged }: Mate
                   type="button"
                   disabled={busy}
                   onClick={handleDelete}
-                  className="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold disabled:opacity-60"
+                  className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold disabled:opacity-60"
                 >
-                  {L('تأكيد الحذف', 'Confirm delete')}
+                  {L('نعم، احذف', 'Delete')}
                 </button>
               </div>
             ) : (
               <button
                 type="button"
                 onClick={() => setConfirmDelete(true)}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-sm font-semibold"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold transition-colors"
               >
-                <Icon name="TrashIcon" size={16} />
-                {L('حذف', 'Delete')}
+                <Icon name="TrashIcon" size={15} />
+                {L('حذف الصنف من المخزن', 'Delete Material')}
               </button>
             )}
           </div>
