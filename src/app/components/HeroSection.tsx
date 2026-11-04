@@ -5,9 +5,11 @@ import Link from 'next/link';
 import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 
+const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=1920&auto=format&fit=crop&q=90';
+
 const slides = [
   {
-    // الآلات وخطوط الإنتاج - إضاءة نهارية عالية
+    // 1. الآلات وخطوط الإنتاج - مضيئة ونهارية
     src: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=1920&auto=format&fit=crop&q=90',
     alt: 'Smart Factory & Industrial Robotics',
     sectorAr: 'الآلات وخطوط الإنتاج',
@@ -20,7 +22,7 @@ const slides = [
     subEn: 'Source industrial machinery directly from global manufacturers at factory rates.',
   },
   {
-    // الشحن البحري واللوجستيات - إضاءة نهارية وموانئ مفتوحة
+    // 2. الشحن واللوجستيات - ميناء نهاري مشرق
     src: 'https://images.unsplash.com/photo-1578575437130-527eed3abbec?w=1920&auto=format&fit=crop&q=90',
     alt: 'Global Ocean Freight Port & Logistics',
     sectorAr: 'الشحن واللوجستيات الدولية',
@@ -33,8 +35,8 @@ const slides = [
     subEn: 'Full container (FCL) & consolidated (LCL) freight with certified customs clearance.',
   },
   {
-    // المعادن والصلب والمواد الخام
-    src: 'https://images.unsplash.com/photo-1504917599217-d4dc5ebe6122?w=1920&auto=format&fit=crop&q=90',
+    // 3. المعادن والصلب - منشأة صلب نهارية ساطعة ومضمونة التحميل
+    src: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=1920&auto=format&fit=crop&q=90',
     alt: 'Industrial Steel & Heavy Manufacturing',
     sectorAr: 'المعادن والمواد الخام',
     sectorEn: 'Metals & Raw Materials',
@@ -46,8 +48,8 @@ const slides = [
     subEn: 'Bulk raw material supply contracts directly from primary steel & metal mills.',
   },
   {
-    // التصنيع المباشر والمصانع المعتمدة
-    src: 'https://images.unsplash.com/photo-1581092335397-9583fe92d232?w=1920&auto=format&fit=crop&q=90',
+    // 4. التقنية والتصنيع الذكي - تصنيع إلكترونيات ومكونات عالية الإضاءة
+    src: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=1920&auto=format&fit=crop&q=90',
     alt: 'High-Tech Precision Assembly',
     sectorAr: 'التقنية والتصنيع الذكي',
     sectorEn: 'Smart Electronics Assembly',
@@ -59,7 +61,7 @@ const slides = [
     subEn: 'Connect directly with verified manufacturers worldwide with transparent factory MOQ pricing.',
   },
   {
-    // المستودعات والتوزيع الذكي
+    // 5. المستودعات وحلول التوزيع - مستودع نهاري مضيء
     src: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=1920&auto=format&fit=crop&q=90',
     alt: 'Modern Logistics & Warehousing Hub',
     sectorAr: 'المستودعات وحلول التوزيع',
@@ -77,7 +79,6 @@ const INTERVAL_MS = 6000;
 
 const HeroSection: React.FC = () => {
   const [current, setCurrent] = useState(0);
-  const [loaded, setLoaded] = useState<boolean[]>(slides.map((_, i) => i === 0));
   const { t, language, isRTL } = useLanguage();
 
   const getSlideData = (slide: (typeof slides)[0]) => {
@@ -96,16 +97,6 @@ const HeroSection: React.FC = () => {
     return () => clearInterval(timer);
   }, [next]);
 
-  useEffect(() => {
-    const nextIdx = (current + 1) % slides.length;
-    setLoaded((prev) => {
-      if (prev[nextIdx]) return prev;
-      const updated = [...prev];
-      updated[nextIdx] = true;
-      return updated;
-    });
-  }, [current]);
-
   const activeData = getSlideData(slides[current]);
 
   return (
@@ -115,34 +106,36 @@ const HeroSection: React.FC = () => {
       aria-label="DirectHub hero"
       dir={isRTL ? 'rtl' : 'ltr'}
     >
-      {/* خلفيات السلايدر المضيئة والمتحركة بدقة عالية */}
+      {/* خلفيات السلايدر مع صمام أمان ضد أي شاشة سوداء */}
       <div className="absolute inset-0 z-0">
-        {slides.map((slide, idx) =>
-          loaded[idx] ? (
-            <div
-              key={idx}
-              className="absolute inset-0 transition-opacity duration-1000 ease-in-out"
-              style={{ opacity: idx === current ? 1 : 0 }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={slide.src}
-                alt={slide.alt}
-                className={`w-full h-full object-cover object-center transition-transform duration-[7000ms] ease-out ${
-                  idx === current ? 'scale-105' : 'scale-100'
-                }`}
-                loading={idx === 0 ? 'eager' : 'lazy'}
-              />
-            </div>
-          ) : null
-        )}
+        {slides.map((slide, idx) => (
+          <div
+            key={idx}
+            className="absolute inset-0 transition-opacity duration-1000 ease-in-out"
+            style={{ opacity: idx === current ? 1 : 0 }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={slide.src}
+              alt={slide.alt}
+              className={`w-full h-full object-cover object-center transition-transform duration-[7000ms] ease-out ${
+                idx === current ? 'scale-105' : 'scale-100'
+              }`}
+              loading={idx === 0 ? 'eager' : 'lazy'}
+              onError={(e) => {
+                // إذا تعثرت الصورة لأي سبب يتم جلب الصورة المضيئة المضمونة فوراً
+                e.currentTarget.src = FALLBACK_IMAGE;
+              }}
+            />
+          </div>
+        ))}
 
-        {/* تدرج خفيف وشفاف يبرز جمال الصور ويحفظ وضوح النصوص */}
+        {/* تدرج خفيف وشفاف يُبرز صور المصانع ويضمن وضوح النصوص */}
         <div className="absolute inset-0 bg-black/35" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/30" />
       </div>
 
-      {/* المحتوى والنصوص الحركية التفاعلية */}
+      {/* المحتوى والنصوص الحركية */}
       <div
         className="relative z-10 flex flex-col items-center justify-center text-center w-full px-4 sm:px-6 md:px-8"
         style={{
@@ -151,7 +144,7 @@ const HeroSection: React.FC = () => {
           paddingBottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))',
         }}
       >
-        {/* شارة القطاع التفاعلية */}
+        {/* شارة القطاع */}
         <div className="mb-3.5 flex items-center gap-2 px-3.5 py-1.5 bg-black/40 backdrop-blur-md rounded-full border border-white/20 shadow-lg">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           <span className="text-white text-xs font-semibold tracking-wide">
@@ -159,12 +152,12 @@ const HeroSection: React.FC = () => {
           </span>
         </div>
 
-        {/* العنوان الرئيسي — يتغير بسلاسة مع كل صورة */}
+        {/* العنوان الرئيسي المتحرك */}
         <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white leading-tight mb-3 max-w-4xl tracking-tight drop-shadow-lg transition-all duration-500">
           {activeData.title}
         </h1>
 
-        {/* الوصف — يتغير مع كل صورة */}
+        {/* الوصف المتحرك */}
         <p className="text-white/90 text-xs sm:text-base md:text-lg max-w-2xl mb-7 leading-relaxed font-medium drop-shadow-md transition-all duration-500">
           {activeData.sub}
         </p>
@@ -230,7 +223,7 @@ const HeroSection: React.FC = () => {
           ))}
         </div>
 
-        {/* مؤشرات التبديل التلقائي */}
+        {/* مؤشرات التبديل */}
         <div className="absolute bottom-5 flex items-center gap-1.5">
           {slides.map((_, idx) => (
             <button
