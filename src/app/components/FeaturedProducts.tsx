@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import Link from 'next/link';
 
 import Icon from '@/components/ui/AppIcon';
@@ -9,6 +9,8 @@ import { useSourcingFilter, SourcingTab } from '@/contexts/SourcingFilterContext
 import { useLanguage } from '@/contexts/LanguageContext';
 import MarketplaceProductCard from '@/components/MarketplaceProductCard';
 import { pickFactoryName } from '@/lib/catalogDisplay';
+
+const YEMEN_IDENTIFIERS = ['ye', 'yemen', 'اليمن', 'صنعاء', 'عدن'];
 
 interface Product {
   id: string;
@@ -69,7 +71,7 @@ const ProductCard: React.FC<{ product: Product; index: number; isInternational?:
           seller_badge: product.seller_badge,
           company_name: pickFactoryName(product.user_profiles?.company_name, product.user_profiles?.full_name) || undefined,
           manufacturer_id: product.international_manufacturer_id,
-          origin_type: product.origin_type ?? (isInternational ? 'international' : 'local')
+          origin_type: isInternational ? 'international' : 'local'
         }}
         buyerMode="b2b"
         index={index}
@@ -88,7 +90,7 @@ function getTabLabel(tab: SourcingTab, ui: any): string {
 }
 
 const FeaturedProducts: React.FC = () => {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState('All');
   const supabase = createClient();
@@ -108,95 +110,74 @@ const FeaturedProducts: React.FC = () => {
   };
 
   useEffect(() => {
-    const PRODUCT_SELECT =
-      'id, name, name_ar, image_url, unit_price, tiered_pricing, minimum_order_qty, unit, origin_country, origin_type, is_active, category, seller_badge, international_manufacturer_id, user_profiles!manufacturer_products_manufacturer_id_fkey(company_name, full_name, country, role, supplier_profiles(is_verified, tier))';
-
-    const normalizeProducts = (rows: any[]): Product[] =>
-      (rows || []).map((row) => {
-        const profile = Array.isArray(row.user_profiles) ? row.user_profiles[0] : row.user_profiles;
-        const supplierRaw = profile?.supplier_profiles;
-        const supplier = Array.isArray(supplierRaw) ? supplierRaw[0] : supplierRaw;
-        return {
-          ...row,
-          user_profiles: profile ? {
-            company_name: profile.company_name,
-            full_name: profile.full_name,
-            country: profile.country,
-            role: profile.role
-          } : undefined,
-          supplier_profiles: supplier ? {
-            is_verified: !!supplier.is_verified,
-            tier: supplier.tier || 'basic'
-          } : undefined
-        } as Product;
-      });
-
     const fetchProducts = async () => {
       setLoading(true);
       try {
-        let query = supabase
+        const { data, error } = await supabase
           .from('manufacturer_products')
-          .select(PRODUCT_SELECT)
+          .select('id, name, name_ar, image_url, unit_price, tiered_pricing, minimum_order_qty, unit, origin_country, origin_type, is_active, category, seller_badge, international_manufacturer_id, user_profiles!manufacturer_products_manufacturer_id_fkey(company_name, full_name, country, role, supplier_profiles(is_verified, tier))')
           .eq('is_active', true)
           .order('created_at', { ascending: false })
-          .limit(10);
+          .limit(50);
 
-        if (activeFilter !== 'All') {
-          query = query.eq('category', activeFilter);
-        }
-
-        // تطبيق الفرز الأساسي للتبويبات
-        if (activeTab === 'local_manufacturers' || activeTab === 'local_suppliers') {
-          query = query.eq('origin_type', 'local');
-        } else if (activeTab === 'global_manufacturers') {
-          query = query.eq('origin_type', 'international');
-        }
-
-        const { data, error } = await query;
         if (error) throw error;
 
-        let result = normalizeProducts(data || []);
+        const normalized = (data || []).map((row: any) => {
+          const profile = Array.isArray(row.user_profiles) ? row.user_profiles[0] : row.user_profiles;
+          const supplierRaw = profile?.supplier_profiles;
+          const supplier = Array.isArray(supplierRaw) ? supplierRaw[0] : supplierRaw;
+          return {
+            ...row,
+            user_profiles: profile ? {
+              company_name: profile.company_name,
+              full_name: profile.full_name,
+              country: profile.country,
+              role: profile.role
+            } : undefined,
+            supplier_profiles: supplier ? {
+              is_verified: !!supplier.is_verified,
+              tier: supplier.tier || 'basic'
+            } : undefined
+          } as Product;
+        });
 
-        // إذا كان التبويب لا يحتوي على منتجات محددة، استدعِ البضائع النشطة مباشرة لضمان امتلاء الصفحة
-        if (result.length === 0) {
-          let fallbackQuery = supabase
-            .from('manufacturer_products')
-            .select(PRODUCT_SELECT)
-            .eq('is_active', true)
-            .order('created_at', { ascending: false })
-            .limit(10);
-
-          if (activeFilter !== 'All') {
-            fallbackQuery = fallbackQuery.eq('category', activeFilter);
-          }
-
-          const { data: fallbackData } = await fallbackQuery;
-          result = normalizeProducts(fallbackData || []);
-        }
-
-        setProducts(result);
-      } catch (err) {
-        // خطة طوارئ: جلب مباشر للمنتجات بدون أي قيود ربط
-        try {
-          const { data: safeData } = await supabase
-            .from('manufacturer_products')
-            .select('id, name, name_ar, image_url, unit_price, minimum_order_qty, unit, origin_country, origin_type, category, is_active')
-            .eq('is_active', true)
-            .limit(10);
-
-          setProducts((safeData as Product[]) || []);
-        } catch {
-          setProducts([]);
-        }
+        setAllProducts(normalized);
+      } catch {
+        setAllProducts([]);
       } finally {
         setLoading(false);
       }
     };
 
     fetchProducts();
-  }, [activeFilter, activeTab]);
+  }, []);
+
+  // الفرز الصارم بين المحلي والدولي
+  const displayedProducts = useMemo(() => {
+    return allProducts.filter((p) => {
+      // 1. فلتر التصنيف الصناعي
+      if (activeFilter !== 'All' && p.category !== activeFilter) {
+        return false;
+      }
+
+      const country = (p.origin_country || '').toLowerCase().trim();
+      const isYemen = YEMEN_IDENTIFIERS.includes(country);
+      const isExplicitLocal = p.origin_type === 'local';
+      const isExplicitIntl = p.origin_type === 'international' || !!p.international_manufacturer_id;
+
+      // 2. الفرز بحسب التبويب النشط
+      if (activeTab === 'global_manufacturers') {
+        // دولي: إما محدد كدولي صراحة، أو دولته ليست اليمن، وليس محلياً صريحاً
+        return isExplicitIntl || (!isYemen && !isExplicitLocal && country !== '');
+      } else {
+        // محلي (مصانع أو موردين محليين): يمني صراحة أو دولته اليمن
+        return isExplicitLocal || isYemen || (!isExplicitIntl && country === '');
+      }
+    });
+  }, [allProducts, activeFilter, activeTab]);
 
   const tabLabel = getTabLabel(activeTab, ui);
+  const isInternationalMode = activeTab === 'global_manufacturers';
 
   return (
     <section dir={dir} className="bg-background py-8 md:py-12 border-b border-border">
@@ -244,33 +225,36 @@ const FeaturedProducts: React.FC = () => {
               </div>
             ))}
           </div>
-        ) : products.length > 0 ? (
+        ) : displayedProducts.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
-            {products.map((product, index) => (
+            {displayedProducts.slice(0, 10).map((product, index) => (
               <ProductCard
                 key={product.id}
                 product={product}
                 index={index}
-                isInternational={activeTab === 'global_manufacturers' || product.origin_type === 'international'}
+                isInternational={isInternationalMode}
               />
             ))}
           </div>
         ) : (
+          /* حالة عدم وجود منتجات مطابقة في هذا التبويب تحديداً دون خلط السلع */
           <div className="flex flex-col items-center justify-center py-12 text-center bg-muted/20 border border-border/50 rounded-2xl">
             <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mb-3">
               <Icon name="CubeIcon" size={24} className="text-muted-foreground/60" />
             </div>
             <p className="text-sm font-bold text-foreground">
-              {isRTL ? 'تصفح كافة منتجات الكتالوج' : 'Browse All Catalog Products'}
+              {isInternationalMode
+                ? (isRTL ? 'لا توجد منتجات مصانع دولية مضافة في هذا التصنيف حالياً' : 'No international factory goods in this category yet')
+                : (isRTL ? 'لا توجد منتجات مصانع محلية مضافة في هذا التصنيف حالياً' : 'No local factory goods in this category yet')}
             </p>
             <p className="text-xs text-muted-foreground mt-1 mb-4">
-              {isRTL ? 'يمكنك استعراض جميع البضائع المتاحة عبر محرك البحث' : 'Explore all available goods in the marketplace'}
+              {isRTL ? 'يمكنك إنشاء طلب تسعير مخصص للمصانع وسنقوم بتوفيره فوراً' : 'Submit an RFQ and we will source it directly'}
             </p>
             <Link
-              href="/search"
-              className="px-5 py-2 bg-foreground text-background text-xs font-bold rounded-xl hover:opacity-90 transition-opacity"
+              href="/rfq/create"
+              className="px-5 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 transition-opacity"
             >
-              {isRTL ? 'تصفح الكتالوج الشامل' : 'View All Products'}
+              {isRTL ? 'إنشاء طلب تسعير (RFQ)' : 'Create RFQ'}
             </Link>
           </div>
         )}
