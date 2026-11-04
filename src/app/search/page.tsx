@@ -97,115 +97,6 @@ const COUNTRY_OPTIONS = [
 // معرّفات الجمهورية اليمنية للمنتجات المحلية
 const LOCAL_COUNTRY_IDS = ['YE', 'Yemen', 'اليمن', 'yemen', 'صنعاء', 'عدن'];
 
-// ─── Dual-Mode B2B/B2C Intent Engine ─────────────────────────────────────────
-export type SearchIntent = 'finished_product' | 'raw_material' | 'neutral';
-export type BuyerIntent = 'b2b' | 'b2c' | 'neutral';
-
-interface IntentScore {
-  searchIntent: SearchIntent;
-  buyerIntent: BuyerIntent;
-  b2bScore: number;
-  b2cScore: number;
-  confidence: 'high' | 'medium' | 'low';
-  signals: string[];
-}
-
-const B2B_SIGNALS: Array<{ pattern: string; weight: number; label: string }> = [
-  { pattern: 'bulk order', weight: 10, label: 'Bulk Order' },
-  { pattern: 'wholesale', weight: 10, label: 'Wholesale' },
-  { pattern: 'bulk buy', weight: 9, label: 'Bulk Buy' },
-  { pattern: 'bulk purchase', weight: 9, label: 'Bulk Purchase' },
-  { pattern: 'large order', weight: 8, label: 'Large Order' },
-  { pattern: 'minimum order', weight: 7, label: 'MOQ' },
-  { pattern: 'moq', weight: 7, label: 'MOQ' },
-  { pattern: 'rfq', weight: 10, label: 'RFQ' },
-  { pattern: 'procurement', weight: 9, label: 'Procurement' },
-  { pattern: 'sourcing', weight: 8, label: 'Sourcing' },
-  { pattern: 'b2b', weight: 10, label: 'B2B' },
-  { pattern: 'raw material', weight: 8, label: 'Raw Material' },
-  { pattern: 'raw materials', weight: 8, label: 'Raw Materials' },
-  { pattern: 'جملة', weight: 10, label: 'بالجملة' },
-  { pattern: 'بالجملة', weight: 10, label: 'بالجملة' },
-  { pattern: 'مصنع', weight: 7, label: 'مصنع' },
-  { pattern: 'مورد', weight: 7, label: 'مورد' },
-  { pattern: 'توريد', weight: 8, label: 'توريد' },
-  { pattern: 'استيراد', weight: 7, label: 'استيراد' },
-  { pattern: 'مواد خام', weight: 8, label: 'مواد خام' },
-  { pattern: 'طلب كميات', weight: 9, label: 'طلب كميات' },
-  { pattern: 'عروض أسعار', weight: 9, label: 'عروض أسعار' },
-];
-
-const B2C_SIGNALS: Array<{ pattern: string; weight: number; label: string }> = [
-  { pattern: 'buy one', weight: 8, label: 'Single Unit' },
-  { pattern: 'single unit', weight: 8, label: 'Single Unit' },
-  { pattern: 'retail', weight: 7, label: 'Retail' },
-  { pattern: 'personal use', weight: 9, label: 'Personal Use' },
-  { pattern: 'for home', weight: 8, label: 'Home Use' },
-  { pattern: 'one piece', weight: 7, label: 'Single Piece' },
-  { pattern: 'small quantity', weight: 7, label: 'Small Qty' },
-  { pattern: 'buy now', weight: 7, label: 'Buy Now' },
-  { pattern: 'b2c', weight: 10, label: 'B2C' },
-  { pattern: 'قطعة واحدة', weight: 8, label: 'قطعة واحدة' },
-  { pattern: 'للاستخدام الشخصي', weight: 9, label: 'استخدام شخصي' },
-  { pattern: 'سعر التجزئة', weight: 7, label: 'تجزئة' },
-];
-
-const FINISHED_PRODUCT_KEYWORDS = [
-  'finished product', 'finished goods', 'end product', 'consumer goods', 'منتج نهائي', 'مصنع منتجات', 'منتجات جاهزة'
-];
-
-const RAW_MATERIAL_KEYWORDS = [
-  'raw material', 'raw materials', 'industrial supply', 'bulk material', 'commodity',
-  'مواد خام', 'مورد مواد', 'مواد أولية', 'مدخلات إنتاج', 'مستلزمات تصنيع'
-];
-
-function analyzeSearchIntentFull(query: string): IntentScore {
-  if (!query.trim()) {
-    return { searchIntent: 'neutral', buyerIntent: 'neutral', b2bScore: 0, b2cScore: 0, confidence: 'low', signals: [] };
-  }
-
-  const lower = query.toLowerCase();
-  let b2bScore = 0;
-  const b2bSignals: string[] = [];
-  for (const sig of B2B_SIGNALS) {
-    if (lower.includes(sig.pattern.toLowerCase())) {
-      b2bScore += sig.weight;
-      if (!b2bSignals.includes(sig.label)) b2bSignals.push(sig.label);
-    }
-  }
-
-  let b2cScore = 0;
-  const b2cSignals: string[] = [];
-  for (const sig of B2C_SIGNALS) {
-    if (lower.includes(sig.pattern.toLowerCase())) {
-      b2cScore += sig.weight;
-      if (!b2cSignals.includes(sig.label)) b2cSignals.push(sig.label);
-    }
-  }
-
-  let buyerIntent: BuyerIntent = 'neutral';
-  const scoreDiff = b2bScore - b2cScore;
-  if (b2bScore === 0 && b2cScore === 0) buyerIntent = 'neutral';
-  else if (scoreDiff >= 6) buyerIntent = 'b2b';
-  else if (scoreDiff <= -6) buyerIntent = 'b2c';
-  else if (b2bScore > b2cScore) buyerIntent = 'b2b';
-  else if (b2cScore > b2bScore) buyerIntent = 'b2c';
-
-  const hasFinished = FINISHED_PRODUCT_KEYWORDS.some((kw) => lower.includes(kw.toLowerCase()));
-  const hasRaw = RAW_MATERIAL_KEYWORDS.some((kw) => lower.includes(kw.toLowerCase()));
-  let searchIntent: SearchIntent = 'neutral';
-  if (hasFinished && !hasRaw) searchIntent = 'finished_product';
-  else if (hasRaw && !hasFinished) searchIntent = 'raw_material';
-
-  const maxScore = Math.max(b2bScore, b2cScore);
-  let confidence: 'high' | 'medium' | 'low' = 'low';
-  if (maxScore >= 15) confidence = 'high';
-  else if (maxScore >= 7) confidence = 'medium';
-
-  const signals = buyerIntent === 'b2b' ? b2bSignals : buyerIntent === 'b2c' ? b2cSignals : [];
-  return { searchIntent, buyerIntent, b2bScore, b2cScore, confidence, signals };
-}
-
 // ─── Star Rating ──────────────────────────────────────────────────────────────
 const StarRating: React.FC<{ rating: number; size?: number }> = ({ rating, size = 12 }) => (
   <div className="flex items-center gap-0.5">
@@ -217,9 +108,9 @@ const StarRating: React.FC<{ rating: number; size?: number }> = ({ rating, size 
   </div>
 );
 
-// ─── Product Card (Internal Platform Routes Only) ─────────────────────────────
+// ─── Product Card ─────────────────────────────────────────────────────────────
 const ProductCard: React.FC<{ product: SearchProduct; view: 'grid' | 'list'; inStockLabel: string; buyerMode: 'b2c' | 'b2b' }> = ({ product, view, inStockLabel, buyerMode }) => {
-  const imageUrl = product.image_url || 'https://img.rocket.new/generatedImages/rocket_gen_img_1e59a0c95-1772134956918.png';
+  const imageUrl = product.image_url || 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=600&auto=format&fit=crop&q=80';
   const companyName = product.user_profiles?.company_name || product.user_profiles?.full_name || 'مصنع معتمد';
   const rating = product.rating || 4.2;
 
@@ -444,7 +335,6 @@ const FilterSidebar: React.FC<{
   sectorProducts: SectorProductOption[];
   t: any;
 }> = ({ filters, onChange, onReset, countries, activeCount, activeTab, sectors, sectorProducts, t }) => {
-  const { isRTL } = useLanguage();
   const allCountries = [...new Set([...COUNTRY_OPTIONS, ...countries])].sort();
   const fl = t.search.filterLabels;
   const st = t.search.supplierType;
@@ -563,14 +453,12 @@ function SearchResults() {
   const scopeParam = searchParams.get('scope') || searchParams.get('origin') || 'all';
   const modeParam = searchParams.get('mode') as 'b2c' | 'b2b' | null;
 
-  const [inputValue, setInputValue] = useState(queryParam);
   const [query, setQuery] = useState(queryParam);
   const [activeTab, setActiveTab] = useState<'products' | 'factories'>(tabParam);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'local' | 'global'>(
     scopeParam === 'local' ? 'local' : scopeParam === 'international' || scopeParam === 'global' ? 'global' : 'all'
   );
 
-  // جعل نمط الجملة B2B هو الافتراضي ما لم يُحدد العكس
   const [buyerMode, setBuyerMode] = useState<'b2c' | 'b2b'>(modeParam === 'b2c' ? 'b2c' : 'b2b');
 
   const [filters, setFilters] = useState<FilterState>({
@@ -593,18 +481,16 @@ function SearchResults() {
     salesModel: 'all',
   });
 
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [viewMode] = useState<'grid' | 'list'>('grid');
   const [dbProducts, setDbProducts] = useState<SearchProduct[]>([]);
   const [dbFactories, setDbFactories] = useState<SearchFactory[]>([]);
   const [dbLoading, setDbLoading] = useState(true);
   const [countries, setCountries] = useState<string[]>([]);
-  const [sectors, setSectors] = useState<SectorOption[]>([]);
-  const [sectorProducts, setSectorProducts] = useState<SectorProductOption[]>([]);
+  const [sectors] = useState<SectorOption[]>([]);
+  const [sectorProducts] = useState<SectorProductOption[]>([]);
 
   useEffect(() => {
     setQuery(queryParam);
-    setInputValue(queryParam);
   }, [queryParam]);
 
   useEffect(() => {
@@ -686,18 +572,6 @@ function SearchResults() {
     else fetchFactories();
   }, [activeTab, fetchProducts, fetchFactories]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = inputValue.trim();
-    setQuery(trimmed);
-    const params = new URLSearchParams();
-    if (trimmed) params.set('q', trimmed);
-    if (filters.category !== 'all') params.set('category', filters.category);
-    params.set('tab', activeTab);
-    params.set('mode', buyerMode);
-    router.push(`/search?${params.toString()}`);
-  };
-
   const handleFilterChange = (key: keyof FilterState, value: any) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
@@ -726,7 +600,6 @@ function SearchResults() {
     });
   };
 
-  // الفرز الدقيق بناءً على النطاق الجغرافي (اليمن مقابل الدولي)
   const productResults = useMemo(() => {
     let filtered = [...dbProducts];
 
@@ -789,26 +662,6 @@ function SearchResults() {
       <Header />
 
       <main className="max-w-7xl mx-auto px-4 md:px-6 py-5 pb-24 md:pb-10">
-        {/* Search Bar */}
-        <form onSubmit={handleSearch} className="mb-4">
-          <div className="flex items-stretch h-12 border border-border rounded-xl overflow-hidden bg-card focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30 transition-colors shadow-sm">
-            <input
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder={language === 'ar' ? 'ابحث عن منتجات، مصانع، مواد خام...' : 'Search products, factories, materials...'}
-              className="flex-1 px-4 text-sm bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none"
-            />
-            <button
-              type="submit"
-              className="shrink-0 px-5 bg-primary text-primary-foreground text-sm font-bold flex items-center gap-2 active:opacity-80 transition-opacity"
-            >
-              <Icon name="MagnifyingGlassIcon" size={16} />
-              <span>{language === 'ar' ? 'بحث' : 'Search'}</span>
-            </button>
-          </div>
-        </form>
-
         {/* Tabs: Products / Factories */}
         <div className="flex gap-1 bg-muted p-1 rounded-xl mb-4 w-fit">
           {TABS.map((tab) => (
@@ -825,7 +678,7 @@ function SearchResults() {
           ))}
         </div>
 
-        {/* ── أشرطة فرز المنشأ: الكل / محلي (اليمن) / دولي ── */}
+        {/* أشرطة فرز المنشأ: الكل / محلي (اليمن) / دولي */}
         <div className="flex items-center gap-2 mb-5 overflow-x-auto hide-scrollbar pb-1">
           {[
             {
