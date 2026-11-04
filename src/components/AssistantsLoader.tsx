@@ -1,7 +1,6 @@
 'use client';
 
 import React, { Component, ReactNode, useState, useEffect } from 'react';
-import dynamic from 'next/dynamic';
 
 // ── Safe dynamic loader that catches ChunkLoadErrors at import time ──────────
 function useSafeComponent(loader: () => Promise<{ default: React.ComponentType }>) {
@@ -30,17 +29,15 @@ function useSafeComponent(loader: () => Promise<{ default: React.ComponentType }
             window.location.replace(url.toString());
           }
         }
-        // Silently fail — component simply won't render
         if (!cancelled) setComp(null);
       });
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return Comp;
 }
 
-// ── Error boundary for any runtime errors inside the loaded components ───────
+// ── Error boundary for runtime errors ─────────────────────────────────────────
 interface BoundaryState { hasError: boolean }
 
 class ChunkErrorBoundary extends Component<{ children: ReactNode }, BoundaryState> {
@@ -64,16 +61,6 @@ class ChunkErrorBoundary extends Component<{ children: ReactNode }, BoundaryStat
 }
 
 // ── Lazy wrappers ─────────────────────────────────────────────────────────────
-function SafeDirectHubAssistant() {
-  const Comp = useSafeComponent(() => import('@/components/DirectHubAssistant'));
-  if (!Comp) return null;
-  return (
-    <ChunkErrorBoundary>
-      <Comp />
-    </ChunkErrorBoundary>
-  );
-}
-
 function SafeAmalPartnerAssistant() {
   const Comp = useSafeComponent(() => import('@/components/AmalPartnerAssistant'));
   if (!Comp) return null;
@@ -120,7 +107,7 @@ export default function AssistantsLoader() {
       <SafeVisitorTracker />
       <SafePushSubscriptionManager />
       <SafePWAInstallBanner />
-      <SafeDirectHubAssistant />
+      {/* تم الإبقاء على أمل فقط وحذف أيقونة النجمة */}
       <SafeAmalPartnerAssistant />
     </>
   );
