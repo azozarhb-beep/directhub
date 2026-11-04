@@ -9,6 +9,7 @@ import HeroSection from '@/app/components/HeroSection';
 import ShelfSlider from '@/app/components/ShelfSlider';
 import HorizontalCategoryBar from '@/app/components/HorizontalCategoryBar';
 import WelcomeTicker from '@/app/components/WelcomeTicker';
+import Icon from '@/components/ui/AppIcon';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 // Dynamic imports for optimal page load speed
@@ -229,6 +230,119 @@ function ServiceModeTabs() {
   );
 }
 
+// ── قسم الضمان التجاري وحماية المصانع والمشترين وفض النزاعات ──────────────────
+
+function TrustAndPolicySection() {
+  const { language, dir, isRTL } = useLanguage();
+  const isAr = language === 'ar';
+
+  const guarantees = [
+    {
+      id: 'buyer',
+      title: isAr ? 'حماية المشتري المعتمدة' : 'Buyer Protection',
+      subtitle: isAr ? 'أموالك مجمدة حتى استلام وفحص البضاعة' : 'Escrow payment until verified delivery',
+      desc: isAr 
+        ? 'ضمان استرداد كامل للأموال في حال عدم مطابقة المواصفات الفنية أو تأخر مواعيد التسليم التعاقدية.' 
+        : 'Full refund guarantee if technical specifications mismatch or delivery terms are breached.',
+      badge: isAr ? 'ضمان مالي 100%' : '100% Escrow',
+      icon: 'ShieldCheckIcon',
+      badgeColor: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+      href: '/terms',
+    },
+    {
+      id: 'factory',
+      title: isAr ? 'سياسة حماية المصانع' : 'Manufacturer Protection',
+      subtitle: isAr ? 'ضمان مستحقات الإنتاج وتأكيد التعاقد' : 'Guaranteed payment upon production & dispatch',
+      desc: isAr 
+        ? 'تأمين كامل لمستحقات المصنع فور شحن الطلبيات واعتماد الفحص، وحماية الملكية الصناعية للمنتجات.' 
+        : 'Secured production payout upon dispatch and technical audit, protecting factory rights.',
+      badge: isAr ? 'عقود موثقة' : 'Verified Contracts',
+      icon: 'BuildingOffice2Icon',
+      badgeColor: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+      href: '/suppliers',
+    },
+    {
+      id: 'disputes',
+      title: isAr ? 'مركز فض النزاعات الذكي' : 'Dispute Resolution Center',
+      subtitle: isAr ? 'تحكيم تجاري رسمي وقرارات ملزمة' : 'Neutral trade arbitration & swift settlement',
+      desc: isAr 
+        ? 'لجنة تحكيم تجارية ولوجستية محايدة للبت الفوري في أي خلاف تعاقدي خلال 48 ساعة وحفظ حقوق الطرفين.' 
+        : 'Neutral commercial and logistic arbitration to resolve any claim within 48h fairly.',
+      badge: isAr ? 'تحكيم رسمي' : 'Legal Mediation',
+      icon: 'ScaleIcon',
+      badgeColor: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+      href: '/disputes',
+    },
+  ];
+
+  return (
+    <section className="max-w-7xl mx-auto px-4 md:px-6 py-6" dir={dir}>
+      <div className="bg-gradient-to-b from-card via-card to-muted/20 border border-border rounded-3xl p-5 md:p-7 shadow-sm">
+        {/* رأس القسم */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6 pb-4 border-b border-border/60">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400 flex items-center justify-center font-bold">
+              <Icon name="ShieldCheckIcon" size={20} />
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-black text-foreground">
+                {isAr ? 'منظومة الأمان والضمان التجاري (Trade Assurance)' : 'Trade Assurance & Protection System'}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {isAr ? 'عقود تجارية موثقة، حسابات مصرفية مشروطة، وحماية كاملة للمصنع والمشتري' : 'Verified contracts, escrow safety, and total bilateral security'}
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/disputes"
+            className="text-xs font-bold text-orange-600 dark:text-orange-400 hover:underline flex items-center gap-1 self-start sm:self-auto"
+          >
+            {isAr ? 'بوابة النزاعات والشكاوى' : 'Dispute Portal'}
+            <Icon name="ArrowRightIcon" size={12} className={isRTL ? 'rotate-180' : ''} />
+          </Link>
+        </div>
+
+        {/* كروت الحماية الثلاثية */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {guarantees.map((item) => (
+            <Link
+              key={item.id}
+              href={item.href}
+              className="group relative flex flex-col justify-between p-4 sm:p-5 rounded-2xl bg-background border border-border/70 hover:border-orange-500/50 hover:shadow-md transition-all duration-200 text-start"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${item.badgeColor}`}>
+                    {item.badge}
+                  </span>
+                  <div className="w-9 h-9 rounded-xl bg-muted/60 flex items-center justify-center text-foreground group-hover:scale-110 group-hover:bg-orange-500 group-hover:text-white transition-all">
+                    <Icon name={item.icon as any} size={18} />
+                  </div>
+                </div>
+
+                <h3 className="text-sm sm:text-base font-extrabold text-foreground mb-1 group-hover:text-orange-500 transition-colors">
+                  {item.title}
+                </h3>
+                <p className="text-[11px] font-semibold text-muted-foreground mb-2">
+                  {item.subtitle}
+                </p>
+                <p className="text-xs text-muted-foreground/90 leading-relaxed">
+                  {item.desc}
+                </p>
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between text-[11px] font-bold text-foreground group-hover:text-orange-500 transition-colors">
+                <span>{isAr ? 'عرض التفاصيل والسياسة' : 'View Policy'}</span>
+                <Icon name="ArrowRightIcon" size={12} className={`transition-transform ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : 'group-hover:translate-x-1'}`} />
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ── Main Page Component ───────────────────────────────────────────────────────
 
 export default function HomePage() {
@@ -243,6 +357,9 @@ export default function HomePage() {
 
         {/* بوابات الخدمة B2B / B2C */}
         <ServiceModeTabs />
+
+        {/* قسم الضمان التجاري وحماية الصفقات */}
+        <TrustAndPolicySection />
 
         {/* شبكة التصنيفات الرئيسية للمصانع */}
         <Suspense fallback={<MasterCategoriesSkeleton />}>
@@ -265,7 +382,7 @@ export default function HomePage() {
         </Suspense>
       </main>
 
-      {/* شريط الفوتر الموحد والمختصر (خالٍ من أي روابط خارجية) */}
+      {/* شريط الفوتر الموحد والمختصر */}
       <footer className="bg-slate-950 text-slate-400 border-t border-slate-800/80 py-8 font-sans">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 pb-6 border-b border-slate-800/60">
