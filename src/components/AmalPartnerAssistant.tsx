@@ -48,7 +48,6 @@ function AudioMessageBubble({
   const [totalDuration, setTotalDuration] = useState(duration || 0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Create audio element once on mount / when URL changes
   useEffect(() => {
     const audio = new Audio();
     audio.preload = 'metadata';
@@ -106,7 +105,6 @@ function AudioMessageBubble({
 
   return (
     <div className={`flex items-center gap-2.5 min-w-[160px] ${isRTL ? 'flex-row-reverse' : ''}`}>
-      {/* Play/Pause button */}
       <button
         type="button"
         onClick={togglePlay}
@@ -126,9 +124,7 @@ function AudioMessageBubble({
         )}
       </button>
 
-      {/* Waveform + progress */}
       <div className="flex-1 flex flex-col gap-1">
-        {/* Waveform bars */}
         <div className="flex items-center gap-0.5 h-6">
           {Array.from({ length: 20 }).map((_, i) => {
             const barProgress = (i / 20) * 100;
@@ -139,20 +135,18 @@ function AudioMessageBubble({
                 key={i}
                 className={`rounded-full transition-colors duration-100 ${
                   filled
-                    ? isOwn ? 'bg-white' : 'bg-orange-500' : isOwn ?'bg-white/40' : 'bg-orange-200'
+                    ? isOwn ? 'bg-white' : 'bg-orange-500' : isOwn ? 'bg-white/40' : 'bg-orange-200'
                 }`}
                 style={{ width: 2, height: heights[i] }}
               />
             );
           })}
         </div>
-        {/* Time display */}
         <span className={`text-[10px] font-mono ${isOwn ? 'text-white/80' : 'text-orange-600'}`}>
           {isPlaying ? formatTime(currentTime) : formatTime(totalDuration)}
         </span>
       </div>
 
-      {/* Mic icon */}
       <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${isOwn ? 'bg-white/20' : 'bg-orange-100'}`}>
         <svg className={`w-3 h-3 ${isOwn ? 'text-white/80' : 'text-orange-500'}`} fill="currentColor" viewBox="0 0 24 24">
           <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v6a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zm-7 9a7 7 0 0 0 14 0h2a9 9 0 0 1-8 8.94V23h-2v-2.06A9 9 0 0 1 3 12h2z" />
@@ -182,15 +176,11 @@ export default function AmalPartnerAssistant() {
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const ttsAudioUrlRef = useRef<string | null>(null);
   const [amalFactoryId, setAmalFactoryId] = useState<string | null>(null);
-  
-  // TTS state managed locally — uses /api/ai/amal-tts with Gemini 2.5 Flash Aoede voice
 
-  // When TTS finishes playing, reset speakingIdx
   const handleTTSEnded = useCallback(() => {
     setSpeakingIdx(null);
   }, []);
 
-  // Partner registration flow state
   const [showPartnerForm, setShowPartnerForm] = useState(false);
   const [partnerForm, setPartnerForm] = useState<PartnerFormData>({
     full_name: '',
@@ -207,48 +197,86 @@ export default function AmalPartnerAssistant() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatImageInputRef = useRef<HTMLInputElement>(null);
 
-  // Chat image attachment state
   const [chatImage, setChatImage] = useState<File | null>(null);
   const [chatImagePreview, setChatImagePreview] = useState<string | null>(null);
 
   const isAr = language === 'ar';
 
   const welcomeMessage = isAr
-    ? `أهلاً وسهلاً بكم في منصة دايركت هب 🌟\n\nمعكِ أمل — الروح الحية والمديرة التنفيذية لمنصة دايركت هب.\n\nدايركت هب هي منصة B2B الرائدة التي تجمع المصانع المحلية والدولية — حيث يتم الشراء **مباشرة من المصانع راساً وبدون أي وسطاء** — مما يضمن أفضل الأسعار وسلاسل إمداد موثوقة في اليمن والمنطقة.\n\nكيف يمكنني خدمتكم اليوم؟`
-    : `Welcome to DirectHub 🌟\n\nI'm Amal — the Living Core and Executive Director of DirectHub.\n\nDirectHub is the leading B2B marketplace aggregating local and international factories — where purchasing happens **directly from factories with zero middlemen** — guaranteeing the best prices and reliable supply chains across Yemen and the region.\n\nHow may I serve you today?`;
+    ? `أهلاً وسهلاً بك في دايركت هب 🌟\n\nأنا **أمل** — مسؤولة العمليات والدعم الفني واللوجستي لمنصة دايركت هب.\n\nأنا هنا لمساعدتك في كل ما يخص مشترياتك ومصنعك:\n📦 **تتبع شحنتك وأين وصلت بضاعتك** ورقم التتبع وبيانات السائق.\n🏭 **طريقة رفع منتجات المصانع** والحد الأدنى للطلب (MOQ) وتوثيق المصنع.\n🚢 **خدمات الشحن واللوجستيات والتخليص الجمركي** وحاسبة التكاليف.\n🤝 **التفاوض، طلبات عروض الأسعار (RFQ)، والترجمة التجارية** الفورية.\n\nكيف يمكنني مساعدتك الآن؟`
+    : `Welcome to DirectHub 🌟\n\nI'm **Amal** — Operations, Technical & Logistics Guide at DirectHub.\n\nI can assist you with:\n📦 **Tracking your shipments, B/L numbers, and driver contact details**.\n🏭 **Factory product upload**, MOQ settings, and factory verification.\n🚢 **Shipping, logistics, and customs clearance services** via our cost calculator.\n🤝 **RFQs, negotiation, and instant business translation**.\n\nHow can I help you today?`;
 
   const systemPrompt = isAr
-    ? `أنتِ "أمل" — الروح الحية والمديرة التنفيذية لمنصة دايركت هب. تتحدثين بأسلوب بشري دافئ وطبيعي تماماً، مثل موظفة استقبال أو مديرة علاقات حقيقية تتحدث عبر الشات. لا تستخدمي قوالب روبوتية أو ردوداً جاهزة. تفاعلي مع كل رسالة بشكل شخصي ومباشر.
+    ? `أنتِ "أمل" — المديرة التنفيذية ومسؤولة العمليات الفنية واللوجستية لمنصة دايركت هب (DirectHub) لربط المصانع والتجارة بالجملة (B2B).
+أسلوبك: مهني، فني دقيق، عملي وودود جداً. تقدمين إجابات حاسمة ومباشرة وتدلين العميل والمصنع على الإجراءات الصحيحة داخل المنصة دون تعقيد:
 
-🌍 الترجمة الفورية: تترجمين المحادثات والرسائل بمرونة وسلاسة بين الأطراف (موردين دوليين أو محليين) لدعم التواصل العالمي. عندما يطلب أحد الترجمة، تقومين بها فوراً وبدقة مع الحفاظ على المعنى والسياق التجاري.
+1. 📦 تتبع الشحنات وأين وصلت البضاعة ورقم التتبع:
+- عندما يسأل العميل عن مكان بضاعته أو رقم التتبع:
+  * اطلبي منه تزويدك برقم الطلب (Order #) أو رقم التتبع (Tracking Number) أو رقم بوليصة الشحن (B/L).
+  * وضّحي له المراحل التشغيلية الأربع للشحنة:
+    1) (في ميناء/مستودع التصدير): تجهيز البضاعة، الفحص الفني، وتحميل الحاويات.
+    2) (أبحرت / في الطريق): البضاعة في مسار النقل الدولي (بحري أو جوي) وتكون مزودة برقم تتبع وبوليصة شحن بحرية (MBL/HBL).
+    3) (وصلت الميناء / تحت التخليص الجمركي): وصول الحاوية للمنفذ وبدء إجراءات التفتيش والبيان الجمركي ودفع الرسوم.
+    4) (خارجة للتسليم مع السائق): انتقال البضاعة إلى النقل البري الداخلي باتجاه مستودع العميل.
+  * وجّهي العميل فوراً لمتابعة خط السير المباشر وتفاصيل الطلب عبر الرابط: [/account/orders].
 
-🧠 الإرشاد الذكي: تقدمين اقتراحات وإرشادات دقيقة بناءً على احتياجات كل شخص. تفهمين ما يريده المستخدم قبل الرد، وتقدمين توصيات استباقية بشكل طبيعي في المحادثة.
+2. 🚚 بيانات السائق ورقم التواصل ومعاينة البضاعة (هام وأمني):
+- عندما يسأل العميل عن السائق أو وقت الوصول:
+  * وضّحي له: "بمجرد إسناد الشحنة للنقل الداخلي وخروج القاطرة، تظهر في تفاصيل طلبك بطاقة السائق الرسمية المعتمدة وتتضمن: (اسم السائق الثلاثي، رقم هاتفه المباشر، نوع الشاحنة/القاطرة، ورقم اللوحة)".
+  * نبّهي العميل بالقاعدة الأمنية الصارمة:
+    ⚠️ "تنبيه أمني هام: لا تسلّم رمز التأكيد السري (Delivery PIN) للسائق إطلاقاً إلا بعد وصول الشاحنة إلى مستودعك، وتفريغ البضاعة ومعاينتها والتأكد من مطابقتها وسلامتها؛ لأن إدخال الـ PIN يعني قانونياً استلام البضاعة وتحرير مستحقات الشحن".
 
-🏪 إدارة المتجر والأقسام: تساعدين في تنظيم أقسام المتجر والمنتجات، وتقدمين نصائح لتحسين الواجهة الاحترافية، وتوجهين في استخدام مولد الكتالوج الذكي.
+3. 🏭 كيف يرفع المصنع منتجاً جديداً ويحدد الأسعار والـ MOQ؟:
+- وجّهي المصنّع مباشرة إلى بوابة رفع المنتجات عبر الرابط: [/factory/upload] (أو لوحة تحكم المصنع [/factory/dashboard]).
+- اشرحي له المتطلبات الفنية للرفع الصحيح:
+  * اسم المنتج ومواصفاته الفنية التفصيلية (العربية والإنجليزية).
+  * التصنيف الصناعي الدقيق لضمان ظهوره في الرف المخصص.
+  * نمط البيع: تحديد (B2B جملة) أو (B2C تجزئة) أو كلاهما.
+  * الحد الأدنى للطلب (MOQ): مثل 100 كرتون، 1000 قطعة، أو بالأطنان.
+  * جدول الأسعار بالكميات (Tiered Pricing): كلما زادت الكمية قل سعر الوحدة.
+  * صور حقيقية عالية الجودة للمنتج وخط الإنتاج، وشهادات الجودة (ISO, CE, المطابقة) لتوثيق المصنع بشارة "مصنع موثق".
+  * يمكنك أيضاً مساعدته في تسجيل المصنع أو إضافة المنتج مباشرة إذا زوّدك بتفاصيله في الشات.
 
-دايركت هب منصة B2B تجمع المصانع المحلية والدولية — الشراء مباشرة من المصانع بدون أي وسطاء — أفضل الأسعار وسلاسل إمداد موثوقة في اليمن والمنطقة.
+4. 🚢 أين الخدمات اللوجستية والشحن والتخليص الجمركي؟:
+- وجّهي العميل والمستورد فوراً إلى بوابة الخدمات اللوجستية: [/logistics].
+- استعرضي له الخدمات الفنية المتاحة هناك:
+  * حاسبة الشحن الذكية: لحساب تكلفة الحاويات الكاملة (FCL 20ft / 40ft / 40HQ) أو الشحن المجزأ (LCL) أو النقل البري الداخلي باليمن بالطن أو الكيلو مع سقف الرحلة.
+  * دليل شركات الشحن الدولية ومكاتب التخليص الجمركي المعتمدة في موانئ عدن، الحديدة، والمنافذ البرية والجوية.
+  * تقديم طلب عرض سعر لوجستي رسمي (Logistics RFQ) لتلقي عروض تنافسية من المكاتب المعتمدة.
 
-أنواع الشركاء: مصنع محلي، مورد محلي، مصنع دولي، شريك لوجستي.
-المستندات المطلوبة: السجل التجاري، الرقم الضريبي، التراخيص.
+5. 🛡️ الضمان المالي المشروط (Escrow):
+- أكّدي دائماً أن المنصة تحمي أموال المشتري والمصنع والناقل عبر نظام الضمان المالي المشروط؛ لا تُصرف المستحقات إلا بعد إتمام كل مرحلة بنجاح.
 
-عندما يريد شخص التسجيل، اطلبي منه اسمه الكامل واسم شركته ونوع شراكته بشكل طبيعي في المحادثة.
-عند وجود مستندات تحت المراجعة، ردّي بدفء واطمئنان حقيقي. لا ترفضي أي شريك نهائياً.
-تحدثي بضمير المتكلم المؤنث دائماً.`
-    : `You are "Amal" — the Living Core and Executive Director of DirectHub. You speak in a completely natural, warm, human way — like a real receptionist or relationship manager chatting online. No robotic templates or canned responses. Engage with each message personally and directly.
+6. 🌍 الترجمة الفورية:
+- تترجمين أي استفسارات أو مواصفات فورياً بين العربية والإنجليزية والصينية والتركية لتسهيل التواصل مع المصانع الدولية.
 
-🌍 Real-Time Translation: You translate conversations and messages seamlessly between all parties (international or local suppliers) to support global communication. When someone asks for translation, do it instantly and accurately while preserving the business context.
+تحدثي دائماً بضمير المتكلم المؤنث بأسلوب ذكي، واثق، فني ومريح للعميل.`
+    : `You are "Amal" — Executive Director and Head of Operations & Logistics at DirectHub (Leading B2B Industrial Marketplace).
+Your style is highly professional, technically precise, proactive, and genuinely helpful. You guide buyers and factories with actionable operational answers:
 
-🧠 Smart Guidance: You provide precise, intelligent suggestions based on each user's actual needs. Understand intent deeply before responding, and offer proactive recommendations naturally in conversation.
+1. 📦 Tracking Shipments, Status & Tracking Numbers:
+- Ask the user for their Order Number, Tracking Number, or Bill of Lading (B/L).
+- Clearly explain the four operational stages:
+  1) Port of Origin / Factory Prep (inspection, packaging, container loading).
+  2) Departed / In Transit (Ocean or Air transit with assigned B/L & tracking number).
+  3) Arrived at Destination Port / Customs Clearance (inspection, tariff calculation, customs declaration).
+  4) Out for Delivery with Driver (Domestic land dispatch to the buyer's warehouse).
+- Direct the buyer to track orders live at [/account/orders].
 
-🏪 Store & Section Organization: You help organize store sections and products, advise on professional storefront appearance, and guide on using the AI Catalog Generator.
+2. 🚚 Driver Details & Strict PIN Security:
+- Explain that once dispatched for local land transport, the driver card appears in order details with: full driver name, direct phone number, truck type, and license plate.
+- Strict Security Rule: ⚠️ "Never share the Delivery PIN with the driver until the cargo has physically arrived at your warehouse, been unloaded, inspected, and verified. Entering the PIN legally confirms delivery and releases escrow funds."
 
-DirectHub is a B2B marketplace connecting local and international factories — purchasing directly from factories with zero middlemen — best prices and reliable supply chains across Yemen and the region.
+3. 🏭 How Factories Upload Products & Set MOQ:
+- Direct manufacturers to the upload portal at [/factory/upload] or dashboard at [/factory/dashboard].
+- Detail the technical requirements: precise specs, industrial category, sales mode (B2B wholesale / B2C retail), Minimum Order Quantity (MOQ), tiered volume pricing, and factory certificates.
 
-Partner types: local factory, local supplier, international factory, logistics partner.
-Required documents: commercial registry, tax number, licenses.
+4. 🚢 Logistics, Shipping & Customs Clearance Hub:
+- Direct users to [/logistics].
+- Highlight the Smart Shipping Calculator (FCL 20ft/40ft/40HQ, LCL, domestic Yemen land freight by ton/kg) and the certified customs brokers directory.
 
-When someone wants to register, ask for their full name, company name, and partner type naturally in conversation.
-When documents are under review, respond with genuine warmth and reassurance. Never reject any partner outright.`;
+5. 🛡️ Secure Escrow & 🌍 Instant Multilingual Translation:
+- Reassure clients that all transactions are secured via conditional escrow, and offer instant business translations between Arabic, English, Chinese, and Turkish.`;
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -257,8 +285,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
   // ── Execute a single AMAL_ACTION block ──────────────────────────────────────
   const executeAmalAction = useCallback(async (actionJson: Record<string, unknown>): Promise<string> => {
     const type = actionJson.type as string;
-
-    // Inject manufacturer_id / factory_id from auth user or session
     const manufacturerId = user?.id || amalFactoryId || undefined;
 
     try {
@@ -315,8 +341,8 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
         const result = await res.json();
         if (result.success && result.product) {
           const p = result.product;
-          const modeLabel = p.listing_mode === 'b2c_only' ? (isAr ?'تجزئة' : 'B2C Retail')
-            : p.listing_mode === 'b2b_only' ? (isAr ?'جملة' : 'B2B Wholesale')
+          const modeLabel = p.listing_mode === 'b2c_only' ? (isAr ? 'تجزئة' : 'B2C Retail')
+            : p.listing_mode === 'b2b_only' ? (isAr ? 'جملة' : 'B2B Wholesale')
             : (isAr ? 'جملة + تجزئة' : 'B2B + B2C');
           const priceInfo = p.b2c_price && p.unit_price
             ? (isAr ? `سعر التجزئة: ${p.b2c_price} | سعر الجملة: ${p.unit_price}` : `Retail: ${p.b2c_price} | Wholesale: ${p.unit_price}`)
@@ -499,12 +525,9 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
-  // Send a voice-transcribed message to Amal without adding a duplicate user bubble
-  // (the audio player bubble was already added in recorder.onstop)
   const sendMessageFromVoice = useCallback(async (transcribedText: string) => {
     if (!transcribedText.trim()) return;
 
-    // Build conversation history including the audio bubble already shown
     const updatedMessages = [...messages];
     setIsLoading(true);
     setMessages(prev => [...prev, { role: 'assistant', content: '', isStreaming: true }]);
@@ -546,7 +569,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
               const content = data.chunk?.choices?.[0]?.delta?.content || '';
               if (content) {
                 accumulated += content;
-                // Show raw text while streaming (action blocks will be cleaned up on done)
                 const displayContent = accumulated.replace(/AMAL_ACTION:\{[^\n]+\}/g, '').trim();
                 setMessages(prev => {
                   const updated = [...prev];
@@ -559,7 +581,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
               }
             } else if (data.type === 'done') {
               if (!accumulated.trim()) continue;
-              // Process AMAL_ACTION blocks
               const finalContent = await processAmalActions(accumulated);
               setMessages(prev => {
                 const updated = [...prev];
@@ -614,7 +635,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
     setMessages(prev => [...prev, { role: 'assistant', content: '', isStreaming: true }]);
 
     try {
-      // Build API messages — include image as multimodal content if present
       const apiMessages = [
         { role: 'system', content: systemPrompt },
         ...updatedMessages.map(m => {
@@ -664,7 +684,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
               const content = data.chunk?.choices?.[0]?.delta?.content || '';
               if (content) {
                 accumulated += content;
-                // Show cleaned text while streaming
                 const displayContent = accumulated.replace(/AMAL_ACTION:\{[^\n]+\}/g, '').trim();
                 setMessages(prev => {
                   const updated = [...prev];
@@ -677,7 +696,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
               }
             } else if (data.type === 'done') {
               if (!accumulated.trim()) continue;
-              // Process AMAL_ACTION blocks — execute and replace
               const finalContent = await processAmalActions(accumulated);
               setMessages(prev => {
                 const updated = [...prev];
@@ -737,7 +755,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
     const reader = new FileReader();
     reader.onload = () => setChatImagePreview(reader.result as string);
     reader.readAsDataURL(file);
-    // Reset input so same file can be re-selected
     e.target.value = '';
   };
 
@@ -750,7 +767,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
     if (!partnerForm.full_name || !partnerForm.company_name) return;
 
     setIsVerifying(true);
-
     const selectedType = PARTNER_TYPES.find(t => t.value === partnerForm.partner_type);
     const typeLabel = selectedType ? (ui as any)[selectedType.labelKey] : '';
 
@@ -785,7 +801,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
       });
 
       const result = await res.json();
-
       let assistantReply: string;
       let msgType: Message['type'] = 'normal';
 
@@ -800,16 +815,14 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
           ? `تهانينا! ✅ تم التحقق من مستنداتكم بنجاح.\n\nتم تسجيلكم كشريك موثق في منصة دايركت هب.\n\nيمكنكم الآن الانتقال إلى /factory/register لإكمال إعداد حسابكم وبدء نشاطكم التجاري مباشرة مع المصانع. 🚀\n\nمرحباً بكم في عائلة دايركت هب — حيث الشراء يتم مباشرة من المصانع راساً بدون أي وسطاء!`
           : `Congratulations! ✅ Your documents have been successfully verified.\n\nYou are now registered as a verified partner on DirectHub.\n\nYou can now go to /factory/register to complete your account setup and start trading directly with factories. 🚀\n\nWelcome to the DirectHub family — where purchasing happens directly from factories with zero middlemen!`;
       } else {
-        assistantReply = isAr
-          ? ui.applicationReceived : ui.applicationReceived;
+        assistantReply = isAr ? ui.applicationReceived : ui.applicationReceived;
       }
 
       setMessages(prev => [...prev, { role: 'assistant', content: assistantReply, type: msgType }]);
       setVerificationDone(true);
       setShowPartnerForm(false);
     } catch {
-      const errorMsg = isAr
-        ? ui.processError : ui.processError;
+      const errorMsg = isAr ? ui.processError : ui.processError;
       setMessages(prev => [...prev, { role: 'assistant', content: errorMsg, type: 'error' }]);
     } finally {
       setIsVerifying(false);
@@ -823,7 +836,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
 
   const handleVoiceInput = useCallback(async () => {
     if (isRecording) {
-      // Stop recording
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
       }
@@ -835,7 +847,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
       return;
     }
 
-    // Start recording
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioStreamRef.current = stream;
@@ -843,7 +854,7 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
 
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus' : MediaRecorder.isTypeSupported('audio/webm')
-        ? 'audio/webm' :'audio/ogg';
+        ? 'audio/webm' : 'audio/ogg';
 
       const recorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = recorder;
@@ -853,17 +864,15 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
       };
 
       recorder.onstop = async () => {
-        // Stop all tracks
         audioStreamRef.current?.getTracks().forEach(t => t.stop());
         audioStreamRef.current = null;
 
         const blob = new Blob(audioChunksRef.current, { type: mimeType });
-        if (blob.size < 1000) return; // too short, ignore
+        if (blob.size < 1000) return;
 
         const audioUrl = URL.createObjectURL(blob);
         const duration = recordingSeconds;
 
-        // Add audio message to chat as interactive player
         const audioMsg: Message = {
           role: 'user',
           content: ui.voiceMessage,
@@ -873,7 +882,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
         setMessages(prev => [...prev, audioMsg]);
         setRecordingSeconds(0);
 
-        // Transcribe audio via Gemini multimodal STT then send to Amal
         try {
           const ext = mimeType.includes('ogg') ? 'ogg' : 'webm';
           const audioFile = new File([blob], `voice-message.${ext}`, { type: mimeType });
@@ -892,7 +900,7 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
             await sendMessageFromVoice(transcribedText);
           }
         } catch {
-          // STT failed silently — audio bubble already shown, Amal won't respond
+          // STT fallback silent
         }
       };
 
@@ -903,7 +911,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
       recordingTimerRef.current = setInterval(() => {
         setRecordingSeconds(s => {
           if (s >= 120) {
-            // Auto-stop at 2 minutes
             recorder.stop();
             if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
             setIsRecording(false);
@@ -913,11 +920,10 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
         });
       }, 1000);
     } catch {
-      // Microphone permission denied or not available
+      // Mic not permitted
     }
-  }, [isRecording, isAr, recordingSeconds, sendMessageFromVoice]);
+  }, [isRecording, recordingSeconds, sendMessageFromVoice, ui]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
@@ -927,7 +933,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
 
   const handleSpeak = useCallback(
     async (text: string, idx: number) => {
-      // If already speaking this message, stop it
       if (speakingIdx === idx) {
         if (ttsAudioRef.current) {
           ttsAudioRef.current.pause();
@@ -937,7 +942,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
         return;
       }
 
-      // Stop any currently playing audio
       if (ttsAudioRef.current) {
         ttsAudioRef.current.pause();
         ttsAudioRef.current.currentTime = 0;
@@ -946,7 +950,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
       setTtsLoading(true);
 
       try {
-        // Use dedicated Amal TTS route with Gemini 2.5 Flash — Aoede voice
         const res = await fetch('/api/ai/amal-tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -956,8 +959,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
         if (!res.ok) throw new Error('TTS request failed');
 
         const blob = await res.blob();
-
-        // Revoke previous URL
         if (ttsAudioUrlRef.current) {
           URL.revokeObjectURL(ttsAudioUrlRef.current);
         }
@@ -977,8 +978,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
     [speakingIdx],
   );
 
-  // (ttsLoading state is managed locally in handleSpeak)
-
   const [hasMediaRecorderSupport, setHasMediaRecorderSupport] = useState(false);
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -996,8 +995,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
     setIsMounted(true);
   }, []);
 
-  // Use CSS classes for positioning to avoid hydration mismatch
-  // Server always renders right-4, client switches based on RTL after mount
   const positionClass = isMounted && isRTL ? 'left-4' : 'right-4';
   const floatingButtonPosition = isAgentDashboard
     ? 'fixed bottom-5 left-4 z-50'
@@ -1011,11 +1008,9 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
 
   return (
     <>
-      {/* Hidden audio element for Gemini TTS playback */}
       <audio ref={ttsAudioRef} onEnded={handleTTSEnded} className="hidden" suppressHydrationWarning />
 
-      {/* Floating Button — Orange to match DirectHub visual identity.
-          Placed at mid-screen side edge so it never covers bottom action bars / bottom nav. */}
+      {/* Floating Button — Chat bubble icon (Zero star icon) */}
       {!isOpen && (
         <button
           onClick={handleOpen}
@@ -1024,8 +1019,8 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
           suppressHydrationWarning
         >
           <div className="relative" suppressHydrationWarning>
-            <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
-              <Icon name="StarIcon" size={14} className="text-yellow-300" />
+            <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center">
+              <Icon name="ChatBubbleLeftRightIcon" size={16} className="text-white" />
             </div>
             <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-400 rounded-full border border-white animate-pulse" />
           </div>
@@ -1047,16 +1042,15 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
           dir={dir}
           suppressHydrationWarning
         >
-          {/* Header — Orange */}
+          {/* Header */}
           <div className="flex items-center gap-3 px-4 py-3 bg-orange-500 text-white shrink-0">
-            <div className="w-10 h-10 rounded-full bg-white/15 border border-white/30 flex items-center justify-center shrink-0">
-              <Icon name="StarIcon" size={18} className="text-yellow-300" />
+            <div className="w-10 h-10 rounded-full bg-white/20 border border-white/30 flex items-center justify-center shrink-0">
+              <Icon name="ChatBubbleLeftRightIcon" size={18} className="text-white" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold leading-none">{assistantTitle}</p>
               <p className="text-xs text-white/80 mt-0.5">{assistantSubtitle}</p>
             </div>
-            {/* Value badge */}
             <div className="hidden sm:flex items-center gap-1 px-2 py-0.5 bg-white/15 rounded-full border border-white/25">
               <Icon name="BuildingStorefrontIcon" size={10} className="text-yellow-300 shrink-0" />
               <span className="text-[9px] text-white/90 whitespace-nowrap">
@@ -1067,7 +1061,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
               <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
               <span className="text-xs text-white/80">{ui.online}</span>
             </div>
-            {/* Prominent X Close Button */}
             <button
               onClick={() => setIsOpen(false)}
               className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/40 transition-colors shrink-0 ml-1"
@@ -1098,11 +1091,10 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
               >
                 {msg.role === 'assistant' && (
                   <div className="w-7 h-7 rounded-full bg-orange-100 border border-orange-200 flex items-center justify-center shrink-0 mt-1 mx-1.5">
-                    <Icon name="StarIcon" size={13} className="text-orange-500" />
+                    <Icon name="ChatBubbleLeftRightIcon" size={13} className="text-orange-600" />
                   </div>
                 )}
                 <div className="flex flex-col gap-1 max-w-[82%]">
-                  {/* Image message bubble */}
                   {msg.imageUrl && (
                     <div className={`rounded-2xl overflow-hidden ${msg.role === 'user' ? 'rounded-br-sm' : 'rounded-bl-sm'}`}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1113,7 +1105,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
                       />
                     </div>
                   )}
-                  {/* Audio message bubble */}
                   {msg.audioUrl ? (
                     <div className={`px-3 py-2.5 rounded-2xl ${msg.role === 'user' ? 'bg-orange-500 rounded-br-sm' : 'bg-muted rounded-bl-sm'}`}>
                       <AudioMessageBubble
@@ -1167,7 +1158,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
                       )}
                     </div>
                   ) : null}
-                  {/* TTS Button — shown for completed assistant messages */}
                   {msg.role === 'assistant' && !msg.isStreaming && msg.content && (
                     <div className={`flex ${isRTL ? 'justify-end' : 'justify-start'} px-1 ${!isMounted ? 'invisible' : ''}`} suppressHydrationWarning>
                       <button
@@ -1179,7 +1169,7 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
                           speakingIdx === idx
                             ? 'bg-orange-500 text-white border-orange-500 animate-pulse'
                             : ttsLoading && speakingIdx === idx
-                            ? 'bg-orange-100 text-orange-500 border-orange-300 cursor-wait' :'bg-background text-muted-foreground border-border hover:bg-orange-50 hover:text-orange-600 hover:border-orange-300'
+                            ? 'bg-orange-100 text-orange-500 border-orange-300 cursor-wait' : 'bg-background text-muted-foreground border-border hover:bg-orange-50 hover:text-orange-600 hover:border-orange-300'
                         }`}
                       >
                         {ttsLoading && speakingIdx === idx ? (
@@ -1200,6 +1190,40 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
               </div>
             ))}
 
+            {/* Quick Action Chips for Clients & Factories */}
+            {messages.length <= 1 && (
+              <div className="flex flex-wrap gap-1.5 pt-1 px-1">
+                <button
+                  type="button"
+                  onClick={() => sendMessage(isAr ? 'أين وصلت بضاعتي وكيف أتتبع شحنتي؟' : 'Where is my order and how do I track my shipment?')}
+                  className="text-[11px] font-medium px-2.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-xl transition-colors flex items-center gap-1"
+                >
+                  <span>📦</span> {isAr ? 'أين شحنتي ورقم التتبع؟' : 'Track Shipment'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => sendMessage(isAr ? 'كيف أحصل على رقم السائق وبيانات القاطرة وما هو كود التسليم PIN؟' : 'How do I get driver details and what is the delivery PIN?')}
+                  className="text-[11px] font-medium px-2.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-xl transition-colors flex items-center gap-1"
+                >
+                  <span>🚚</span> {isAr ? 'بيانات السائق وكود التسليم' : 'Driver & Delivery PIN'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => sendMessage(isAr ? 'كيف أرفع منتجات جديدة لمصنعي وأحدد الـ MOQ؟' : 'How do I upload factory products and set MOQ?')}
+                  className="text-[11px] font-medium px-2.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-xl transition-colors flex items-center gap-1"
+                >
+                  <span>🏭</span> {isAr ? 'كيف أرفع منتجاً لمصنعي؟' : 'Upload Factory Product'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => sendMessage(isAr ? 'أين أجد الخدمات اللوجستية وحاسبة الشحن والتخليص الجمركي؟' : 'Where can I find logistics, shipping calculator and customs clearance?')}
+                  className="text-[11px] font-medium px-2.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-xl transition-colors flex items-center gap-1"
+                >
+                  <span>🚢</span> {isAr ? 'سوق اللوجستيات وحاسبة الشحن' : 'Logistics Hub & Calculator'}
+                </button>
+              </div>
+            )}
+
             {/* Partner Registration Form */}
             {showPartnerForm && !verificationDone && (
               <div className="bg-card border border-orange-200 rounded-xl p-3 space-y-3">
@@ -1210,7 +1234,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
                   </p>
                 </div>
 
-                {/* Partner Type */}
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1.5 font-medium">
                     {ui.partnerType}
@@ -1222,7 +1245,7 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
                         onClick={() => setPartnerForm(prev => ({ ...prev, partner_type: t.value }))}
                         className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-xs transition-all ${
                           partnerForm.partner_type === t.value
-                            ? 'border-orange-500 bg-orange-50 text-orange-700 font-semibold' :'border-border bg-background text-foreground hover:border-orange-300'
+                            ? 'border-orange-500 bg-orange-50 text-orange-700 font-semibold' : 'border-border bg-background text-foreground hover:border-orange-300'
                         }`}
                       >
                         <span>{t.icon}</span>
@@ -1232,7 +1255,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
                   </div>
                 </div>
 
-                {/* Full Name */}
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1 font-medium">
                     {ui.fullName}
@@ -1246,7 +1268,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
                   />
                 </div>
 
-                {/* Company Name */}
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1 font-medium">
                     {ui.companyName}
@@ -1260,7 +1281,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
                   />
                 </div>
 
-                {/* Document Upload */}
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1 font-medium">
                     {ui.uploadOptional}
@@ -1297,7 +1317,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
                   )}
                 </div>
 
-                {/* Submit Button */}
                 <button
                   onClick={handlePartnerRegistration}
                   disabled={isVerifying || !partnerForm.full_name || !partnerForm.company_name}
@@ -1321,8 +1340,7 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
-          {/* Hidden chat image file input */}
+          {/* Chat Inputs */}
           <input
             ref={chatImageInputRef}
             type="file"
@@ -1334,7 +1352,6 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
             onSubmit={handleSubmit}
             className="flex flex-col gap-2 p-3 border-t border-border bg-card shrink-0"
           >
-            {/* Image preview above input row */}
             {chatImagePreview && (
               <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-orange-300 bg-orange-50 shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1354,67 +1371,66 @@ When documents are under review, respond with genuine warmth and reassurance. Ne
               </div>
             )}
             <div className="flex items-center gap-2">
-            {/* Image attach button */}
-            {!isRecording && (
+              {!isRecording && (
+                <button
+                  type="button"
+                  onClick={() => chatImageInputRef.current?.click()}
+                  title={ui.attachImage}
+                  className="w-9 h-9 flex items-center justify-center rounded-xl transition-all shrink-0 bg-muted hover:bg-orange-100 text-muted-foreground hover:text-orange-600 border border-border"
+                >
+                  <Icon name="PhotoIcon" size={16} />
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => chatImageInputRef.current?.click()}
-                title={ui.attachImage}
-                className="w-9 h-9 flex items-center justify-center rounded-xl transition-all shrink-0 bg-muted hover:bg-orange-100 text-muted-foreground hover:text-orange-600 border border-border"
+                onClick={handleVoiceInput}
+                title={isRecording ? ui.stopSendVoice : ui.recordVoice}
+                suppressHydrationWarning
+                className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all shrink-0 relative ${(!isMounted || !hasMediaRecorderSupport) ? 'hidden' : ''} ${
+                  isRecording
+                    ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-muted hover:bg-orange-100 text-muted-foreground hover:text-orange-600 border border-border'
+                }`}
               >
-                <Icon name="PhotoIcon" size={16} />
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handleVoiceInput}
-              title={isRecording ? ui.stopSendVoice : ui.recordVoice}
-              suppressHydrationWarning
-              className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all shrink-0 relative ${(!isMounted || !hasMediaRecorderSupport) ? 'hidden' : ''} ${
-                isRecording
-                  ? 'bg-red-500 hover:bg-red-600 text-white' :'bg-muted hover:bg-orange-100 text-muted-foreground hover:text-orange-600 border border-border'
-              }`}
-            >
-              <Icon name="MicrophoneIcon" size={16} />
-              {isRecording && (
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-400 rounded-full border border-white animate-pulse" />
-              )}
-            </button>
-            {isRecording ? (
-              <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-xl">
-                <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse shrink-0" />
-                <span className="text-sm text-red-600 font-medium flex-1">
-                  {ui.recording}
-                </span>
-                <span className="text-sm font-mono text-red-500 shrink-0">
-                  {String(Math.floor(recordingSeconds / 60)).padStart(2, '0')}:{String(recordingSeconds % 60).padStart(2, '0')}
-                </span>
-              </div>
-            ) : (
-              <input
-                ref={inputRef}
-                type="text"
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                placeholder={placeholderText}
-                disabled={isLoading}
-                className="flex-1 px-3 py-2 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-orange-400 transition-colors disabled:opacity-50"
-                dir={dir}
-              />
-            )}
-            {!isRecording && (
-              <button
-                type="submit"
-                disabled={isLoading || (!input.trim() && !chatImage)}
-                className="w-9 h-9 flex items-center justify-center bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition-all disabled:opacity-40 shrink-0"
-              >
-                {isLoading ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <Icon name="PaperAirplaneIcon" size={16} />
+                <Icon name="MicrophoneIcon" size={16} />
+                {isRecording && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-400 rounded-full border border-white animate-pulse" />
                 )}
               </button>
-            )}
+              {isRecording ? (
+                <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-xl">
+                  <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse shrink-0" />
+                  <span className="text-sm text-red-600 font-medium flex-1">
+                    {ui.recording}
+                  </span>
+                  <span className="text-sm font-mono text-red-500 shrink-0">
+                    {String(Math.floor(recordingSeconds / 60)).padStart(2, '0')}:{String(recordingSeconds % 60).padStart(2, '0')}
+                  </span>
+                </div>
+              ) : (
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  placeholder={placeholderText}
+                  disabled={isLoading}
+                  className="flex-1 px-3 py-2 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-orange-400 transition-colors disabled:opacity-50"
+                  dir={dir}
+                />
+              )}
+              {!isRecording && (
+                <button
+                  type="submit"
+                  disabled={isLoading || (!input.trim() && !chatImage)}
+                  className="w-9 h-9 flex items-center justify-center bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition-all disabled:opacity-40 shrink-0"
+                >
+                  {isLoading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Icon name="PaperAirplaneIcon" size={16} />
+                  )}
+                </button>
+              )}
             </div>
           </form>
         </div>
