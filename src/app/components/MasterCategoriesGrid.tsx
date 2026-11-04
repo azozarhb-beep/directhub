@@ -22,7 +22,6 @@ interface MasterCategory {
   sort_order: number;
 }
 
-// Map of slug → icon name for fallback rendering
 const CATEGORY_ICONS: Record<string, string> = {
   'pharmaceuticals-raw-materials': 'BeakerIcon',
   'raw-materials-chemicals': 'CubeTransparentIcon',
@@ -46,7 +45,6 @@ const CATEGORY_ICONS: Record<string, string> = {
   'agriculture-farming': 'GlobeAltIcon',
 };
 
-// Gradient colors per category for visual variety
 const CATEGORY_GRADIENTS: Record<string, string> = {
   'pharmaceuticals-raw-materials': 'from-blue-900/40 via-blue-900/60 to-transparent',
   'raw-materials-chemicals': 'from-orange-900/40 via-orange-900/60 to-transparent',
@@ -70,7 +68,6 @@ const CATEGORY_GRADIENTS: Record<string, string> = {
   'agriculture-farming': 'from-lime-900/40 via-lime-900/60 to-transparent',
 };
 
-// The 20 master slugs in display order
 const MASTER_SLUGS = [
   'pharmaceuticals-raw-materials',
   'raw-materials-chemicals',
@@ -94,8 +91,68 @@ const MASTER_SLUGS = [
   'agriculture-farming',
 ];
 
-// تحديد المنشأ المحلي (اليمن)
 const LOCAL_COUNTRY_IDENTIFIERS = ['YE', 'Yemen', 'اليمن', 'yemen', 'صنعاء', 'عدن'];
+
+// دالة فحص وتأكيد جلب الصورة السحابية وتجاوز المسارات المفقودة
+function resolveCategoryImage(cat: { slug?: string; name_ar?: string; name_en?: string; image_url?: string | null }): string {
+  if (cat.image_url && (cat.image_url.startsWith('http://') || cat.image_url.startsWith('https://'))) {
+    return cat.image_url;
+  }
+
+  const slug = (cat.slug || '').toLowerCase().trim();
+  const slugKebab = slug.replace(/_/g, '-');
+  const slugSnake = slug.replace(/-/g, '_');
+  if (CATEGORY_IMAGES[slug] && CATEGORY_IMAGES[slug].startsWith('http')) return CATEGORY_IMAGES[slug];
+  if (CATEGORY_IMAGES[slugKebab] && CATEGORY_IMAGES[slugKebab].startsWith('http')) return CATEGORY_IMAGES[slugKebab];
+  if (CATEGORY_IMAGES[slugSnake] && CATEGORY_IMAGES[slugSnake].startsWith('http')) return CATEGORY_IMAGES[slugSnake];
+
+  const nameAr = (cat.name_ar || '').trim();
+  if (nameAr.includes('آلات') || nameAr.includes('معدات') || nameAr.includes('صناع')) {
+    return 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('منسوج') || nameAr.includes('ملابس') || nameAr.includes('أقمشة')) {
+    return 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('إلكترون') || nameAr.includes('هواتف')) {
+    return 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('سيار') || nameAr.includes('مركب')) {
+    return 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('مواد خام') || nameAr.includes('كيميائ')) {
+    return 'https://images.unsplash.com/photo-1603555501671-8f96b3fce8e4?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('أدوي') || nameAr.includes('دوائ') || nameAr.includes('صيدل')) {
+    return 'https://images.unsplash.com/photo-1471864190281-a93a3070b6de?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('بناء') || nameAr.includes('إنشاء')) {
+    return 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('غذاء') || nameAr.includes('طعام') || nameAr.includes('زراع')) {
+    return 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('تجميل') || nameAr.includes('عناية')) {
+    return 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('أثاث') || nameAr.includes('ديكور') || nameAr.includes('منزل')) {
+    return 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('تغليف') || nameAr.includes('طباع')) {
+    return 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('طاق') || nameAr.includes('كهرب')) {
+    return 'https://images.unsplash.com/photo-1509391365360-2e959784a276?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('معادن') || nameAr.includes('صلب') || nameAr.includes('حديد')) {
+    return 'https://images.unsplash.com/photo-1504917599217-d4dc5ebe6122?w=800&auto=format&fit=crop&q=80';
+  }
+
+  const nameEn = (cat.name_en || '').toLowerCase().trim();
+  if (nameEn.includes('machin')) return 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=800&auto=format&fit=crop&q=80';
+  if (nameEn.includes('textil') || nameEn.includes('apparel')) return 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800&auto=format&fit=crop&q=80';
+
+  return 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=800&auto=format&fit=crop&q=80';
+}
 
 const MasterCategoriesGrid: React.FC = () => {
   const [categories, setCategories] = useState<MasterCategory[]>([]);
@@ -109,7 +166,6 @@ const MasterCategoriesGrid: React.FC = () => {
   const { setActiveTab } = useSourcingFilter();
   const supabase = createClient();
 
-  // Fetch master categories
   useEffect(() => {
     const fetchCategories = async () => {
       try {
@@ -128,7 +184,10 @@ const MasterCategoriesGrid: React.FC = () => {
 
         const merged = MASTER_SLUGS
           .filter(slug => !!dbMap[slug])
-          .map(slug => ({ ...dbMap[slug], image_url: dbMap[slug].image_url || CATEGORY_IMAGES[slug] || null })) as MasterCategory[];
+          .map(slug => ({
+            ...dbMap[slug],
+            image_url: resolveCategoryImage(dbMap[slug]),
+          })) as MasterCategory[];
 
         setCategories(merged);
       } catch {
@@ -140,7 +199,6 @@ const MasterCategoriesGrid: React.FC = () => {
     fetchCategories();
   }, []);
 
-  // Fetch local/global product counts per category
   useEffect(() => {
     const fetchCounts = async () => {
       try {
@@ -251,11 +309,10 @@ const MasterCategoriesGrid: React.FC = () => {
             const iconName = (cat.icon || CATEGORY_ICONS[cat.slug] || 'TagIcon') as string;
             const gradient = CATEGORY_GRADIENTS[cat.slug] || 'from-gray-600/80 to-gray-900/90';
             const isSelected = selectedCategory === cat.slug;
-            const imageUrl = cat.image_url || CATEGORY_IMAGES[cat.slug] || null;
+            const imageUrl = resolveCategoryImage(cat);
 
             return (
               <div key={cat.id} className="relative">
-                {/* Category tile */}
                 <button
                   type="button"
                   onClick={() => handleCategoryClick(cat.slug)}
@@ -269,17 +326,13 @@ const MasterCategoriesGrid: React.FC = () => {
                   aria-label={getDisplayName(cat)}
                 >
                   {/* Background image */}
-                  {imageUrl ? (
-                    <AppImage
-                      src={imageUrl}
-                      alt={`${cat.name_en} industrial sector`}
-                      fill
-                      className="object-cover group-hover:scale-105 transition-transform duration-500"
-                      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 bg-muted" />
-                  )}
+                  <AppImage
+                    src={imageUrl}
+                    alt={`${cat.name_en} industrial sector`}
+                    fill
+                    className="object-cover group-hover:scale-105 transition-transform duration-500"
+                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
+                  />
 
                   {/* Gradient overlay */}
                   <div className={`absolute inset-0 bg-gradient-to-t ${gradient}`} />
@@ -307,14 +360,13 @@ const MasterCategoriesGrid: React.FC = () => {
                   )}
                 </button>
 
-                {/* Expanded local/global filter panel */}
+                {/* Scope filter dropdown */}
                 {isSelected && (
                   <div className="absolute top-full left-0 right-0 z-30 mt-1.5 bg-card border border-border rounded-xl shadow-xl p-2.5 min-w-[200px]">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 text-right">
                       {language === 'ar' ? 'فرز حسب النطاق' : 'Filter by Scope'}
                     </p>
 
-                    {/* الكل - B2B */}
                     <Link
                       href={`/search?category=${cat.slug}&mode=b2b`}
                       className="flex items-center justify-between w-full px-2.5 py-2 rounded-lg hover:bg-muted transition-colors mb-1 text-right"
@@ -326,7 +378,6 @@ const MasterCategoriesGrid: React.FC = () => {
                       <Icon name="ArrowRightIcon" size={12} className={`text-muted-foreground ${language === 'ar' ? 'rotate-180' : ''}`} />
                     </Link>
 
-                    {/* مصانع محلية فقط (اليمن) */}
                     <Link
                       href={`/search?category=${cat.slug}&origin=local&scope=local&mode=b2b`}
                       className="flex items-center justify-between w-full px-2.5 py-2 rounded-lg hover:bg-muted transition-colors mb-1 text-right"
@@ -350,7 +401,6 @@ const MasterCategoriesGrid: React.FC = () => {
                       </span>
                     </Link>
 
-                    {/* مصانع عالمية فقط */}
                     <Link
                       href={`/search?category=${cat.slug}&origin=international&scope=global&mode=b2b`}
                       className="flex items-center justify-between w-full px-2.5 py-2 rounded-lg hover:bg-muted transition-colors text-right"
@@ -380,7 +430,7 @@ const MasterCategoriesGrid: React.FC = () => {
           })}
         </div>
 
-        {/* Scope quick-filter bar */}
+        {/* Scope quick filter */}
         <div className="flex items-center gap-2 mt-4 pt-4 border-t border-border">
           <span className="text-xs text-muted-foreground font-medium shrink-0">
             {language === 'ar' ? 'فرز سريع:' : 'Quick Filter:'}
@@ -413,7 +463,6 @@ const MasterCategoriesGrid: React.FC = () => {
         </div>
       </div>
 
-      {/* Click-outside overlay to close expanded panel */}
       {selectedCategory && (
         <div
           className="fixed inset-0 z-20"
