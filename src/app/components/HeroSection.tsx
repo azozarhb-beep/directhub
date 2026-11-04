@@ -7,7 +7,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 
 const slides = [
   {
-    // الآلات وخطوط الإنتاج
+    // الآلات وخطوط الإنتاج - إضاءة نهارية عالية
     src: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=1920&auto=format&fit=crop&q=90',
     alt: 'Smart Factory & Industrial Robotics',
     sectorAr: 'الآلات وخطوط الإنتاج',
@@ -20,7 +20,7 @@ const slides = [
     subEn: 'Source industrial machinery directly from global manufacturers at factory rates.',
   },
   {
-    // الشحن البحري واللوجستيات
+    // الشحن البحري واللوجستيات - إضاءة نهارية وموانئ مفتوحة
     src: 'https://images.unsplash.com/photo-1578575437130-527eed3abbec?w=1920&auto=format&fit=crop&q=90',
     alt: 'Global Ocean Freight Port & Logistics',
     sectorAr: 'الشحن واللوجستيات الدولية',
@@ -33,7 +33,7 @@ const slides = [
     subEn: 'Full container (FCL) & consolidated (LCL) freight with certified customs clearance.',
   },
   {
-    // المعادن والصلب
+    // المعادن والصلب والمواد الخام
     src: 'https://images.unsplash.com/photo-1504917599217-d4dc5ebe6122?w=1920&auto=format&fit=crop&q=90',
     alt: 'Industrial Steel & Heavy Manufacturing',
     sectorAr: 'المعادن والمواد الخام',
@@ -137,7 +137,7 @@ const HeroSection: React.FC = () => {
           ) : null
         )}
 
-        {/* تدرج خفيف وشفاف يُبرز جمال الصور ويحفظ وضوح النصوص */}
+        {/* تدرج خفيف وشفاف يبرز جمال الصور ويحفظ وضوح النصوص */}
         <div className="absolute inset-0 bg-black/35" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/30" />
       </div>
