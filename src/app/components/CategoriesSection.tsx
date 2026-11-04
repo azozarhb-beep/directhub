@@ -30,6 +30,60 @@ const CATEGORY_GRADIENTS = [
   'from-blue-600 to-blue-900',
 ];
 
+// دالة فحص وجلب الصورة السحابية وتجاوز الروابط المحلية المكسورة
+function resolveCategoryImage(cat: { slug?: string; name_ar?: string; name_en?: string; image_url?: string | null }): string {
+  // 1. إذا كان الرابط في قاعدة البيانات رابطاً سحابياً صحيحاً (http/https)
+  if (cat.image_url && (cat.image_url.startsWith('http://') || cat.image_url.startsWith('https://'))) {
+    return cat.image_url;
+  }
+
+  // 2. البحث بالاسم الرمزي (Slug) بصيغه المختلفة
+  const slug = (cat.slug || '').toLowerCase();
+  const slugKebab = slug.replace(/_/g, '-');
+  const slugSnake = slug.replace(/-/g, '_');
+  if (CATEGORY_IMAGES[slug]) return CATEGORY_IMAGES[slug];
+  if (CATEGORY_IMAGES[slugKebab]) return CATEGORY_IMAGES[slugKebab];
+  if (CATEGORY_IMAGES[slugSnake]) return CATEGORY_IMAGES[slugSnake];
+
+  // 3. الفحص بالاسم العربي مباشرة لضمان عدم ظهور أي بطاقة فارغة
+  const nameAr = cat.name_ar || '';
+  if (nameAr.includes('آلات') || nameAr.includes('معدات') || nameAr.includes('صناع')) {
+    return 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('منسوج') || nameAr.includes('ملابس') || nameAr.includes('أقمشة')) {
+    return 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('إلكترون') || nameAr.includes('هواتف')) {
+    return 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('سيار') || nameAr.includes('مركب')) {
+    return 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('مواد خام') || nameAr.includes('كيميائ')) {
+    return 'https://images.unsplash.com/photo-1603555501671-8f96b3fce8e4?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('أدوي') || nameAr.includes('دوائ') || nameAr.includes('صيدل')) {
+    return 'https://images.unsplash.com/photo-1471864190281-a93a3070b6de?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('بناء') || nameAr.includes('إنشاء')) {
+    return 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameAr.includes('غذاء') || nameAr.includes('طعام') || nameAr.includes('زراع')) {
+    return 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&auto=format&fit=crop&q=80';
+  }
+
+  // 4. الفحص بالاسم الإنجليزي
+  const nameEn = (cat.name_en || '').toLowerCase();
+  if (nameEn.includes('machin')) {
+    return 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=800&auto=format&fit=crop&q=80';
+  }
+  if (nameEn.includes('textil') || nameEn.includes('apparel') || nameEn.includes('cloth')) {
+    return 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800&auto=format&fit=crop&q=80';
+  }
+
+  return 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=800&auto=format&fit=crop&q=80';
+}
+
 const CategoriesSection: React.FC = () => {
   const sectionRef = useRef<HTMLElement>(null);
   const [visible, setVisible] = useState(false);
@@ -57,12 +111,12 @@ const CategoriesSection: React.FC = () => {
           .eq('is_active', true)
           .is('parent_id', null)
           .order('sort_order', { ascending: true })
-          .limit(8);
+          .limit(12);
+
         if (data && data.length > 0) {
-          // Inject static image where DB image_url is null
           const enriched = data.map(cat => ({
             ...cat,
-            image_url: cat.image_url || CATEGORY_IMAGES[cat.slug] || null,
+            image_url: resolveCategoryImage(cat),
           }));
           setCategories(enriched);
         } else {
@@ -84,10 +138,10 @@ const CategoriesSection: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
           <div className={visible ? 'reveal-animate' : 'opacity-0'}>
             <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground block mb-3" suppressHydrationWarning>
-              {ui.title}
+              {language === 'ar' ? 'أرفف التصنيفات' : ui.title}
             </span>
             <h2 className="text-section-title font-extrabold text-foreground" suppressHydrationWarning>
-              {ui.title}
+              {language === 'ar' ? 'أرفف التصنيفات' : ui.title}
             </h2>
           </div>
           <Link
@@ -95,7 +149,7 @@ const CategoriesSection: React.FC = () => {
             suppressHydrationWarning
             className={`inline-flex items-center gap-2 px-6 py-3 bg-foreground text-primary-foreground text-sm font-bold rounded-full hover:opacity-80 transition-opacity ${visible ? 'reveal-animate stagger-2' : 'opacity-0'}`}>
             {ui.viewAll}
-            <Icon name="ArrowRightIcon" size={16} />
+            <Icon name="ArrowRightIcon" size={16} className={language === 'ar' ? 'rotate-180' : ''} />
           </Link>
         </div>
 
@@ -113,7 +167,7 @@ const CategoriesSection: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 border border-border">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
             {categories.map((cat, i) => {
               const label = getCategoryFullLabel(
                 cat.slug,
@@ -122,43 +176,43 @@ const CategoriesSection: React.FC = () => {
                 (t as any).search?.categories as Record<string, string> | undefined
               );
               return (
-              <Link
-                key={cat.id}
-                href={`/search?category=${cat.slug}`}
-                className={`group relative overflow-hidden border border-border bg-card ${visible ? 'reveal-animate' : 'opacity-0'}`}
-                style={{ animationDelay: `${i * 0.06}s`, aspectRatio: '3/4' }}>
-                
-                {cat.image_url ? (
-                  <AppImage
-                    src={cat.image_url}
-                    alt={label}
-                    fill
-                    className="object-cover group-hover:scale-105 transition-transform duration-700"
-                    sizes="(max-width: 768px) 50vw, 25vw" />
-                ) : (
-                  <div className={`absolute inset-0 bg-gradient-to-br ${CATEGORY_GRADIENTS[i % CATEGORY_GRADIENTS.length]}`} />
-                )}
-
-                {/* Gradient overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-foreground/80 via-foreground/20 to-transparent" />
-
-                {/* Content */}
-                <div className="absolute bottom-0 left-0 right-0 p-4">
-                  {cat.product_count > 0 && (
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-primary-foreground/60 block mb-1">
-                      {cat.product_count.toLocaleString()}+ {ui.products}
-                    </span>
+                <Link
+                  key={cat.id}
+                  href={`/search?category=${cat.slug}&mode=b2b`}
+                  className={`group relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm hover:shadow-md transition-all ${visible ? 'reveal-animate' : 'opacity-0'}`}
+                  style={{ animationDelay: `${i * 0.06}s`, aspectRatio: '4/3' }}>
+                  
+                  {cat.image_url ? (
+                    <AppImage
+                      src={cat.image_url}
+                      alt={label}
+                      fill
+                      className="object-cover group-hover:scale-105 transition-transform duration-700"
+                      sizes="(max-width: 768px) 50vw, 25vw" />
+                  ) : (
+                    <div className={`absolute inset-0 bg-gradient-to-br ${CATEGORY_GRADIENTS[i % CATEGORY_GRADIENTS.length]}`} />
                   )}
-                  <h3 className="text-sm md:text-base font-extrabold text-primary-foreground leading-tight">
-                    {label}
-                  </h3>
-                </div>
 
-                {/* Hover arrow */}
-                <div className="absolute top-3 right-3 w-8 h-8 rounded-full bg-primary-foreground/10 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Icon name="ArrowRightIcon" size={14} className="text-primary-foreground" />
-                </div>
-              </Link>
+                  {/* Gradient overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
+
+                  {/* Content */}
+                  <div className="absolute bottom-0 left-0 right-0 p-3.5 text-right">
+                    {cat.product_count > 0 && (
+                      <span className="text-[10px] font-bold text-white/70 block mb-0.5">
+                        {cat.product_count.toLocaleString()}+ {language === 'ar' ? 'منتج' : ui.products}
+                      </span>
+                    )}
+                    <h3 className="text-sm font-extrabold text-white leading-tight">
+                      {label}
+                    </h3>
+                  </div>
+
+                  {/* Hover arrow */}
+                  <div className="absolute top-2.5 left-2.5 w-7 h-7 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Icon name="ArrowRightIcon" size={12} className="text-white" />
+                  </div>
+                </Link>
               );
             })}
           </div>
