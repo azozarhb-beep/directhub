@@ -2,35 +2,20 @@
 
 import React, { Suspense } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import Header from '@/components/Header';
 import BottomNav from '@/components/BottomNav';
 import HeroSection from '@/app/components/HeroSection';
 import ShelfSlider from '@/app/components/ShelfSlider';
 import HorizontalCategoryBar from '@/app/components/HorizontalCategoryBar';
 import WelcomeTicker from '@/app/components/WelcomeTicker';
-import Link from 'next/link';
 import { useLanguage } from '@/contexts/LanguageContext';
 
-// Below-the-fold dynamic imports
+// Dynamic imports for optimal page load speed
 const FeaturedProducts = dynamic(() => import('@/app/components/FeaturedProducts'));
 const CategoriesSection = dynamic(() => import('@/app/components/CategoriesSection'));
 const MasterCategoriesGrid = dynamic(() => import('@/app/components/MasterCategoriesGrid'));
-const WhyDirectHub = dynamic(() => import('@/app/components/WhyDirectHub'));
-const TestimonialsSection = dynamic(() => import('@/app/components/TestimonialsSection'));
 const RecommendationsSection = dynamic(() => import('@/app/components/RecommendationsSection'));
-
-const OrdersSection = dynamic(() =>
-  import('@/app/components/DashboardSections').then((m) => m.OrdersSection)
-);
-const PaymentsSection = dynamic(() =>
-  import('@/app/components/DashboardSections').then((m) => m.PaymentsSection)
-);
-const SmartServicesSection = dynamic(() =>
-  import('@/app/components/DashboardSections').then((m) => m.SmartServicesSection)
-);
-const ManufacturerBanner = dynamic(() =>
-  import('@/app/components/DashboardSections').then((m) => m.ManufacturerBanner)
-);
 
 // ── Skeletons ─────────────────────────────────────────────────────────────────
 
@@ -101,7 +86,7 @@ function RecommendationsSkeleton() {
   );
 }
 
-// ── Multilingual Service Mode Tabs (Inlined) ──────────────────────────────────
+// ── Multilingual Service Mode Tabs ────────────────────────────────────────────
 
 const SERVICE_TEXTS = {
   ar: {
@@ -248,7 +233,7 @@ function ServiceModeTabs() {
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-16 md:pb-0">
       <Header />
       <WelcomeTicker />
       <main>
@@ -256,81 +241,63 @@ export default function HomePage() {
         <ShelfSlider />
         <HorizontalCategoryBar />
 
-        {/* B2B / B2C Tabs with full i18n */}
+        {/* بوابات الخدمة B2B / B2C */}
         <ServiceModeTabs />
 
+        {/* شبكة التصنيفات الرئيسية للمصانع */}
         <Suspense fallback={<MasterCategoriesSkeleton />}>
           <MasterCategoriesGrid />
         </Suspense>
 
-        <div className="max-w-7xl mx-auto px-4 md:px-6 py-5 space-y-4">
-          <OrdersSection />
-          <PaymentsSection />
-          <SmartServicesSection />
-          <ManufacturerBanner />
-        </div>
-
+        {/* المنتجات المميزة */}
         <Suspense fallback={<ProductGridSkeleton />}>
           <FeaturedProducts />
         </Suspense>
 
+        {/* قطاعات البضائع */}
         <Suspense fallback={<CategoryGridSkeleton />}>
           <CategoriesSection />
         </Suspense>
 
-        <WhyDirectHub />
-        <TestimonialsSection />
-
+        {/* توصيات السلع المخصصة */}
         <Suspense fallback={<RecommendationsSkeleton />}>
           <RecommendationsSection />
         </Suspense>
       </main>
 
-      <footer className="bg-slate-950 text-slate-400 border-t border-slate-800/80 pt-16 pb-12 font-sans">
+      {/* شريط الفوتر الموحد والمختصر (خالٍ من أي روابط خارجية) */}
+      <footer className="bg-slate-950 text-slate-400 border-t border-slate-800/80 py-8 font-sans">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10 pb-12 border-b border-slate-800/60">
-            <div className="lg:col-span-2 space-y-4">
-              <div className="flex items-center space-x-3 space-x-reverse">
-                <span className="text-2xl font-black text-white tracking-wider">Direct<span className="text-emerald-500">Hub</span></span>
-                <span className="text-xs bg-emerald-950 text-emerald-400 border border-emerald-800/50 px-2 py-0.5 rounded">B2B Global Industrial</span>
-              </div>
-              <p className="text-sm text-slate-400 leading-relaxed max-w-sm">
-                المنصة العالمية الرائدة لربط المصانع الكبرى بالمشترين التجاريين.
-              </p>
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 pb-6 border-b border-slate-800/60">
+            <div className="flex items-center space-x-3 space-x-reverse">
+              <span className="text-xl font-black text-white tracking-wider">
+                Direct<span className="text-emerald-500">Hub</span>
+              </span>
+              <span className="text-[11px] bg-emerald-950 text-emerald-400 border border-emerald-800/50 px-2 py-0.5 rounded">
+                B2B Global Industrial
+              </span>
             </div>
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider">حلول الأعمال</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="/rfq/create" className="hover:text-white transition-colors">سوق طلبات الأسعار (RFQ)</a></li>
-                <li><a href="/suppliers" className="hover:text-white transition-colors">دليل المصانع</a></li>
-                <li><a href="/logistics" className="hover:text-white transition-colors">الخدمات اللوجستية</a></li>
-              </ul>
-            </div>
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider">الثقة والامتثال</h4>
-              <ul className="space-y-2 text-sm">
-                <li><span className="text-slate-400">نظام الضمان المالي (Escrow)</span></li>
-                <li><span className="text-slate-400">التحقق والاعتماد (KYC)</span></li>
-                <li><a href="/disputes" className="hover:text-white transition-colors">تسوية النزاعات</a></li>
-              </ul>
-            </div>
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider">انضم إلينا</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="/factory/register" className="text-emerald-400 font-medium hover:text-emerald-300">سجل مصنعك الآن</a></li>
-                <li><a href="https://wa.me/" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">دعم العملاء (واتساب)</a></li>
-              </ul>
+            <div className="flex flex-wrap items-center justify-center gap-6 text-xs">
+              <Link href="/rfq/create" className="hover:text-white transition-colors">سوق طلبات الأسعار (RFQ)</Link>
+              <Link href="/suppliers" className="hover:text-white transition-colors">دليل المصانع</Link>
+              <Link href="/logistics" className="hover:text-white transition-colors">الخدمات اللوجستية</Link>
+              <Link href="/register" className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors">تسجيل مصنع / مورد</Link>
+              <Link href="/chat" className="hover:text-white transition-colors">المحادثات الموثقة</Link>
             </div>
           </div>
-          <div className="pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 space-y-4 sm:space-y-0">
+
+          <div className="pt-6 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-3">
             <p>© 2026 DirectHub Technologies Inc. جميع الحقوق محفوظة.</p>
             <div className="flex space-x-6 space-x-reverse">
-              <a href="/privacy" className="hover:text-slate-400">سياسة الخصوصية</a>
-              <a href="/terms" className="hover:text-slate-400">شروط الاستخدام</a>
+              <Link href="/privacy" className="hover:text-slate-400 transition-colors">سياسة الخصوصية</Link>
+              <Link href="/terms" className="hover:text-slate-400 transition-colors">شروط الاستخدام</Link>
+              <Link href="/disputes" className="hover:text-slate-400 transition-colors">فض النزاعات</Link>
             </div>
           </div>
         </div>
       </footer>
+
+      {/* شريط التنقل السفلي للهواتف الذكية */}
       <BottomNav />
     </div>
   );
