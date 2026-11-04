@@ -134,7 +134,7 @@ export const CATEGORY_FULL_LABELS: Record<string, CategoryLabelSet> = {
     tr: 'Tarım ve Çiftçilik Ekipmanları',
   },
 
-  // ── Legacy top-level categories (still in DB / CategoriesSection mix) ──
+  // ── Legacy top-level categories ──
   electronics: {
     en: 'Electronics & Technology',
     ar: 'الإلكترونيات والتقنية',
@@ -370,41 +370,42 @@ export const CATEGORY_ALL_LABEL: CategoryLabelSet = {
   tr: 'Tümü',
 };
 
-/** Static image map for all sectors — used as fallback when DB image_url is null */
+/** High-quality CDN images for all industrial sectors (Guarantees no empty backgrounds) */
 export const CATEGORY_IMAGES: Record<string, string> = {
-  'electronics-mobile-phones': '/assets/images/category-electronics.png',
-  'automotive-vehicles': '/assets/images/category-automotive.png',
-  'construction-building-materials': '/assets/images/category-construction.png',
-  'health-medical-equipment': '/assets/images/category-medical.png',
-  'home-appliances-furniture': '/assets/images/category-home-appliances.png',
-  'raw-materials-chemicals': '/assets/images/category-raw-materials.png',
-  'beauty-personal-care': '/assets/images/category-beauty.png',
-  'pharmaceuticals-raw-materials': '/assets/images/category-pharmaceuticals.png',
-  'office-school-supplies': '/assets/images/category-office-supplies.png',
-  'toys-sports-entertainment': '/assets/images/category-toys-sports.png',
-  'food-agriculture': '/assets/images/category-food-agriculture.png',
-  'textiles-apparel': '/assets/images/category-textiles.png',
-  'industrial-machinery': '/assets/images/category-machinery.png',
-  'metals-steel': '/assets/images/category-metals-steel.png',
-  'packaging-printing': '/assets/images/category-packaging.png',
-  'energy-power': '/assets/images/category-energy.png',
-  'plastics-rubber': '/assets/images/category-plastics-rubber.png',
-  'cleaning-hygiene': '/assets/images/category-cleaning-hygiene.png',
-  'furniture-interiors': '/assets/images/category-furniture.png',
-  'agriculture-farming': '/assets/images/category-agriculture.png',
-  // Legacy slugs mapped to closest image
-  electronics: '/assets/images/category-electronics.png',
-  machinery: '/assets/images/category-machinery.png',
-  textiles: '/assets/images/category-textiles.png',
-  building: '/assets/images/category-construction.png',
-  food: '/assets/images/category-food-agriculture.png',
-  chemicals: '/assets/images/category-raw-materials.png',
-  auto: '/assets/images/category-automotive.png',
-  packaging: '/assets/images/category-packaging.png',
-  energy: '/assets/images/category-energy.png',
-  medical: '/assets/images/category-medical.png',
-  furniture: '/assets/images/category-furniture.png',
-  raw_materials: '/assets/images/category-raw-materials.png',
+  'industrial-machinery': 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=800&auto=format&fit=crop&q=80',
+  'textiles-apparel': 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800&auto=format&fit=crop&q=80',
+  'electronics-mobile-phones': 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&auto=format&fit=crop&q=80',
+  'automotive-vehicles': 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=800&auto=format&fit=crop&q=80',
+  'construction-building-materials': 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=800&auto=format&fit=crop&q=80',
+  'health-medical-equipment': 'https://images.unsplash.com/photo-1516549655169-df83a0774514?w=800&auto=format&fit=crop&q=80',
+  'home-appliances-furniture': 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=800&auto=format&fit=crop&q=80',
+  'raw-materials-chemicals': 'https://images.unsplash.com/photo-1603555501671-8f96b3fce8e4?w=800&auto=format&fit=crop&q=80',
+  'beauty-personal-care': 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=800&auto=format&fit=crop&q=80',
+  'pharmaceuticals-raw-materials': 'https://images.unsplash.com/photo-1471864190281-a93a3070b6de?w=800&auto=format&fit=crop&q=80',
+  'office-school-supplies': 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=800&auto=format&fit=crop&q=80',
+  'toys-sports-entertainment': 'https://images.unsplash.com/photo-1566576912321-d58ddd7a6088?w=800&auto=format&fit=crop&q=80',
+  'food-agriculture': 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&auto=format&fit=crop&q=80',
+  'metals-steel': 'https://images.unsplash.com/photo-1504917599217-d4dc5ebe6122?w=800&auto=format&fit=crop&q=80',
+  'packaging-printing': 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800&auto=format&fit=crop&q=80',
+  'energy-power': 'https://images.unsplash.com/photo-1509391365360-2e959784a276?w=800&auto=format&fit=crop&q=80',
+  'plastics-rubber': 'https://images.unsplash.com/photo-1563245372-f21724e3856d?w=800&auto=format&fit=crop&q=80',
+  'cleaning-hygiene': 'https://images.unsplash.com/photo-1585421514284-efb74c2b69ba?w=800&auto=format&fit=crop&q=80',
+  'furniture-interiors': 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&auto=format&fit=crop&q=80',
+  'agriculture-farming': 'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?w=800&auto=format&fit=crop&q=80',
+
+  // Legacy slugs
+  machinery: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=800&auto=format&fit=crop&q=80',
+  textiles: 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800&auto=format&fit=crop&q=80',
+  electronics: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&auto=format&fit=crop&q=80',
+  building: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=800&auto=format&fit=crop&q=80',
+  food: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&auto=format&fit=crop&q=80',
+  chemicals: 'https://images.unsplash.com/photo-1603555501671-8f96b3fce8e4?w=800&auto=format&fit=crop&q=80',
+  auto: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=800&auto=format&fit=crop&q=80',
+  packaging: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800&auto=format&fit=crop&q=80',
+  energy: 'https://images.unsplash.com/photo-1509391365360-2e959784a276?w=800&auto=format&fit=crop&q=80',
+  medical: 'https://images.unsplash.com/photo-1516549655169-df83a0774514?w=800&auto=format&fit=crop&q=80',
+  furniture: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&auto=format&fit=crop&q=80',
+  raw_materials: 'https://images.unsplash.com/photo-1603555501671-8f96b3fce8e4?w=800&auto=format&fit=crop&q=80',
 };
 
 /** English name → slug aliases for DB rows that only expose name_en */
@@ -455,7 +456,6 @@ export function getCategoryFullLabel(
   slug: string,
   language: Language,
   fallback?: { name_en?: string | null; name_ar?: string | null },
-  /** Optional locale dictionary e.g. t.search.categories */
   localeDict?: Record<string, string> | null
 ): string {
   const key = resolveSlug(slug, fallback?.name_en);
@@ -468,12 +468,11 @@ export function getCategoryFullLabel(
   const mapped = CATEGORY_FULL_LABELS[key] || CATEGORY_FULL_LABELS[slug];
   if (mapped) return pickLabel(mapped, language, fallback?.name_en || undefined);
 
-  // Last resort: Arabic DB field only when language is Arabic
   if (language === 'ar' && fallback?.name_ar) return fallback.name_ar;
   return fallback?.name_en || slug;
 }
 
-/** Short pill/shelf label. `pillKey` overrides slug for special pills (e.g. chemicals). */
+/** Short pill/shelf label. `pillKey` overrides slug for special pills. */
 export function getCategoryShortLabel(
   slug: string,
   language: Language,
