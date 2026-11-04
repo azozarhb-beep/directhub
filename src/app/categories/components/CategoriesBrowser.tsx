@@ -46,30 +46,6 @@ interface Product {
 
 const PAGE_SIZE = 12;
 
-// ─── B2B-only slugs & categories (industrial raw materials, bulk tonnage) ─────
-const B2B_ONLY_SLUGS = new Set([
-  'metals-steel',
-  'plastics-rubber',
-  'raw-materials-chemicals',
-  'industrial-machinery',
-  'energy-power',
-  'construction-building-materials',
-  'packaging-printing',
-]);
-
-const B2B_ONLY_CATEGORY_STRINGS = new Set([
-  'metals',
-  'plastics',
-  'building',
-  'construction',
-  'machinery',
-  'energy',
-  'packaging',
-  'raw-materials-chemicals',
-  'raw_materials',
-  'pharmaceuticals',
-]);
-
 // ─── Skeleton Card ────────────────────────────────────────────────────────────
 const SkeletonCard: React.FC = () => (
   <div className="bg-card border border-border rounded-xl overflow-hidden animate-pulse">
@@ -91,7 +67,7 @@ const SkeletonCard: React.FC = () => (
 
 // ─── Main Browser ─────────────────────────────────────────────────────────────
 const CategoriesBrowser: React.FC = () => {
-  const { t, isRTL, language, dir } = useLanguage();
+  const { isRTL, language, dir } = useLanguage();
   const supabase = createClient();
 
   const [allCategories, setAllCategories] = useState<Category[]>([]);
@@ -225,41 +201,23 @@ const CategoriesBrowser: React.FC = () => {
   }, [selectedCategory, allCategories, language]);
 
   return (
-    <div className="pb-[calc(8rem+env(safe-area-inset-bottom))] md:pb-12 min-h-screen bg-background" dir={dir}>
+    <div className="pb-20 md:pb-12 min-h-screen bg-background" dir={dir}>
 
-      {/* ── Page Header ── */}
-      <div className="bg-foreground py-6 md:py-10 border-b border-border/20 relative overflow-hidden">
-        <div
-          className="absolute inset-0 opacity-[0.04] hidden md:block"
-          style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '28px 28px' }}
-        />
-        <div className="max-w-5xl mx-auto px-4 md:px-6 relative z-10">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="h-px w-6 bg-primary" />
-            <span className="text-xs font-bold uppercase tracking-widest text-primary/80">
-              {t.categories?.masterTree || 'Categories'}
-            </span>
-          </div>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-primary-foreground mb-1">
-            {t.categories?.pageTitle || 'Browse All Categories'}
-          </h1>
-          <p className="text-sm text-primary-foreground/60 font-medium">
-            {allCategories.length} {t.categories?.sectors || 'sectors'} · {allProducts.length}+ {t.categories?.productsCount || 'products'}
-          </p>
-        </div>
-      </div>
-
-      {/* ── Search (non-sticky) ── */}
-      <div className="max-w-5xl mx-auto px-4 md:px-6 pt-3">
-        <div className="flex items-center gap-2 border border-border rounded-xl px-3 py-2 bg-background focus-within:border-primary transition-colors">
+      {/* ── 1. فلتر البحث المدمج السريع ── */}
+      <div className="max-w-5xl mx-auto px-4 pt-3 pb-1">
+        <div className="flex items-center gap-2 border border-border/80 rounded-xl px-3 py-1.5 bg-card focus-within:border-primary shadow-sm transition-all">
           <Icon name="MagnifyingGlassIcon" size={16} className="text-muted-foreground shrink-0" />
           <input
             type="text"
-            placeholder={t.categories?.searchPlaceholder || 'ابحث عن منتجات، مصنعين، موردين...'}
+            placeholder={
+              buyerMode === 'b2b'
+                ? (language === 'ar' ? 'ابحث في منتجات ومصانع الجملة...' : 'Search wholesale & factory goods...')
+                : (language === 'ar' ? 'ابحث في السلع الجاهزة للشحن...' : 'Search ready-to-ship products...')
+            }
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1 text-sm bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none"
-            dir="rtl"
+            className="flex-1 text-xs sm:text-sm bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none"
+            dir={isRTL ? 'rtl' : 'ltr'}
           />
           {searchQuery && (
             <button onClick={() => setSearchQuery('')} className="text-muted-foreground hover:text-foreground">
@@ -269,41 +227,52 @@ const CategoriesBrowser: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Unified Sticky Filter Row: B2B/B2C toggle + category pills ── */}
-      <div className="sticky top-0 z-40 bg-card/95 backdrop-blur-md border-b border-border mt-3">
-        <div className="max-w-5xl mx-auto px-4 md:px-6 py-2.5 flex items-center gap-2">
-          {/* B2B / B2C toggle */}
-          <div className="flex items-center border border-border rounded-full overflow-hidden shrink-0">
+      {/* ── 2. شريط التثبيت: فصل نمط التجارة عن القطاعات ── */}
+      <div className="sticky top-0 z-30 bg-card/95 backdrop-blur-md border-b border-border shadow-xs mt-2">
+        <div className="max-w-5xl mx-auto px-4 py-2 space-y-2">
+          
+          {/* أ) تحديد نمط التوريد (جملة أو تجزئة) بعرض متوازن */}
+          <div className="grid grid-cols-2 gap-1.5 bg-muted/60 p-1 rounded-xl border border-border/40">
             <button
               onClick={() => setBuyerMode('b2b')}
-              className={`h-8 px-3 text-xs font-bold transition-colors whitespace-nowrap ${buyerMode === 'b2b' ? 'bg-foreground text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+              className={`flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                buyerMode === 'b2b'
+                  ? 'bg-foreground text-background shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
             >
-              جملة (B2B)
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+              <span>{language === 'ar' ? 'طلبات المصانع والجملة (B2B)' : 'Factory Wholesale (B2B)'}</span>
             </button>
             <button
               onClick={() => setBuyerMode('b2c')}
-              className={`h-8 px-3 text-xs font-bold transition-colors whitespace-nowrap ${buyerMode === 'b2c' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+              className={`flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                buyerMode === 'b2c'
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
             >
-              تجزئة (B2C)
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span>{language === 'ar' ? 'جاهز للشحن الفوري (B2C)' : 'Ready to Ship (B2C)'}</span>
             </button>
           </div>
 
-          <span className="h-5 w-px bg-border shrink-0" aria-hidden="true" />
-
-          {/* Category pills */}
+          {/* ب) شريط تصنيفات القطاعات بعرض كامل للتمرير السلس */}
           <div
             ref={tabsRef}
-            className="flex-1 flex gap-2 overflow-x-auto scrollbar-hide"
+            className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide py-0.5"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             <button
               data-cat="all"
               onClick={() => handleCategorySelect('all')}
-              className={`shrink-0 flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold border transition-all whitespace-nowrap ${
-                selectedCategory === 'all' ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
+              className={`shrink-0 flex items-center gap-1 px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all whitespace-nowrap ${
+                selectedCategory === 'all'
+                  ? 'bg-primary text-primary-foreground border-primary shadow-xs'
+                  : 'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
               }`}
             >
-              {language === 'ar' ? 'الكل' : 'All'}
+              {language === 'ar' ? 'جميع القطاعات' : 'All Sectors'}
             </button>
 
             {allCategories.map((cat) => (
@@ -311,33 +280,33 @@ const CategoriesBrowser: React.FC = () => {
                 key={cat.id}
                 data-cat={cat.id}
                 onClick={() => handleCategorySelect(cat.id)}
-                className={`shrink-0 flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold border transition-all whitespace-nowrap ${
+                className={`shrink-0 flex items-center gap-1 px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all whitespace-nowrap ${
                   selectedCategory === cat.id
-                    ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                    ? 'bg-primary text-primary-foreground border-primary shadow-xs'
                     : 'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
                 }`}
               >
-                {language === 'ar' ? cat.name_ar : cat.name_en}
+                <span>{language === 'ar' ? cat.name_ar : cat.name_en}</span>
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* ── Results Count ── */}
+      {/* ── 3. عداد المنتجات المتاحة ── */}
       {!loading && (
-        <div className="max-w-5xl mx-auto px-4 md:px-6 pt-4 pb-2 flex items-center justify-between">
-          <p className="text-xs text-muted-foreground font-medium" dir="rtl">
+        <div className="max-w-5xl mx-auto px-4 pt-3 pb-1 flex items-center justify-between">
+          <p className="text-xs text-muted-foreground font-medium">
             {filteredProducts.length > 0 ? (
               <>
                 <span className="font-bold text-foreground">{filteredProducts.length}</span>
-                {' '}{language === 'ar' ? 'منتج' : 'products'}
+                {' '}{language === 'ar' ? 'منتج متاح' : 'products found'}
                 {selectedCategory !== 'all' && (
-                  <> {language === 'ar' ? 'في' : 'in'} <span className="font-bold text-primary">{selectedCatLabel}</span></>
+                  <> {language === 'ar' ? 'ضمن' : 'in'} <span className="font-bold text-primary">{selectedCatLabel}</span></>
                 )}
               </>
             ) : (
-              language === 'ar' ? 'لا توجد منتجات' : 'No products found'
+              language === 'ar' ? 'لا توجد سلع متوفرة حالياً' : 'No products found'
             )}
           </p>
           {searchQuery && (
@@ -345,32 +314,32 @@ const CategoriesBrowser: React.FC = () => {
               onClick={() => setSearchQuery('')}
               className="text-xs text-primary font-bold hover:underline"
             >
-              {language === 'ar' ? 'مسح البحث' : 'Clear search'}
+              {language === 'ar' ? 'إعادة ضبط' : 'Reset'}
             </button>
           )}
         </div>
       )}
 
-      {/* ── Product Grid ── */}
-      <div className="max-w-5xl mx-auto px-4 md:px-6 pb-6">
+      {/* ── 4. شبكة عرض المنتجات الصناعية ── */}
+      <div className="max-w-5xl mx-auto px-4 pb-6">
         {loading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mt-2">
             {[...Array(8)].map((_, i) => <SkeletonCard key={i} />)}
           </div>
         ) : filteredProducts.length === 0 ? (
-          <div className="flex flex-col items-center py-20 text-center">
-            <Icon name="MagnifyingGlassIcon" size={48} className="text-muted-foreground/30 mx-auto mb-4" />
-            <p className="text-lg font-bold text-foreground mb-2">
-              {language === 'ar' ? 'لا توجد منتجات' : 'No products found'}
+          <div className="flex flex-col items-center py-16 text-center">
+            <Icon name="MagnifyingGlassIcon" size={44} className="text-muted-foreground/30 mx-auto mb-3" />
+            <p className="text-base font-bold text-foreground mb-1">
+              {language === 'ar' ? 'لم يتم العثور على سلع تطابق اختيارك' : 'No products found'}
             </p>
-            <p className="text-sm text-muted-foreground mb-4">
-              {language === 'ar' ? 'جرب تغيير الفئة أو كلمة البحث' : 'Try a different category or search term'}
+            <p className="text-xs text-muted-foreground mb-4">
+              {language === 'ar' ? 'جرّب الانتقال إلى قطاع آخر أو تبديل نمط التوريد' : 'Try switching categories or service modes'}
             </p>
             <button
               onClick={() => { setSelectedCategory('all'); setSearchQuery(''); }}
-              className="px-4 py-2 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity"
+              className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 transition-opacity"
             >
-              {language === 'ar' ? 'عرض الكل' : 'Show all'}
+              {language === 'ar' ? 'عرض كافة البضائع' : 'Show all goods'}
             </button>
           </div>
         ) : (
@@ -390,7 +359,7 @@ const CategoriesBrowser: React.FC = () => {
                     unit_price: product.unit_price || 0,
                     tiered_pricing: product.tiered_pricing,
                     minimum_order_qty: product.minimum_order_qty || 1,
-                    unit: product.unit || (language === 'ar' ? 'قطعة' : 'pcs'),
+                    unit: product.unit || (language === 'ar' ? 'طن' : 'units'),
                     origin_country: product.origin_country,
                     category: product.category,
                     is_verified: true,
@@ -409,14 +378,14 @@ const CategoriesBrowser: React.FC = () => {
               ))}
             </div>
 
-            {/* ── Infinite Scroll Loader ── */}
+            {/* تحميل المزيد اللحظي */}
             {hasMore && (
-              <div ref={loaderRef} className="flex justify-center items-center py-8 gap-3">
+              <div ref={loaderRef} className="flex justify-center items-center py-6 gap-2">
                 {loadingMore ? (
                   <>
-                    <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    <span className="text-sm text-muted-foreground">
-                      {language === 'ar' ? 'جارٍ التحميل...' : 'Loading more...'}
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    <span className="text-xs text-muted-foreground">
+                      {language === 'ar' ? 'تحميل المزيد من البضائع...' : 'Loading more...'}
                     </span>
                   </>
                 ) : (
@@ -424,38 +393,26 @@ const CategoriesBrowser: React.FC = () => {
                 )}
               </div>
             )}
-
-            {/* ── End of results ── */}
-            {!hasMore && filteredProducts.length > PAGE_SIZE && (
-              <div className="flex flex-col items-center py-8 gap-2">
-                <div className="w-12 h-px bg-border" />
-                <p className="text-xs text-muted-foreground">
-                  {language === 'ar'
-                    ? `تم عرض جميع ${filteredProducts.length} منتج`
-                    : `All ${filteredProducts.length} products shown`}
-                </p>
-              </div>
-            )}
           </>
         )}
       </div>
 
-      {/* ── Footer CTA ── */}
+      {/* ── 5. بطاقة انضمام المصانع والموردين ── */}
       {!loading && (
-        <div className="max-w-5xl mx-auto px-4 md:px-6 pb-6">
-          <div className="bg-muted/40 border border-border rounded-2xl p-6 text-center">
-            <h2 className="text-base font-extrabold text-foreground mb-1">
-              {t.categories?.ctaTitle || 'List Your Products'}
+        <div className="max-w-5xl mx-auto px-4 pb-6">
+          <div className="bg-muted/40 border border-border rounded-2xl p-5 text-center">
+            <h2 className="text-sm font-extrabold text-foreground mb-1">
+              {language === 'ar' ? 'هل تمتلك مصنعاً أو مستودع توريد؟' : 'Are you a manufacturer or supplier?'}
             </h2>
-            <p className="text-xs text-muted-foreground mb-4">
-              {t.categories?.ctaDesc || 'Join thousands of verified suppliers on DirectHub'}
+            <p className="text-xs text-muted-foreground mb-3">
+              {language === 'ar' ? 'سجّل مصنعك الآن واعرض منتجاتك مباشرة لكبار المشترين والتجار' : 'List your products directly to bulk buyers'}
             </p>
             <Link
-              href="/factory/register"
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-foreground text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity"
+              href="/register"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-foreground text-background text-xs font-bold rounded-xl hover:opacity-90 transition-opacity"
             >
-              <Icon name="PlusCircleIcon" size={16} />
-              {t.categories?.ctaBtn || 'Register as Supplier'}
+              <Icon name="PlusCircleIcon" size={14} />
+              <span>{language === 'ar' ? 'سجل مصنعك كمورد معتمد' : 'Register as Verified Supplier'}</span>
             </Link>
           </div>
         </div>
