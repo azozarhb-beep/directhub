@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense } from 'react';
+import React, { useState, Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import Header from '@/components/Header';
@@ -230,48 +230,107 @@ function ServiceModeTabs() {
   );
 }
 
-// ── قسم الضمان التجاري وحماية المصانع والمشترين وفض النزاعات ──────────────────
+// ── قسم وسياسات الضمان التجاري مع نافذة تفاعلية منبثقة ──────────────────────────
+
+interface PolicyDetails {
+  id: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  icon: string;
+  badgeColor: string;
+  points: { title: string; text: string }[];
+}
 
 function TrustAndPolicySection() {
   const { language, dir, isRTL } = useLanguage();
   const isAr = language === 'ar';
+  const [activeModal, setActiveModal] = useState<PolicyDetails | null>(null);
 
-  const guarantees = [
+  const policies: PolicyDetails[] = [
     {
       id: 'buyer',
-      title: isAr ? 'حماية المشتري المعتمدة' : 'Buyer Protection',
-      subtitle: isAr ? 'أموالك مجمدة حتى استلام وفحص البضاعة' : 'Escrow payment until verified delivery',
-      desc: isAr 
-        ? 'ضمان استرداد كامل للأموال في حال عدم مطابقة المواصفات الفنية أو تأخر مواعيد التسليم التعاقدية.' 
-        : 'Full refund guarantee if technical specifications mismatch or delivery terms are breached.',
+      title: isAr ? 'منظومة حماية المشتري المعتمدة' : 'Verified Buyer Protection',
+      subtitle: isAr ? 'أموالك مجمدة في حساب ضمان حتى استلام وفحص البضاعة' : 'Escrow protection until delivery & verification',
       badge: isAr ? 'ضمان مالي 100%' : '100% Escrow',
       icon: 'ShieldCheckIcon',
       badgeColor: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
-      href: '/terms',
+      points: [
+        {
+          title: isAr ? 'حساب مصرفي وسيط مشروط (Escrow)' : 'Escrow Payment Protection',
+          text: isAr
+            ? 'لا يتم تحويل قيمة الصفقة للمصنع إلا بعد إبحار الشحنة أو فحصها والتأكد من مطابقة المواصفات الفنية.'
+            : 'Funds remain securely locked until shipment inspection and compliance confirmation.',
+        },
+        {
+          title: isAr ? 'ضمان مطابقة المواصفات الفنية' : 'Quality & Spec Guarantee',
+          text: isAr
+            ? 'يحق للمشتري فحص عينات الإنتاج ومراجعة شهادات المنشأ والمختبر قبل الشحن النهائي.'
+            : 'Buyers have the right to audit technical lab certificates and pre-shipment inspection.',
+        },
+        {
+          title: isAr ? 'حماية مواعيد الشحن والتسليم' : 'On-Time Dispatch Guarantee',
+          text: isAr
+            ? 'التزام المصنع بجدول التوريد الزمني المعتمد بالعقد مع بند تعويض فوري عند أي تأخير غير مبرر.'
+            : 'Strict contractual delivery timelines with compensation clauses for unexcused delays.',
+        },
+      ],
     },
     {
       id: 'factory',
-      title: isAr ? 'سياسة حماية المصانع' : 'Manufacturer Protection',
-      subtitle: isAr ? 'ضمان مستحقات الإنتاج وتأكيد التعاقد' : 'Guaranteed payment upon production & dispatch',
-      desc: isAr 
-        ? 'تأمين كامل لمستحقات المصنع فور شحن الطلبيات واعتماد الفحص، وحماية الملكية الصناعية للمنتجات.' 
-        : 'Secured production payout upon dispatch and technical audit, protecting factory rights.',
+      title: isAr ? 'سياسة حماية المصانع والموردين' : 'Manufacturer & Supplier Protection',
+      subtitle: isAr ? 'ضمان مستحقات الإنتاج وتوثيق التعاقد المالي' : 'Secured production payout & verified contracts',
       badge: isAr ? 'عقود موثقة' : 'Verified Contracts',
       icon: 'BuildingOffice2Icon',
       badgeColor: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
-      href: '/suppliers',
+      points: [
+        {
+          title: isAr ? 'ضمان جدية المشتري وتوفر السيولة' : 'Verified Buyer Liquidity',
+          text: isAr
+            ? 'لا يبدأ المصنع خط الإنتاج إلا بعد تأكيد إيداع الدفعة المتفق عليها في حساب الضمان المشروط.'
+            : 'Production lines commence only after buyer funds are secured and confirmed in escrow.',
+        },
+        {
+          title: isAr ? 'سرعة الإفراج عن المستحقات' : 'Guaranteed Fast Payouts',
+          text: isAr
+            ? 'تحويل فوري لمستحقات المصنع المالية بمجرد إصدار بوليصة الشحن الرسمية (Bill of Lading) واعتماد الفحص.'
+            : 'Automated release of funds upon valid Bill of Lading generation and audit clearance.',
+        },
+        {
+          title: isAr ? 'حماية الملكية الصناعية والتعاقد' : 'Industrial Rights Protection',
+          text: isAr
+            ? 'عقود B2B معتمدة دولياً تحمي براءات الاختراع والطلبيات الخاصة والتصميمات المخصصة للمصانع.'
+            : 'Legally certified bilateral contracts protecting OEM patents and custom manufacturing specs.',
+        },
+      ],
     },
     {
       id: 'disputes',
-      title: isAr ? 'مركز فض النزاعات الذكي' : 'Dispute Resolution Center',
-      subtitle: isAr ? 'تحكيم تجاري رسمي وقرارات ملزمة' : 'Neutral trade arbitration & swift settlement',
-      desc: isAr 
-        ? 'لجنة تحكيم تجارية ولوجستية محايدة للبت الفوري في أي خلاف تعاقدي خلال 48 ساعة وحفظ حقوق الطرفين.' 
-        : 'Neutral commercial and logistic arbitration to resolve any claim within 48h fairly.',
-      badge: isAr ? 'تحكيم رسمي' : 'Legal Mediation',
+      title: isAr ? 'مركز فض النزاعات والتحكيم التجاري' : 'Trade Dispute Resolution Center',
+      subtitle: isAr ? 'لجنة تحكيم مستقلة وقرارات ملزمة خلال 48 ساعة' : 'Independent arbitration & binding decisions in 48h',
+      badge: isAr ? 'تحكيم إلزامي' : 'Binding Mediation',
       icon: 'ScaleIcon',
       badgeColor: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
-      href: '/disputes',
+      points: [
+        {
+          title: isAr ? 'المرحلة 1: التفاوض المباشر الموثق' : 'Stage 1: Verified Direct Negotiation',
+          text: isAr
+            ? 'مساحة تواصل رسمي وموثق بين الطرفين لحل التعديلات أو الملاحظات ودياً خلال 24 ساعة.'
+            : 'Formal documented channel for the parties to amicably align on notes within 24 hours.',
+        },
+        {
+          title: isAr ? 'المرحلة 2: تدخل لجنة التحكيم الفني واللوجستي' : 'Stage 2: Technical Platform Arbitration',
+          text: isAr
+            ? 'فريق من الخبراء الفنيين واللوجستيين يفحص الوثائق وبوالص الشحن والعينات للفصل الفوري.'
+            : 'Neutral engineering and logistics inspectors evaluate lab reports and BOLs.',
+        },
+        {
+          title: isAr ? 'المرحلة 3: القرار الإلزامي وحفظ الحقوق' : 'Stage 3: Binding Resolution',
+          text: isAr
+            ? 'إصدار قرار ملزم بإعادة التصنيع، خصم تعويضي، أو رد كامل المبلغ من حساب الضمان إلى المشتري.'
+            : 'Binding settlement resulting in re-production, discounted compensation, or 100% refund.',
+        },
+      ],
     },
   ];
 
@@ -286,29 +345,31 @@ function TrustAndPolicySection() {
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-black text-foreground">
-                {isAr ? 'منظومة الأمان والضمان التجاري (Trade Assurance)' : 'Trade Assurance & Protection System'}
+                {isAr ? 'منظومة الأمان والضمان التجاري (Trade Assurance)' : 'Trade Assurance & Bilateral Security'}
               </h2>
               <p className="text-xs text-muted-foreground">
-                {isAr ? 'عقود تجارية موثقة، حسابات مصرفية مشروطة، وحماية كاملة للمصنع والمشتري' : 'Verified contracts, escrow safety, and total bilateral security'}
+                {isAr ? 'اضغط على أي بند لقراءة الضمانات القانونية والمالية المطبقة' : 'Click any section to review full legal & financial terms'}
               </p>
             </div>
           </div>
-          <Link
-            href="/disputes"
-            className="text-xs font-bold text-orange-600 dark:text-orange-400 hover:underline flex items-center gap-1 self-start sm:self-auto"
+          <button
+            type="button"
+            onClick={() => setActiveModal(policies[2])}
+            className="text-xs font-bold text-orange-600 dark:text-orange-400 hover:underline flex items-center gap-1 self-start sm:self-auto cursor-pointer"
           >
-            {isAr ? 'بوابة النزاعات والشكاوى' : 'Dispute Portal'}
+            {isAr ? 'كيف يعمل التحكيم وفض النزاعات؟' : 'How does arbitration work?'}
             <Icon name="ArrowRightIcon" size={12} className={isRTL ? 'rotate-180' : ''} />
-          </Link>
+          </button>
         </div>
 
-        {/* كروت الحماية الثلاثية */}
+        {/* كروت الحماية الثلاثية - تفتح نافذة تفاصيل السياسة بضغطة زر */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {guarantees.map((item) => (
-            <Link
+          {policies.map((item) => (
+            <button
               key={item.id}
-              href={item.href}
-              className="group relative flex flex-col justify-between p-4 sm:p-5 rounded-2xl bg-background border border-border/70 hover:border-orange-500/50 hover:shadow-md transition-all duration-200 text-start"
+              type="button"
+              onClick={() => setActiveModal(item)}
+              className="group relative flex flex-col justify-between p-4 sm:p-5 rounded-2xl bg-background border border-border/70 hover:border-orange-500/50 hover:shadow-md transition-all duration-200 text-start cursor-pointer w-full"
             >
               <div>
                 <div className="flex items-center justify-between mb-3">
@@ -327,18 +388,100 @@ function TrustAndPolicySection() {
                   {item.subtitle}
                 </p>
                 <p className="text-xs text-muted-foreground/90 leading-relaxed">
-                  {item.desc}
+                  {item.points[0].text}
                 </p>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between text-[11px] font-bold text-foreground group-hover:text-orange-500 transition-colors">
-                <span>{isAr ? 'عرض التفاصيل والسياسة' : 'View Policy'}</span>
+              <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between text-[11px] font-bold text-orange-600 dark:text-orange-400 group-hover:text-orange-500 transition-colors">
+                <span>{isAr ? 'عرض البنود والشروط كاملة' : 'View Full Policy Terms'}</span>
                 <Icon name="ArrowRightIcon" size={12} className={`transition-transform ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : 'group-hover:translate-x-1'}`} />
               </div>
-            </Link>
+            </button>
           ))}
         </div>
       </div>
+
+      {/* نافذة السياسة المنبثقة الذكية (Modal) */}
+      {activeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg bg-card border border-border rounded-3xl p-6 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col text-start" dir={dir}>
+            {/* رأس النافذة */}
+            <div className="flex items-start justify-between pb-4 border-b border-border/70">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-orange-500/10 text-orange-600 dark:text-orange-400 flex items-center justify-center font-bold">
+                  <Icon name={activeModal.icon as any} size={22} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-black text-foreground">
+                      {activeModal.title}
+                    </h3>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${activeModal.badgeColor}`}>
+                      {activeModal.badge}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {activeModal.subtitle}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveModal(null)}
+                className="w-8 h-8 rounded-full bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* بنود السياسة */}
+            <div className="overflow-y-auto py-4 space-y-4 my-2">
+              {activeModal.points.map((pt, idx) => (
+                <div key={idx} className="p-3.5 rounded-2xl bg-muted/30 border border-border/50">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="w-5 h-5 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 text-xs font-bold flex items-center justify-center">
+                      {idx + 1}
+                    </span>
+                    <h4 className="text-xs sm:text-sm font-bold text-foreground">
+                      {pt.title}
+                    </h4>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed pr-7">
+                    {pt.text}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {/* أزرار الإجراء في أسفل النافذة */}
+            <div className="pt-3 border-t border-border/70 flex items-center justify-between gap-3">
+              {activeModal.id === 'disputes' ? (
+                <Link
+                  href="/disputes"
+                  className="text-xs font-bold px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition-colors shadow-sm"
+                >
+                  {isAr ? 'الدخول لنظام تقديم الشكاوى' : 'Open Dispute System'}
+                </Link>
+              ) : (
+                <Link
+                  href="/rfq/create"
+                  className="text-xs font-bold px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition-colors shadow-sm"
+                >
+                  {isAr ? 'بدء طلب معتمد الآن' : 'Start Verified Order'}
+                </Link>
+              )}
+              <button
+                type="button"
+                onClick={() => setActiveModal(null)}
+                className="text-xs font-semibold px-4 py-2 bg-muted hover:bg-muted/80 text-foreground rounded-xl transition-colors"
+              >
+                {isAr ? 'إغلاق' : 'Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -358,7 +501,7 @@ export default function HomePage() {
         {/* بوابات الخدمة B2B / B2C */}
         <ServiceModeTabs />
 
-        {/* قسم الضمان التجاري وحماية الصفقات */}
+        {/* قسم الضمان التجاري وحماية الصفقات التفاعلي */}
         <TrustAndPolicySection />
 
         {/* شبكة التصنيفات الرئيسية للمصانع */}
