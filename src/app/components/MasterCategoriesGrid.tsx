@@ -94,7 +94,8 @@ const MASTER_SLUGS = [
   'agriculture-farming',
 ];
 
-const LOCAL_COUNTRY_IDENTIFIERS = ['SA', 'Saudi Arabia', 'المملكة العربية السعودية', 'KSA', 'saudi arabia'];
+// تحديد المنشأ المحلي (اليمن)
+const LOCAL_COUNTRY_IDENTIFIERS = ['YE', 'Yemen', 'اليمن', 'yemen', 'صنعاء', 'عدن'];
 
 const MasterCategoriesGrid: React.FC = () => {
   const [categories, setCategories] = useState<MasterCategory[]>([]);
@@ -105,7 +106,7 @@ const MasterCategoriesGrid: React.FC = () => {
   const [activeScope, setActiveScope] = useState<'all' | 'local' | 'global'>('all');
   const { t, dir, language } = useLanguage();
   const ui = t.masterCategories;
-  const { activeTab, setActiveTab } = useSourcingFilter();
+  const { setActiveTab } = useSourcingFilter();
   const supabase = createClient();
 
   // Fetch master categories
@@ -120,13 +121,11 @@ const MasterCategoriesGrid: React.FC = () => {
           .in('slug', MASTER_SLUGS)
           .order('sort_order', { ascending: true });
 
-        // Build a map of DB results by slug
         const dbMap: Record<string, MasterCategory> = {};
         if (data && data.length > 0) {
           data.forEach(c => { dbMap[c.slug] = c; });
         }
 
-        // Only show categories that exist in the database
         const merged = MASTER_SLUGS
           .filter(slug => !!dbMap[slug])
           .map(slug => ({ ...dbMap[slug], image_url: dbMap[slug].image_url || CATEGORY_IMAGES[slug] || null })) as MasterCategory[];
@@ -147,7 +146,7 @@ const MasterCategoriesGrid: React.FC = () => {
       try {
         const { data: products } = await supabase
           .from('manufacturer_products')
-          .select('industry_sector, origin_country')
+          .select('industry_sector, category, origin_country, origin_type')
           .eq('is_active', true);
 
         if (!products) return;
@@ -156,14 +155,16 @@ const MasterCategoriesGrid: React.FC = () => {
         const gc: Record<string, number> = {};
 
         products.forEach(p => {
-          if (!p.industry_sector) return;
-          const isLocal = LOCAL_COUNTRY_IDENTIFIERS.some(id =>
-            p.origin_country?.toLowerCase() === id.toLowerCase()
-          );
+          const catKey = p.industry_sector || p.category;
+          if (!catKey) return;
+
+          const country = (p.origin_country || '').toLowerCase().trim();
+          const isLocal = p.origin_type === 'local' || LOCAL_COUNTRY_IDENTIFIERS.some(id => country === id.toLowerCase());
+
           if (isLocal) {
-            lc[p.industry_sector] = (lc[p.industry_sector] || 0) + 1;
+            lc[catKey] = (lc[catKey] || 0) + 1;
           } else {
-            gc[p.industry_sector] = (gc[p.industry_sector] || 0) + 1;
+            gc[catKey] = (gc[catKey] || 0) + 1;
           }
         });
 
@@ -180,7 +181,7 @@ const MasterCategoriesGrid: React.FC = () => {
     setSelectedCategory(prev => prev === slug ? null : slug);
   }, []);
 
-  const handleScopeFilter = useCallback((scope: 'all' | 'local' | 'global', slug: string) => {
+  const handleScopeFilter = useCallback((scope: 'all' | 'local' | 'global') => {
     setActiveScope(scope);
     if (scope === 'local') {
       setActiveTab('local_manufacturers');
@@ -223,15 +224,15 @@ const MasterCategoriesGrid: React.FC = () => {
           <div className="flex items-center gap-3">
             <span className="h-px w-6 bg-primary" />
             <h2 className="text-sm font-bold uppercase tracking-widest text-muted-foreground">
-              {ui.title}
+              {ui.title || (language === 'ar' ? 'القطاعات الصناعية الكبرى' : 'Major Industrial Sectors')}
             </h2>
           </div>
           <Link
             href="/categories"
             className="text-xs font-semibold text-primary hover:underline flex items-center gap-1"
           >
-            {ui.viewAll}
-            <Icon name="ArrowRightIcon" size={12} />
+            {ui.viewAll || (language === 'ar' ? 'عرض الكل' : 'View All')}
+            <Icon name="ArrowRightIcon" size={12} className={language === 'ar' ? 'rotate-180' : ''} />
           </Link>
         </div>
 
@@ -293,7 +294,7 @@ const MasterCategoriesGrid: React.FC = () => {
                     </h3>
                     {cat.product_count > 0 && (
                       <p className="text-[10px] text-white/60 mt-0.5">
-                        {cat.product_count.toLocaleString()}+ {ui.products}
+                        {cat.product_count.toLocaleString()}+ {ui.products || (language === 'ar' ? 'منتج' : 'products')}
                       </p>
                     )}
                   </div>
@@ -308,68 +309,68 @@ const MasterCategoriesGrid: React.FC = () => {
 
                 {/* Expanded local/global filter panel */}
                 {isSelected && (
-                  <div className="absolute top-full left-0 right-0 z-30 mt-1.5 bg-card border border-border rounded-xl shadow-xl p-3 min-w-[180px]">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
-                      {ui.filterByScope}
+                  <div className="absolute top-full left-0 right-0 z-30 mt-1.5 bg-card border border-border rounded-xl shadow-xl p-2.5 min-w-[200px]">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 text-right">
+                      {language === 'ar' ? 'فرز حسب النطاق' : 'Filter by Scope'}
                     </p>
 
-                    {/* All */}
+                    {/* الكل - B2B */}
                     <Link
-                      href={`/search?category=${cat.slug}`}
-                      className="flex items-center justify-between w-full px-3 py-2 rounded-lg hover:bg-muted transition-colors mb-1 text-left"
+                      href={`/search?category=${cat.slug}&mode=b2b`}
+                      className="flex items-center justify-between w-full px-2.5 py-2 rounded-lg hover:bg-muted transition-colors mb-1 text-right"
                       onClick={() => setSelectedCategory(null)}
                     >
                       <span className="text-xs font-semibold text-foreground">
-                        {ui.allSources}
+                        {language === 'ar' ? 'الكل' : 'All'}
                       </span>
-                      <Icon name="ArrowRightIcon" size={12} className="text-muted-foreground" />
+                      <Icon name="ArrowRightIcon" size={12} className={`text-muted-foreground ${language === 'ar' ? 'rotate-180' : ''}`} />
                     </Link>
 
-                    {/* Local */}
+                    {/* مصانع محلية فقط (اليمن) */}
                     <Link
-                      href={`/search?category=${cat.slug}&scope=local`}
-                      className="flex items-center justify-between w-full px-3 py-2 rounded-lg hover:bg-muted transition-colors mb-1 text-left"
+                      href={`/search?category=${cat.slug}&origin=local&scope=local&mode=b2b`}
+                      className="flex items-center justify-between w-full px-2.5 py-2 rounded-lg hover:bg-muted transition-colors mb-1 text-right"
                       onClick={() => {
-                        handleScopeFilter('local', cat.slug);
+                        handleScopeFilter('local');
                         setSelectedCategory(null);
                       }}
                     >
                       <div>
                         <span className="text-xs font-semibold text-foreground block">
-                          {ui.localFactories}
+                          {language === 'ar' ? 'مصانع محلية' : 'Local Factories'}
                         </span>
                         {localCount[cat.slug] !== undefined && (
                           <span className="text-[10px] text-muted-foreground">
-                            {localCount[cat.slug]} {ui.products}
+                            {localCount[cat.slug]} {language === 'ar' ? 'منتج' : 'products'}
                           </span>
                         )}
                       </div>
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-md">
-                        {ui.local}
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 rounded-md">
+                        {language === 'ar' ? 'محلي' : 'Local'}
                       </span>
                     </Link>
 
-                    {/* Global */}
+                    {/* مصانع عالمية فقط */}
                     <Link
-                      href={`/search?category=${cat.slug}&scope=global`}
-                      className="flex items-center justify-between w-full px-3 py-2 rounded-lg hover:bg-muted transition-colors text-left"
+                      href={`/search?category=${cat.slug}&origin=international&scope=global&mode=b2b`}
+                      className="flex items-center justify-between w-full px-2.5 py-2 rounded-lg hover:bg-muted transition-colors text-right"
                       onClick={() => {
-                        handleScopeFilter('global', cat.slug);
+                        handleScopeFilter('global');
                         setSelectedCategory(null);
                       }}
                     >
                       <div>
                         <span className="text-xs font-semibold text-foreground block">
-                          {ui.globalFactories}
+                          {language === 'ar' ? 'مصانع عالمية' : 'Global Factories'}
                         </span>
                         {globalCount[cat.slug] !== undefined && (
                           <span className="text-[10px] text-muted-foreground">
-                            {globalCount[cat.slug]} {ui.products}
+                            {globalCount[cat.slug]} {language === 'ar' ? 'منتج' : 'products'}
                           </span>
                         )}
                       </div>
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-md">
-                        {ui.global}
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 rounded-md">
+                        {language === 'ar' ? 'عالمي' : 'Global'}
                       </span>
                     </Link>
                   </div>
@@ -382,13 +383,13 @@ const MasterCategoriesGrid: React.FC = () => {
         {/* Scope quick-filter bar */}
         <div className="flex items-center gap-2 mt-4 pt-4 border-t border-border">
           <span className="text-xs text-muted-foreground font-medium shrink-0">
-            {ui.quickFilter}
+            {language === 'ar' ? 'فرز سريع:' : 'Quick Filter:'}
           </span>
           <div className="flex gap-2 overflow-x-auto hide-scrollbar">
             {[
-              { key: 'all' as const, label: ui.allSources },
-              { key: 'local' as const, label: ui.localFactories },
-              { key: 'global' as const, label: ui.globalFactories },
+              { key: 'all' as const, label: language === 'ar' ? 'الكل' : 'All' },
+              { key: 'local' as const, label: language === 'ar' ? 'مصانع محلية' : 'Local Factories' },
+              { key: 'global' as const, label: language === 'ar' ? 'مصانع عالمية' : 'Global Factories' },
             ].map(item => (
               <button
                 key={item.key}
