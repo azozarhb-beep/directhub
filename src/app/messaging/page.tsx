@@ -142,6 +142,9 @@ function LiveMessagingContent() {
   const [pendingAttachment, setPendingAttachment] = useState<{ file: File; previewUrl?: string; type: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
+  // حساس قياس ارتفاع الشاشة لمنع اختفاء الإدخال خلف لوحة المفاتيح
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+
   type FilterType = 'all' | 'admin' | 'agent' | 'factory' | 'logistics' | 'rfq';
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -164,18 +167,35 @@ function LiveMessagingContent() {
 
   const activeConv = conversations.find(c => c.id === activeConvId) || null;
 
+  // الاستماع التفاعلي لارتفاع الشاشة عند فتح الكيبورد
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const updateViewport = () => {
+      if (window.visualViewport) {
+        setViewportHeight(window.visualViewport.height);
+      }
+    };
+    window.visualViewport?.addEventListener('resize', updateViewport);
+    window.visualViewport?.addEventListener('scroll', updateViewport);
+    updateViewport();
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', updateViewport);
+      window.visualViewport?.removeEventListener('scroll', updateViewport);
+    };
+  }, []);
+
   useEffect(() => {
     if (authLoading) return;
     if (!user) router.push('/login');
   }, [user, authLoading, router]);
 
-  // دالة إنشاء/فتح محادثة الإدارة بشكل مضمون
+  // دالة إنشاء/فتح محادثة الإدارة
   const startAdminConversation = useCallback(async () => {
     if (!user || creatingAdminChat) return;
     setCreatingAdminChat(true);
 
     try {
-      // 1. البحث في المحادثات الحالية
       const existing = conversations.find(c => c.category === 'admin');
       if (existing) {
         setActiveConvId(existing.id);
@@ -184,7 +204,6 @@ function LiveMessagingContent() {
         return;
       }
 
-      // 2. جلب حساب المدير من قاعدة البيانات
       let adminId: string | null = null;
       const { data: adminProf } = await supabase
         .from('user_profiles')
@@ -196,11 +215,9 @@ function LiveMessagingContent() {
       if (adminProf?.id) {
         adminId = adminProf.id;
       } else {
-        // إذا لم يُعثر على رتبة admin صريحة، نستخدم حساب النظام
         adminId = user.id;
       }
 
-      // 3. إنشاء الغرفة في قاعدة البيانات
       const newConvPayload: any = {
         buyer_id: user.id,
         manufacturer_id: adminId,
@@ -236,30 +253,26 @@ function LiveMessagingContent() {
     }
   }, [user, creatingAdminChat, conversations, supabase]);
 
-  // جلب المحادثات والربط المباشر
+  // جلب المحادثات
   const fetchConversations = useCallback(async () => {
     if (!user) return;
     setLoadingConvs(true);
     try {
       const channelParam = searchParams?.get('channel');
       const typeParam = searchParams?.get('type');
-      const partnerIdParam = searchParams?.get('partnerId');
 
-      // ضبط الفلتر تلقائياً إذا كان الرابط يطلب الإدارة
       if (channelParam === 'admin_direct') {
         setFilterType('admin');
       } else if (typeParam === 'agent_coordination') {
         setFilterType('agent');
       }
 
-      // 1. محادثات جدول chat_conversations
       const { data: chatData } = await supabase
         .from('chat_conversations')
         .select('*')
         .or(`buyer_id.eq.${user.id},manufacturer_id.eq.${user.id}`)
         .order('last_message_at', { ascending: false });
 
-      // 2. محادثات مكاتب الشحن
       let logisticsData: any[] = [];
       try {
         const { data: logData } = await supabase
@@ -330,14 +343,12 @@ function LiveMessagingContent() {
 
       setConversations(merged);
 
-      // التعامل مع الرابط عند الرغبة بمراسلة الإدارة مباشرة
       if (channelParam === 'admin_direct') {
         const adm = merged.find(c => c.category === 'admin');
         if (adm) {
           setActiveConvId(adm.id);
           if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
         } else {
-          // إنشاء الغرفة تلقائياً في الخلفية
           startAdminConversation();
         }
       } else {
@@ -360,7 +371,7 @@ function LiveMessagingContent() {
     if (user && !authLoading) fetchConversations();
   }, [user, authLoading, fetchConversations]);
 
-  // جلب رسائل المحادثة النشطة
+  // جلب الرسائل
   useEffect(() => {
     if (!activeConvId || !user || !activeConv) return;
     const fetchMsgs = async () => {
@@ -440,7 +451,7 @@ function LiveMessagingContent() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // الترجمة الحية أثناء الكتابة
+  // الترجمة الفورية
   useEffect(() => {
     const text = inputText.trim();
     if (!text || text.length < 2) {
@@ -471,7 +482,6 @@ function LiveMessagingContent() {
     return () => clearTimeout(timer);
   }, [inputText, liveTranslationLang]);
 
-  // معالجة المرفقات
   const handleAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -493,7 +503,6 @@ function LiveMessagingContent() {
     });
   };
 
-  // التسجيل الصوتي
   const handleToggleRecord = async () => {
     if (isRecording) {
       mediaRecorderRef.current?.stop();
@@ -545,7 +554,6 @@ function LiveMessagingContent() {
     }
   };
 
-  // إرسال الرسالة
   const handleSend = async () => {
     if (!inputText.trim() && !pendingAttachment) return;
     if (sending || !activeConvId || !user || !activeConv) return;
@@ -658,8 +666,18 @@ function LiveMessagingContent() {
       : FACTORY_QUICK_REPLIES;
 
   return (
-    <div className="bg-background flex flex-col overflow-hidden min-w-0" dir={dir} style={{ height: '100dvh', maxHeight: '100dvh' }}>
-      <Header />
+    <div
+      className="bg-background flex flex-col overflow-hidden min-w-0 fixed inset-0 md:relative"
+      dir={dir}
+      style={{
+        height: viewportHeight ? `${viewportHeight}px` : '100dvh',
+        maxHeight: viewportHeight ? `${viewportHeight}px` : '100dvh',
+      }}
+    >
+      {/* إخفاء الترويسة العامة في الموبايل عند فتح محادثة نشطة لتوفير المساحة بالكامل فوق الكيبورد */}
+      <div className={activeConvId && !sidebarOpen ? 'hidden md:block' : ''}>
+        <Header />
+      </div>
 
       <div className="flex-1 flex overflow-hidden min-w-0">
         {/* ══ القائمة الجانبية ═══════════════════════════════════════════════ */}
@@ -724,7 +742,6 @@ function LiveMessagingContent() {
                     : (isAr ? 'لا توجد محادثات هنا' : 'No conversations found')}
                 </p>
 
-                {/* زر فوري لإنشاء محادثة الإدارة إذا كان التبويب فارغاً */}
                 {filterType === 'admin' && (
                   <button
                     type="button"
@@ -802,7 +819,7 @@ function LiveMessagingContent() {
             </div>
           ) : (
             <>
-              {/* ── ترويسة الشات التفاعلية ── */}
+              {/* ── ترويسة الشات ── */}
               <div className="px-4 py-3 border-b border-border bg-card flex items-center justify-between gap-3 shrink-0">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <button
@@ -847,7 +864,7 @@ function LiveMessagingContent() {
               </div>
 
               {/* فقاعات الرسائل */}
-              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-muted/10">
+              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-muted/10">
                 {messages.map(msg => {
                   const isOwn = msg.sender_id === user?.id;
                   const parsed = parseBilingualMessage(msg.message);
@@ -888,16 +905,23 @@ function LiveMessagingContent() {
               {/* شريط الردود السريعة */}
               <div className="px-3 py-1.5 border-t border-border bg-card flex gap-1.5 overflow-x-auto shrink-0" style={{ scrollbarWidth: 'none' }}>
                 {currentQuickReplies.map(qr => (
-                  <button key={qr} onClick={() => setInputText(qr)} className="shrink-0 px-2.5 py-1 bg-muted hover:bg-muted/80 text-[11px] font-medium rounded-full text-foreground whitespace-nowrap transition-colors">
+                  <button
+                    key={qr}
+                    onClick={() => {
+                      setInputText(qr);
+                      inputRef.current?.focus();
+                    }}
+                    className="shrink-0 px-2.5 py-1 bg-muted hover:bg-muted/80 text-[11px] font-medium rounded-full text-foreground whitespace-nowrap transition-colors"
+                  >
                     {qr}
                   </button>
                 ))}
               </div>
 
-              {/* صندوق الإدخال */}
-              <div className="p-3 border-t border-border bg-card shrink-0 space-y-2">
+              {/* ── صندوق الإدخال (يرتفع تلقائياً فوق الكيبورد في الموبايل) ── */}
+              <div className="p-2.5 sm:p-3 border-t border-border bg-card shrink-0 space-y-2 pb-safe">
                 {liveTranslation && (
-                  <div className="px-3.5 py-2 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-700 dark:text-blue-300 flex items-center justify-between transition-all">
+                  <div className="px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-700 dark:text-blue-300 flex items-center justify-between transition-all">
                     <div className="flex items-center gap-2 truncate">
                       <span className="font-bold flex items-center gap-1 shrink-0">
                         <span>🌐</span>
@@ -912,7 +936,7 @@ function LiveMessagingContent() {
                 )}
 
                 {pendingAttachment && (
-                  <div className="px-3.5 py-1.5 bg-muted/70 rounded-xl border border-border flex items-center justify-between text-xs">
+                  <div className="px-3 py-1.5 bg-muted/70 rounded-xl border border-border flex items-center justify-between text-xs">
                     <span className="font-medium truncate flex-1">{pendingAttachment.file.name}</span>
                     <button type="button" onClick={() => setPendingAttachment(null)} className="text-red-500 hover:text-red-700 font-bold ms-2">إلغاء</button>
                   </div>
@@ -929,6 +953,11 @@ function LiveMessagingContent() {
                   <textarea
                     ref={inputRef}
                     value={inputText}
+                    onFocus={() => {
+                      setTimeout(() => {
+                        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                      }, 250);
+                    }}
                     onChange={e => setInputText(e.target.value)}
                     onKeyDown={e => {
                       if (e.key === 'Enter' && !e.shiftKey) {
@@ -944,8 +973,8 @@ function LiveMessagingContent() {
                         : 'اكتب رسالتك وتفاصيل طلبك هنا... (تتم الترجمة فورياً)'
                     }
                     rows={2}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 resize-none transition-all leading-relaxed"
-                    style={{ minHeight: '60px', maxHeight: '130px' }}
+                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 resize-none transition-all leading-relaxed"
+                    style={{ minHeight: '52px', maxHeight: '110px' }}
                   />
                 </div>
 
@@ -957,20 +986,20 @@ function LiveMessagingContent() {
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="h-9 px-2.5 rounded-xl border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-primary flex items-center gap-1.5 text-xs font-semibold transition-colors shrink-0"
+                      className="h-8.5 px-2.5 rounded-xl border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-primary flex items-center gap-1.5 text-xs font-semibold transition-colors shrink-0"
                       title="إرفاق صورة أو مستند"
                     >
-                      <Icon name="PaperClipIcon" size={16} />
+                      <Icon name="PaperClipIcon" size={15} />
                       <span className="hidden sm:inline">مرفق</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => cameraInputRef.current?.click()}
-                      className="h-9 px-2.5 rounded-xl border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-primary flex items-center gap-1.5 text-xs font-semibold transition-colors shrink-0"
+                      className="h-8.5 px-2.5 rounded-xl border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-primary flex items-center gap-1.5 text-xs font-semibold transition-colors shrink-0"
                       title="التقاط صورة بالكاميرا"
                     >
-                      <Icon name="CameraIcon" size={16} />
+                      <Icon name="CameraIcon" size={15} />
                       <span className="hidden sm:inline">كاميرا</span>
                     </button>
 
@@ -978,12 +1007,12 @@ function LiveMessagingContent() {
                       <button
                         type="button"
                         onClick={() => setShowLangPicker(!showLangPicker)}
-                        className="h-9 px-2.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center gap-1.5 hover:bg-blue-500/20 transition-colors"
+                        className="h-8.5 px-2.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center gap-1.5 hover:bg-blue-500/20 transition-colors"
                         title="تغيير لغة الترجمة الفورية"
                       >
                         <span className="text-sm">🌐</span>
                         <span>{liveTranslationLang.toUpperCase()}</span>
-                        <Icon name="ChevronDownIcon" size={12} className="opacity-70" />
+                        <Icon name="ChevronDownIcon" size={11} className="opacity-70" />
                       </button>
 
                       {showLangPicker && (
@@ -1018,14 +1047,14 @@ function LiveMessagingContent() {
                     <button
                       type="button"
                       onClick={handleToggleRecord}
-                      className={`h-9 px-2.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0 ${
+                      className={`h-8.5 px-2.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0 ${
                         isRecording
                           ? 'bg-red-500 text-white border-red-600 animate-pulse'
                           : 'border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
                       }`}
                       title={isRecording ? 'إيقاف التسجيل وإرسال' : 'تسجيل رسالة صوتية'}
                     >
-                      <Icon name="MicrophoneIcon" size={16} />
+                      <Icon name="MicrophoneIcon" size={15} />
                       <span className="hidden sm:inline">{isRecording ? 'تسجيل...' : 'صوتي'}</span>
                     </button>
                   </div>
@@ -1034,10 +1063,10 @@ function LiveMessagingContent() {
                     type="button"
                     onClick={handleSend}
                     disabled={(!inputText.trim() && !pendingAttachment) || sending}
-                    className="h-9 px-5 bg-primary text-primary-foreground rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-sm hover:opacity-90 active:scale-95 disabled:opacity-40 transition-all shrink-0"
+                    className="h-8.5 px-4.5 bg-primary text-primary-foreground rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm hover:opacity-90 active:scale-95 disabled:opacity-40 transition-all shrink-0"
                   >
                     <span>{isAr ? 'إرسال' : 'Send'}</span>
-                    <Icon name="PaperAirplaneIcon" size={15} className={isRTL ? 'rotate-180' : ''} />
+                    <Icon name="PaperAirplaneIcon" size={14} className={isRTL ? 'rotate-180' : ''} />
                   </button>
                 </div>
               </div>
