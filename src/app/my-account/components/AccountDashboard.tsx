@@ -14,18 +14,16 @@ import {
   type PlatformRole,
 } from '@/lib/roomIsolation';
 
-type TabKey = 'overview' | 'orders' | 'products' | 'settings' | 'my-orders';
+type TabKey = 'overview' | 'orders' | 'messages' | 'products' | 'settings';
 
-// Helper to determine if user is a regular buyer (not supplier/manufacturer)
 function checkIsBuyer(profile: UserProfile | null): boolean {
-  if (!profile) return true; // default to buyer restrictions until profile loads
+  if (!profile) return true;
   return resolvePlatformRole({
     role: profile.role,
     account_type: profile.account_type,
   }) === 'buyer';
 }
 
-// Helper to determine user's workspace role
 function getUserWorkspaceRole(profile: UserProfile | null): PlatformRole {
   if (!profile) return 'buyer';
   return resolvePlatformRole({
@@ -56,54 +54,12 @@ interface UserProfile {
   notif_promotions?: boolean;
 }
 
-// Country → dial code mapping
-const COUNTRY_DIAL_CODES: Record<string, string> = {
-  'Qatar': '+974', 'Saudi Arabia': '+966', 'United Arab Emirates': '+971',
-  'Kuwait': '+965', 'Bahrain': '+973', 'Oman': '+968', 'Jordan': '+962',
-  'Egypt': '+20', 'Iraq': '+964', 'Lebanon': '+961', 'Syria': '+963',
-  'Yemen': '+967', 'Libya': '+218', 'Tunisia': '+216', 'Algeria': '+213',
-  'Morocco': '+212', 'Sudan': '+249', 'Turkey': '+90', 'Iran': '+98',
-  'Pakistan': '+92', 'India': '+91', 'China': '+86', 'United States': '+1',
-  'United Kingdom': '+44', 'Germany': '+49', 'France': '+33', 'Italy': '+39',
-  'Spain': '+34', 'Russia': '+7', 'Brazil': '+55', 'Australia': '+61',
-  'Canada': '+1', 'Japan': '+81', 'South Korea': '+82', 'Indonesia': '+62',
-  'Malaysia': '+60', 'Singapore': '+65', 'Thailand': '+66', 'Vietnam': '+84',
-  'Philippines': '+63', 'Bangladesh': '+880', 'Nigeria': '+234',
-  'South Africa': '+27', 'Kenya': '+254', 'Ethiopia': '+251', 'Ghana': '+233',
-  'Tanzania': '+255', 'Uganda': '+256', 'Mexico': '+52', 'Argentina': '+54',
-  'Colombia': '+57', 'Chile': '+56', 'Peru': '+51', 'Netherlands': '+31',
-  'Belgium': '+32', 'Sweden': '+46', 'Norway': '+47', 'Denmark': '+45',
-  'Finland': '+358', 'Poland': '+48', 'Ukraine': '+380', 'Romania': '+40',
-  'Greece': '+30', 'Portugal': '+351', 'Czech Republic': '+420',
-  'Hungary': '+36', 'Austria': '+43', 'Switzerland': '+41', 'Israel': '+972',
-  'Afghanistan': '+93', 'Sri Lanka': '+94', 'Nepal': '+977', 'Myanmar': '+95',
-  'Cambodia': '+855', 'New Zealand': '+64',
-};
-
-// Dynamic city lists per country
-const COUNTRY_CITIES: Record<string, string[]> = {
-  'Yemen': ['صنعاء', 'عدن', 'تعز', 'الحديدة', 'إب', 'ذمار', 'حضرموت', 'المكلا', 'سيئون', 'صعدة', 'عمران', 'البيضاء', 'مأرب', 'شبوة', 'أبين', 'لحج', 'الضالع', 'ريمة', 'المهرة', 'حجة'],
-  'Saudi Arabia': ['الرياض', 'جدة', 'مكة المكرمة', 'المدينة المنورة', 'الدمام', 'الخبر', 'الطائف', 'تبوك', 'بريدة', 'خميس مشيط', 'أبها', 'نجران', 'جيزان', 'حائل', 'الجبيل', 'ينبع', 'الأحساء', 'القطيف', 'عرعر', 'سكاكا'],
-  'Iraq': ['بغداد', 'البصرة', 'الموصل', 'أربيل', 'كركوك', 'النجف', 'كربلاء', 'الحلة', 'الناصرية', 'العمارة', 'الكوت', 'الرمادي', 'تكريت', 'الفلوجة', 'السليمانية', 'دهوك', 'سامراء', 'بعقوبة', 'الديوانية', 'الكوفة'],
-  'Egypt': ['القاهرة', 'الإسكندرية', 'الجيزة', 'شبرا الخيمة', 'بورسعيد', 'السويس', 'المنصورة', 'الإسماعيلية', 'الفيوم', 'الزقازيق', 'أسيوط', 'طنطا', 'المنيا', 'سوهاج', 'قنا', 'الأقصر', 'أسوان', 'دمياط', 'بني سويف', 'شرم الشيخ'],
-};
-
-function getDialCode(country: string): string {
-  if (!country) return '';
-  const trimmed = country.trim();
-  if (COUNTRY_DIAL_CODES[trimmed]) return COUNTRY_DIAL_CODES[trimmed];
-  const lower = trimmed.toLowerCase();
-  const found = Object.entries(COUNTRY_DIAL_CODES).find(([k]) => k.toLowerCase() === lower);
-  if (found) return found[1];
-  const partial = Object.entries(COUNTRY_DIAL_CODES).find(([k]) => k.toLowerCase().includes(lower) || lower.includes(k.toLowerCase()));
-  return partial ? partial[1] : '';
-}
-
 interface Order {
   id: string;
   order_number: string;
   status: string;
   total: number;
+  currency?: string | null;
   created_at: string;
   items: any[];
 }
@@ -129,7 +85,6 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: 'text-red-600 bg-red-50',
 };
 
-// Hydration-safe date formatter — uses explicit numeric parts, no locale-dependent output
 function formatDateSafe(dateStr: string): string {
   if (!dateStr) return '';
   const d = new Date(dateStr);
@@ -140,7 +95,6 @@ function formatDateSafe(dateStr: string): string {
   return `${year}-${month}-${day}`;
 }
 
-// Hydration-safe month+year formatter (e.g. "Jan 2024")
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function formatMonthYear(dateStr: string): string {
   if (!dateStr) return '';
@@ -149,7 +103,6 @@ function formatMonthYear(dateStr: string): string {
   return `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-// Hydration-safe number formatter — avoids toLocaleString locale differences
 function formatNumber(n: number): string {
   const parts = Math.floor(n).toString().split('');
   const result: string[] = [];
@@ -160,16 +113,22 @@ function formatNumber(n: number): string {
   return result.reverse().join('');
 }
 
+function formatPrice(amount: number, currency?: string | null): string {
+  const c = currency || 'ر.ي';
+  if (c === 'USD' || c === '$') {
+    return `$${formatNumber(amount)}`;
+  }
+  return `${formatNumber(amount)} ${c}`;
+}
+
 /* ─── Workspace Banner ─── */
 const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnType<typeof useRouter> }> = ({ profile, router }) => {
   const workspaceRole = getUserWorkspaceRole(profile);
   if (workspaceRole === 'buyer' || workspaceRole === 'unknown') return null;
 
   const accountRole = (profile?.account_role || '').toLowerCase().trim();
-  // Field-agent control room is strictly for field agents and admins
   const canSeeAgentRoom = workspaceRole === 'agent' || workspaceRole === 'admin';
 
-  // Determine title, description, and destination based on account_role
   let title = '';
   let description = '';
   let destination = profile?.dashboard_path || getHomeRoomForRole(workspaceRole);
@@ -218,12 +177,8 @@ const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnTyp
         <Icon name="BuildingOffice2Icon" size={24} className="text-primary" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-extrabold text-foreground mb-0.5">
-          {title}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {description}
-        </p>
+        <p className="text-sm font-extrabold text-foreground mb-0.5">{title}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
       </div>
       <button
         onClick={() => router.push(destination)}
@@ -274,7 +229,7 @@ const TrackingCodeInput: React.FC<{ orderId: string }> = ({ orderId }) => {
   );
 };
 
-/* ─── My RFQs list (price requests) ─── */
+/* ─── My RFQs list ─── */
 interface AccountRfq {
   id: string;
   product_name: string;
@@ -303,7 +258,7 @@ const MyRfqList: React.FC<{ rfqs: AccountRfq[]; dataLoading: boolean }> = ({ rfq
     <div className="flex flex-col gap-3 mb-6" dir={dir}>
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-base font-extrabold text-foreground">{isAr ? 'طلباتي للأسعار' : 'My Price Requests'}</h3>
+          <h3 className="text-base font-extrabold text-foreground">{isAr ? 'طلباتي للأسعار (RFQ)' : 'My Price Requests (RFQ)'}</h3>
           <p className="text-xs text-muted-foreground mt-0.5">{rfqs.length} {isAr ? 'طلب' : 'requests'}</p>
         </div>
         <Link href="/rfq-management" className="px-3 py-1.5 text-xs font-bold border border-border rounded-lg hover:bg-muted transition-colors text-foreground">
@@ -331,7 +286,7 @@ const MyRfqList: React.FC<{ rfqs: AccountRfq[]; dataLoading: boolean }> = ({ rfq
               </div>
               <div className="flex sm:flex-col items-center sm:items-end gap-3 shrink-0">
                 {rfq.target_price ? (
-                  <p className="text-base font-extrabold text-foreground">{rfq.currency || 'USD'} {formatNumber(rfq.target_price)}</p>
+                  <p className="text-base font-extrabold text-foreground">{formatPrice(rfq.target_price, rfq.currency)}</p>
                 ) : null}
                 <Link href="/rfq-management" className="px-3 py-1.5 text-xs font-bold border border-border rounded-lg hover:bg-muted transition-colors text-foreground">
                   {isAr ? 'عرض التفاصيل' : 'View details'}
@@ -347,11 +302,10 @@ const MyRfqList: React.FC<{ rfqs: AccountRfq[]; dataLoading: boolean }> = ({ rfq
 
 /* ─── My Orders Tab ─── */
 const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: boolean; orderStats: { total: number; pending: number; completed: number; totalSpent: number } }> = ({ orders, rfqs, dataLoading, orderStats }) => {
-  const { t, dir, isRTL, language } = useLanguage();
+  const { t, dir, language } = useLanguage();
   const ma = t.myAccount;
   const [activeOrderTab, setActiveOrderTab] = useState<'processing' | 'ready' | 'shipped' | 'completed' | 'history'>('processing');
 
-  // Categorize orders by status
   const processingOrders = orders.filter(o => ['pending', 'processing', 'confirmed', 'manufacturing', 'preparing'].includes(o.status));
   const readyOrders = orders.filter(o => ['ready', 'ready_for_pickup', 'ready_to_ship'].includes(o.status));
   const shippedOrders = orders.filter(o => ['shipped', 'in_transit', 'out_for_delivery'].includes(o.status));
@@ -422,12 +376,9 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
     );
   }
 
-  const currentTabData = orderTabs.find(t => t.key === activeOrderTab)!;
-
   return (
     <div className="flex flex-col gap-6" dir={dir}>
       <MyRfqList rfqs={rfqs} dataLoading={dataLoading} />
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-extrabold text-foreground">{ma.myOrders}</h2>
@@ -459,9 +410,8 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
         ))}
       </div>
 
-      {/* ── Status Tabs ── */}
+      {/* Status Tabs */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
-        {/* Tab bar */}
         <div className="flex overflow-x-auto border-b border-border scrollbar-hide">
           {orderTabs.map((tab) => (
             <button
@@ -484,10 +434,7 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
           ))}
         </div>
 
-        {/* Tab content */}
         <div className="p-4 md:p-5">
-
-          {/* ── قيد التنفيذ ── */}
           {activeOrderTab === 'processing' && (
             <div className="flex flex-col gap-3">
               {processingOrders.length === 0 ? (
@@ -515,7 +462,6 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
                         <p className="text-xs text-muted-foreground mb-2">
                           {ma.orderDate} {formatDateSafe(order.created_at)}
                         </p>
-                        {/* Progress bar */}
                         <div className="flex items-center gap-2 mb-1">
                           <div className="flex-1 h-1.5 bg-amber-100 rounded-full overflow-hidden">
                             <div className="h-full bg-amber-500 rounded-full animate-pulse" style={{ width: order.status === 'processing' ? '40%' : order.status === 'confirmed' ? '20%' : '65%' }} />
@@ -525,11 +471,10 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
                           </span>
                         </div>
                         <p className="text-[10px] text-muted-foreground mb-1">{ma.expectedDeliveryLabel} {getEstimatedDelivery(order)}</p>
-                        {/* Tracking code */}
                         <TrackingCodeInput orderId={order.id} />
                       </div>
                       <div className="flex flex-col items-end gap-2 shrink-0">
-                        <p className="text-base font-extrabold text-foreground">${formatNumber(order.total || 0)}</p>
+                        <p className="text-base font-extrabold text-foreground">{formatPrice(order.total || 0, order.currency)}</p>
                         <Link href={`/orders/${order.id}`} className="px-3 py-1.5 text-xs font-bold border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors text-amber-700">
                           {ma.details}
                         </Link>
@@ -541,7 +486,6 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
             </div>
           )}
 
-          {/* ── {ma.ready} ── */}
           {activeOrderTab === 'ready' && (
             <div className="flex flex-col gap-3">
               {readyOrders.length === 0 ? (
@@ -569,16 +513,14 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
                         <p className="text-xs text-muted-foreground mb-2">
                           {ma.orderDate} {formatDateSafe(order.created_at)}
                         </p>
-                        {/* Ready alert */}
                         <div className="flex items-center gap-2 p-2.5 bg-emerald-50 border border-emerald-100 rounded-xl mb-2">
                           <Icon name="BellAlertIcon" size={14} className="text-emerald-600 shrink-0" />
                           <p className="text-xs font-bold text-emerald-700">{ma.orderReady}</p>
                         </div>
-                        {/* Tracking code */}
                         <TrackingCodeInput orderId={order.id} />
                       </div>
                       <div className="flex flex-col items-end gap-2 shrink-0">
-                        <p className="text-base font-extrabold text-foreground">${formatNumber(order.total || 0)}</p>
+                        <p className="text-base font-extrabold text-foreground">{formatPrice(order.total || 0, order.currency)}</p>
                         <Link href={`/orders/${order.id}`} className="px-3 py-1.5 text-xs font-bold border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors text-emerald-700">
                           {ma.details}
                         </Link>
@@ -590,7 +532,6 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
             </div>
           )}
 
-          {/* ── مشحون ── */}
           {activeOrderTab === 'shipped' && (
             <div className="flex flex-col gap-3">
               {shippedOrders.length === 0 ? (
@@ -615,7 +556,6 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
                             {getStatusLabel(order.status)}
                           </span>
                         </div>
-                        {/* Delivery date */}
                         <div className="flex items-center gap-2 mb-2 p-2.5 bg-blue-50 border border-blue-100 rounded-xl">
                           <Icon name="CalendarDaysIcon" size={14} className="text-blue-600 shrink-0" />
                           <div>
@@ -623,29 +563,10 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
                             <p className="text-xs font-extrabold text-blue-700">{getEstimatedDelivery(order)}</p>
                           </div>
                         </div>
-                        {/* Shipping steps */}
-                        <div className="flex items-center gap-3 text-[10px] text-muted-foreground mb-2">
-                          {[ma.shipped, ma.stInTransit, ma.stArrivedRegion, ma.delivery].map((step, idx) => {
-                            const stepIndex = order.status === 'shipped' ? 0 : order.status === 'in_transit' ? 1 : order.status === 'out_for_delivery' ? 2 : 0;
-                            const isActive = idx <= stepIndex;
-                            return (
-                              <React.Fragment key={step}>
-                                <div className={`flex flex-col items-center gap-1 ${isActive ? 'text-blue-600' : 'text-muted-foreground/50'}`}>
-                                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${isActive ? 'border-blue-500 bg-blue-500' : 'border-muted-foreground/30'}`}>
-                                    {isActive && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
-                                  </div>
-                                  <span className="text-[9px] font-medium text-center leading-tight w-12">{step}</span>
-                                </div>
-                                {idx < 3 && <div className={`flex-1 h-0.5 mb-3 ${idx < stepIndex ? 'bg-blue-400' : 'bg-muted'}`} />}
-                              </React.Fragment>
-                            );
-                          })}
-                        </div>
-                        {/* Tracking code */}
                         <TrackingCodeInput orderId={order.id} />
                       </div>
                       <div className="flex flex-col items-end gap-2 shrink-0">
-                        <p className="text-base font-extrabold text-foreground">${formatNumber(order.total || 0)}</p>
+                        <p className="text-base font-extrabold text-foreground">{formatPrice(order.total || 0, order.currency)}</p>
                         <Link href={`/orders/${order.id}`} className="px-3 py-1.5 text-xs font-bold border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-blue-700">
                           {ma.details}
                         </Link>
@@ -657,7 +578,6 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
             </div>
           )}
 
-          {/* ── {ma.completed} ── */}
           {activeOrderTab === 'completed' && (
             <div className="flex flex-col gap-3">
               {completedOrders.length === 0 ? (
@@ -687,7 +607,7 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
                         </p>
                       </div>
                       <div className="flex flex-col items-end gap-2 shrink-0">
-                        <p className="text-base font-extrabold text-foreground">${formatNumber(order.total || 0)}</p>
+                        <p className="text-base font-extrabold text-foreground">{formatPrice(order.total || 0, order.currency)}</p>
                         <Link href={`/orders/${order.id}`} className="px-3 py-1.5 text-xs font-bold border border-green-200 rounded-lg hover:bg-green-100 transition-colors text-green-700">
                           {ma.details}
                         </Link>
@@ -699,7 +619,6 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
             </div>
           )}
 
-          {/* ── {ma.fullOrderLog} ── */}
           {activeOrderTab === 'history' && (
             <div className="flex flex-col gap-3">
               {allOrders.length === 0 ? (
@@ -728,13 +647,12 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
                           <p className="text-xs text-muted-foreground font-mono">
                             {formatDateSafe(order.created_at)}
                           </p>
-                          {/* Show tracking code for undelivered orders */}
                           {!['delivered', 'completed', 'cancelled'].includes(order.status) && (
                             <TrackingCodeInput orderId={order.id} />
                           )}
                         </div>
                         <div className="flex sm:flex-col items-center sm:items-end gap-3 shrink-0">
-                          <p className="text-base font-extrabold text-foreground">${formatNumber(order.total || 0)}</p>
+                          <p className="text-base font-extrabold text-foreground">{formatPrice(order.total || 0, order.currency)}</p>
                           <Link href={`/orders/${order.id}`} className="px-3 py-1.5 text-xs font-bold border border-border rounded-lg hover:bg-muted transition-colors text-foreground">
                             {ma.orderDetails}
                           </Link>
@@ -742,24 +660,17 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
                       </div>
                     </div>
                   ))}
-                  <div className="mt-2 text-center">
-                    <Link href="/orders" className="inline-flex items-center gap-2 px-6 py-2.5 border border-border rounded-xl text-sm font-bold text-foreground hover:bg-muted transition-colors">
-                      <Icon name="ArrowTopRightOnSquareIcon" size={14} />
-                      {ma.viewFullOrderHistory}
-                    </Link>
-                  </div>
                 </>
               )}
             </div>
           )}
-
         </div>
       </div>
     </div>
   );
 };
 
-// ─── Live Order Status Widget ───────────────────────────────────────────────
+/* ─── Live Order Status Widget ─── */
 interface LiveStatusEvent {
   orderId: string;
   orderNumber: string;
@@ -776,24 +687,13 @@ const LIVE_STATUS_COLORS: Record<string, { bg: string; text: string; border: str
   cancelled:  { bg: 'bg-red-50',     text: 'text-red-700',     border: 'border-red-200',    dot: 'bg-red-500' },
 };
 
-const LIVE_STATUS_ICONS: Record<string, string> = {
-  pending:    'ClockIcon',
-  processing: 'WrenchScrewdriverIcon',
-  shipped:    'TruckIcon',
-  delivered:  'CheckCircleIcon',
-  cancelled:  'XCircleIcon',
-};
-
 const LiveOrderStatusWidget: React.FC<{
   orders: Order[];
   liveEvents: LiveStatusEvent[];
   isConnected: boolean;
   language: string;
 }> = ({ orders, liveEvents, isConnected, language }) => {
-  const { t, isRTL } = useLanguage();
-  const ma = t.myAccount;
   const isAr = language === 'ar';
-
   const activeOrders = orders.filter(o => !['delivered', 'cancelled'].includes(o.status));
 
   const getStatusLabel = (status: string) => {
@@ -818,7 +718,6 @@ const LiveOrderStatusWidget: React.FC<{
 
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden">
-      {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-gradient-to-r from-primary/5 to-transparent">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -848,36 +747,6 @@ const LiveOrderStatusWidget: React.FC<{
         </div>
       </div>
 
-      {/* Live Events Feed */}
-      {liveEvents.length > 0 && (
-        <div className="px-5 py-3 border-b border-border bg-amber-50/60">
-          <p className="text-[10px] font-extrabold text-amber-700 mb-2 flex items-center gap-1.5">
-            <Icon name="BellAlertIcon" size={12} className="text-amber-600" />
-            {isAr ? 'آخر التحديثات' : 'Recent Updates'}
-          </p>
-          <div className="flex flex-col gap-1.5">
-            {liveEvents.slice(0, 3).map((ev, i) => {
-              const cfg = LIVE_STATUS_COLORS[ev.newStatus] || LIVE_STATUS_COLORS.pending;
-              return (
-                <div key={i} className={`flex items-center gap-2 px-3 py-2 ${cfg.bg} border ${cfg.border} rounded-xl`}>
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot} animate-pulse`} />
-                  <p className="text-xs font-bold text-foreground flex-1 min-w-0 truncate">
-                    {isAr
-                      ? `طلب #${ev.orderNumber} — تحديث الحالة إلى: ${getStatusLabel(ev.newStatus)}`
-                      : `Order #${ev.orderNumber} — Status updated to: ${getStatusLabel(ev.newStatus)}`
-                    }
-                  </p>
-                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${cfg.bg} ${cfg.text}`}>
-                    {getStatusLabel(ev.newStatus)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Active Orders List */}
       <div className="p-5">
         {activeOrders.length === 0 ? (
           <div className="text-center py-8">
@@ -895,92 +764,39 @@ const LiveOrderStatusWidget: React.FC<{
           <div className="flex flex-col gap-3">
             {activeOrders.map((order) => {
               const cfg = LIVE_STATUS_COLORS[order.status] || LIVE_STATUS_COLORS.pending;
-              const iconName = LIVE_STATUS_ICONS[order.status] || 'ClockIcon';
               const progress = getStatusProgress(order.status);
-              const isJustUpdated = liveEvents.some(ev => ev.orderId === order.id);
 
               return (
-                <div
-                  key={order.id}
-                  className={`border rounded-2xl p-4 transition-all duration-500 ${
-                    isJustUpdated
-                      ? `${cfg.bg} ${cfg.border} shadow-md`
-                      : 'bg-card border-border'
-                  }`}
-                >
+                <div key={order.id} className="border border-border rounded-2xl p-4 bg-card">
                   <div className="flex items-start gap-3">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${cfg.bg}`}>
-                      <Icon name={iconName as Parameters<typeof Icon>[0]['name']} size={18} className={cfg.text} />
+                      <Icon name="ClockIcon" size={18} className={cfg.text} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-1">
                         <p className="text-sm font-extrabold text-foreground">
                           {isAr ? `طلب #${order.order_number}` : `Order #${order.order_number}`}
                         </p>
-                        <span className={`flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text} border ${cfg.border}`}>
-                          {isJustUpdated && <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} animate-pulse`} />}
+                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text} border ${cfg.border}`}>
                           {getStatusLabel(order.status)}
                         </span>
-                        {isJustUpdated && (
-                          <span className="text-[9px] font-extrabold px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full border border-amber-200">
-                            {isAr ? '🔔 محدّث' : '🔔 Updated'}
-                          </span>
-                        )}
                       </div>
-                      {/* Progress bar */}
                       <div className="flex items-center gap-2 mt-2">
                         <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all duration-700 ${
                               order.status === 'delivered' ? 'bg-green-500' :
                               order.status === 'shipped'   ? 'bg-purple-500' :
-                              order.status === 'processing'? 'bg-blue-500' :
-                              order.status === 'cancelled' ? 'bg-red-400' : 'bg-yellow-400'
+                              order.status === 'processing'? 'bg-blue-500' : 'bg-yellow-400'
                             }`}
                             style={{ width: `${progress}%` }}
                           />
                         </div>
                         <span className="text-[10px] font-bold text-muted-foreground shrink-0">{progress}%</span>
                       </div>
-                      {/* Milestone steps */}
-                      <div className="flex items-center gap-1 mt-2.5">
-                        {(['pending', 'processing', 'shipped', 'delivered'] as const).map((step, idx) => {
-                          const stepProgress = getStatusProgress(step);
-                          const currentProgress = getStatusProgress(order.status);
-                          const isActive = currentProgress >= stepProgress && order.status !== 'cancelled';
-                          const isCurrent = order.status === step;
-                          const stepLabels: Record<string, { ar: string; en: string }> = {
-                            pending:    { ar: 'انتظار', en: 'Pending' },
-                            processing: { ar: 'تنفيذ',  en: 'Processing' },
-                            shipped:    { ar: 'شحن',    en: 'Shipped' },
-                            delivered:  { ar: 'تسليم',  en: 'Delivered' },
-                          };
-                          return (
-                            <React.Fragment key={step}>
-                              <div className="flex flex-col items-center gap-0.5">
-                                <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center transition-all ${
-                                  isActive
-                                    ? isCurrent
-                                      ? 'border-primary bg-primary scale-110' :'border-primary bg-primary' :'border-muted-foreground/30 bg-transparent'
-                                }`}>
-                                  {isActive && <div className="w-1 h-1 bg-white rounded-full" />}
-                                </div>
-                                <span className={`text-[8px] font-bold leading-none ${isActive ? 'text-primary' : 'text-muted-foreground/50'}`}>
-                                  {isAr ? stepLabels[step].ar : stepLabels[step].en}
-                                </span>
-                              </div>
-                              {idx < 3 && (
-                                <div className={`flex-1 h-0.5 mb-3 transition-all ${
-                                  getStatusProgress(order.status) > stepProgress ? 'bg-primary' : 'bg-muted'
-                                }`} />
-                              )}
-                            </React.Fragment>
-                          );
-                        })}
-                      </div>
                     </div>
-                    <div className="shrink-0 text-right">
-                      <p className="text-sm font-extrabold text-foreground">${formatNumber(order.total || 0)}</p>
+                    <div className="shrink-0 text-start">
+                      <p className="text-sm font-extrabold text-foreground">{formatPrice(order.total || 0, order.currency)}</p>
                       <p className="text-[10px] text-muted-foreground mt-0.5">{formatDateSafe(order.created_at)}</p>
                     </div>
                   </div>
@@ -989,40 +805,19 @@ const LiveOrderStatusWidget: React.FC<{
             })}
           </div>
         )}
-
-        {/* All orders link */}
-        {orders.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">
-              {isAr
-                ? `${orders.length} طلب إجمالي · ${activeOrders.length} نشط`
-                : `${orders.length} total orders · ${activeOrders.length} active`
-              }
-            </p>
-            <Link
-              href="/order-tracking/dashboard"
-              className="flex items-center gap-1.5 text-xs font-bold text-primary hover:opacity-70 transition-opacity"
-            >
-              <Icon name="ArrowTopRightOnSquareIcon" size={12} />
-              {isAr ? 'لوحة التتبع' : 'Tracking Dashboard'}
-            </Link>
-          </div>
-        )}
       </div>
     </div>
   );
 };
-// ─────────────────────────────────────────────────────────────────────────────
 
+/* ─── Main Account Dashboard Component ─── */
 const AccountDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
-  const [uploadSuccess, setUploadSuccess] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [profileSaveToast, setProfileSaveToast] = useState(false);
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const {t, isRTL, dir, language} = useLanguage();
-  const ma = t.myAccount;
+  const { t, isRTL, dir, language } = useLanguage();
+  const isAr = language === 'ar';
   const supabase = createClient();
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -1031,6 +826,7 @@ const AccountDashboard: React.FC = () => {
   const [rfqs, setRfqs] = useState<AccountRfq[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [orderStats, setOrderStats] = useState({ total: 0, pending: 0, completed: 0, totalSpent: 0 });
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState<number>(0);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
 
   const [hasLocalPassword, setHasLocalPassword] = useState(false);
@@ -1040,7 +836,6 @@ const AccountDashboard: React.FC = () => {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordMsg, setPasswordMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // Notification preferences state
   const [notifPrefs, setNotifPrefs] = useState({
     notif_new_inquiries: true,
     notif_order_updates: true,
@@ -1066,13 +861,13 @@ const AccountDashboard: React.FC = () => {
       try {
         const [profileRes, ordersRes, productsRes, rfqsRes] = await Promise.all([
           supabase.from('user_profiles').select('*').eq('id', user.id).single(),
-          supabase.from('orders').select('id, order_number, status, total, created_at, items').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
+          supabase.from('orders').select('id, order_number, status, total, currency, created_at, items').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
           supabase.from('manufacturer_products').select('id, name, name_ar, unit_price, minimum_order_qty, unit, inventory_status, is_active, image_url, created_at').eq('manufacturer_id', user.id).order('created_at', { ascending: false }),
           supabase.from('rfq_requests').select('id, product_name, quantity, unit, target_price, currency, destination_country, status, created_at').eq('buyer_id', user.id).order('created_at', { ascending: false }).limit(20),
         ]);
+
         if (profileRes.data) {
           setProfile(profileRes.data);
-          // Load notification preferences from profile
           setNotifPrefs({
             notif_new_inquiries: profileRes.data.notif_new_inquiries ?? true,
             notif_order_updates: profileRes.data.notif_order_updates ?? true,
@@ -1080,6 +875,7 @@ const AccountDashboard: React.FC = () => {
             notif_promotions: profileRes.data.notif_promotions ?? false,
           });
         }
+
         if (ordersRes.data) {
           const total = ordersRes.data.length;
           const pending = ordersRes.data.filter((o: Order) => ['pending', 'processing', 'shipped'].includes(o.status)).length;
@@ -1088,52 +884,55 @@ const AccountDashboard: React.FC = () => {
           setOrders(ordersRes.data);
           setOrderStats({ total, pending, completed, totalSpent });
         }
+
         if (productsRes.data) setProducts(productsRes.data);
         if (rfqsRes.data) setRfqs(rfqsRes.data as AccountRfq[]);
+
+        try {
+          const { count: chatUnread } = await supabase
+            .from('chat_messages')
+            .select('id', { count: 'exact', head: true })
+            .neq('sender_id', user.id)
+            .eq('is_read', false);
+
+          const { data: logConvs } = await supabase
+            .from('logistics_conversations')
+            .select('buyer_unread')
+            .eq('buyer_id', user.id);
+
+          const logUnread = (logConvs || []).reduce((acc: number, c: any) => acc + (c.buyer_unread || 0), 0);
+          setUnreadMessagesCount((chatUnread || 0) + logUnread);
+        } catch {
+          // ignore
+        }
+
         const identities = user.identities ?? [];
         setIsGoogleUser(!!identities.find((id: any) => id.provider === 'google'));
         setHasLocalPassword(!!identities.find((id: any) => id.provider === 'email'));
-      } catch { /* keep empty */ } finally { setDataLoading(false); }
+      } catch {
+        /* keep empty */
+      } finally {
+        setDataLoading(false);
+      }
     };
     fetchData();
-  }, [user]);
+  }, [user, supabase]);
 
-  // ── Real-time subscription for live order status ──────────────────────────
   useEffect(() => {
     if (!user) return;
-
-        const channel = supabase
+    const channel = supabase
       .channel(`live-orders-${user.id}`)
       .on(
         'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'orders',
-          filter: `user_id=eq.${user.id}`,
-        },
+        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `user_id=eq.${user.id}` },
         (payload) => {
           const updated = payload.new as Order & { status: string };
           const old = payload.old as Order & { status: string };
 
-          // Update orders list in-place
           setOrders((prev) =>
-            prev.map((o) =>
-              o.id === updated.id ? { ...o, status: updated.status, total: updated.total } : o
-            )
+            prev.map((o) => (o.id === updated.id ? { ...o, status: updated.status, total: updated.total } : o))
           );
 
-          // Recalculate stats
-          setOrders((prev) => {
-            const total = prev.length;
-            const pending = prev.filter((o) => ['pending', 'processing', 'shipped'].includes(o.status)).length;
-            const completed = prev.filter((o) => o.status === 'delivered').length;
-            const totalSpent = prev.reduce((sum, o) => sum + (o.total || 0), 0);
-            setOrderStats({ total, pending, completed, totalSpent });
-            return prev;
-          });
-
-          // Add live event if status changed
           if (old.status !== updated.status) {
             const event: LiveStatusEvent = {
               orderId: updated.id,
@@ -1151,34 +950,22 @@ const AccountDashboard: React.FC = () => {
         setIsRealtimeConnected(status === 'SUBSCRIBED');
       });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user]);
-  // ─────────────────────────────────────────────────────────────────────────
+    return () => { supabase.removeChannel(channel); };
+  }, [user, supabase]);
 
   const isProfileIncomplete = !dataLoading && profile !== null && (
     !profile.full_name?.trim() || !profile.company_name?.trim() || !profile.country?.trim() || !profile.city?.trim() || !profile.phone?.trim()
   );
   const isSupplierAccount = (profile?.account_role || '').toLowerCase().trim() === 'commercial_supplier';
-
-  const handleUploadSuccess = () => {
-    setUploadSuccess(true);
-    setTimeout(() => setUploadSuccess(false), 4000);
-  };
+  const isBuyer = checkIsBuyer(profile);
 
   const handleToggleNotif = async (key: keyof typeof notifPrefs) => {
     if (!user || notifSaving) return;
     const newValue = !notifPrefs[key];
-    const optimisticPrefs = { ...notifPrefs, [key]: newValue };
-    setNotifPrefs(optimisticPrefs);
+    setNotifPrefs({ ...notifPrefs, [key]: newValue });
     setNotifSaving(key);
     try {
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({ [key]: newValue })
-        .eq('id', user.id);
-      if (error) throw error;
+      await supabase.from('user_profiles').update({ [key]: newValue }).eq('id', user.id);
       setNotifToast(newValue ? (t.myAccount.notifEnabled || 'Enabled') : (t.myAccount.notifDisabled || 'Disabled'));
       setTimeout(() => setNotifToast(null), 2000);
     } catch {
@@ -1209,38 +996,32 @@ const AccountDashboard: React.FC = () => {
       setTimeout(() => { setPasswordMsg(null); setShowPasswordForm(false); }, 3000);
     } catch (err: any) {
       setPasswordMsg({ text: err.message || t.myAccount.passwordFailed, type: 'error' });
-    } finally { setPasswordSaving(false); }
+    } finally {
+      setPasswordSaving(false);
+    }
   };
 
   const handleDeleteProduct = async (productId: string, productName: string) => {
     const confirmed = window.confirm(
-      language === 'ar'
-        ? `هل أنت متأكد من حذف المنتج "${productName}"؟ لا يمكن التراجع عن هذا الإجراء.`
-        : `Are you sure you want to delete "${productName}"? This action cannot be undone.`
+      isAr ? `هل أنت متأكد من حذف المنتج "${productName}"؟` : `Are you sure you want to delete "${productName}"?`
     );
     if (!confirmed) return;
     setDeletingProductId(productId);
     try {
-      const { error } = await supabase
-        .from('manufacturer_products')
-        .delete()
-        .eq('id', productId);
-      if (error) throw error;
+      await supabase.from('manufacturer_products').delete().eq('id', productId);
       setProducts((prev) => prev.filter((p) => p.id !== productId));
-    } catch (err: any) {
-      alert(language === 'ar' ? 'فشل حذف المنتج. يرجى المحاولة مرة أخرى.' : 'Failed to delete product. Please try again.');
+    } catch {
+      alert(isAr ? 'فشل حذف المنتج.' : 'Failed to delete product.');
     } finally {
       setDeletingProductId(null);
     }
   };
 
-  const isBuyer = checkIsBuyer(profile);
-
   const tabs: { key: TabKey; label: string; icon: string; badge?: number }[] = [
     { key: 'overview', label: t.myAccount.tabOverview, icon: 'HomeIcon' },
-    { key: 'orders', label: t.myAccount.tabOrders, icon: 'ShoppingBagIcon', badge: orderStats.pending || undefined },
+    { key: 'orders', label: isBuyer ? (isAr ? 'طلباتي' : 'My Orders') : t.myAccount.tabOrders, icon: 'ShoppingBagIcon', badge: orderStats.pending || undefined },
     ...(isBuyer
-      ? [{ key: 'my-orders' as TabKey, label: t.myAccount.myOrders, icon: 'ClipboardDocumentListIcon', badge: orderStats.pending || undefined }]
+      ? [{ key: 'messages' as TabKey, label: isAr ? 'المراسلات' : 'Messages', icon: 'ChatBubbleLeftRightIcon', badge: unreadMessagesCount || undefined }]
       : [{ key: 'products' as TabKey, label: t.myAccount.tabProducts, icon: 'ArchiveBoxIcon' }]
     ),
     { key: 'settings', label: t.myAccount.tabSettings, icon: 'Cog6ToothIcon' },
@@ -1262,16 +1043,6 @@ const AccountDashboard: React.FC = () => {
 
   return (
     <div className="mobile-safe-bottom md:pb-0" dir={isRTL ? 'rtl' : 'ltr'}>
-
-      {/* ── SUCCESS TOAST ── */}
-      {profileSaveToast && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-5 py-3 bg-green-600 text-white rounded-2xl shadow-2xl animate-fade-in text-sm font-bold">
-          <Icon name="CheckCircleIcon" size={18} className="text-white shrink-0" />
-          {t.myAccount.savedOk || 'Profile saved successfully ✓'}
-        </div>
-      )}
-
-      {/* ── INCOMPLETE PROFILE BANNER ── */}
       {isProfileIncomplete && !bannerDismissed && (
         <div className="bg-gradient-to-l from-amber-500 to-orange-500 text-white">
           <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
@@ -1285,7 +1056,10 @@ const AccountDashboard: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
-              <button onClick={() => (isSupplierAccount ? router.push('/supplier/settings') : setActiveTab('settings'))} className="px-4 py-2 bg-white text-orange-600 text-xs font-extrabold rounded-xl hover:bg-orange-50 transition-colors whitespace-nowrap">
+              <button
+                onClick={() => (isSupplierAccount ? router.push('/supplier/settings') : setActiveTab('settings'))}
+                className="px-4 py-2 bg-white text-orange-600 text-xs font-extrabold rounded-xl hover:bg-orange-50 transition-colors whitespace-nowrap"
+              >
                 {t.myAccount.completeNow}
               </button>
               <button onClick={() => setBannerDismissed(true)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 transition-colors" aria-label="Dismiss">
@@ -1296,12 +1070,11 @@ const AccountDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* ── PROFILE HEADER ── */}
+      {/* Header */}
       <div className="bg-foreground relative overflow-hidden">
         <div className="absolute inset-0 opacity-[0.04] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-10 relative z-10">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-            {/* Avatar */}
             <div className="relative shrink-0">
               <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl overflow-hidden border-2 border-white/20 flex items-center justify-center bg-gradient-to-br from-orange-500 to-orange-700">
                 {profile?.avatar_url ? (
@@ -1316,7 +1089,7 @@ const AccountDashboard: React.FC = () => {
                 </div>
               )}
             </div>
-            {/* Info */}
+
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <h1 className="text-xl md:text-2xl font-extrabold text-primary-foreground">{displayName}</h1>
@@ -1332,33 +1105,45 @@ const AccountDashboard: React.FC = () => {
                 {memberSince && <span className="flex items-center gap-1"><Icon name="CalendarDaysIcon" size={12} />{t.myAccount.memberSince} {memberSince}</span>}
               </div>
             </div>
-            {/* Actions */}
-            <div className="flex gap-2 shrink-0">
-              {!isSupplierAccount && (
-              <button
-                onClick={() => {
-                  const workspaceRole = getUserWorkspaceRole(profile);
-                  if (workspaceRole === 'manufacturer') {
-                    router.push('/manufacturer/settings');
-                  } else {
-                    router.push('/my-account/edit-profile');
-                  }
-                }}
-                className="px-4 py-2 border border-primary-foreground/20 text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary-foreground/10 transition-colors"
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <Link
+                href="/messaging"
+                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 transition-opacity shadow-sm relative"
               >
-                {t.myAccount.editProfile}
-              </button>
+                <Icon name="ChatBubbleLeftRightIcon" size={15} />
+                <span>{isAr ? 'الرسائل والمحادثات' : 'Messages'}</span>
+                {unreadMessagesCount > 0 && (
+                  <span className="w-5 h-5 bg-white text-primary text-[10px] font-extrabold rounded-full flex items-center justify-center">
+                    {unreadMessagesCount}
+                  </span>
+                )}
+              </Link>
+
+              {!isSupplierAccount && (
+                <button
+                  onClick={() => {
+                    const workspaceRole = getUserWorkspaceRole(profile);
+                    if (workspaceRole === 'manufacturer') {
+                      router.push('/manufacturer/settings');
+                    } else {
+                      router.push('/my-account/edit-profile');
+                    }
+                  }}
+                  className="px-4 py-2 border border-primary-foreground/20 text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary-foreground/10 transition-colors"
+                >
+                  {t.myAccount.editProfile}
+                </button>
               )}
             </div>
           </div>
 
-          {/* Stats bar */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8">
             {[
               { label: t.myAccount.statTotalOrders, value: orderStats.total.toString(), icon: 'ShoppingBagIcon', color: 'text-primary', bg: 'bg-primary/10' },
               { label: t.myAccount.statPending, value: orderStats.pending.toString(), icon: 'ClockIcon', color: 'text-yellow-600', bg: 'bg-yellow-50' },
               { label: t.myAccount.statCompleted, value: orderStats.completed.toString(), icon: 'CheckCircleIcon', color: 'text-accent', bg: 'bg-accent/10' },
-              { label: t.myAccount.statTotalSpent, value: `$${formatNumber(orderStats.totalSpent)}`, icon: 'BanknotesIcon', color: 'text-blue-600', bg: 'bg-blue-50' },
+              { label: t.myAccount.statTotalSpent, value: formatPrice(orderStats.totalSpent, orders[0]?.currency), icon: 'BanknotesIcon', color: 'text-blue-600', bg: 'bg-blue-50' },
             ].map((stat) => (
               <div key={stat.label} className="bg-primary-foreground/5 border border-primary-foreground/10 rounded-xl p-4 flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-xl ${stat.bg} flex items-center justify-center shrink-0`}>
@@ -1374,16 +1159,14 @@ const AccountDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* ── TAB NAVIGATION — Card Grid (no horizontal scroll) ── */}
+      {/* Tabs */}
       <div className="bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-4">
           <div className="grid grid-cols-4 gap-2">
             {tabs.map((tab) => (
               <button
                 key={tab.key}
-                onClick={() => {
-                  setActiveTab(tab.key);
-                }}
+                onClick={() => setActiveTab(tab.key)}
                 className={`relative flex flex-col items-center gap-1.5 px-2 py-3 rounded-2xl font-bold text-xs transition-all ${
                   activeTab === tab.key
                     ? 'bg-primary text-primary-foreground shadow-md'
@@ -1403,83 +1186,93 @@ const AccountDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* ── TAB CONTENT ── */}
+      {/* Tab Content */}
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-6">
-
-        {/* ════ OVERVIEW TAB ════ */}
         {activeTab === 'overview' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left: Recent orders */}
-            <div className="lg:col-span-8">
-              {/* ── Workspace Command Center Banner ── */}
-              <div className="mb-6">
-                <WorkspaceBanner profile={profile} router={router} />
-              </div>
+            <div className="lg:col-span-8 space-y-6">
+              <WorkspaceBanner profile={profile} router={router} />
 
-              {/* ── Live Order Status Widget ── */}
               {!dataLoading && orders.length > 0 && (
-                <div className="mb-6">
-                  <LiveOrderStatusWidget
-                    orders={orders}
-                    liveEvents={liveEvents}
-                    isConnected={isRealtimeConnected}
-                    language={language}
-                  />
-                </div>
+                <LiveOrderStatusWidget
+                  orders={orders}
+                  liveEvents={liveEvents}
+                  isConnected={isRealtimeConnected}
+                  language={language}
+                />
               )}
 
-              <div className="flex items-center justify-between mb-5">
-                <h2 className="text-lg font-extrabold text-foreground">{t.myAccount.recentOrders}</h2>
-                <button onClick={() => setActiveTab('orders')} className="text-xs font-bold text-primary hover:opacity-70 flex items-center gap-1 transition-opacity">
-                  {t.myAccount.viewAll} <Icon name={isRTL ? 'ArrowLeftIcon' : 'ArrowRightIcon'} size={12} />
-                </button>
-              </div>
-
-              {dataLoading ? (
-                <div className="flex flex-col gap-3">
-                  {[...Array(3)].map((_, i) => (
-                    <div key={i} className="flex items-center gap-4 p-4 bg-card border border-border rounded-2xl animate-pulse">
-                      <div className="w-12 h-12 rounded-xl bg-muted shrink-0" />
-                      <div className="flex-1 space-y-2"><div className="h-4 bg-muted rounded w-3/4" /><div className="h-3 bg-muted rounded w-1/2" /></div>
-                    </div>
-                  ))}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-extrabold text-foreground">{t.myAccount.recentOrders}</h2>
+                  <button onClick={() => setActiveTab('orders')} className="text-xs font-bold text-primary hover:opacity-70 flex items-center gap-1 transition-opacity">
+                    {t.myAccount.viewAll} <Icon name={isRTL ? 'ArrowLeftIcon' : 'ArrowRightIcon'} size={12} />
+                  </button>
                 </div>
-              ) : orders.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-center bg-card border border-border rounded-2xl">
-                  <div className="w-14 h-14 bg-muted rounded-2xl flex items-center justify-center mb-4">
-                    <Icon name="ShoppingBagIcon" size={24} className="text-muted-foreground" />
+
+                {dataLoading ? (
+                  <div className="flex flex-col gap-3">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="flex items-center gap-4 p-4 bg-card border border-border rounded-2xl animate-pulse h-20" />
+                    ))}
                   </div>
-                  <h3 className="text-sm font-bold text-foreground mb-1">{t.myAccount.noOrders}</h3>
-                  <p className="text-xs text-muted-foreground mb-4">{t.myAccount.noOrdersSub}</p>
-                  <Link href="/search" className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl">{t.myAccount.browseProducts}</Link>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {orders.slice(0, 3).map((order) => (
-                    <div key={order.id} className="flex items-center gap-4 p-4 bg-card border border-border rounded-2xl hover:shadow-sm transition-shadow">
-                      <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                        <Icon name="ShoppingBagIcon" size={20} className="text-blue-600" />
+                ) : orders.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-14 text-center bg-card border border-border rounded-2xl">
+                    <Icon name="ShoppingBagIcon" size={28} className="text-muted-foreground mb-2" />
+                    <h3 className="text-sm font-bold text-foreground mb-1">{t.myAccount.noOrders}</h3>
+                    <p className="text-xs text-muted-foreground mb-4">{t.myAccount.noOrdersSub}</p>
+                    <Link href="/search" className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl">{t.myAccount.browseProducts}</Link>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {orders.slice(0, 3).map((order) => (
+                      <div key={order.id} className="flex items-center gap-4 p-4 bg-card border border-border rounded-2xl hover:shadow-sm transition-shadow">
+                        <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                          <Icon name="ShoppingBagIcon" size={20} className="text-blue-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-foreground truncate">{t.myAccount.orderNumber}{order.order_number}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5 font-mono">{formatDateSafe(order.created_at)}</p>
+                        </div>
+                        <div className="text-start shrink-0">
+                          <p className="text-sm font-extrabold text-foreground">{formatPrice(order.total || 0, order.currency)}</p>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${STATUS_COLORS[order.status] || 'text-muted-foreground bg-muted'}`}>{order.status}</span>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-foreground truncate">{t.myAccount.orderNumber}{order.order_number}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5 font-mono">
-                          {formatDateSafe(order.created_at)}
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-sm font-extrabold text-foreground">${formatNumber(order.total || 0)}</p>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${STATUS_COLORS[order.status] || 'text-muted-foreground bg-muted'}`}>{order.status}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Right: Platform info */}
             <div className="lg:col-span-4 flex flex-col gap-4">
-              {/* Platform Info Links */}
-              <div className="bg-gradient-to-br from-primary/5 to-orange-50 border border-primary/20 rounded-2xl p-5">
+              <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 rounded-2xl p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-extrabold text-foreground flex items-center gap-2">
+                    <Icon name="ChatBubbleLeftRightIcon" size={18} className="text-primary" />
+                    <span>{isAr ? 'الدردشة وصندوق الوارد' : 'Unified Inbox'}</span>
+                  </h3>
+                  {unreadMessagesCount > 0 && (
+                    <span className="px-2 py-0.5 bg-primary text-primary-foreground text-[10px] font-extrabold rounded-full">
+                      {unreadMessagesCount} {isAr ? 'جديدة' : 'new'}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed mb-4">
+                  {isAr
+                    ? 'تواصل مباشرة مع المصانع الصينية والمحلية ومكاتب الشحن والتخليص الجمركي في صندوق موحد.'
+                    : 'Chat directly with factories, shipping offices, and clearance agents.'}
+                </p>
+                <Link
+                  href="/messaging"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-95 transition-opacity"
+                >
+                  <Icon name="ChatBubbleLeftRightIcon" size={15} />
+                  <span>{isAr ? 'فتح صندوق المحادثات الموحد' : 'Open Unified Inbox'}</span>
+                </Link>
+              </div>
+
+              <div className="bg-card border border-border rounded-2xl p-5">
                 <h3 className="text-sm font-extrabold text-foreground mb-3 flex items-center gap-2">
                   <span>🏢</span>{t.myAccount.platformInfo}
                 </h3>
@@ -1490,7 +1283,6 @@ const AccountDashboard: React.FC = () => {
                     { label: t.myAccount.safeBuying, icon: '🛡️', href: '/about#journey' },
                     { label: t.myAccount.buyerBenefits, icon: '🎯', href: '/about#buyers' },
                     { label: t.myAccount.factoryPartnership, icon: '🏭', href: '/about#factories' },
-                    { label: t.myAccount.strategicVision, icon: '🌐', href: '/about#vision' },
                   ].map((link) => (
                     <Link key={link.href} href={link.href} className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-primary/10 hover:text-primary transition-colors text-sm font-medium text-foreground group">
                       <span className="text-base">{link.icon}</span>
@@ -1504,66 +1296,36 @@ const AccountDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* ════ ORDERS TAB ════ */}
         {activeTab === 'orders' && (
-          <div>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-              <div>
-                <h2 className="text-lg font-extrabold text-foreground">{t.myAccount.allOrders}</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">{orderStats.total} {t.myAccount.listings}</p>
-              </div>
-              <Link href="/orders" className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 transition-opacity">
-                <Icon name="ArrowTopRightOnSquareIcon" size={14} />
-                {t.myAccount.fullOrderHistory}
-              </Link>
-            </div>
+          <MyOrdersTab orders={orders} rfqs={rfqs} dataLoading={dataLoading} orderStats={orderStats} />
+        )}
 
-            {dataLoading ? (
-              <div className="flex flex-col gap-3">{[...Array(5)].map((_, i) => <div key={i} className="bg-card border border-border rounded-2xl p-5 animate-pulse h-24" />)}</div>
-            ) : orders.length === 0 ? (
-              rfqs.length > 0 ? (
-                <MyRfqList rfqs={rfqs} dataLoading={dataLoading} />
-              ) : (
-              <div className="text-center py-20 bg-card border border-border rounded-2xl">
-                <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Icon name="ShoppingBagIcon" size={28} className="text-muted-foreground" />
-                </div>
-                <h3 className="text-base font-bold text-foreground mb-2">{t.myAccount.noOrders}</h3>
-                <p className="text-sm text-muted-foreground mb-4">{t.myAccount.noOrdersSub}</p>
-                <Link href="/search" className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl">{t.myAccount.browseProducts}</Link>
-              </div>
-              )
-            ) : (
-              <div className="flex flex-col gap-3">
-                <MyRfqList rfqs={rfqs} dataLoading={dataLoading} />
-                {orders.map((order) => (
-                  <div key={order.id} className="bg-card border border-border rounded-2xl p-4 md:p-5 hover:shadow-sm transition-shadow">
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                      <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                        <Icon name="ShoppingBagIcon" size={22} className="text-blue-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <p className="text-sm font-extrabold text-foreground">{t.myAccount.orderNumber}{order.order_number}</p>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${STATUS_COLORS[order.status] || 'text-muted-foreground bg-muted'}`}>{order.status}</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground font-mono">
-                          {formatDateSafe(order.created_at)}
-                        </p>
-                      </div>
-                      <div className="flex sm:flex-col items-center sm:items-end gap-3 shrink-0">
-                        <p className="text-lg font-extrabold text-foreground">${formatNumber(order.total || 0)}</p>
-                        <Link href={`/orders/${order.id}`} className="px-3 py-1.5 text-xs font-bold border border-border rounded-lg hover:bg-muted transition-colors text-foreground">{t.myAccount.orderDetails}</Link>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+        {activeTab === 'messages' && (
+          <div className="bg-card border border-border rounded-2xl p-8 text-center max-w-2xl mx-auto space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto">
+              <Icon name="ChatBubbleLeftRightIcon" size={32} />
+            </div>
+            <h2 className="text-xl font-bold text-foreground">
+              {isAr ? 'صندوق المحادثات والدردشة الموحد' : 'Unified Messaging Center'}
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {isAr
+                ? 'يمكنك هنا التفاوض على عروض الأسعار والحدود الدنيا للطلب (MOQ)، وتتبع الشحن مع مكاتب التخليص، مع ميزة الترجمة التلقائية الفورية باللغات العربية والإنجليزية والصينية.'
+                : 'Negotiate MOQs, chat with verified factories, and coordinate with logistics partners with live translation.'}
+            </p>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => router.push('/messaging')}
+                className="px-6 py-3 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 shadow-md transition-all inline-flex items-center gap-2"
+              >
+                <Icon name="ChatBubbleLeftRightIcon" size={17} />
+                <span>{isAr ? 'الانتقال إلى صندوق المحادثات' : 'Go to Unified Chat'}</span>
+              </button>
+            </div>
           </div>
         )}
 
-        {/* ════ PRODUCTS TAB ════ */}
         {activeTab === 'products' && (
           <div>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -1612,14 +1374,14 @@ const AccountDashboard: React.FC = () => {
                         </div>
                         <div className="flex flex-wrap gap-4 mt-2 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1 font-semibold text-foreground">
-                            <Icon name="CurrencyDollarIcon" size={12} className="text-primary" />
-                            ${product.unit_price}/{product.unit}
+                            <Icon name="BanknotesIcon" size={12} className="text-primary" />
+                            {formatPrice(product.unit_price, 'ر.ي')}/{product.unit}
                           </span>
                           <span className="flex items-center gap-1">
                             <Icon name="CubeIcon" size={12} className="text-primary" />
                             {t.myAccount.moq}: {formatNumber(product.minimum_order_qty)} {product.unit}
                           </span>
-                          <span className={`flex items-center gap-1 font-semibold capitalize ${product.inventory_status === 'in_stock' ? 'text-green-600' : product.inventory_status === 'low_stock' ? 'text-yellow-600' : 'text-red-600'}`}>
+                          <span className={`flex items-center gap-1 font-semibold capitalize ${product.inventory_status === 'in_stock' ? 'text-green-600' : 'text-red-600'}`}>
                             <Icon name="CheckCircleIcon" size={12} />
                             {product.inventory_status?.replace('_', ' ')}
                           </span>
@@ -1639,28 +1401,14 @@ const AccountDashboard: React.FC = () => {
                     </div>
                   </div>
                 ))}
-                <div onClick={() => router.push('/my-account/add-product')} className="mt-2 border-2 border-dashed border-border rounded-2xl p-8 text-center hover:border-primary/40 transition-colors cursor-pointer group">
-                  <div className="w-12 h-12 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-3 group-hover:bg-primary/10 transition-colors">
-                    <Icon name="PlusIcon" size={24} className="text-muted-foreground group-hover:text-primary transition-colors" />
-                  </div>
-                  <p className="text-sm font-bold text-foreground mb-1">{t.myAccount.addAnotherProduct}</p>
-                  <p className="text-xs text-muted-foreground">{t.myAccount.addAnotherProductSub}</p>
-                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* ════ MY ORDERS TAB (buyers only) ════ */}
-        {activeTab === 'my-orders' && (
-          <MyOrdersTab orders={orders} rfqs={rfqs} dataLoading={dataLoading} orderStats={orderStats} />
-        )}
-
-        {/* ════ SETTINGS TAB ════ */}
         {activeTab === 'settings' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-8 flex flex-col gap-5">
-              {/* Profile Edit Card */}
               <div className="bg-card border border-border rounded-2xl p-6">
                 <h3 className="text-base font-extrabold text-foreground mb-5 flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
@@ -1669,7 +1417,6 @@ const AccountDashboard: React.FC = () => {
                   {t.myAccount.personalInfo}
                 </h3>
 
-                {/* Profile summary */}
                 <div className="flex items-center gap-4 p-4 bg-muted/40 rounded-xl mb-5">
                   <div className="w-14 h-14 rounded-xl overflow-hidden border-2 border-border bg-muted flex items-center justify-center shrink-0">
                     {profile?.avatar_url ? (
@@ -1695,13 +1442,8 @@ const AccountDashboard: React.FC = () => {
                   <Icon name="PencilSquareIcon" size={16} />
                   {t.myAccount.editBuyerProfile}
                 </button>
-                <p className="text-[11px] text-muted-foreground text-center mt-2 flex items-center justify-center gap-1">
-                  <Icon name="InformationCircleIcon" size={11} />
-                  {t.myAccount.editBuyerProfileHint}
-                </p>
               </div>
 
-              {/* Notifications */}
               <div className="bg-card border border-border rounded-2xl p-6">
                 <h3 className="text-base font-extrabold text-foreground mb-1 flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
@@ -1711,7 +1453,6 @@ const AccountDashboard: React.FC = () => {
                 </h3>
                 <p className="text-xs text-muted-foreground mb-5 ps-10">{t.myAccount.notifSubtitle}</p>
 
-                {/* Notification saved toast */}
                 {notifToast && (
                   <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-green-700 text-xs font-medium">
                     <Icon name="CheckCircleIcon" size={14} />
@@ -1740,10 +1481,9 @@ const AccountDashboard: React.FC = () => {
                           type="button"
                           role="switch"
                           aria-checked={isEnabled}
-                          aria-label={pref.label}
                           disabled={isSaving}
                           onClick={() => handleToggleNotif(pref.key)}
-                          className={`relative w-11 h-6 rounded-full transition-colors duration-200 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${isEnabled ? 'bg-primary' : 'bg-muted'} ${isSaving ? 'opacity-60 cursor-wait' : 'cursor-pointer'}`}
+                          className={`relative w-11 h-6 rounded-full transition-colors duration-200 shrink-0 ${isEnabled ? 'bg-primary' : 'bg-muted'} ${isSaving ? 'opacity-60 cursor-wait' : 'cursor-pointer'}`}
                         >
                           <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ${isEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
                         </button>
@@ -1754,9 +1494,7 @@ const AccountDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Right sidebar */}
             <div className="lg:col-span-4 flex flex-col gap-4">
-              {/* Security */}
               <div className="bg-card border border-border rounded-2xl p-5">
                 <h3 className="text-sm font-extrabold text-foreground mb-4 flex items-center gap-2">
                   <div className="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center">
@@ -1764,87 +1502,59 @@ const AccountDashboard: React.FC = () => {
                   </div>
                   {t.myAccount.security}
                 </h3>
-                <div className="flex flex-col gap-3">
-                  {/* Password management */}
-                  <div>
-                    <button onClick={() => setShowPasswordForm((v) => !v)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-muted transition-colors text-left w-full">
-                      <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
-                        <Icon name="KeyIcon" size={14} className="text-indigo-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="text-sm font-semibold text-foreground block">
-                          {hasLocalPassword ? t.myAccount.changePassword : t.myAccount.createPassword}
-                        </span>
-                        {isGoogleUser && !hasLocalPassword && (
-                          <span className="text-[10px] text-muted-foreground">{t.myAccount.googleUserPasswordNote.slice(0, 40)}...</span>
-                        )}
-                      </div>
-                      <Icon name={showPasswordForm ? 'ChevronUpIcon' : 'ChevronDownIcon'} size={14} className="text-muted-foreground" />
-                    </button>
-                    {showPasswordForm && (
-                      <div className="mt-2 p-4 bg-muted/50 border border-border rounded-xl flex flex-col gap-3">
-                        {isGoogleUser && !hasLocalPassword && (
-                          <p className="text-xs text-muted-foreground leading-relaxed">{t.myAccount.googleUserPasswordNote}</p>
-                        )}
-                        {passwordMsg && (
-                          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium ${passwordMsg.type === 'success' ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
-                            <Icon name={passwordMsg.type === 'success' ? 'CheckCircleIcon' : 'ExclamationCircleIcon'} size={14} />
-                            {passwordMsg.text}
-                          </div>
-                        )}
-                        <div>
-                          <label className="block text-xs font-bold text-muted-foreground mb-1">{t.myAccount.newPassword}</label>
-                          <input type="password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm((p) => ({ ...p, newPassword: e.target.value }))} placeholder="••••••••" className="w-full px-3 py-2 border border-border rounded-lg text-sm text-foreground bg-background focus:outline-none focus:border-primary transition-colors" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-muted-foreground mb-1">{t.myAccount.confirmPassword}</label>
-                          <input type="password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((p) => ({ ...p, confirmPassword: e.target.value }))} placeholder="••••••••" className="w-full px-3 py-2 border border-border rounded-lg text-sm text-foreground bg-background focus:outline-none focus:border-primary transition-colors" />
-                        </div>
-                        <div className="flex gap-2 pt-1">
-                          <button onClick={handleSavePassword} disabled={passwordSaving || !passwordForm.newPassword || !passwordForm.confirmPassword} className="flex-1 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5">
-                            {passwordSaving ? <><Icon name="ArrowPathIcon" size={13} className="animate-spin" /> {t.myAccount.saving}</> : <><Icon name="CheckIcon" size={13} /> {hasLocalPassword ? t.myAccount.changePassword : t.myAccount.createPassword}</>}
-                          </button>
-                          <button onClick={() => { setShowPasswordForm(false); setPasswordMsg(null); setPasswordForm({ newPassword: '', confirmPassword: '', currentPassword: '' }); }} className="px-3 py-2 border border-border text-xs font-bold rounded-lg hover:bg-muted transition-colors text-foreground">
-                            {t.myAccount.cancel}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Log Out moved to isolated bottom section */}
-
-                  {[
-                    { label: t.myAccount.twoFactorAuth, icon: 'ShieldCheckIcon', bg: 'bg-gray-100', color: 'text-gray-400' },
-                    { label: t.myAccount.activeSessions, icon: 'DevicePhoneMobileIcon', bg: 'bg-gray-100', color: 'text-gray-400' },
-                  ].map((item) => (
-                    <div key={item.label} className="flex items-center gap-3 p-3 rounded-xl bg-muted/40 opacity-60 cursor-not-allowed text-left">
-                      <div className={`w-8 h-8 rounded-full ${item.bg} flex items-center justify-center shrink-0`}>
-                        <Icon name={item.icon as Parameters<typeof Icon>[0]['name']} size={14} className={item.color} />
-                      </div>
-                      <span className="text-sm font-semibold text-muted-foreground flex-1">{item.label}</span>
-                      <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full whitespace-nowrap">قريباً</span>
+                <div>
+                  <button onClick={() => setShowPasswordForm((v) => !v)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-muted transition-colors text-left w-full">
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
+                      <Icon name="KeyIcon" size={14} className="text-indigo-600" />
                     </div>
-                  ))}
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-semibold text-foreground block">
+                        {hasLocalPassword ? t.myAccount.changePassword : t.myAccount.createPassword}
+                      </span>
+                    </div>
+                    <Icon name={showPasswordForm ? 'ChevronUpIcon' : 'ChevronDownIcon'} size={14} className="text-muted-foreground" />
+                  </button>
+                  {showPasswordForm && (
+                    <div className="mt-2 p-4 bg-muted/50 border border-border rounded-xl flex flex-col gap-3">
+                      {passwordMsg && (
+                        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium ${passwordMsg.type === 'success' ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+                          <Icon name={passwordMsg.type === 'success' ? 'CheckCircleIcon' : 'ExclamationCircleIcon'} size={14} />
+                          {passwordMsg.text}
+                        </div>
+                      )}
+                      <div>
+                        <label className="block text-xs font-bold text-muted-foreground mb-1">{t.myAccount.newPassword}</label>
+                        <input type="password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm((p) => ({ ...p, newPassword: e.target.value }))} placeholder="••••••••" className="w-full px-3 py-2 border border-border rounded-lg text-sm text-foreground bg-background focus:outline-none focus:border-primary" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-muted-foreground mb-1">{t.myAccount.confirmPassword}</label>
+                        <input type="password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((p) => ({ ...p, confirmPassword: e.target.value }))} placeholder="••••••••" className="w-full px-3 py-2 border border-border rounded-lg text-sm text-foreground bg-background focus:outline-none focus:border-primary" />
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <button onClick={handleSavePassword} disabled={passwordSaving || !passwordForm.newPassword || !passwordForm.confirmPassword} className="flex-1 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:opacity-90 disabled:opacity-50">
+                          {passwordSaving ? 'جاري الحفظ...' : (hasLocalPassword ? t.myAccount.changePassword : t.myAccount.createPassword)}
+                        </button>
+                        <button onClick={() => setShowPasswordForm(false)} className="px-3 py-2 border border-border text-xs font-bold rounded-lg hover:bg-muted text-foreground">
+                          {t.myAccount.cancel}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
 
-            {/* Isolated Logout section — very bottom of Settings */}
-            <div className="lg:col-span-12 mt-2 pt-6 border-t border-border">
-              <div className="bg-card border border-red-200 rounded-2xl p-5">
+              <div className="bg-card border border-red-200 rounded-2xl p-3">
                 <button
                   onClick={async () => {
-                    const supabaseClient = createClient();
-                    await supabaseClient.auth.signOut();
+                    await supabase.auth.signOut();
                     router.push('/login');
                   }}
-                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-red-50 transition-colors text-left w-full"
+                  className="flex items-center gap-3 p-2 rounded-xl hover:bg-red-50 transition-colors text-left w-full"
                 >
                   <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
                     <Icon name="ArrowRightOnRectangleIcon" size={14} className="text-red-600" />
                   </div>
-                  <span className="text-sm font-semibold text-red-600 flex-1">تسجيل الخروج</span>
+                  <span className="text-sm font-semibold text-red-600 flex-1">{isAr ? 'تسجيل الخروج' : 'Log out'}</span>
                   <Icon name={isRTL ? 'ChevronLeftIcon' : 'ChevronRightIcon'} size={14} className="text-red-400" />
                 </button>
               </div>
@@ -1852,14 +1562,6 @@ const AccountDashboard: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Product Upload Form Modal */}
-      {uploadSuccess && (
-        <div className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 bg-accent text-accent-foreground rounded-2xl shadow-xl text-sm font-bold animate-fade-in">
-          <Icon name="CheckCircleIcon" size={18} variant="solid" />
-          {t.myAccount.addAnotherProductSub}
-        </div>
-      )}
     </div>
   );
 };
