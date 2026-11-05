@@ -20,11 +20,11 @@ import { resolveFileType, extensionForType, fileWithResolvedType } from '@/lib/a
 interface Conversation {
   id: string;
   source: 'chat' | 'logistics';
-  category: 'factory' | 'logistics' | 'admin';
+  category: 'factory' | 'logistics' | 'admin' | 'agent';
   buyer_id: string;
   manufacturer_id: string | null;
   partner_id?: string | null;
-  product_id: string;
+  product_id?: string | null;
   product_name?: string | null;
   supplier_name?: string | null;
   supplier_country?: string | null;
@@ -33,7 +33,7 @@ interface Conversation {
   last_message?: string | null;
   last_message_at?: string | null;
   unread_count?: number;
-  thread_type?: 'negotiation' | 'rfq' | 'order' | 'logistics';
+  thread_type?: 'negotiation' | 'rfq' | 'order' | 'logistics' | 'admin' | 'agent';
 }
 
 interface Message {
@@ -65,6 +65,8 @@ const THREAD_LABELS: Record<string, { color: string; labelAr: string; labelEn: s
   rfq: { color: 'bg-amber-500/10 text-amber-600 border-amber-500/20', labelAr: 'طلب تسعير RFQ', labelEn: 'RFQ Quote' },
   order: { color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20', labelAr: 'طلب شراء', labelEn: 'Purchase Order' },
   logistics: { color: 'bg-purple-500/10 text-purple-600 border-purple-500/20', labelAr: 'شحن وتخليص', labelEn: 'Logistics' },
+  admin: { color: 'bg-red-500/10 text-red-600 border-red-500/20', labelAr: 'إدارة المنصة', labelEn: 'Platform Admin' },
+  agent: { color: 'bg-teal-500/10 text-teal-600 border-teal-500/20', labelAr: 'إشراف ميداني', labelEn: 'Field Supervision' },
 };
 
 const ALLOWED_TYPES = [
@@ -74,12 +76,27 @@ const ALLOWED_TYPES = [
 const ACCEPT_ATTR = 'image/*,application/pdf';
 const MAX_SIZE = 25 * 1024 * 1024;
 
-const QUICK_REPLIES = [
+const FACTORY_QUICK_REPLIES = [
   'ما هو الحد الأدنى للطلب (MOQ)؟',
   'هل يمكن توفير عينة فحص قبل الاعتماد؟',
   'ما هي شروط الدفع والضمان المالي؟',
   'ما هو وقت التجهيز والشحن المتوقع؟',
   'هل تقدمون أسعاراً خاصة للكميات الكبيرة؟',
+];
+
+const ADMIN_QUICK_REPLIES = [
+  'طلب مراجعة واعتماد رخصة المتجر/المستودع',
+  'استفسار بخصوص الضمان المالي والحساب البنكي',
+  'طلب ربط أو استبدال المندوب الميداني المشرف',
+  'الإبلاغ عن نزاع تجاري أو مشكلة في استلام طلبية',
+  'استفسار عن اشتراكات وباقات الموردين المعتمدين',
+];
+
+const AGENT_QUICK_REPLIES = [
+  'مرحباً، متى موعد الزيارة الميدانية لمطابقة المخزون؟',
+  'أرغب في فحص وتوثيق شحنة جديدة وصلت المستودع',
+  'تم رفع المستندات الرسمية، يرجى فحصها واعتمادها',
+  'استفسار بخصوص تقرير الجودة وتوثيق المنتجات',
 ];
 
 function formatTime(iso: string, isAr: boolean) {
@@ -124,7 +141,7 @@ function LiveMessagingContent() {
   const [pendingAttachment, setPendingAttachment] = useState<{ file: File; previewUrl?: string; type: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  type FilterType = 'all' | 'factory' | 'logistics' | 'rfq' | 'order';
+  type FilterType = 'all' | 'admin' | 'agent' | 'factory' | 'logistics' | 'rfq' | 'order';
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -151,12 +168,16 @@ function LiveMessagingContent() {
     if (!user) router.push('/login');
   }, [user, authLoading, router]);
 
-  // ── جلب المحادثات الموحدة ─────────────────────────────────────────────────
+  // ── جلب المحادثات الموحدة والربط المباشر بطلب الإدارة أو المندوب ─────────────
   const fetchConversations = useCallback(async () => {
     if (!user) return;
     setLoadingConvs(true);
     try {
-      // 1. محادثات المصانع
+      const channelParam = searchParams?.get('channel');
+      const typeParam = searchParams?.get('type');
+      const partnerIdParam = searchParams?.get('partnerId');
+
+      // 1. محادثات جدول chat_conversations
       const { data: chatData } = await supabase
         .from('chat_conversations')
         .select('*')
@@ -176,13 +197,39 @@ function LiveMessagingContent() {
         console.warn('Logistics fetch:', e);
       }
 
-      const factoryConvs: Conversation[] = (chatData || []).map(c => ({
-        ...c,
-        source: 'chat',
-        category: 'factory',
-        unread_count: 0,
-        thread_type: (c.product_name || '').toLowerCase().includes('rfq') ? 'rfq' : 'negotiation',
-      }));
+      // تصنيف المحادثات بذكاء (إدارة / مندوب / مصنع)
+      const mappedChatConvs: Conversation[] = (chatData || []).map(c => {
+        const isAdm =
+          c.product_name?.includes('الإدارة') ||
+          c.supplier_flag === '🛡️' ||
+          c.supplier_name?.includes('إدارة');
+
+        const isAgnt =
+          c.product_name?.includes('ميداني') ||
+          c.supplier_flag === '👷' ||
+          c.supplier_name?.includes('مندوب');
+
+        let category: Conversation['category'] = 'factory';
+        let thread_type: Conversation['thread_type'] = 'negotiation';
+
+        if (isAdm) {
+          category = 'admin';
+          thread_type = 'admin';
+        } else if (isAgnt) {
+          category = 'agent';
+          thread_type = 'agent';
+        } else if ((c.product_name || '').toLowerCase().includes('rfq')) {
+          thread_type = 'rfq';
+        }
+
+        return {
+          ...c,
+          source: 'chat',
+          category,
+          unread_count: 0,
+          thread_type,
+        };
+      });
 
       const shippingConvs: Conversation[] = logisticsData.map(lc => ({
         id: lc.id,
@@ -203,19 +250,116 @@ function LiveMessagingContent() {
         thread_type: 'logistics',
       }));
 
-      const merged = [...factoryConvs, ...shippingConvs].sort(
+      let merged = [...mappedChatConvs, ...shippingConvs].sort(
         (a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
       );
 
-      setConversations(merged);
+      // ── معالجة الربط الفوري مع الإدارة عند النقر على الزر ──
+      if (channelParam === 'admin_direct') {
+        let adminConv = merged.find(c => c.category === 'admin');
 
-      const targetId = searchParams?.get('id') || searchParams?.get('conv');
-      if (targetId && merged.some(c => c.id === targetId)) {
-        setActiveConvId(targetId);
+        if (!adminConv) {
+          // جلب حساب الإدارة أو أول مشرف
+          const { data: adminProf } = await supabase
+            .from('user_profiles')
+            .select('id, full_name, avatar_url')
+            .eq('role', 'admin')
+            .limit(1)
+            .maybeSingle();
+
+          const targetAdminId = adminProf?.id;
+
+          if (targetAdminId) {
+            const insertPayload: Record<string, any> = {
+              buyer_id: user.id,
+              manufacturer_id: targetAdminId,
+              product_name: 'الدعم الفني والإدارة العامة',
+              supplier_name: 'إدارة منصة دايركت هب',
+              supplier_flag: '🛡️',
+              supplier_avatar: adminProf?.avatar_url || null,
+              last_message: 'مرحباً بك! تواصل مباشرة مع الإدارة العامة هنا.',
+              last_message_at: new Date().toISOString(),
+            };
+
+            const { data: created, error: createErr } = await supabase
+              .from('chat_conversations')
+              .insert(insertPayload)
+              .select()
+              .single();
+
+            if (!createErr && created) {
+              adminConv = {
+                ...created,
+                source: 'chat',
+                category: 'admin',
+                thread_type: 'admin',
+              };
+              merged = [adminConv!, ...merged];
+            }
+          }
+        }
+
+        if (adminConv) {
+          setActiveConvId(adminConv.id);
+          if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
+        }
+      }
+
+      // ── معالجة الربط الفوري مع المندوب الميداني ──
+      else if (typeParam === 'agent_coordination' && partnerIdParam) {
+        let agentConv = merged.find(c => c.manufacturer_id === partnerIdParam || c.buyer_id === partnerIdParam);
+
+        if (!agentConv) {
+          const { data: agentProf } = await supabase
+            .from('user_profiles')
+            .select('id, full_name, avatar_url')
+            .eq('id', partnerIdParam)
+            .maybeSingle();
+
+          const insertPayload: Record<string, any> = {
+            buyer_id: user.id,
+            manufacturer_id: partnerIdParam,
+            product_name: 'التنسيق والإشراف الميداني',
+            supplier_name: agentProf?.full_name || decodeURIComponent(searchParams?.get('partnerName') || 'المندوب الميداني المشرف'),
+            supplier_flag: '👷',
+            supplier_avatar: agentProf?.avatar_url || null,
+            last_message: 'بدء التنسيق الميداني وفحص المستودع والمنتجات.',
+            last_message_at: new Date().toISOString(),
+          };
+
+          const { data: created } = await supabase
+            .from('chat_conversations')
+            .insert(insertPayload)
+            .select()
+            .single();
+
+          if (created) {
+            agentConv = {
+              ...created,
+              source: 'chat',
+              category: 'agent',
+              thread_type: 'agent',
+            };
+            merged = [agentConv, ...merged];
+          }
+        }
+
+        if (agentConv) {
+          setActiveConvId(agentConv.id);
+          if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
+        }
+      }
+
+      // اختيار المحادثة المستهدفة بالمعرف
+      const explicitId = searchParams?.get('conversationId') || searchParams?.get('id') || searchParams?.get('conv');
+      if (explicitId && merged.some(c => c.id === explicitId)) {
+        setActiveConvId(explicitId);
         if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
-      } else if (merged.length > 0 && !activeConvId) {
+      } else if (merged.length > 0 && !activeConvId && !channelParam && !typeParam) {
         setActiveConvId(merged[0].id);
       }
+
+      setConversations(merged);
     } catch (err) {
       console.error(err);
     } finally {
@@ -396,7 +540,7 @@ function LiveMessagingContent() {
       const payload = {
         conversation_id: activeConvId,
         sender_id: user.id,
-        sender_role: 'buyer',
+        sender_role: 'user',
         message: '🎙️ رسالة صوتية',
         attachment_url: audioUrl,
         attachment_type: 'audio/webm',
@@ -453,7 +597,7 @@ function LiveMessagingContent() {
       id: optimisticId,
       conversation_id: activeConvId,
       sender_id: user.id,
-      sender_role: 'buyer',
+      sender_role: 'user',
       message: messageBody,
       created_at: new Date().toISOString(),
       is_read: false,
@@ -471,7 +615,7 @@ function LiveMessagingContent() {
         await supabase.from('logistics_messages').insert({
           conversation_id: activeConvId,
           sender_id: user.id,
-          sender_role: 'buyer',
+          sender_role: 'user',
           content: messageBody,
           attachment_url: attachmentUrl,
         });
@@ -484,7 +628,7 @@ function LiveMessagingContent() {
         await supabase.from('chat_messages').insert({
           conversation_id: activeConvId,
           sender_id: user.id,
-          sender_role: user.user_metadata?.role || 'buyer',
+          sender_role: 'user',
           message: messageBody,
           is_read: false,
           attachment_url: attachmentUrl,
@@ -504,6 +648,8 @@ function LiveMessagingContent() {
   };
 
   const filteredConvs = conversations.filter(c => {
+    if (filterType === 'admin' && c.category !== 'admin') return false;
+    if (filterType === 'agent' && c.category !== 'agent') return false;
     if (filterType === 'factory' && c.category !== 'factory') return false;
     if (filterType === 'logistics' && c.category !== 'logistics') return false;
     if (filterType === 'rfq' && c.thread_type !== 'rfq') return false;
@@ -516,6 +662,13 @@ function LiveMessagingContent() {
     return true;
   });
 
+  const currentQuickReplies =
+    activeConv?.category === 'admin'
+      ? ADMIN_QUICK_REPLIES
+      : activeConv?.category === 'agent'
+      ? AGENT_QUICK_REPLIES
+      : FACTORY_QUICK_REPLIES;
+
   return (
     <div className="bg-background flex flex-col overflow-hidden min-w-0" dir={dir} style={{ height: '100dvh', maxHeight: '100dvh' }}>
       <Header />
@@ -527,7 +680,7 @@ function LiveMessagingContent() {
             <div className="flex items-center justify-between">
               <h1 className="text-base font-bold text-foreground flex items-center gap-2">
                 <Icon name="ChatBubbleLeftRightIcon" size={18} className="text-primary" />
-                {isAr ? 'الدردشة الموحدة' : 'Unified Inbox'}
+                {isAr ? 'صندوق المحادثات الموحد' : 'Unified Inbox'}
               </h1>
               <span className="text-xs bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-full">
                 {conversations.length} {isAr ? 'محادثة' : 'threads'}
@@ -540,7 +693,7 @@ function LiveMessagingContent() {
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder={isAr ? 'بحث عن مصنع، شركة شحن، أو منتج...' : 'Search supplier or logistics...'}
+                placeholder={isAr ? 'بحث عن مصنع، إدارة، مندوب، شركة شحن...' : 'Search inbox...'}
                 className="w-full h-9 pr-9 pl-3 rounded-xl border border-border bg-background text-foreground text-xs focus:outline-none focus:border-primary"
               />
             </div>
@@ -548,10 +701,11 @@ function LiveMessagingContent() {
             <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
               {[
                 { id: 'all', label: isAr ? 'الكل' : 'All' },
+                { id: 'admin', label: isAr ? '🛡️ الإدارة' : '🛡️ Admin' },
+                { id: 'agent', label: isAr ? '👷 مندوبين' : '👷 Agents' },
                 { id: 'factory', label: isAr ? '🏭 مصانع' : '🏭 Factories' },
                 { id: 'logistics', label: isAr ? '🚢 شحن' : '🚢 Shipping' },
                 { id: 'rfq', label: isAr ? '📑 RFQ' : '📑 RFQ' },
-                { id: 'order', label: isAr ? '📦 طلبات' : '📦 Orders' },
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -591,7 +745,7 @@ function LiveMessagingContent() {
                       isActive ? 'bg-primary/5 border-r-[3px] border-r-primary' : 'hover:bg-muted/40'
                     }`}
                   >
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold bg-gradient-to-br from-blue-600 to-indigo-700 shrink-0">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold bg-gradient-to-br from-slate-700 to-slate-900 border border-border shrink-0">
                       {conv.supplier_flag || '🏢'}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -616,14 +770,13 @@ function LiveMessagingContent() {
           {!activeConv ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-muted/20">
               <Icon name="ChatBubbleLeftRightIcon" size={36} className="text-primary mb-2" />
-              <h2 className="text-base font-bold text-foreground">{isAr ? 'اختر محادثة لبدء التفاوض' : 'Select a conversation'}</h2>
+              <h2 className="text-base font-bold text-foreground">{isAr ? 'اختر محادثة لبدء المراسلة والتفاوض' : 'Select a conversation'}</h2>
             </div>
           ) : (
             <>
-              {/* ── ترويسة الشات التفاعلية (فتح غلاف المصنع وتفاصيله) ── */}
+              {/* ── ترويسة الشات التفاعلية ── */}
               <div className="px-4 py-3 border-b border-border bg-card flex items-center justify-between gap-3 shrink-0">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  {/* زر الرجوع في الموبايل */}
                   <button
                     type="button"
                     onClick={() => setSidebarOpen(true)}
@@ -633,21 +786,14 @@ function LiveMessagingContent() {
                     <Icon name="ArrowRightIcon" size={17} className={isRTL ? '' : 'rotate-180'} />
                   </button>
 
-                  {/* رابط الغلاف والملف التعريفي للمصنع */}
-                  <Link
-                    href={activeConv.category === 'logistics' 
-                      ? '/logistics' 
-                      : `/storefront/${activeConv.manufacturer_id || activeConv.buyer_id}`}
-                    className="flex items-center gap-2.5 min-w-0 flex-1 group hover:opacity-90 transition-opacity"
-                    title={isAr ? "عرض غلاف وكتالوج المصنع الكامل" : "View factory profile & catalog"}
-                  >
-                    <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold shrink-0 group-hover:ring-2 group-hover:ring-primary/40 transition-all">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold shrink-0">
                       {activeConv.supplier_flag || '🏢'}
                     </div>
 
                     <div className="flex-1 min-w-0 text-start">
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">
+                        <p className="text-sm font-bold text-foreground truncate">
                           {activeConv.supplier_name}
                         </p>
                         <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${THREAD_LABELS[activeConv.thread_type || 'negotiation']?.color}`}>
@@ -658,15 +804,14 @@ function LiveMessagingContent() {
                         {activeConv.product_name}
                       </p>
                     </div>
-                  </Link>
+                  </div>
                 </div>
 
-                {/* زر متجر المصنع والكتالوج */}
-                {activeConv.category !== 'logistics' && (
+                {/* زر متجر المصنع يظهر فقط لمحادثات المصانع */}
+                {activeConv.category === 'factory' && (
                   <Link
                     href={`/storefront/${activeConv.manufacturer_id || activeConv.buyer_id}`}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-primary/10 hover:text-primary border border-border rounded-xl text-xs font-semibold text-foreground transition-all shrink-0 shadow-2xs"
-                    title="زيارة متجر وغلاف المصنع"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-primary/10 hover:text-primary border border-border rounded-xl text-xs font-semibold text-foreground transition-all shrink-0"
                   >
                     <Icon name="BuildingStorefrontIcon" size={15} className="text-primary" />
                     <span className="hidden sm:inline">{isAr ? 'متجر المصنع' : 'Store'}</span>
@@ -713,18 +858,17 @@ function LiveMessagingContent() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* شريط الردود السريعة */}
+              {/* شريط الردود السريعة المتغير حسب نوع المحادثة */}
               <div className="px-3 py-1.5 border-t border-border bg-card flex gap-1.5 overflow-x-auto shrink-0" style={{ scrollbarWidth: 'none' }}>
-                {QUICK_REPLIES.map(qr => (
+                {currentQuickReplies.map(qr => (
                   <button key={qr} onClick={() => setInputText(qr)} className="shrink-0 px-2.5 py-1 bg-muted hover:bg-muted/80 text-[11px] font-medium rounded-full text-foreground whitespace-nowrap transition-colors">
                     {qr}
                   </button>
                 ))}
               </div>
 
-              {/* ── صندوق الإدخال بنمط علي بابا (مساحة واسعة + ترجمة حية + شريط أدوات تحته) ── */}
+              {/* صندوق الإدخال */}
               <div className="p-3 border-t border-border bg-card shrink-0 space-y-2">
-                {/* 1. شريط الترجمة الفورية الحية المباشرة */}
                 {liveTranslation && (
                   <div className="px-3.5 py-2 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-700 dark:text-blue-300 flex items-center justify-between transition-all">
                     <div className="flex items-center gap-2 truncate">
@@ -740,7 +884,6 @@ function LiveMessagingContent() {
                   </div>
                 )}
 
-                {/* معاينة المرفق قبل الإرسال */}
                 {pendingAttachment && (
                   <div className="px-3.5 py-1.5 bg-muted/70 rounded-xl border border-border flex items-center justify-between text-xs">
                     <span className="font-medium truncate flex-1">{pendingAttachment.file.name}</span>
@@ -748,7 +891,6 @@ function LiveMessagingContent() {
                   </div>
                 )}
 
-                {/* تحذير الخصوصية */}
                 {privacyWarning && (
                   <div className="px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 rounded-lg flex items-center gap-2">
                     <Icon name="ExclamationTriangleIcon" size={14} className="shrink-0" />
@@ -756,7 +898,6 @@ function LiveMessagingContent() {
                   </div>
                 )}
 
-                {/* 2. مساحة الكتابة الكبيرة والواسعة (Full Width - سطرين أو أكثر بوضوح) */}
                 <div className="w-full">
                   <textarea
                     ref={inputRef}
@@ -768,21 +909,24 @@ function LiveMessagingContent() {
                         handleSend();
                       }
                     }}
-                    placeholder={isAr ? "اكتب رسالتك وتفاصيل طلبك هنا للمصنع... (تتم الترجمة فورياً)" : "Type your message to the factory..."}
+                    placeholder={
+                      activeConv.category === 'admin'
+                        ? 'اكتب رسالتك للإدارة العامة لدايركت هب...'
+                        : activeConv.category === 'agent'
+                        ? 'اكتب رسالتك وتنسيقك للمندوب الميداني المشرف...'
+                        : 'اكتب رسالتك وتفاصيل طلبك هنا... (تتم الترجمة فورياً)'
+                    }
                     rows={2}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 resize-none transition-all leading-relaxed"
                     style={{ minHeight: '60px', maxHeight: '130px' }}
                   />
                 </div>
 
-                {/* 3. شريط الأدوات السفلي المستقل (مرفقات، لغات، صوت، إرسال) */}
                 <div className="flex items-center justify-between gap-2 pt-0.5">
-                  {/* أزرار المرفقات والترجمة والصوت */}
                   <div className="flex items-center gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
                     <input ref={fileInputRef} type="file" accept={ACCEPT_ATTR} onChange={handleAttachment} className="hidden" />
                     <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleAttachment} className="hidden" />
 
-                    {/* زر إرفاق ملف / صورة */}
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
@@ -793,7 +937,6 @@ function LiveMessagingContent() {
                       <span className="hidden sm:inline">مرفق</span>
                     </button>
 
-                    {/* زر الكاميرا */}
                     <button
                       type="button"
                       onClick={() => cameraInputRef.current?.click()}
@@ -804,7 +947,6 @@ function LiveMessagingContent() {
                       <span className="hidden sm:inline">كاميرا</span>
                     </button>
 
-                    {/* مبدل لغة الترجمة الحية */}
                     <div className="relative shrink-0">
                       <button
                         type="button"
@@ -846,7 +988,6 @@ function LiveMessagingContent() {
                       )}
                     </div>
 
-                    {/* زر التسجيل الصوتي */}
                     <button
                       type="button"
                       onClick={handleToggleRecord}
@@ -862,7 +1003,6 @@ function LiveMessagingContent() {
                     </button>
                   </div>
 
-                  {/* زر الإرسال البرتقالي المستقل */}
                   <button
                     type="button"
                     onClick={handleSend}
