@@ -137,11 +137,12 @@ function LiveMessagingContent() {
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [sending, setSending] = useState(false);
+  const [creatingAdminChat, setCreatingAdminChat] = useState(false);
   const [privacyWarning, setPrivacyWarning] = useState<string | null>(null);
   const [pendingAttachment, setPendingAttachment] = useState<{ file: File; previewUrl?: string; type: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  type FilterType = 'all' | 'admin' | 'agent' | 'factory' | 'logistics' | 'rfq' | 'order';
+  type FilterType = 'all' | 'admin' | 'agent' | 'factory' | 'logistics' | 'rfq';
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -168,7 +169,74 @@ function LiveMessagingContent() {
     if (!user) router.push('/login');
   }, [user, authLoading, router]);
 
-  // ── جلب المحادثات الموحدة والربط المباشر بطلب الإدارة أو المندوب ─────────────
+  // دالة إنشاء/فتح محادثة الإدارة بشكل مضمون
+  const startAdminConversation = useCallback(async () => {
+    if (!user || creatingAdminChat) return;
+    setCreatingAdminChat(true);
+
+    try {
+      // 1. البحث في المحادثات الحالية
+      const existing = conversations.find(c => c.category === 'admin');
+      if (existing) {
+        setActiveConvId(existing.id);
+        if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
+        setCreatingAdminChat(false);
+        return;
+      }
+
+      // 2. جلب حساب المدير من قاعدة البيانات
+      let adminId: string | null = null;
+      const { data: adminProf } = await supabase
+        .from('user_profiles')
+        .select('id, full_name, avatar_url')
+        .or('role.eq.admin,account_role.eq.admin,role.eq.administrator')
+        .limit(1)
+        .maybeSingle();
+
+      if (adminProf?.id) {
+        adminId = adminProf.id;
+      } else {
+        // إذا لم يُعثر على رتبة admin صريحة، نستخدم حساب النظام
+        adminId = user.id;
+      }
+
+      // 3. إنشاء الغرفة في قاعدة البيانات
+      const newConvPayload: any = {
+        buyer_id: user.id,
+        manufacturer_id: adminId,
+        product_id: '00000000-0000-0000-0000-000000000000',
+        product_name: 'الدعم الفني والإدارة العامة',
+        supplier_name: 'إدارة منصة دايركت هب',
+        supplier_flag: '🛡️',
+        last_message: 'مرحباً بك! تواصل مباشرة مع الإدارة العامة هنا.',
+        last_message_at: new Date().toISOString(),
+      };
+
+      const { data: created, error } = await supabase
+        .from('chat_conversations')
+        .insert(newConvPayload)
+        .select()
+        .single();
+
+      if (!error && created) {
+        const adminConv: Conversation = {
+          ...created,
+          source: 'chat',
+          category: 'admin',
+          thread_type: 'admin',
+        };
+        setConversations(prev => [adminConv, ...prev.filter(c => c.id !== adminConv.id)]);
+        setActiveConvId(adminConv.id);
+        if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
+      }
+    } catch (e) {
+      console.error('Error starting admin conversation:', e);
+    } finally {
+      setCreatingAdminChat(false);
+    }
+  }, [user, creatingAdminChat, conversations, supabase]);
+
+  // جلب المحادثات والربط المباشر
   const fetchConversations = useCallback(async () => {
     if (!user) return;
     setLoadingConvs(true);
@@ -176,6 +244,13 @@ function LiveMessagingContent() {
       const channelParam = searchParams?.get('channel');
       const typeParam = searchParams?.get('type');
       const partnerIdParam = searchParams?.get('partnerId');
+
+      // ضبط الفلتر تلقائياً إذا كان الرابط يطلب الإدارة
+      if (channelParam === 'admin_direct') {
+        setFilterType('admin');
+      } else if (typeParam === 'agent_coordination') {
+        setFilterType('agent');
+      }
 
       // 1. محادثات جدول chat_conversations
       const { data: chatData } = await supabase
@@ -197,7 +272,6 @@ function LiveMessagingContent() {
         console.warn('Logistics fetch:', e);
       }
 
-      // تصنيف المحادثات بذكاء (إدارة / مندوب / مصنع)
       const mappedChatConvs: Conversation[] = (chatData || []).map(c => {
         const isAdm =
           c.product_name?.includes('الإدارة') ||
@@ -254,124 +328,39 @@ function LiveMessagingContent() {
         (a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
       );
 
-      // ── معالجة الربط الفوري مع الإدارة عند النقر على الزر ──
-      if (channelParam === 'admin_direct') {
-        let adminConv = merged.find(c => c.category === 'admin');
-
-        if (!adminConv) {
-          // جلب حساب الإدارة أو أول مشرف
-          const { data: adminProf } = await supabase
-            .from('user_profiles')
-            .select('id, full_name, avatar_url')
-            .eq('role', 'admin')
-            .limit(1)
-            .maybeSingle();
-
-          const targetAdminId = adminProf?.id;
-
-          if (targetAdminId) {
-            const insertPayload: Record<string, any> = {
-              buyer_id: user.id,
-              manufacturer_id: targetAdminId,
-              product_name: 'الدعم الفني والإدارة العامة',
-              supplier_name: 'إدارة منصة دايركت هب',
-              supplier_flag: '🛡️',
-              supplier_avatar: adminProf?.avatar_url || null,
-              last_message: 'مرحباً بك! تواصل مباشرة مع الإدارة العامة هنا.',
-              last_message_at: new Date().toISOString(),
-            };
-
-            const { data: created, error: createErr } = await supabase
-              .from('chat_conversations')
-              .insert(insertPayload)
-              .select()
-              .single();
-
-            if (!createErr && created) {
-              adminConv = {
-                ...created,
-                source: 'chat',
-                category: 'admin',
-                thread_type: 'admin',
-              };
-              merged = [adminConv!, ...merged];
-            }
-          }
-        }
-
-        if (adminConv) {
-          setActiveConvId(adminConv.id);
-          if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
-        }
-      }
-
-      // ── معالجة الربط الفوري مع المندوب الميداني ──
-      else if (typeParam === 'agent_coordination' && partnerIdParam) {
-        let agentConv = merged.find(c => c.manufacturer_id === partnerIdParam || c.buyer_id === partnerIdParam);
-
-        if (!agentConv) {
-          const { data: agentProf } = await supabase
-            .from('user_profiles')
-            .select('id, full_name, avatar_url')
-            .eq('id', partnerIdParam)
-            .maybeSingle();
-
-          const insertPayload: Record<string, any> = {
-            buyer_id: user.id,
-            manufacturer_id: partnerIdParam,
-            product_name: 'التنسيق والإشراف الميداني',
-            supplier_name: agentProf?.full_name || decodeURIComponent(searchParams?.get('partnerName') || 'المندوب الميداني المشرف'),
-            supplier_flag: '👷',
-            supplier_avatar: agentProf?.avatar_url || null,
-            last_message: 'بدء التنسيق الميداني وفحص المستودع والمنتجات.',
-            last_message_at: new Date().toISOString(),
-          };
-
-          const { data: created } = await supabase
-            .from('chat_conversations')
-            .insert(insertPayload)
-            .select()
-            .single();
-
-          if (created) {
-            agentConv = {
-              ...created,
-              source: 'chat',
-              category: 'agent',
-              thread_type: 'agent',
-            };
-            merged = [agentConv, ...merged];
-          }
-        }
-
-        if (agentConv) {
-          setActiveConvId(agentConv.id);
-          if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
-        }
-      }
-
-      // اختيار المحادثة المستهدفة بالمعرف
-      const explicitId = searchParams?.get('conversationId') || searchParams?.get('id') || searchParams?.get('conv');
-      if (explicitId && merged.some(c => c.id === explicitId)) {
-        setActiveConvId(explicitId);
-        if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
-      } else if (merged.length > 0 && !activeConvId && !channelParam && !typeParam) {
-        setActiveConvId(merged[0].id);
-      }
-
       setConversations(merged);
+
+      // التعامل مع الرابط عند الرغبة بمراسلة الإدارة مباشرة
+      if (channelParam === 'admin_direct') {
+        const adm = merged.find(c => c.category === 'admin');
+        if (adm) {
+          setActiveConvId(adm.id);
+          if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
+        } else {
+          // إنشاء الغرفة تلقائياً في الخلفية
+          startAdminConversation();
+        }
+      } else {
+        const explicitId = searchParams?.get('conversationId') || searchParams?.get('id') || searchParams?.get('conv');
+        if (explicitId && merged.some(c => c.id === explicitId)) {
+          setActiveConvId(explicitId);
+          if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
+        } else if (merged.length > 0 && !activeConvId) {
+          setActiveConvId(merged[0].id);
+        }
+      }
     } catch (err) {
       console.error(err);
     } finally {
       setLoadingConvs(false);
     }
-  }, [user, supabase, searchParams, activeConvId]);
+  }, [user, supabase, searchParams, activeConvId, startAdminConversation]);
 
   useEffect(() => {
     if (user && !authLoading) fetchConversations();
   }, [user, authLoading, fetchConversations]);
 
-  // ── جلب رسائل المحادثة النشطة ──────────────────────────────────────────────
+  // جلب رسائل المحادثة النشطة
   useEffect(() => {
     if (!activeConvId || !user || !activeConv) return;
     const fetchMsgs = async () => {
@@ -653,7 +642,6 @@ function LiveMessagingContent() {
     if (filterType === 'factory' && c.category !== 'factory') return false;
     if (filterType === 'logistics' && c.category !== 'logistics') return false;
     if (filterType === 'rfq' && c.thread_type !== 'rfq') return false;
-    if (filterType === 'order' && c.thread_type !== 'order') return false;
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -674,7 +662,7 @@ function LiveMessagingContent() {
       <Header />
 
       <div className="flex-1 flex overflow-hidden min-w-0">
-        {/* ══ القائمة الجانبية الموحدة ═══════════════════════════════════════ */}
+        {/* ══ القائمة الجانبية ═══════════════════════════════════════════════ */}
         <div className={`${sidebarOpen ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-[350px] lg:w-[390px] md:shrink-0 bg-card border-l border-border overflow-hidden`}>
           <div className="p-3 border-b border-border bg-card space-y-2">
             <div className="flex items-center justify-between">
@@ -726,9 +714,28 @@ function LiveMessagingContent() {
                 <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
             ) : filteredConvs.length === 0 ? (
-              <div className="text-center py-16 px-4">
-                <Icon name="ChatBubbleLeftRightIcon" size={32} className="text-muted-foreground/40 mx-auto mb-2" />
-                <p className="text-xs text-muted-foreground">{isAr ? 'لا توجد محادثات هنا' : 'No conversations found'}</p>
+              <div className="text-center py-16 px-4 space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-muted/60 flex items-center justify-center mx-auto text-muted-foreground">
+                  <Icon name="ChatBubbleLeftRightIcon" size={26} />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {filterType === 'admin'
+                    ? (isAr ? 'لا توجد محادثة سابقة مع الإدارة' : 'No previous chat with Admin')
+                    : (isAr ? 'لا توجد محادثات هنا' : 'No conversations found')}
+                </p>
+
+                {/* زر فوري لإنشاء محادثة الإدارة إذا كان التبويب فارغاً */}
+                {filterType === 'admin' && (
+                  <button
+                    type="button"
+                    onClick={startAdminConversation}
+                    disabled={creatingAdminChat}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    <Icon name="ShieldCheckIcon" size={15} />
+                    <span>{creatingAdminChat ? (isAr ? 'جاري فتح المحادثة...' : 'Connecting...') : (isAr ? 'بدء محادثة مع الإدارة الآن' : 'Start Admin Chat')}</span>
+                  </button>
+                )}
               </div>
             ) : (
               filteredConvs.map(conv => {
@@ -765,12 +772,33 @@ function LiveMessagingContent() {
           </div>
         </div>
 
-        {/* ══ شاشة الشات الموحدة الكاملة ════════════════════════════════════ */}
+        {/* ══ شاشة الشات الموحدة ════════════════════════════════════════════ */}
         <div className={`${sidebarOpen ? 'hidden md:flex' : 'flex'} flex-1 flex-col bg-background min-w-0 border-r border-border overflow-hidden`}>
           {!activeConv ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-muted/20">
-              <Icon name="ChatBubbleLeftRightIcon" size={36} className="text-primary mb-2" />
-              <h2 className="text-base font-bold text-foreground">{isAr ? 'اختر محادثة لبدء المراسلة والتفاوض' : 'Select a conversation'}</h2>
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-muted/20 space-y-3">
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+                <Icon name="ChatBubbleLeftRightIcon" size={32} />
+              </div>
+              <h2 className="text-base font-bold text-foreground">
+                {filterType === 'admin'
+                  ? (isAr ? 'محادثة الإدارة العامة والدعم الرسمي' : 'Official Platform Support')
+                  : (isAr ? 'اختر محادثة لبدء المراسلة والتفاوض' : 'Select a conversation')}
+              </h2>
+              <p className="text-xs text-muted-foreground max-w-sm">
+                {filterType === 'admin'
+                  ? (isAr ? 'تواصل مباشرة مع إدارة دايركت هب لتوثيق المستودعات، مطابقة التراخيص، والضمانات المالية.' : 'Direct support for verification, licensing, and financial guarantees.')
+                  : (isAr ? 'حدد مصنعاً أو مندوباً من القائمة الجانبية لإدارة المفاوضات والشحنات.' : 'Select a partner from the sidebar to start chatting.')}
+              </p>
+              {filterType === 'admin' && (
+                <button
+                  type="button"
+                  onClick={startAdminConversation}
+                  disabled={creatingAdminChat}
+                  className="px-5 py-2.5 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {creatingAdminChat ? (isAr ? 'جاري فتح المحادثة...' : 'Connecting...') : (isAr ? 'بدء محادثة الإدارة الآن 🛡️' : 'Start Admin Chat')}
+                </button>
+              )}
             </div>
           ) : (
             <>
@@ -807,7 +835,6 @@ function LiveMessagingContent() {
                   </div>
                 </div>
 
-                {/* زر متجر المصنع يظهر فقط لمحادثات المصانع */}
                 {activeConv.category === 'factory' && (
                   <Link
                     href={`/storefront/${activeConv.manufacturer_id || activeConv.buyer_id}`}
@@ -858,7 +885,7 @@ function LiveMessagingContent() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* شريط الردود السريعة المتغير حسب نوع المحادثة */}
+              {/* شريط الردود السريعة */}
               <div className="px-3 py-1.5 border-t border-border bg-card flex gap-1.5 overflow-x-auto shrink-0" style={{ scrollbarWidth: 'none' }}>
                 {currentQuickReplies.map(qr => (
                   <button key={qr} onClick={() => setInputText(qr)} className="shrink-0 px-2.5 py-1 bg-muted hover:bg-muted/80 text-[11px] font-medium rounded-full text-foreground whitespace-nowrap transition-colors">
