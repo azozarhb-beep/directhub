@@ -1,1436 +1,1353 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
+import React, { useState, useRef, useEffect, useCallback, useMemo, Suspense } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import AppImage from '@/components/ui/AppImage';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import ChatAttachmentView from '@/components/ChatAttachmentView';
+import { getChatMediaSignedUrl } from '@/lib/chatMedia';
+import Icon from '@/components/ui/AppIcon';
+import Header from '@/components/Header';
+import BottomNav from '@/components/BottomNav';
 import { useAuth } from '@/contexts/AuthContext';
 import { createClient } from '@/lib/supabase/client';
-import { useRealtimeOrders } from '@/lib/hooks/useRealtimeOrders';
-import Icon from '@/components/ui/AppIcon';
-import FactoryAdminMessaging from './FactoryAdminMessaging';
-import DashboardChrome from './DashboardChrome';
-import DashboardHub from './DashboardHub';
-import { useFactoryOperationsData } from './useFactoryOperationsData';
-
-import toast, { Toaster } from 'react-hot-toast';
-
+import { sanitizeChatMessage } from '@/lib/privacyShield';
 import { useLanguage } from '@/contexts/LanguageContext';
-import AllSalesMethodsPanel from '@/components/AllSalesMethodsPanel';
-import AIContractAssistant from '@/components/AIContractAssistant';
-import ManufacturerAdvancedModules from '@/components/manufacturer/ManufacturerAdvancedModules';
-import FactoryTeamManagement from '@/components/manufacturer/FactoryTeamManagement';
-import TieredPricingManager from '@/components/international-factory/TieredPricingManager';
+import { resolveFileType, extensionForType, fileWithResolvedType } from '@/lib/attachmentTypes';
 
-import { 
-  resolvePlatformRole, 
-  getHomeRoomForRole, 
-  canAccessLocalErp, 
-  resolveManufacturerRoomForUser, 
-  INTERNATIONAL_FACTORY_ROOM_PATH 
-} from '@/lib/roomIsolation';
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface Conversation {
+  id: string;
+  source: 'chat' | 'logistics';
+  category: 'factory' | 'logistics' | 'admin' | 'agent';
+  buyer_id: string;
+  manufacturer_id: string | null;
+  partner_id?: string | null;
+  product_id?: string | null;
+  product_name?: string | null;
+  supplier_name?: string | null;
+  supplier_country?: string | null;
+  supplier_flag?: string | null;
+  supplier_avatar?: string | null;
+  last_message?: string | null;
+  last_message_at?: string | null;
+  unread_count?: number;
+  thread_type?: 'negotiation' | 'rfq' | 'order' | 'logistics' | 'admin' | 'agent';
+}
 
-import PaymentSettingsPanel from './PaymentSettingsPanel';
-import FinancePanel from './FinancePanel';
-import ArchivePanel from './ArchivePanel';
-import ProductsPanel from './ProductsPanel';
-import InventoryPanel from './InventoryPanel';
-import FactoryOrdersPanel from './FactoryOrdersPanel';
-import EscrowOrdersPanel from './EscrowOrdersPanel';
-import AnalyticsPanel from './AnalyticsPanel';
-import DisputesPanel from './DisputesPanel';
-import FinancialHubPanel from './FinancialHubPanel';
-import FactoryPinPayoutPanel from './FactoryPinPayoutPanel';
-import FactorySettingsPanel from './FactorySettingsPanel';
+interface Message {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  sender_role: string;
+  message: string;
+  attachment_url?: string;
+  attachment_type?: string;
+  attachment_name?: string;
+  is_read: boolean;
+  created_at: string;
+  local_audio_url?: string;
+  audio_duration?: number;
+}
 
-import SellerFulfillmentPanel from './SellerFulfillmentPanel';
-import ShipmentBidsPanel from '@/components/ShipmentBidsPanel';
-import DealLinkGeneratorModal from '@/components/manufacturer/DealLinkGeneratorModal';
-import FinancialSummaryHeader from '@/app/manufacturer/dashboard/FinancialSummaryHeader';
+type SupportedLang = 'ar' | 'en' | 'zh' | 'tr';
 
-import { useSalesRepsManagement } from './useSalesRepsManagement';
-import type {
-  SalesRep,
-  Product,
-  ProductFormData,
-  PaymentSettings,
-  BankAccount,
-  DashboardTab,
-  ManufacturerDashboardProps,
-} from './dashboardTypes';
-import { EMPTY_BANK_ACCOUNT, EMPTY_FORM, EMPTY_PAYMENT_SETTINGS } from './dashboardConfig';
-import ProductFormModal from '@/app/manufacturer/dashboard/ProductFormModal';
-import DeleteProductModal from '@/app/manufacturer/dashboard/DeleteProductModal';
+const LANG_OPTIONS: { value: SupportedLang; label: string; flag: string; nativeName: string }[] = [
+  { value: 'en', label: 'English', flag: '🇬🇧', nativeName: 'English' },
+  { value: 'zh', label: 'Chinese', flag: '🇨🇳', nativeName: '中文' },
+  { value: 'tr', label: 'Turkish', flag: '🇹🇷', nativeName: 'Türkçe' },
+  { value: 'ar', label: 'Arabic', flag: '🇸🇦', nativeName: 'العربية' },
+];
 
-export default function ManufacturerDashboard({ moduleTab, moduleView }: ManufacturerDashboardProps) {
+const THREAD_LABELS: Record<string, { color: string; labelAr: string; labelEn: string }> = {
+  negotiation: { color: 'bg-blue-500/10 text-blue-600 border-blue-500/20', labelAr: 'تفاوض مصنع', labelEn: 'Factory Negotiation' },
+  rfq: { color: 'bg-amber-500/10 text-amber-600 border-amber-500/20', labelAr: 'طلب تسعير RFQ', labelEn: 'RFQ Quote' },
+  order: { color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20', labelAr: 'طلب شراء', labelEn: 'Purchase Order' },
+  logistics: { color: 'bg-purple-500/10 text-purple-600 border-purple-500/20', labelAr: 'شحن وتخليص', labelEn: 'Logistics' },
+  admin: { color: 'bg-red-500/10 text-red-600 border-red-500/20', labelAr: 'إدارة المنصة', labelEn: 'Platform Admin' },
+  agent: { color: 'bg-teal-500/10 text-teal-600 border-teal-500/20', labelAr: 'إشراف ميداني', labelEn: 'Field Supervision' },
+};
+
+const ALLOWED_TYPES = [
+  'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif',
+  'image/heic', 'image/heif', 'application/pdf',
+];
+const ACCEPT_ATTR = 'image/*,application/pdf';
+const MAX_SIZE = 25 * 1024 * 1024;
+
+const FACTORY_QUICK_REPLIES = [
+  'ما هو الحد الأدنى للطلب (MOQ)؟',
+  'هل يمكن توفير عينة فحص قبل الاعتماد؟',
+  'ما هي شروط الدفع والضمان المالي؟',
+  'ما هو وقت التجهيز والشحن المتوقع؟',
+  'هل تقدمون أسعاراً خاصة للكميات الكبيرة؟',
+];
+
+const ADMIN_QUICK_REPLIES = [
+  'طلب مراجعة واعتماد رخصة المتجر/المستودع',
+  'استفسار بخصوص الضمان المالي والحساب البنكي',
+  'طلب ربط أو استبدال المندوب الميداني المشرف',
+  'الإبلاغ عن نزاع تجاري أو مشكلة في استلام طلبية',
+  'استفسار عن اشتراكات وباقات الموردين المعتمدين',
+];
+
+const AGENT_QUICK_REPLIES = [
+  'مرحباً، متى موعد الزيارة الميدانية لمطابقة المخزون؟',
+  'أرغب في فحص وتوثيق شحنة جديدة وصلت المستودع',
+  'تم رفع المستندات الرسمية، يرجى فحصها واعتمادها',
+  'استفسار بخصوص تقرير الجودة وتوثيق المنتجات',
+];
+
+function formatTime(iso: string, isAr: boolean) {
+  try {
+    const d = new Date(iso);
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
+    const locale = isAr ? 'ar-SA' : 'en-US';
+    if (diffDays === 0) return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+    if (diffDays === 1) return isAr ? 'أمس' : 'Yesterday';
+    return d.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
+  } catch { return ''; }
+}
+
+function parseBilingualMessage(raw: string) {
+  try {
+    const data = JSON.parse(raw);
+    if (data.type === 'bilingual') {
+      return { isBilingual: true, original: data.original, translated: data.translated, lang: data.translatedLang };
+    }
+  } catch { /* plain text */ }
+  return { isBilingual: false, original: raw, translated: '', lang: '' };
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+function LiveMessagingContent() {
   const router = useRouter();
-  const { user, signOut, loading: authLoading } = useAuth();
-  const supabase = createClient();
-  const { t, dir, isRTL, language } = useLanguage();
-  const md = t.manufacturerDashboard;
-  const isModuleMode = !!moduleTab;
+  const searchParams = useSearchParams();
+  const { user, loading: authLoading } = useAuth();
+  const supabase = useMemo(() => createClient(), []);
+  const { language, dir, isRTL } = useLanguage();
+  const isAr = language === 'ar';
 
-  // ── Admin Impersonation State ──
-  const [impersonatedFactoryId, setImpersonatedFactoryId] = useState<string | null>(null);
-  const [impersonatedFactoryName, setImpersonatedFactoryName] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputText, setInputText] = useState('');
+  const [loadingConvs, setLoadingConvs] = useState(true);
+  const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [sending, setSending] = useState(false);
+  const isSendingRef = useRef(false);
+  const [creatingAdminChat, setCreatingAdminChat] = useState(false);
+  const [privacyWarning, setPrivacyWarning] = useState<string | null>(null);
+  const [pendingAttachment, setPendingAttachment] = useState<{ file: File; previewUrl?: string; type: string } | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  useEffect(() => {
-    if (typeof window === 'undefined' || authLoading || !user) return;
-    const id = localStorage.getItem('impersonated_factory_id');
-    const name = localStorage.getItem('impersonated_factory_name');
-    if (!id) return;
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase
-        .from('user_profiles')
-        .select('role')
-        .eq('id', user.id)
-        .maybeSingle();
-      if (cancelled) return;
-      if ((data as { role?: string | null } | null)?.role === 'admin') {
-        setImpersonatedFactoryId(id);
-        if (name) setImpersonatedFactoryName(name);
-      } else {
-        localStorage.removeItem('impersonated_factory_id');
-        localStorage.removeItem('impersonated_factory_name');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [authLoading, user?.id]);
+  // صور البروفايل للمرسل والمستقبل
+  const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
+  const [partnerAvatarUrl, setPartnerAvatarUrl] = useState<string | null>(null);
 
-  const handleEndImpersonation = () => {
-    localStorage.removeItem('impersonated_factory_id');
-    localStorage.removeItem('impersonated_factory_name');
-    setImpersonatedFactoryId(null);
-    setImpersonatedFactoryName(null);
-    router.push('/admin/control-room');
-  };
+  // عارض الصور بملء الشاشة
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; title?: string } | null>(null);
 
-  // الحالة الافتراضية تكون 'hub' في الشاشة الرئيسية لمنع نزول المنتجات تحت البطاقات
-  const [activeTab, setActiveTab] = useState<DashboardTab | 'hub'>(moduleTab ?? (isModuleMode ? 'products' : 'hub'));
-  const [showDealLinkModal, setShowDealLinkModal] = useState(false);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [fetchLoading, setFetchLoading] = useState(true);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [formData, setFormData] = useState<ProductFormData>(EMPTY_FORM);
-  const [formLoading, setFormLoading] = useState(false);
-  const [formError, setFormError] = useState('');
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterCategory, setFilterCategory] = useState<string>('all');
-  const [filterSource, setFilterSource] = useState<string>('all');
+  // قياس ارتفاع الشاشة لمنع اختفاء الإدخال خلف لوحة المفاتيح
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+
+  type FilterType = 'all' | 'admin' | 'agent' | 'factory' | 'logistics' | 'rfq';
+  const [filterType, setFilterType] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const userMenuRef = React.useRef<HTMLDivElement>(null);
+
+  // أدوات الترجمة الفورية
+  const [liveTranslation, setLiveTranslation] = useState('');
+  const [liveTranslationLang, setLiveTranslationLang] = useState<SupportedLang>('en');
+  const [showLangPicker, setShowLangPicker] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
+
+  // التسجيل الصوتي
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const activeConv = conversations.find(c => c.id === activeConvId) || null;
+
+  const partnerId = activeConv
+    ? activeConv.buyer_id === user?.id
+      ? activeConv.manufacturer_id || activeConv.partner_id
+      : activeConv.buyer_id
+    : null;
 
   useEffect(() => {
-    if (!userMenuOpen) return;
-    const onPointer = (ev: MouseEvent | TouchEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(ev.target as Node)) setUserMenuOpen(false);
-    };
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') setUserMenuOpen(false);
-    };
-    document.addEventListener('mousedown', onPointer);
-    document.addEventListener('touchstart', onPointer);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onPointer);
-      document.removeEventListener('touchstart', onPointer);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [userMenuOpen]);
-
-  // Bulk selection & Sorting
-  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
-  const [bulkActionLoading, setBulkActionLoading] = useState(false);
-  const [productSort, setProductSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'created_at', dir: 'desc' });
-
-  // Product listing gate state
-  const [factoryRegistration, setFactoryRegistration] = useState<any>(null);
-  const [canListProducts, setCanListProducts] = useState(false);
-  const [hasDocuments, setHasDocuments] = useState(false);
-  const [docGateLoading, setDocGateLoading] = useState(true);
-  const [showDocGate, setShowDocGate] = useState(false);
-
-  // Document upload state
-  const [tradeLicenseFile, setTradeLicenseFile] = useState<File | null>(null);
-  const [mfgLicenseFile, setMfgLicenseFile] = useState<File | null>(null);
-  const [uploadingDocs, setUploadingDocs] = useState(false);
-  const [docUploadError, setDocUploadError] = useState('');
-  const [docUploadSuccess, setDocUploadSuccess] = useState('');
-  const [accountType, setAccountType] = useState<'factory' | 'supplier'>('factory');
-  const [secondDocFile, setSecondDocFile] = useState<File | null>(null);
-  const [taxId, setTaxId] = useState('');
-  const [establishedYear, setEstablishedYear] = useState('');
-
-  // Payment settings state
-  const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(EMPTY_PAYMENT_SETTINGS);
-  const [paymentLoading, setPaymentLoading] = useState(false);
-  const [factoryCurrency, setFactoryCurrency] = useState<string | null>('YER');
-  const [paymentSaving, setPaymentSaving] = useState(false);
-  const [paymentError, setPaymentError] = useState('');
-  const [paymentSuccess, setPaymentSuccess] = useState('');
-
-  // Bank accounts state
-  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
-  const [bankAccountsLoading, setBankAccountsLoading] = useState(false);
-  const [showAddBankModal, setShowAddBankModal] = useState(false);
-  const [bankFormData, setBankFormData] = useState(EMPTY_BANK_ACCOUNT);
-  const [bankFormLoading, setBankFormLoading] = useState(false);
-  const [bankFormError, setBankFormError] = useState('');
-  const [bankFormSuccess, setBankFormSuccess] = useState('');
-  const [deletingBankId, setDeletingBankId] = useState<string | null>(null);
-
-  // Analytics & Operation state
-  const [analyticsPeriod, setAnalyticsPeriod] = useState<'7d' | '30d' | '90d'>('30d');
-  const adminMsgsEndRef = React.useRef<HTMLDivElement>(null);
-  const [inquirySending, setInquirySending] = useState(false);
-  const [inquirySent, setInquirySent] = useState(false);
-  const [inquiryError, setInquiryError] = useState('');
-  const [trustPercentage, setTrustPercentage] = useState(0);
-  const [verifiedTier, setVerifiedTier] = useState<'unverified' | 'partial' | 'verified'>('unverified');
-  const [missingDocuments, setMissingDocuments] = useState<string[]>([]);
-
-  // Inventory modal state
-  const [showAddInventoryModal, setShowAddInventoryModal] = useState(false);
-  const [inventoryForm, setInventoryForm] = useState({
-    material_name: '', material_name_ar: '', category: 'raw_material', unit: 'kg',
-    quantity: '', unit_cost: '', supplier_name: '', notes: '',
-  });
-  const [inventoryFormLoading, setInventoryFormLoading] = useState(false);
-  const [inventoryFormError, setInventoryFormError] = useState('');
-
-  // Sales Rep state
-  const [isSalesRep, setIsSalesRep] = useState(false);
-  const [salesRepRecord, setSalesRepRecord] = useState<SalesRep | null>(null);
-  const [salesRepLoading, setSalesRepLoading] = useState(true);
-
-  const {
-    salesReps,
-    salesRepsLoading,
-    showInviteModal,
-    setShowInviteModal,
-    inviteForm,
-    setInviteForm,
-    inviteLoading,
-    inviteError,
-    setInviteError,
-    inviteSuccess,
-    repActionLoading,
-    fetchSalesReps,
-    handleInviteSalesRep,
-    handleRepStatusChange,
-    handleDeleteRep,
-  } = useSalesRepsManagement({ userId: user?.id, supabase, md });
-
-  const [canShowLocalErp, setCanShowLocalErp] = useState(false);
-  const [isSupplierSettings, setIsSupplierSettings] = useState(false);
-
-  // Operation Hook
-  const {
-    escrowOrders, escrowOrdersLoading, fetchEscrowOrders,
-    selectedEscrowOrder, setSelectedEscrowOrder,
-    deliveryPinInput, setDeliveryPinInput, deliveryPinVerifying,
-    deliveryPinMsg, setDeliveryPinMsg, deliveryPinSuccess, setDeliveryPinSuccess,
-    markReadyLoading, markReadyNote, setMarkReadyNote,
-    markReadyMsg, setMarkReadyMsg, markReadySuccess, setMarkReadySuccess,
-    handleDeliveryPinVerify, handleMarkReady,
-    factoryOrders, factoryOrdersLoading, fetchFactoryOrders,
-    selectedFactoryOrder, setSelectedFactoryOrder,
-    factoryOrderStatusFilter, setFactoryOrderStatusFilter,
-    factoryOrderStatusUpdating, factoryOrderStatusMsg, setFactoryOrderStatusMsg,
-    factoryOrderStatusSuccess, setFactoryOrderStatusSuccess,
-    factoryOrderNoteInput, setFactoryOrderNoteInput,
-    handleFactoryOrderStatusUpdate,
-    factoryDisputes, factoryDisputesLoading, fetchFactoryDisputes,
-    selectedFactoryDispute, setSelectedFactoryDispute,
-    factoryResolutionType, setFactoryResolutionType,
-    factoryResolutionNote, setFactoryResolutionNote,
-    factoryResolveLoading, factoryResolveMsg, setFactoryResolveMsg,
-    handleFactoryResolve,
-    analyticsLoading, analyticsData, analyticsStats, fetchAnalytics,
-    financeRecords, financeLoading, financeFilter, setFinanceFilter, fetchFinanceRecords,
-    inventoryItems, inventoryLoading, fetchInventoryItems,
-    archiveRecords, archiveLoading, archiveType, setArchiveType, fetchArchiveRecords,
-    adminConv, adminConvLoading, adminMessages, setAdminMessages, adminMsgsLoading,
-    adminMsgInput, setAdminMsgInput, adminMsgSending,
-    adminMsgAttachment, setAdminMsgAttachment,
-    sendAdminMessage, fetchAdminConversation,
-  } = useFactoryOperationsData({
-    user,
-    supabase,
-    md,
-    isSalesRep,
-    salesRepLoading,
-    analyticsPeriod,
-  });
-
-  const detectSalesRepRole = useCallback(async () => {
-    if (!user) { setSalesRepLoading(false); return; }
-    try {
-      const { data } = await supabase
-        .from('factory_sales_reps')
-        .select('*')
-        .eq('rep_user_id', user.id)
-        .eq('status', 'active')
-        .limit(1)
-        .maybeSingle();
-      if (data) {
-        setIsSalesRep(true);
-        setSalesRepRecord(data);
-      } else {
-        const { data: profile } = await supabase
+    if (!user) return;
+    const fetchAvatars = async () => {
+      try {
+        const { data: myData } = await supabase
           .from('user_profiles')
-          .select('role, factory_id')
+          .select('avatar_url')
           .eq('id', user.id)
           .maybeSingle();
-        const p = profile as { role?: string | null; factory_id?: string | null } | null;
-        const metaRole = (user.user_metadata?.role as string | undefined) || '';
-        const subAccount =
-          ['sales_rep', 'manufacturer_agent'].includes(metaRole) ||
-          ['sales_rep', 'manufacturer_agent'].includes(p?.role ?? '') ||
-          (!!p?.factory_id && p.factory_id !== user.id && p?.role !== 'admin');
-        setIsSalesRep(subAccount);
+        if (myData?.avatar_url) setMyAvatarUrl(myData.avatar_url);
+      } catch {
+        // ignore
       }
-    } catch {
-      setIsSalesRep(false);
-    } finally {
-      setSalesRepLoading(false);
-    }
-  }, [user, supabase]);
 
-  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Manufacturer';
-  const companyName = user?.user_metadata?.company_name || '';
-
-  const toggleProductSort = (col: string) =>
-    setProductSort(s => ({ col, dir: s.col === col && s.dir === 'asc' ? 'desc' : 'asc' }));
-
-  const SortIcon = ({ col }: { col: string }) =>
-    productSort.col === col ? (
-      <Icon name={productSort.dir === 'asc' ? 'ChevronUpIcon' : 'ChevronDownIcon'} size={11} className="text-primary" />
-    ) : (
-      <Icon name="ChevronUpDownIcon" size={11} className="text-muted-foreground opacity-40" />
-    );
-
-  const handleBulkToggleActive = async (isActive: boolean) => {
-    if (selectedProducts.size === 0 || !user || isSalesRep) return;
-    setBulkActionLoading(true);
-    try {
-      const ids = Array.from(selectedProducts);
-      const { error } = await supabase
-        .from('manufacturer_products')
-        .update({ is_active: isActive, updated_at: new Date().toISOString() })
-        .in('id', ids)
-        .eq('manufacturer_id', user.id);
-      if (error) throw error;
-      setProducts(prev => prev.map(p => selectedProducts.has(p.id) ? { ...p, is_active: isActive } : p));
-      setSelectedProducts(new Set());
-    } catch (err) {
-      console.error('Bulk toggle failed:', err);
-    } finally {
-      setBulkActionLoading(false);
-    }
-  };
-
-  const handleBulkDelete = async () => {
-    if (selectedProducts.size === 0 || !user || isSalesRep) return;
-    if (!confirm(`هل تريد حذف ${selectedProducts.size} منتج؟ لا يمكن التراجع عن هذا الإجراء.`)) return;
-    setBulkActionLoading(true);
-    try {
-      const ids = Array.from(selectedProducts);
-      const { error } = await supabase
-        .from('manufacturer_products')
-        .delete()
-        .in('id', ids)
-        .eq('manufacturer_id', user.id);
-      if (error) throw error;
-      setProducts(prev => prev.filter(p => !selectedProducts.has(p.id)));
-      setSelectedProducts(new Set());
-    } catch (err) {
-      console.error('Bulk delete failed:', err);
-    } finally {
-      setBulkActionLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const runGuard = async () => {
-      if (authLoading) return;
-      if (!user) {
-        router.replace('/manufacturer/login');
-        return;
-      }
-      const metadataRole =
-        (user.user_metadata?.role as string | undefined) ||
-        (user.app_metadata?.role as string | undefined) ||
-        null;
-      const platformRole = resolvePlatformRole({ metadataRole });
-      if (platformRole === 'manufacturer' || platformRole === 'admin') {
-        const accountRoleMeta = user.user_metadata?.account_role as string | undefined;
-        if (
-          platformRole === 'manufacturer' &&
-          accountRoleMeta !== 'commercial_supplier' &&
-          !(typeof window !== 'undefined' && localStorage.getItem('impersonated_factory_id'))
-        ) {
-          const targetRoom = await resolveManufacturerRoomForUser(supabase, user.id, user.email);
-          if (targetRoom === INTERNATIONAL_FACTORY_ROOM_PATH) {
-            router.replace(INTERNATIONAL_FACTORY_ROOM_PATH);
+      if (partnerId) {
+        try {
+          const { data: partnerData } = await supabase
+            .from('user_profiles')
+            .select('avatar_url')
+            .eq('id', partnerId)
+            .maybeSingle();
+          if (partnerData?.avatar_url) {
+            setPartnerAvatarUrl(partnerData.avatar_url);
+          } else if (activeConv?.supplier_avatar) {
+            setPartnerAvatarUrl(activeConv.supplier_avatar);
+          } else {
+            setPartnerAvatarUrl(null);
           }
+        } catch {
+          setPartnerAvatarUrl(null);
         }
-        return;
-      }
-      const { data: repData } = await supabase
-        .from('factory_sales_reps')
-        .select('id')
-        .eq('rep_user_id', user.id)
-        .eq('status', 'active')
-        .maybeSingle();
-      if (!repData) {
-        router.replace(getHomeRoomForRole(platformRole));
       }
     };
-    runGuard();
-  }, [user, authLoading, router, supabase]);
-
-  const fetchProducts = useCallback(async () => {
-    if (!user) return;
-    setFetchLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('manufacturer_products')
-        .select('*')
-        .eq('manufacturer_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(500);
-      if (error) throw error;
-      setProducts(data || []);
-    } catch (err) {
-      console.error('Failed to fetch products:', err);
-    } finally {
-      setFetchLoading(false);
-    }
-  }, [user, supabase]);
-
-  const fetchPaymentSettings = useCallback(async () => {
-    if (!user) { setPaymentLoading(false); return; }
-    setPaymentLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('manufacturer_payment_settings')
-        .select('*')
-        .eq('manufacturer_id', user.id)
-        .maybeSingle();
-      if (error) throw error;
-      if (data) {
-        setPaymentSettings(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch payment settings:', err);
-    } finally {
-      setPaymentLoading(false);
-    }
-  }, [user, supabase]);
-
-  const fetchBankAccounts = useCallback(async () => {
-    if (!user) return;
-    setBankAccountsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('factory_bank_accounts')
-        .select('*')
-        .eq('manufacturer_id', user.id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      setBankAccounts(data || []);
-    } catch (err) {
-      console.error('Failed to fetch bank accounts:', err);
-    } finally {
-      setBankAccountsLoading(false);
-    }
-  }, [supabase, user]);
+    fetchAvatars();
+  }, [user, partnerId, activeConv, supabase]);
 
   useEffect(() => {
-    if (!user) return;
-    Promise.all([
-      fetchProducts(),
-      fetchPaymentSettings(),
-      fetchFactoryRegistration(),
-    ]).catch(() => {});
-    detectSalesRepRole();
-  }, [user, fetchProducts, fetchPaymentSettings, detectSalesRepRole]);
+    if (typeof window === 'undefined') return;
+    const updateViewport = () => {
+      if (window.visualViewport) {
+        setViewportHeight(window.visualViewport.height);
+      }
+    };
+    window.visualViewport?.addEventListener('resize', updateViewport);
+    window.visualViewport?.addEventListener('scroll', updateViewport);
+    updateViewport();
 
-  useRealtimeOrders({
-    channelName: 'manufacturer-dashboard-orders-rt',
-    filterColumn: 'factory_user_id',
-    userId: user?.id,
-    onOrderChange: () => {
-      fetchEscrowOrders();
-      fetchFactoryOrders();
-      fetchFinanceRecords();
-    },
-    enabled: !!user,
-  });
+    return () => {
+      window.visualViewport?.removeEventListener('resize', updateViewport);
+      window.visualViewport?.removeEventListener('scroll', updateViewport);
+    };
+  }, []);
 
-  const fetchFactoryRegistration = async () => {
-    if (!user) return;
-    setDocGateLoading(true);
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) router.push('/login');
+  }, [user, authLoading, router]);
+
+  const startAdminConversation = useCallback(async () => {
+    if (!user || creatingAdminChat) return;
+    setCreatingAdminChat(true);
+
     try {
-      const [regResult, profileResult] = await Promise.all([
-        supabase
-          .from('factory_registrations')
-          .select('*')
-          .eq('user_id', user.id)
-          .maybeSingle(),
-        supabase
-          .from('user_profiles')
-          .select('role, account_type, seller_category')
-          .eq('id', user.id)
-          .maybeSingle(),
-      ]);
-      const data = regResult.data;
-      const profileData = profileResult.data;
-      setFactoryRegistration(data);
-      const hasDocs = !!(data?.trade_license_url && data?.manufacturing_license_url);
-      const canList = !!(data?.product_listing_unlocked);
-      setHasDocuments(hasDocs);
-      setCanListProducts(canList);
-      if (data?.established_year) setEstablishedYear(String(data.established_year));
-      if (data?.tax_id) setTaxId(data.tax_id);
+      const existing = conversations.find(c => c.category === 'admin');
+      if (existing) {
+        setActiveConvId(existing.id);
+        if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
+        setCreatingAdminChat(false);
+        return;
+      }
 
-      const metadataRole =
-        (user.user_metadata?.role as string | undefined) ||
-        (user.app_metadata?.role as string | undefined) ||
-        null;
-      setCanShowLocalErp(
-        canAccessLocalErp({
-          role: profileData?.role || metadataRole,
-          metadataRole,
-          account_type: profileData?.account_type,
-          seller_category: profileData?.seller_category || null,
-          factory_type: data?.factory_type || null,
-        })
+      let adminId: string | null = null;
+      const { data: adminProf } = await supabase
+        .from('user_profiles')
+        .select('id, full_name, avatar_url')
+        .or('role.eq.admin,account_role.eq.admin,role.eq.administrator')
+        .limit(1)
+        .maybeSingle();
+
+      if (adminProf?.id) {
+        adminId = adminProf.id;
+      } else {
+        adminId = user.id;
+      }
+
+      const newConvPayload: any = {
+        buyer_id: user.id,
+        manufacturer_id: adminId,
+        product_id: '00000000-0000-0000-0000-000000000000',
+        product_name: 'الدعم الفني والإدارة العامة',
+        supplier_name: 'إدارة منصة دايركت هب',
+        supplier_flag: '🛡️',
+        last_message: 'مرحباً بك! تواصل مباشرة مع الإدارة العامة هنا.',
+        last_message_at: new Date().toISOString(),
+      };
+
+      const { data: created, error } = await supabase
+        .from('chat_conversations')
+        .insert(newConvPayload)
+        .select()
+        .single();
+
+      if (!error && created) {
+        const adminConv: Conversation = {
+          ...created,
+          source: 'chat',
+          category: 'admin',
+          thread_type: 'admin',
+        };
+        setConversations(prev => [adminConv, ...prev.filter(c => c.id !== adminConv.id)]);
+        setActiveConvId(adminConv.id);
+        if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
+      }
+    } catch (e) {
+      console.error('Error starting admin conversation:', e);
+    } finally {
+      setCreatingAdminChat(false);
+    }
+  }, [user, creatingAdminChat, conversations, supabase]);
+
+  const fetchConversations = useCallback(async () => {
+    if (!user) return;
+    setLoadingConvs(true);
+    try {
+      const channelParam = searchParams?.get('channel');
+      const typeParam = searchParams?.get('type');
+
+      if (channelParam === 'admin_direct') {
+        setFilterType('admin');
+      } else if (typeParam === 'agent_coordination') {
+        setFilterType('agent');
+      }
+
+      const { data: chatData } = await supabase
+        .from('chat_conversations')
+        .select('*')
+        .or(`buyer_id.eq.${user.id},manufacturer_id.eq.${user.id}`)
+        .order('last_message_at', { ascending: false });
+
+      let logisticsData: any[] = [];
+      try {
+        const { data: logData } = await supabase
+          .from('logistics_conversations')
+          .select('*, logistics_partners(company_name, country, city)')
+          .eq('buyer_id', user.id)
+          .order('last_message_at', { ascending: false });
+        if (logData) logisticsData = logData;
+      } catch (e) {
+        console.warn('Logistics fetch:', e);
+      }
+
+      const mappedChatConvs: Conversation[] = (chatData || []).map(c => {
+        const isAdm =
+          c.product_name?.includes('الإدارة') ||
+          c.supplier_flag === '🛡️' ||
+          c.supplier_name?.includes('إدارة');
+
+        const isAgnt =
+          c.product_name?.includes('ميداني') ||
+          c.supplier_flag === '👷' ||
+          c.supplier_name?.includes('مندوب');
+
+        let category: Conversation['category'] = 'factory';
+        let thread_type: Conversation['thread_type'] = 'negotiation';
+
+        if (isAdm) {
+          category = 'admin';
+          thread_type = 'admin';
+        } else if (isAgnt) {
+          category = 'agent';
+          thread_type = 'agent';
+        } else if ((c.product_name || '').toLowerCase().includes('rfq')) {
+          thread_type = 'rfq';
+        }
+
+        return {
+          ...c,
+          source: 'chat',
+          category,
+          unread_count: 0,
+          thread_type,
+        };
+      });
+
+      const shippingConvs: Conversation[] = logisticsData.map(lc => ({
+        id: lc.id,
+        source: 'logistics',
+        category: 'logistics',
+        buyer_id: lc.buyer_id,
+        manufacturer_id: null,
+        partner_id: lc.partner_id,
+        product_id: '',
+        product_name: lc.logistics_partners ? `مكتب شحن وتخليص — ${lc.logistics_partners.city || ''}` : 'شريك لوجستي',
+        supplier_name: lc.logistics_partners?.company_name || 'مكتب شحن معتمد',
+        supplier_country: lc.logistics_partners?.country || '',
+        supplier_flag: '🚢',
+        supplier_avatar: null,
+        last_message: lc.last_message || 'استفسار عن الشحن والتخليص',
+        last_message_at: lc.last_message_at || lc.created_at,
+        unread_count: lc.buyer_unread || 0,
+        thread_type: 'logistics',
+      }));
+
+      const merged = [...mappedChatConvs, ...shippingConvs].sort(
+        (a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
       );
 
-      const pct = typeof data?.trust_percentage === 'number' ? data.trust_percentage : 0;
-      const tier = (data?.verified_tier as 'unverified' | 'partial' | 'verified') || 'unverified';
-      setTrustPercentage(pct);
-      setVerifiedTier(tier);
-      const missing: string[] = [];
-      if (!data?.trade_license_url) missing.push('trade_license');
-      if (!data?.manufacturing_license_url) missing.push('manufacturing_license');
-      setMissingDocuments(missing);
+      setConversations(merged);
+
+      const explicitId = searchParams?.get('conversationId') || searchParams?.get('id') || searchParams?.get('conv');
+      if (explicitId && merged.some(c => c.id === explicitId)) {
+        setActiveConvId(explicitId);
+        if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
+      }
     } catch (err) {
-      console.error('Failed to fetch factory registration:', err);
-      setCanShowLocalErp(false);
+      console.error(err);
     } finally {
-      setDocGateLoading(false);
+      setLoadingConvs(false);
     }
-  };
+  }, [user, supabase, searchParams]);
 
-  const handleDocumentUpload = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setDocUploadError('');
-    setDocUploadSuccess('');
-
-    if (!user) {
-      setDocUploadError('يجب تسجيل الدخول لرفع الوثائق.');
-      return;
+  useEffect(() => {
+    if (user && !authLoading) {
+      fetchConversations();
     }
+  }, [user, authLoading, fetchConversations]);
 
-    const secondDoc = accountType === 'factory' ? mfgLicenseFile : secondDocFile;
-    if (!tradeLicenseFile || !secondDoc) {
-      const secondLabel = accountType === 'factory' ? 'رخصة مزاولة المهنة' : 'شهادة الاستيراد / الوكالة التجارية';
-      setDocUploadError(`مطلوب إرفاق السجل التجاري و ${secondLabel}.`);
-      return;
-    }
-
-    const MAX_FILE_SIZE = 15 * 1024 * 1024;
-    if (tradeLicenseFile.size > MAX_FILE_SIZE || secondDoc.size > MAX_FILE_SIZE) {
-      setDocUploadError('حجم الملف يتجاوز 15 ميجابايت.');
-      return;
-    }
-
-    setUploadingDocs(true);
-    try {
-      let tradeLicenseUrl = '';
-      let secondDocUrl = '';
-
+  useEffect(() => {
+    if (!activeConvId || !user || !activeConv) return;
+    const fetchMsgs = async () => {
+      setLoadingMsgs(true);
       try {
-        const tlExt = tradeLicenseFile.name.split('.').pop();
-        const tlPath = `factory-docs/${user.id}/trade_license.${tlExt}`;
-        const { error: tlErr } = await supabase.storage
-          .from('factory-documents')
-          .upload(tlPath, tradeLicenseFile, { upsert: true });
-        if (!tlErr) {
-          const { data: tlUrlData } = supabase.storage.from('factory-documents').getPublicUrl(tlPath);
-          tradeLicenseUrl = tlUrlData?.publicUrl || '';
+        if (activeConv.source === 'logistics') {
+          const { data } = await supabase
+            .from('logistics_messages')
+            .select('*')
+            .eq('conversation_id', activeConvId)
+            .order('created_at', { ascending: true });
+
+          setMessages((data || []).map((m: any) => ({
+            id: m.id,
+            conversation_id: m.conversation_id,
+            sender_id: m.sender_id,
+            sender_role: m.sender_role || 'buyer',
+            message: m.content || m.message || '',
+            attachment_url: m.attachment_url,
+            attachment_type: m.attachment_type,
+            attachment_name: m.attachment_name,
+            is_read: true,
+            created_at: m.created_at,
+          })));
+        } else {
+          const { data } = await supabase
+            .from('chat_messages')
+            .select('*')
+            .eq('conversation_id', activeConvId)
+            .order('created_at', { ascending: true });
+
+          setMessages(data || []);
+          await supabase
+            .from('chat_messages')
+            .update({ is_read: true })
+            .eq('conversation_id', activeConvId)
+            .neq('sender_id', user.id);
         }
-
-        const secondDocKey = accountType === 'factory' ? 'manufacturing_license' : 'import_agency_license';
-        const mlExt = secondDoc.name.split('.').pop();
-        const mlPath = `factory-docs/${user.id}/${secondDocKey}.${mlExt}`;
-        const { error: mlErr } = await supabase.storage
-          .from('factory-documents')
-          .upload(mlPath, secondDoc, { upsert: true });
-        if (!mlErr) {
-          const { data: mlUrlData } = supabase.storage.from('factory-documents').getPublicUrl(mlPath);
-          secondDocUrl = mlUrlData?.publicUrl || '';
-        }
-      } catch (storageErr: any) {
-        console.warn('Storage upload note:', storageErr?.message);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoadingMsgs(false);
       }
+    };
+    fetchMsgs();
+  }, [activeConvId, activeConv?.source, user?.id, supabase]);
 
-      const updatePayload: any = {
-        trade_license_url: tradeLicenseUrl,
-        manufacturing_license_url: secondDocUrl,
-        documents_submitted_at: new Date().toISOString(),
-        registration_status: 'pending',
-        kyc_status: 'pending',
-        ...(taxId.trim() ? { tax_id: taxId.trim() } : {}),
-        ...(establishedYear.trim() ? { established_year: parseInt(establishedYear.trim()) } : {}),
-      };
+  // اشتراك Realtime مع حماية صارمة لمنع إضافة الرسالة ذاتها مرتين
+  useEffect(() => {
+    if (!activeConvId || !user || !activeConv) return;
+    const table = activeConv.source === 'logistics' ? 'logistics_messages' : 'chat_messages';
 
-      if (factoryRegistration) {
-        const { error: updateErr } = await supabase
-          .from('factory_registrations')
-          .update(updatePayload)
-          .eq('user_id', user.id);
-        if (updateErr) throw new Error(updateErr.message);
-      } else {
-        const { error: insertErr } = await supabase
-          .from('factory_registrations')
-          .insert({
-            user_id: user.id,
-            company_name: user.user_metadata?.company_name || '',
-            contact_email: user.email || '',
-            ...updatePayload,
-          });
-        if (insertErr) throw new Error(insertErr.message);
-      }
+    const ch = supabase
+      .channel(`chat-feed-${activeConvId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table, filter: `conversation_id=eq.${activeConvId}` }, (p) => {
+        const row: any = p.new;
+        const msg: Message = {
+          id: row.id,
+          conversation_id: row.conversation_id,
+          sender_id: row.sender_id,
+          sender_role: row.sender_role || 'buyer',
+          message: row.content || row.message || '',
+          attachment_url: row.attachment_url,
+          attachment_type: row.attachment_type,
+          attachment_name: row.attachment_name,
+          is_read: true,
+          created_at: row.created_at,
+        };
 
-      setShowDocGate(false);
-      setHasDocuments(true);
-      setDocUploadSuccess(md.docsSubmittedWait);
-      await fetchFactoryRegistration();
-    } catch (err: any) {
-      console.error('Document upload error:', err);
-      setDocUploadError(err?.message || 'فشل رفع الوثائق.');
-    } finally {
-      setUploadingDocs(false);
-    }
-  };
+        setMessages(prev => (prev.some(m => m.id === msg.id) ? prev : [...prev, msg]));
+      })
+      .subscribe();
 
-  const handleOpenAddModal = () => {
-    if (!canListProducts) {
-      setShowDocGate(true);
+    return () => { supabase.removeChannel(ch); };
+  }, [activeConvId, activeConv?.source, user?.id, supabase]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // الترجمة الفورية أثناء الكتابة
+  useEffect(() => {
+    const text = inputText.trim();
+    if (!text || text.length < 2) {
+      setLiveTranslation('');
+      setIsTranslating(false);
       return;
     }
-    openAddModal();
-  };
+    const timer = setTimeout(async () => {
+      setIsTranslating(true);
+      try {
+        const res = await fetch('/api/ai/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, targetLanguage: liveTranslationLang }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.translated && data.translated !== text) {
+            setLiveTranslation(data.translated);
+          }
+        }
+      } catch (e) {
+        console.warn(e);
+      } finally {
+        setIsTranslating(false);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [inputText, liveTranslationLang]);
 
-  const handleSavePaymentSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPaymentError('');
-    setPaymentSuccess('');
-    if (!paymentSettings.bank_name.trim() && !paymentSettings.iban.trim() && !paymentSettings.kuraimi_account_name.trim()) {
-      setPaymentError('يرجى تعبئة وسيلة سحب واحدة على الأقل (حساب بنكي أو محفظة إلكترونية).');
+  const handleAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const resolvedType = resolveFileType(file, ALLOWED_TYPES);
+    if (!resolvedType) {
+      setPrivacyWarning('الملف غير مدعوم، يرجى رفع صور أو PDF.');
+      setTimeout(() => setPrivacyWarning(null), 4000);
       return;
     }
-    setPaymentSaving(true);
-    try {
-      const payload = { ...paymentSettings, manufacturer_id: user!.id };
-      if (paymentSettings.id) {
-        const { error } = await supabase
-          .from('manufacturer_payment_settings')
-          .update(payload)
-          .eq('id', paymentSettings.id)
-          .eq('manufacturer_id', user!.id);
-        if (error) throw error;
-      } else {
-        const { data, error } = await supabase
-          .from('manufacturer_payment_settings')
-          .insert(payload)
-          .select()
-          .single();
-        if (error) throw error;
-        if (data) setPaymentSettings((prev) => ({ ...prev, id: data.id }));
-      }
-      setPaymentSuccess('تم حفظ إعدادات الدفع والمحافظ بنجاح.');
-      await fetchPaymentSettings();
-    } catch (err: any) {
-      setPaymentError(err.message || 'فشل حفظ إعدادات الدفع.');
-    } finally {
-      setPaymentSaving(false);
+    if (file.size > MAX_SIZE) {
+      setPrivacyWarning('حجم الملف كبير جداً (الحد الأقصى 25MB).');
+      setTimeout(() => setPrivacyWarning(null), 4000);
+      return;
     }
-  };
-
-  const handleAddBankAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    setBankFormLoading(true);
-    setBankFormError('');
-    setBankFormSuccess('');
-    try {
-      if (!bankFormData.account_holder_name.trim()) throw new Error(md.accountHolderRequired);
-      if (!bankFormData.bank_name.trim()) throw new Error(md.bankNameRequired);
-      if (!bankFormData.account_number.trim()) throw new Error(md.accountNumberRequired);
-
-      const { error } = await supabase.from('factory_bank_accounts').insert({
-        manufacturer_id: user.id,
-        account_holder_name: bankFormData.account_holder_name.trim(),
-        bank_name: bankFormData.bank_name.trim(),
-        account_number: bankFormData.account_number.trim(),
-        iban: bankFormData.iban.trim().toUpperCase(),
-        swift_bic: bankFormData.swift_bic.trim().toUpperCase(),
-        currency: bankFormData.currency || 'YER',
-        account_type: bankFormData.account_type,
-        account_type_label: bankFormData.account_type_label.trim() || null,
-        status: 'pending_review',
-      });
-      if (error) throw error;
-
-      setBankFormSuccess(md.bankAddedPending);
-      setBankFormData(EMPTY_BANK_ACCOUNT);
-      await fetchBankAccounts();
-      setTimeout(() => {
-        setShowAddBankModal(false);
-        setBankFormSuccess('');
-      }, 2500);
-    } catch (err: any) {
-      setBankFormError(err.message || md.bankAddFailed);
-    } finally {
-      setBankFormLoading(false);
-    }
-  };
-
-  const handleDeleteBankAccount = async (accountId: string) => {
-    if (!confirm(md.confirmDeleteBank)) return;
-    setDeletingBankId(accountId);
-    try {
-      const { error } = await supabase
-        .from('factory_bank_accounts')
-        .delete()
-        .eq('id', accountId)
-        .eq('manufacturer_id', user!.id);
-      if (error) throw error;
-      setBankAccounts(prev => prev.filter(a => a.id !== accountId));
-    } catch (err: any) {
-      console.error('Delete bank account failed:', err);
-    } finally {
-      setDeletingBankId(null);
-    }
-  };
-
-  const openAddModal = () => {
-    setEditingProduct(null);
-    setFormData(EMPTY_FORM);
-    setFormError('');
-    setShowAddModal(true);
-  };
-
-  const openEditModal = (product: Product) => {
-    setEditingProduct(product);
-    setFormData({
-      name: product.name,
-      name_ar: product.name_ar || '',
-      name_zh: (product as any).name_zh || '',
-      name_tr: (product as any).name_tr || '',
-      description: product.description,
-      description_ar: product.description_ar || '',
-      description_zh: (product as any).description_zh || '',
-      description_tr: (product as any).description_tr || '',
-      specifications_en: '',
-      specifications_ar: '',
-      category: product.category,
-      sku: product.sku,
-      unit: product.unit,
-      unit_price: String(product.unit_price),
-      minimum_order_qty: String(product.minimum_order_qty),
-      stock_quantity: String(product.stock_quantity),
-      inventory_status: product.inventory_status,
-      origin_country: product.origin_country,
+    setPendingAttachment({
+      file,
+      type: resolvedType,
+      previewUrl: resolvedType.startsWith('image/') ? URL.createObjectURL(file) : undefined,
     });
-    setFormError('');
-    setShowAddModal(true);
   };
 
-  const handleFormSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError('');
-    if (!user || isSalesRep) { setFormError('غير مصرح لك بإدارة المنتجات.'); return; }
-    if (!formData.name.trim()) { setFormError('اسم المنتج مطلوب.'); return; }
-    setFormLoading(true);
+  // التسجيل الصوتي
+  const startRecording = async () => {
     try {
-      const payload = {
-        manufacturer_id: user!.id,
-        name: formData.name.trim(),
-        name_ar: formData.name_ar.trim(),
-        name_zh: formData.name_zh.trim(),
-        name_tr: formData.name_tr.trim(),
-        description: formData.description.trim(),
-        description_ar: formData.description_ar.trim(),
-        description_zh: formData.description_zh.trim(),
-        description_tr: formData.description_tr.trim(),
-        category: formData.category,
-        sku: formData.sku.trim(),
-        unit: formData.unit,
-        unit_price: parseFloat(formData.unit_price) || 0,
-        minimum_order_qty: parseInt(formData.minimum_order_qty) || 1,
-        stock_quantity: parseFloat(formData.stock_quantity) || 0,
-        inventory_status: formData.inventory_status,
-        origin_country: formData.origin_country.trim(),
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('متصفحك لا يدعم الوصول للمايكروفون مباشرة، يرجى التأكد من تشغيل الموقع عبر HTTPS.');
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+      audioChunksRef.current = [];
+
+      let options: MediaRecorderOptions = {};
+      if (typeof MediaRecorder !== 'undefined') {
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          options = { mimeType: 'audio/webm;codecs=opus' };
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          options = { mimeType: 'audio/webm' };
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          options = { mimeType: 'audio/mp4' };
+        }
+      }
+
+      const mr = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = mr;
+
+      mr.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
       };
 
-      if (editingProduct) {
-        const { error } = await supabase
-          .from('manufacturer_products')
-          .update(
-            editingProduct.approval_status === 'pending_factory_approval'
-              ? { ...payload, approval_status: 'approved', is_active: true, is_published: true }
-              : payload
-          )
-          .eq('id', editingProduct.id)
-          .eq('manufacturer_id', user!.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('manufacturer_products')
-          .insert({ ...payload, created_by_role: 'manufacturer', created_by_id: user!.id, approval_status: 'approved' });
-        if (error) throw error;
-      }
+      mr.onstop = () => {
+        if (audioStreamRef.current) {
+          audioStreamRef.current.getTracks().forEach(t => t.stop());
+          audioStreamRef.current = null;
+        }
+        if (recordIntervalRef.current) {
+          clearInterval(recordIntervalRef.current);
+          recordIntervalRef.current = null;
+        }
+      };
 
-      setShowAddModal(false);
-      await fetchProducts();
+      mr.start(250);
+      setIsRecording(true);
+      setRecordingSeconds(0);
+
+      recordIntervalRef.current = setInterval(() => {
+        setRecordingSeconds(prev => prev + 1);
+      }, 1000);
+
     } catch (err: any) {
-      setFormError(err.message || 'فشل حفظ المنتج.');
-    } finally {
-      setFormLoading(false);
+      console.error('Microphone error:', err);
+      alert('تعذر فتح المايكروفون. يرجى التأكد من إعطاء إذن الوصول للمايكروفون في إعدادات المتصفح.');
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!user || isSalesRep) return;
-    try {
-      const { error } = await supabase
-        .from('manufacturer_products')
-        .delete()
-        .eq('id', id)
-        .eq('manufacturer_id', user!.id);
-      if (error) throw error;
-      setDeleteId(null);
-      await fetchProducts();
-    } catch (err) {
-      console.error('Delete failed:', err);
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
     }
+    setIsRecording(false);
+    setRecordingSeconds(0);
+    audioChunksRef.current = [];
   };
 
-  const handleApproveProduct = async (product: Product) => {
-    if (!user || isSalesRep) return;
-    try {
-      const { error } = await supabase
-        .from('manufacturer_products')
-        .update({ approval_status: 'approved', is_active: true, is_published: true })
-        .eq('id', product.id)
-        .eq('manufacturer_id', user!.id);
-      if (error) throw error;
-      await fetchProducts();
-    } catch (err) {
-      console.error('Approve failed:', err);
-    }
-  };
+  const stopAndSendRecording = () => {
+    if (!mediaRecorderRef.current || !isRecording) return;
 
-  const handleToggleActive = async (product: Product) => {
-    if (!user || isSalesRep) return;
-    try {
-      const { error } = await supabase
-        .from('manufacturer_products')
-        .update({ is_active: !product.is_active })
-        .eq('id', product.id)
-        .eq('manufacturer_id', user!.id);
-      if (error) throw error;
-      await fetchProducts();
-    } catch (err) {
-      console.error('Toggle failed:', err);
-    }
-  };
-
-  const handleSignOut = async () => {
-    await signOut();
-    router.push('/manufacturer/login');
-  };
-
-  const handleAccreditationInquiry = async () => {
-    if (!user || inquirySending || inquirySent) return;
-    setInquirySending(true);
-    setInquiryError('');
-    try {
-      const companyLabel = companyName || factoryRegistration?.company_name || user.email || 'مصنع';
-      const res = await fetch('/api/manufacturer/accreditation-inquiry', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ companyName: companyLabel }),
-      });
-      if (!res.ok) {
-        const payload = await res.json().catch(() => ({}));
-        throw new Error(payload?.error || 'فشل إرسال الطلب');
+    mediaRecorderRef.current.onstop = () => {
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(t => t.stop());
+        audioStreamRef.current = null;
+      }
+      if (recordIntervalRef.current) {
+        clearInterval(recordIntervalRef.current);
+        recordIntervalRef.current = null;
       }
 
-      setInquirySent(true);
-      setTimeout(() => setInquirySent(false), 8000);
-    } catch (err: any) {
-      console.error('Accreditation inquiry error:', err);
-      setInquiryError('حدث خطأ أثناء الإرسال. يرجى المحاولة مرة أخرى.');
-      setTimeout(() => setInquiryError(''), 5000);
-    } finally {
-      setInquirySending(false);
-    }
+      const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+      const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
+      const blob = new Blob(audioChunksRef.current, { type: mimeType });
+      const file = new File([blob], `voice-${Date.now()}.${extension}`, { type: mimeType });
+      handleSendVoice(file);
+    };
+
+    mediaRecorderRef.current.stop();
+    setIsRecording(false);
   };
 
-  const filteredProducts = products.filter(p => {
-    const matchStatus = filterStatus === 'all' || p.inventory_status === filterStatus;
-    const matchCategory = filterCategory === 'all' || p.category === filterCategory;
-    const matchSource =
-      filterSource === 'all' ||
-      (filterSource === 'mine' && p.created_by_role !== 'agent') ||
-      (filterSource === 'agent' && p.created_by_role === 'agent');
-    const matchSearch = !searchQuery ||
-      p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.name_ar?.includes(searchQuery) ||
-      p.sku?.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchStatus && matchCategory && matchSource && matchSearch;
-  });
-
-  const sortedProducts = [...filteredProducts].sort((a: any, b: any) => {
-    const av = a[productSort.col] ?? '';
-    const bv = b[productSort.col] ?? '';
-    if (typeof av === 'number' && typeof bv === 'number') {
-      return productSort.dir === 'asc' ? av - bv : bv - av;
-    }
-    return productSort.dir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
-  });
-
-  const stats = {
-    total: products.length,
-    inStock: products.filter((p) => p.inventory_status === 'in_stock').length,
-    lowStock: products.filter((p) => p.inventory_status === 'low_stock').length,
-    outOfStock: products.filter((p) => p.inventory_status === 'out_of_stock').length,
-  };
-
-  useEffect(() => {
-    if (!moduleTab || !user || salesRepLoading) return;
-    switch (moduleTab) {
-      case 'financial_hub': fetchBankAccounts(); fetchPaymentSettings(); break;
-      case 'finance': fetchFinanceRecords(); break;
-      case 'escrow_orders': fetchEscrowOrders(); break;
-      case 'factory_orders': fetchFactoryOrders(); break;
-      case 'disputes': fetchFactoryDisputes(); break;
-      case 'analytics':
-        fetchAnalytics();
-        supabase
-          .from('manufacturer_payment_settings')
-          .select('bank_currency')
-          .eq('manufacturer_id', user.id)
-          .maybeSingle()
-          .then(({ data }: any) => setFactoryCurrency(data?.bank_currency || 'YER'));
-        break;
-      case 'admin_messaging': fetchAdminConversation(); break;
-      case 'inventory': fetchInventoryItems(); break;
-      case 'archive': fetchArchiveRecords(); break;
-      case 'sales_team': fetchSalesReps(); break;
-      default: break;
-    }
-  }, [moduleTab, user?.id, salesRepLoading]);
-
-  useEffect(() => {
-    if (moduleTab === 'seller_fulfillment' && moduleView === 'bids') setActiveTab('freight_bids');
-  }, [moduleTab, moduleView]);
-
-  useEffect(() => {
-    if (moduleTab === 'financial_hub') {
-      if (moduleView === 'bank') {
-        setActiveTab('financial_hub');
+  const handleSendVoice = async (file: File) => {
+    if (!activeConvId || !user) return;
+    try {
+      const ext = file.name.split('.').pop() || 'webm';
+      const path = `chat-media/${user.id}/${Date.now()}.${ext}`;
+      await supabase.storage.from('chat-media').upload(path, file);
+      const audioUrl = `chat-media/${path}`;
+      const payload = {
+        conversation_id: activeConvId,
+        sender_id: user.id,
+        sender_role: 'user',
+        message: '🎙️ رسالة صوتية',
+        attachment_url: audioUrl,
+        attachment_type: file.type || 'audio/webm',
+        is_read: false,
+      };
+      if (activeConv?.source === 'logistics') {
+        await supabase.from('logistics_messages').insert({ ...payload, content: '🎙️ رسالة صوتية' });
       } else {
-        setActiveTab('finance');
+        await supabase.from('chat_messages').insert(payload);
       }
+    } catch (e) {
+      console.error(e);
     }
-  }, [moduleTab, moduleView]);
+  };
 
-  const SALES_REP_RESTRICTED_TABS: string[] = [
-    'financial_hub', 'finance', 'escrow_orders', 'factory_settings', 'sales_team',
-    'contracts', 'analytics', 'all_sales', 'invoicing', 'production',
-  ];
-  useEffect(() => {
-    if (salesRepLoading || !isSalesRep) return;
-    if (moduleTab && SALES_REP_RESTRICTED_TABS.includes(moduleTab)) {
-      toast.error('غير مصرح لك بالوصول إلى هذه الصفحة.\nUnauthorized: this area is restricted to the factory owner.', { id: 'sales-rep-access-denied' });
-      router.replace('/manufacturer');
+  // إرسال الرسالة مع منع التكرار بنسبة 100%
+  const handleSend = async () => {
+    if (isSendingRef.current || sending || !activeConvId || !user || !activeConv) return;
+    if (!inputText.trim() && !pendingAttachment) return;
+
+    const textToSend = inputText.trim();
+    const shield = sanitizeChatMessage(textToSend);
+    if (shield.blocked) {
+      setPrivacyWarning(shield.reason || 'تم حجب الرسالة لحماية البيانات.');
+      setTimeout(() => setPrivacyWarning(null), 5000);
       return;
     }
-    if (SALES_REP_RESTRICTED_TABS.includes(activeTab as string)) {
-      setActiveTab('products');
-    }
-  }, [salesRepLoading, isSalesRep, moduleTab, activeTab]);
 
-  if (authLoading || (user && salesRepLoading) || (isSalesRep && moduleTab && SALES_REP_RESTRICTED_TABS.includes(moduleTab))) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Icon name="ArrowPathIcon" size={24} className="animate-spin text-primary" />
-      </div>
-    );
-  }
+    isSendingRef.current = true;
+    setSending(true);
+
+    const hasLiveTrans = !!liveTranslation && liveTranslation.trim() !== textToSend;
+    const messageBody = hasLiveTrans
+      ? JSON.stringify({
+          type: 'bilingual',
+          original: textToSend,
+          translated: liveTranslation.trim(),
+          translatedLang: liveTranslationLang,
+        })
+      : textToSend;
+
+    const fileToUpload = pendingAttachment;
+    setInputText('');
+    setLiveTranslation('');
+    setPendingAttachment(null);
+
+    try {
+      let attachmentUrl = undefined;
+      if (fileToUpload) {
+        const ext = extensionForType(fileToUpload.type);
+        const filePath = `chat-attachments/${user.id}/${Date.now()}.${ext}`;
+        await supabase.storage.from('chat-media').upload(
+          filePath,
+          fileWithResolvedType(fileToUpload.file, fileToUpload.type)
+        );
+        attachmentUrl = `chat-media/${filePath}`;
+      }
+
+      if (activeConv.source === 'logistics') {
+        const { data: inserted } = await supabase.from('logistics_messages').insert({
+          conversation_id: activeConvId,
+          sender_id: user.id,
+          sender_role: 'user',
+          content: messageBody,
+          attachment_url: attachmentUrl,
+        }).select().single();
+
+        if (inserted) {
+          const formatted: Message = {
+            id: inserted.id,
+            conversation_id: inserted.conversation_id,
+            sender_id: inserted.sender_id,
+            sender_role: inserted.sender_role || 'buyer',
+            message: inserted.content || inserted.message || '',
+            attachment_url: inserted.attachment_url,
+            attachment_type: inserted.attachment_type,
+            attachment_name: inserted.attachment_name,
+            is_read: true,
+            created_at: inserted.created_at,
+          };
+          setMessages(prev => (prev.some(m => m.id === formatted.id) ? prev : [...prev, formatted]));
+        }
+
+        await supabase.from('logistics_conversations').update({
+          last_message: textToSend || 'مرفق جديد',
+          last_message_at: new Date().toISOString(),
+          partner_unread: 1,
+        }).eq('id', activeConvId);
+      } else {
+        const { data: inserted } = await supabase.from('chat_messages').insert({
+          conversation_id: activeConvId,
+          sender_id: user.id,
+          sender_role: 'user',
+          message: messageBody,
+          is_read: false,
+          attachment_url: attachmentUrl,
+          attachment_type: fileToUpload?.type,
+          attachment_name: fileToUpload?.file.name,
+        }).select().single();
+
+        if (inserted) {
+          setMessages(prev => (prev.some(m => m.id === inserted.id) ? prev : [...prev, inserted]));
+        }
+
+        await supabase.from('chat_conversations').update({
+          last_message: textToSend || 'مرفق جديد',
+          last_message_at: new Date().toISOString(),
+        }).eq('id', activeConvId);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      isSendingRef.current = false;
+      setSending(false);
+    }
+  };
+
+  const filteredConvs = conversations.filter(c => {
+    if (filterType === 'admin' && c.category !== 'admin') return false;
+    if (filterType === 'agent' && c.category !== 'agent') return false;
+    if (filterType === 'factory' && c.category !== 'factory') return false;
+    if (filterType === 'logistics' && c.category !== 'logistics') return false;
+    if (filterType === 'rfq' && c.thread_type !== 'rfq') return false;
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      return (c.supplier_name || '').toLowerCase().includes(q) || (c.product_name || '').toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  const currentQuickReplies =
+    activeConv?.category === 'admin'
+      ? ADMIN_QUICK_REPLIES
+      : activeConv?.category === 'agent'
+      ? AGENT_QUICK_REPLIES
+      : FACTORY_QUICK_REPLIES;
 
   return (
-    <div className={`min-h-screen ${isModuleMode ? 'bg-background' : 'bg-slate-950 pb-28'}`} dir={isRTL ? 'rtl' : 'ltr'}>
-      <Toaster position={isRTL ? 'top-left' : 'top-right'} />
+    <div
+      className="bg-background flex flex-col overflow-hidden min-w-0 fixed inset-0 md:relative"
+      dir={dir}
+      style={{
+        height: viewportHeight ? `${viewportHeight}px` : '100dvh',
+        maxHeight: viewportHeight ? `${viewportHeight}px` : '100dvh',
+      }}
+    >
+      <div className={activeConvId && !sidebarOpen ? 'hidden md:block' : ''}>
+        <Header />
+      </div>
 
-      <DashboardChrome
-        isModuleMode={isModuleMode}
-        isRTL={isRTL}
-        moduleTab={moduleTab}
-        activeTab={activeTab as DashboardTab}
-        setActiveTab={setActiveTab as any}
-        isSalesRep={isSalesRep}
-        salesRepRecord={salesRepRecord}
-        isSupplierSettings={isSupplierSettings}
-        impersonatedFactoryId={impersonatedFactoryId}
-        impersonatedFactoryName={impersonatedFactoryName}
-        onEndImpersonation={handleEndImpersonation}
-        userName={userName}
-        companyName={companyName}
-        userMenuOpen={userMenuOpen}
-        setUserMenuOpen={setUserMenuOpen}
-        userMenuRef={userMenuRef}
-        onSignOut={handleSignOut}
-        onRefreshFactoryOrders={() => fetchFactoryOrders()}
-        onOpenAddProduct={() => handleOpenAddModal()}
-        t={t}
-        md={md}
-      />
-
-      <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 pb-24 space-y-6">
-        {/* زر العودة للغرفة الرئيسية عند فتح أي بطاقة */}
-        {!isModuleMode && activeTab !== 'hub' && (
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <button
-              type="button"
-              onClick={() => setActiveTab('hub')}
-              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900 border border-slate-700 hover:bg-slate-800 text-cyan-300 text-xs font-bold transition-all shadow-sm active:scale-95"
-            >
-              <span>← العودة لغرفة التحكم الرئيسية</span>
-            </button>
-            <span className="text-xs text-slate-400 font-medium">لوحة تحكم المصنع المحلي</span>
-          </div>
-        )}
-
-        {/* عرض غرفة التحكم بالبطاقات فقط دون أي أقسام ملحقة تحتها */}
-        {!isModuleMode && activeTab === 'hub' && (
-          <DashboardHub
-            userId={user?.id ?? null}
-            companyName={companyName}
-            isSalesRep={isSalesRep}
-            canShowLocalErp={canShowLocalErp}
-            salesReps={salesReps}
-            factoryOrders={factoryOrders}
-            escrowOrders={escrowOrders}
-            factoryDisputes={factoryDisputes}
-            onOpenDealLink={() => setShowDealLinkModal(true)}
-            onSelectTab={(tab) => {
-              if (tab === 'products') {
-                router.push('/manufacturer/products');
-              } else {
-                setActiveTab(tab);
-              }
-            }}
-            onLoadFinance={fetchFinanceRecords}
-            onLoadEscrow={fetchEscrowOrders}
-            onLoadAdminConversation={fetchAdminConversation}
-            onLoadArchive={fetchArchiveRecords}
-            t={t}
-            md={md}
-          />
-        )}
-        <DealLinkGeneratorModal open={showDealLinkModal} onClose={() => setShowDealLinkModal(false)} />
-
-        {/* ── FINANCIAL ACCESS GUARD ── */}
-        {isSalesRep && (activeTab === 'financial_hub' || activeTab === 'finance') && (
-          <div className="flex flex-col items-center justify-center py-24 text-center bg-card border border-border rounded-2xl p-6">
-            <div className="w-20 h-20 rounded-3xl bg-red-50 border-2 border-red-200 flex items-center justify-center mx-auto mb-5">
-              <Icon name="LockClosedIcon" size={36} className="text-red-500" />
-            </div>
-            <h2 className="text-xl font-bold text-foreground mb-2">{md.redZoneTitle}</h2>
-            <p className="text-sm text-muted-foreground max-w-sm">
-              {md.financeFirewallMsg}
-            </p>
-            <div className="mt-6 flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium">
-              <Icon name="ShieldExclamationIcon" size={14} />
-              {md.financeFirewallBadge}
-            </div>
-          </div>
-        )}
-
-        {/* ── SALES TEAM TAB ── */}
-        {activeTab === 'sales_team' && !isSalesRep && (
-          <div className="space-y-5">
-            <FactoryTeamManagement factoryOwnerId={user!.id} isRTL={isRTL} />
-          </div>
-        )}
-
-        {/* ── FINANCIAL HUB: WALLET & EARNINGS ── */}
-        {((moduleTab === 'financial_hub' && activeTab === 'finance') || (activeTab === 'finance' && !isSalesRep)) && user?.id && (
-          <FinancialSummaryHeader userId={user.id} currency={bankAccounts?.[0]?.currency || 'YER'} />
-        )}
-
-        {/* ── FINANCIAL HUB: BANK & PIN ── */}
-        {activeTab === 'financial_hub' && !isSalesRep && (
-          <div className="space-y-6">
-            <FinancialHubPanel
-              bankAccounts={bankAccounts}
-              bankAccountsLoading={bankAccountsLoading}
-              showAddBankModal={showAddBankModal}
-              setShowAddBankModal={setShowAddBankModal}
-              bankFormData={bankFormData}
-              setBankFormData={setBankFormData}
-              bankFormLoading={bankFormLoading}
-              bankFormError={bankFormError}
-              bankFormSuccess={bankFormSuccess}
-              deletingBankId={deletingBankId}
-              handleAddBankAccount={handleAddBankAccount}
-              handleDeleteBankAccount={handleDeleteBankAccount}
-              md={md}
-            />
-            {user?.id && <FactoryPinPayoutPanel userId={user.id} />}
-          </div>
-        )}
-
-        {/* ── FINANCE RECORDS PANEL ── */}
-        {activeTab === 'finance' && !isSalesRep && (
-          <FinancePanel
-            financeRecords={financeRecords}
-            financeLoading={financeLoading}
-            financeFilter={financeFilter}
-            setFinanceFilter={setFinanceFilter}
-            md={md}
-          />
-        )}
-
-        {/* ── SETTINGS TAB ── */}
-        {activeTab === 'factory_settings' && !isSalesRep && (
-          <FactorySettingsPanel userId={user?.id ?? null} onRoleResolved={setIsSupplierSettings} />
-        )}
-
-        {/* ── بطاقة المنتجات للبيع المخصصة: تظهر فقط عند فتحها ── */}
-        {activeTab === 'products' && (
-          <ProductsPanel
-            products={products}
-            filteredProducts={filteredProducts}
-            sortedProducts={sortedProducts}
-            fetchLoading={fetchLoading}
-            showAddModal={showAddModal}
-            setShowAddModal={setShowAddModal}
-            editingProduct={editingProduct}
-            formData={formData}
-            setFormData={setFormData}
-            formLoading={formLoading}
-            formError={formError}
-            deleteId={deleteId}
-            setDeleteId={setDeleteId}
-            filterStatus={filterStatus}
-            setFilterStatus={setFilterStatus}
-            filterCategory={filterCategory}
-            setFilterCategory={setFilterCategory}
-            filterSource={filterSource}
-            setFilterSource={setFilterSource}
-            handleApproveProduct={handleApproveProduct}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            selectedProducts={selectedProducts}
-            setSelectedProducts={setSelectedProducts}
-            bulkActionLoading={bulkActionLoading}
-            productSort={productSort}
-            toggleProductSort={toggleProductSort}
-            factoryRegistration={factoryRegistration}
-            canListProducts={canListProducts}
-            hasDocuments={hasDocuments}
-            docGateLoading={docGateLoading}
-            showDocGate={showDocGate}
-            setShowDocGate={setShowDocGate}
-            docUploadSuccess={docUploadSuccess}
-            docUploadError={docUploadError}
-            tradeLicenseFile={tradeLicenseFile}
-            setTradeLicenseFile={setTradeLicenseFile}
-            mfgLicenseFile={mfgLicenseFile}
-            setMfgLicenseFile={setMfgLicenseFile}
-            uploadingDocs={uploadingDocs}
-            accountType={accountType}
-            setAccountType={setAccountType}
-            secondDocFile={secondDocFile}
-            setSecondDocFile={setSecondDocFile}
-            taxId={taxId}
-            setTaxId={setTaxId}
-            establishedYear={establishedYear}
-            setEstablishedYear={setEstablishedYear}
-            trustPercentage={trustPercentage}
-            verifiedTier={verifiedTier}
-            missingDocuments={missingDocuments}
-            inquirySending={inquirySending}
-            inquirySent={inquirySent}
-            inquiryError={inquiryError}
-            handleOpenAddModal={handleOpenAddModal}
-            handleFormSubmit={handleFormSubmit}
-            handleDelete={handleDelete}
-            handleToggleActive={handleToggleActive}
-            handleBulkToggleActive={handleBulkToggleActive}
-            handleBulkDelete={handleBulkDelete}
-            handleDocumentUpload={handleDocumentUpload}
-            onDocumentsChanged={fetchFactoryRegistration}
-            handleAccreditationInquiry={handleAccreditationInquiry}
-            openEditModal={openEditModal}
-            stats={stats}
-            SortIcon={SortIcon}
-            t={t}
-            md={md}
-          />
-        )}
-
-        {/* ── PAYMENT SETTINGS TAB ── */}
-        {activeTab === 'payment_settings' && (
-          <PaymentSettingsPanel
-            paymentSettings={paymentSettings}
-            setPaymentSettings={setPaymentSettings}
-            paymentLoading={paymentLoading}
-            paymentSaving={paymentSaving}
-            paymentError={paymentError}
-            paymentSuccess={paymentSuccess}
-            handleSavePaymentSettings={handleSavePaymentSettings}
-            t={t}
-            md={md}
-          />
-        )}
-
-        {/* ── ESCROW ORDERS TAB ── */}
-        {activeTab === 'escrow_orders' && (
-          <EscrowOrdersPanel
-            escrowOrders={escrowOrders}
-            escrowOrdersLoading={escrowOrdersLoading}
-            selectedEscrowOrder={selectedEscrowOrder}
-            setSelectedEscrowOrder={setSelectedEscrowOrder}
-            deliveryPinInput={deliveryPinInput}
-            setDeliveryPinInput={setDeliveryPinInput}
-            deliveryPinVerifying={deliveryPinVerifying}
-            deliveryPinMsg={deliveryPinMsg}
-            deliveryPinSuccess={deliveryPinSuccess}
-            setDeliveryPinMsg={setDeliveryPinMsg}
-            setDeliveryPinSuccess={setDeliveryPinSuccess}
-            markReadyLoading={markReadyLoading}
-            markReadyNote={markReadyNote}
-            setMarkReadyNote={setMarkReadyNote}
-            markReadyMsg={markReadyMsg}
-            markReadySuccess={markReadySuccess}
-            setMarkReadyMsg={setMarkReadyMsg}
-            setMarkReadySuccess={setMarkReadySuccess}
-            handleDeliveryPinVerify={async (orderId) => {
-              await handleDeliveryPinVerify(orderId);
-              fetchFinanceRecords();
-            }}
-            handleMarkReady={handleMarkReady}
-            fetchEscrowOrders={fetchEscrowOrders}
-            user={user}
-            md={md}
-          />
-        )}
-
-        {/* ── SELLER FULFILLMENT TAB ── */}
-        {activeTab === 'seller_fulfillment' && (
-          <SellerFulfillmentPanel user={user} />
-        )}
-
-        {/* ── FREIGHT BIDS TAB ── */}
-        {activeTab === 'freight_bids' && (
-          <ShipmentBidsPanel mode="shipper" yemenLocal />
-        )}
-
-        {/* ── FACTORY ORDER QUEUE TAB ── */}
-        {activeTab === 'factory_orders' && (
-          <FactoryOrdersPanel
-            factoryOrders={factoryOrders}
-            factoryOrdersLoading={factoryOrdersLoading}
-            selectedFactoryOrder={selectedFactoryOrder}
-            setSelectedFactoryOrder={setSelectedFactoryOrder}
-            factoryOrderStatusFilter={factoryOrderStatusFilter}
-            setFactoryOrderStatusFilter={setFactoryOrderStatusFilter}
-            factoryOrderStatusUpdating={factoryOrderStatusUpdating}
-            factoryOrderStatusMsg={factoryOrderStatusMsg}
-            factoryOrderStatusSuccess={factoryOrderStatusSuccess}
-            factoryOrderNoteInput={factoryOrderNoteInput}
-            setFactoryOrderNoteInput={setFactoryOrderNoteInput}
-            setFactoryOrderStatusMsg={setFactoryOrderStatusMsg}
-            setFactoryOrderStatusSuccess={setFactoryOrderStatusSuccess}
-            handleFactoryOrderStatusUpdate={handleFactoryOrderStatusUpdate}
-            fetchFactoryOrders={fetchFactoryOrders}
-            md={md}
-            currentUserId={user?.id}
-            localInbox
-          />
-        )}
-
-        {/* ── DISPUTES TAB ── */}
-        {activeTab === 'disputes' && (
-          <DisputesPanel
-            localMode
-            factoryDisputes={factoryDisputes}
-            factoryDisputesLoading={factoryDisputesLoading}
-            selectedFactoryDispute={selectedFactoryDispute}
-            setSelectedFactoryDispute={setSelectedFactoryDispute}
-            factoryResolutionType={factoryResolutionType}
-            setFactoryResolutionType={setFactoryResolutionType}
-            factoryResolutionNote={factoryResolutionNote}
-            setFactoryResolutionNote={setFactoryResolutionNote}
-            factoryResolveLoading={factoryResolveLoading}
-            factoryResolveMsg={factoryResolveMsg}
-            setFactoryResolveMsg={setFactoryResolveMsg}
-            handleFactoryResolve={handleFactoryResolve}
-            fetchFactoryDisputes={fetchFactoryDisputes}
-            md={md}
-          />
-        )}
-
-        {/* ── ANALYTICS TAB ── */}
-        {activeTab === 'analytics' && (
-          <AnalyticsPanel
-            variant="local"
-            currency={factoryCurrency}
-            analyticsLoading={analyticsLoading}
-            analyticsData={analyticsData}
-            analyticsStats={analyticsStats}
-            analyticsPeriod={analyticsPeriod}
-            setAnalyticsPeriod={setAnalyticsPeriod}
-            products={products}
-            companyName={companyName}
-            user={user}
-            t={t}
-            md={md}
-          />
-        )}
-
-        {/* ── INVENTORY TAB ── */}
-        {activeTab === 'inventory' && (
-          <InventoryPanel
-            inventoryItems={inventoryItems}
-            inventoryLoading={inventoryLoading}
-            showAddInventoryModal={showAddInventoryModal}
-            setShowAddInventoryModal={setShowAddInventoryModal}
-            inventoryForm={inventoryForm}
-            setInventoryForm={setInventoryForm}
-            inventoryFormLoading={inventoryFormLoading}
-            inventoryFormError={inventoryFormError}
-            md={md}
-            onSaved={fetchInventoryItems}
-          />
-        )}
-
-        {/* ── ARCHIVE TAB ── */}
-        {activeTab === 'archive' && (
-          <ArchivePanel
-            archiveRecords={archiveRecords}
-            archiveLoading={archiveLoading}
-            archiveType={archiveType}
-            setArchiveType={setArchiveType}
-            md={md}
-          />
-        )}
-
-        {/* ── ALL SALES METHODS TAB ── */}
-        {activeTab === 'all_sales' && !isSalesRep && (
-          <div className="bg-card border border-border rounded-2xl p-4 md:p-6 shadow-sm">
-            <AllSalesMethodsPanel />
-          </div>
-        )}
-
-        {/* ── CONTRACTS TAB ── */}
-        {activeTab === 'contracts' && !isSalesRep && (
-          <div className="bg-card border border-border rounded-2xl p-4 md:p-6 shadow-sm">
-            <AIContractAssistant
-              onPushedToInvoice={() => {
-                setActiveTab('invoicing');
-              }}
-            />
-          </div>
-        )}
-
-        {/* ── INVOICING MODULE ── */}
-        {(activeTab === 'invoicing' || moduleTab === 'invoicing') && !isSalesRep && user && (
-          <div id="manufacturer-invoicing-anchor" className="bg-card border border-border rounded-2xl p-4 md:p-6 shadow-sm">
-            <ManufacturerAdvancedModules userId={user.id} mode="finance" />
-          </div>
-        )}
-
-        {/* ── PRODUCTION CAPACITY & QC MODULE ── */}
-        {(activeTab === 'production' || moduleTab === 'production') && !isSalesRep && user && (
-          <div className="bg-card border border-border rounded-2xl p-4 md:p-6 shadow-sm">
-            <ManufacturerAdvancedModules userId={user.id} mode="production" />
-          </div>
-        )}
-
-        {/* ── ADMIN MESSAGING TAB ── */}
-        {activeTab === 'admin_messaging' && user && (
-          <FactoryAdminMessaging
-            user={user}
-            supabase={supabase}
-            adminConv={adminConv}
-            adminConvLoading={adminConvLoading}
-            adminMessages={adminMessages}
-            setAdminMessages={setAdminMessages}
-            adminMsgsLoading={adminMsgsLoading}
-            adminMsgInput={adminMsgInput}
-            setAdminMsgInput={setAdminMsgInput}
-            adminMsgSending={adminMsgSending}
-            sendAdminMessage={sendAdminMessage}
-            fetchAdminConversation={fetchAdminConversation}
-            adminMsgsEndRef={adminMsgsEndRef}
-            md={md}
-            adminMsgAttachment={adminMsgAttachment}
-            setAdminMsgAttachment={setAdminMsgAttachment}
-          />
-        )}
-
-        {/* ── TIERED PRICING MANAGER ── */}
-        {!isSalesRep && user && !isModuleMode && factoryRegistration?.factory_type === 'international' && (
-          <div className="bg-card border border-border rounded-2xl p-4 md:p-6 shadow-sm mt-4">
-            <div className="mb-3 flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
-                🌐 International Factory Module
+      <div className="flex-1 flex overflow-hidden min-w-0">
+        {/* ══ القائمة الجانبية (قائمة المحادثات) ══════════════════════════════ */}
+        <div className={`${sidebarOpen ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-[350px] lg:w-[390px] md:shrink-0 bg-card border-l border-border overflow-hidden`}>
+          <div className="p-3 border-b border-border bg-card space-y-2">
+            <div className="flex items-center justify-between">
+              <h1 className="text-base font-bold text-foreground flex items-center gap-2">
+                <Icon name="ChatBubbleLeftRightIcon" size={18} className="text-primary" />
+                {isAr ? 'صندوق المحادثات الموحد' : 'Unified Inbox'}
+              </h1>
+              <span className="text-xs bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-full">
+                {conversations.length} {isAr ? 'محادثة' : 'threads'}
               </span>
             </div>
-            <TieredPricingManager
-              productName={factoryRegistration?.company_name || undefined}
+
+            <div className="relative">
+              <Icon name="MagnifyingGlassIcon" size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder={isAr ? 'بحث عن مصنع، إدارة، مندوب، شركة شحن...' : 'Search inbox...'}
+                className="w-full h-9 pr-9 pl-3 rounded-xl border border-border bg-background text-foreground text-xs focus:outline-none focus:border-primary"
+              />
+            </div>
+
+            <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+              {[
+                { id: 'all', label: isAr ? 'الكل' : 'All' },
+                { id: 'admin', label: isAr ? '🛡️ الإدارة' : '🛡️ Admin' },
+                { id: 'agent', label: isAr ? '👷 مندوبين' : '👷 Agents' },
+                { id: 'factory', label: isAr ? '🏭 مصانع' : '🏭 Factories' },
+                { id: 'logistics', label: isAr ? '🚢 شحن' : '🚢 Shipping' },
+                { id: 'rfq', label: isAr ? '📑 RFQ' : '📑 RFQ' },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setFilterType(tab.id as FilterType)}
+                  className={`shrink-0 py-1 px-2.5 text-xs font-semibold rounded-lg transition-all ${
+                    filterType === tab.id ? 'bg-primary text-primary-foreground shadow-sm' : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {loadingConvs ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : filteredConvs.length === 0 ? (
+              <div className="text-center py-16 px-4 space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-muted/60 flex items-center justify-center mx-auto text-muted-foreground">
+                  <Icon name="ChatBubbleLeftRightIcon" size={26} />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {filterType === 'admin'
+                    ? (isAr ? 'لا توجد محادثة سابقة مع الإدارة' : 'No previous chat with Admin')
+                    : (isAr ? 'لا توجد محادثات هنا' : 'No conversations found')}
+                </p>
+
+                {filterType === 'admin' && (
+                  <button
+                    type="button"
+                    onClick={startAdminConversation}
+                    disabled={creatingAdminChat}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    <Icon name="ShieldCheckIcon" size={15} />
+                    <span>{creatingAdminChat ? (isAr ? 'جاري فتح المحادثة...' : 'Connecting...') : (isAr ? 'بدء محادثة مع الإدارة الآن' : 'Start Admin Chat')}</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              filteredConvs.map(conv => {
+                const isActive = conv.id === activeConvId;
+                const threadInfo = THREAD_LABELS[conv.thread_type || 'negotiation'];
+                return (
+                  <button
+                    key={conv.id}
+                    onClick={() => {
+                      setActiveConvId(conv.id);
+                      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                        setSidebarOpen(false);
+                      }
+                    }}
+                    className={`w-full text-right px-3 py-3 border-b border-border/60 transition-colors flex items-start gap-2.5 relative ${
+                      isActive ? 'bg-primary/5 border-r-[3px] border-r-primary' : 'hover:bg-muted/40'
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold bg-gradient-to-br from-slate-700 to-slate-900 border border-border shrink-0">
+                      {conv.supplier_flag || '🏢'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <p className="text-xs font-bold text-foreground truncate flex-1">{conv.supplier_name}</p>
+                        <span className="text-[10px] text-muted-foreground shrink-0 ms-1">{formatTime(conv.last_message_at || '', isAr)}</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground truncate mb-1">{conv.product_name}</p>
+                      <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${threadInfo?.color}`}>
+                        {isAr ? threadInfo?.labelAr : threadInfo?.labelEn}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* ══ شاشة الشات الموحدة ════════════════════════════════════════════ */}
+        <div className={`${sidebarOpen ? 'hidden md:flex' : 'flex'} flex-1 flex-col bg-background min-w-0 border-r border-border overflow-hidden`}>
+          {!activeConv ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-muted/20 space-y-3">
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+                <Icon name="ChatBubbleLeftRightIcon" size={32} />
+              </div>
+              <h2 className="text-base font-bold text-foreground">
+                {filterType === 'admin'
+                  ? (isAr ? 'محادثة الإدارة العامة والدعم الرسمي' : 'Official Platform Support')
+                  : (isAr ? 'اختر محادثة لبدء المراسلة والتفاوض' : 'Select a conversation')}
+              </h2>
+              <p className="text-xs text-muted-foreground max-w-sm">
+                {filterType === 'admin'
+                  ? (isAr ? 'تواصل مباشرة مع إدارة دايركت هب لتوثيق المستودعات، مطابقة التراخيص، والضمانات المالية.' : 'Direct support for verification, licensing, and financial guarantees.')
+                  : (isAr ? 'حدد محادثة من القائمة لعرض التفاصيل والتفاوض.' : 'Select a partner from the sidebar to start chatting.')}
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* ── ترويسة الشات التفاعلية ── */}
+              <div className="px-3 sm:px-4 py-3 border-b border-border bg-card flex items-center justify-between gap-2.5 shrink-0">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => setSidebarOpen(true)}
+                    className="md:hidden w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center shrink-0 text-muted-foreground hover:text-foreground"
+                    aria-label="العودة لقائمة المحادثات"
+                  >
+                    <Icon name="ArrowRightIcon" size={17} className={isRTL ? '' : 'rotate-180'} />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (partnerAvatarUrl) {
+                        setLightboxImage({ url: partnerAvatarUrl, title: activeConv.supplier_name || 'صورة المنشأة' });
+                      }
+                    }}
+                    className={`w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold shrink-0 relative overflow-hidden transition-all ${partnerAvatarUrl ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-primary shadow-xs' : 'cursor-default'}`}
+                    title={partnerAvatarUrl ? 'اضغط لتكبير الصورة' : ''}
+                  >
+                    {partnerAvatarUrl ? (
+                      <img src={partnerAvatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{activeConv.supplier_flag || '🏢'}</span>
+                    )}
+                  </button>
+
+                  {partnerId ? (
+                    <Link
+                      href={`/store/${partnerId}`}
+                      target="_blank"
+                      className="flex-1 min-w-0 text-start group"
+                      title="فتح صفحة المنشأة الكاملة"
+                    >
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">
+                          {activeConv.supplier_name}
+                        </p>
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${THREAD_LABELS[activeConv.thread_type || 'negotiation']?.color}`}>
+                          {isAr ? THREAD_LABELS[activeConv.thread_type || 'negotiation']?.labelAr : THREAD_LABELS[activeConv.thread_type || 'negotiation']?.labelEn}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {activeConv.product_name}
+                      </p>
+                    </Link>
+                  ) : (
+                    <div className="flex-1 min-w-0 text-start">
+                      <p className="text-sm font-bold text-foreground truncate">{activeConv.supplier_name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{activeConv.product_name}</p>
+                    </div>
+                  )}
+                </div>
+
+                {partnerId && (
+                  <Link
+                    href={`/store/${partnerId}`}
+                    target="_blank"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-xs font-bold transition-all shrink-0 shadow-sm active:scale-95"
+                    title="فتح صفحة المنشأة الكاملة"
+                  >
+                    <Icon name="BuildingOffice2Icon" size={15} />
+                    <span className="hidden sm:inline">صفحة المنشأة الكاملة</span>
+                    <span className="sm:hidden">المنشأة ↗</span>
+                  </Link>
+                )}
+              </div>
+
+              {/* ── فقاعات الرسائل ── */}
+              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-muted/10">
+                {messages.map(msg => {
+                  const isOwn = msg.sender_id === user?.id;
+                  const parsed = parseBilingualMessage(msg.message);
+
+                  const avatarUrl = isOwn ? myAvatarUrl : partnerAvatarUrl;
+                  const defaultLabel = isOwn ? (user?.email?.charAt(0) || 'أنا') : (activeConv.supplier_flag || '🏢');
+                  const senderTitle = isOwn ? 'صورتي الشخصية' : (activeConv.supplier_name || 'صورة الطرف الآخر');
+
+                  return (
+                    <div key={msg.id} className={`flex items-end ${isOwn ? 'justify-start flex-row-reverse' : 'justify-start'} gap-2`}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (avatarUrl) {
+                            setLightboxImage({ url: avatarUrl, title: senderTitle });
+                          }
+                        }}
+                        className={`w-7 h-7 rounded-full bg-muted border border-border flex items-center justify-center text-xs font-bold shrink-0 overflow-hidden shadow-2xs ${avatarUrl ? 'cursor-pointer hover:opacity-85 hover:scale-105 transition-transform' : 'cursor-default'}`}
+                        title={avatarUrl ? 'اضغط لتكبير الصورة' : ''}
+                      >
+                        {avatarUrl ? (
+                          <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">{defaultLabel}</span>
+                        )}
+                      </button>
+
+                      <div className={`max-w-[78%] rounded-2xl p-3 shadow-xs ${
+                        isOwn ? 'bg-primary text-primary-foreground rounded-tr-xs' : 'bg-card border border-border text-foreground rounded-tl-xs'
+                      }`}>
+                        {msg.attachment_url && (
+                          <div
+                            className="mb-2 cursor-pointer"
+                            onClick={() => {
+                              if (msg.attachment_type?.startsWith('image/')) {
+                                setLightboxImage({ url: msg.attachment_url!, title: msg.attachment_name || 'صورة مرفقة' });
+                              }
+                            }}
+                          >
+                            <ChatAttachmentView url={msg.attachment_url} name={msg.attachment_name || 'ملف مرفق'} type={msg.attachment_type} />
+                          </div>
+                        )}
+
+                        {parsed.isBilingual ? (
+                          <div className="space-y-1.5">
+                            <p className="text-sm leading-relaxed">{parsed.original}</p>
+                            <div className="pt-1.5 border-t border-white/20 text-xs opacity-90 flex items-center gap-1.5">
+                              <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-bold">مترجم تلقائياً</span>
+                              <span>{parsed.translated}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.message}</p>
+                        )}
+
+                        <span className={`text-[10px] block mt-1 ${isOwn ? 'text-primary-foreground/70 text-start' : 'text-muted-foreground text-end'}`}>
+                          {formatTime(msg.created_at, isAr)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* شريط الردود السريعة */}
+              <div className="px-3 py-1.5 border-t border-border bg-card flex gap-1.5 overflow-x-auto shrink-0" style={{ scrollbarWidth: 'none' }}>
+                {currentQuickReplies.map(qr => (
+                  <button
+                    key={qr}
+                    onClick={() => {
+                      setInputText(qr);
+                      inputRef.current?.focus();
+                    }}
+                    className="shrink-0 px-2.5 py-1 bg-muted hover:bg-muted/80 text-[11px] font-medium rounded-full text-foreground whitespace-nowrap transition-colors"
+                  >
+                    {qr}
+                  </button>
+                ))}
+              </div>
+
+              {/* ── صندوق الإدخال التفاعلي ── */}
+              <div className="p-2.5 sm:p-3 border-t border-border bg-card shrink-0 space-y-2 pb-safe">
+                {liveTranslation && (
+                  <div className="px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-700 dark:text-blue-300 flex items-center justify-between transition-all">
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="font-bold flex items-center gap-1 shrink-0">
+                        <span>🌐</span>
+                        <span>الترجمة الفورية ({liveTranslationLang.toUpperCase()}):</span>
+                      </span>
+                      <span className="italic truncate font-medium">{liveTranslation}</span>
+                    </div>
+                    {isTranslating && (
+                      <span className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0 ms-2" />
+                    )}
+                  </div>
+                )}
+
+                {pendingAttachment && (
+                  <div className="px-3 py-1.5 bg-muted/70 rounded-xl border border-border flex items-center justify-between text-xs">
+                    <span className="font-medium truncate flex-1">{pendingAttachment.file.name}</span>
+                    <button type="button" onClick={() => setPendingAttachment(null)} className="text-red-500 hover:text-red-700 font-bold ms-2">إلغاء</button>
+                  </div>
+                )}
+
+                {privacyWarning && (
+                  <div className="px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 rounded-lg flex items-center gap-2">
+                    <Icon name="ExclamationTriangleIcon" size={14} className="shrink-0" />
+                    <span>{privacyWarning}</span>
+                  </div>
+                )}
+
+                {isRecording ? (
+                  <div className="flex items-center justify-between bg-red-500/10 border border-red-500/30 rounded-2xl px-4 py-3 animate-pulse">
+                    <div className="flex items-center gap-2.5 text-red-600 dark:text-red-400 font-bold text-xs sm:text-sm">
+                      <span className="w-3 h-3 rounded-full bg-red-600 animate-ping shrink-0" />
+                      <span>جاري تسجيل الصوت ({Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')})...</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={cancelRecording}
+                        className="px-3 py-1.5 rounded-xl border border-red-200 text-red-600 text-xs font-bold hover:bg-red-50 transition-colors"
+                      >
+                        إلغاء
+                      </button>
+                      <button
+                        type="button"
+                        onClick={stopAndSendRecording}
+                        className="px-3.5 py-1.5 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700 shadow-sm transition-colors"
+                      >
+                        إرسال الصوت 🎙️
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-full">
+                    <textarea
+                      ref={inputRef}
+                      value={inputText}
+                      onFocus={() => {
+                        setTimeout(() => {
+                          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                        }, 250);
+                      }}
+                      onChange={e => setInputText(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSend();
+                        }
+                      }}
+                      placeholder={
+                        activeConv.category === 'admin'
+                          ? 'اكتب رسالتك للإدارة العامة لدايركت هب...'
+                          : activeConv.category === 'agent'
+                          ? 'اكتب رسالتك وتنسيقك للمندوب الميداني المشرف...'
+                          : 'اكتب رسالتك وتفاصيل طلبك هنا... (تتم الترجمة فورياً)'
+                      }
+                      rows={2}
+                      className="w-full px-3 py-2 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 resize-none transition-all leading-relaxed"
+                      style={{ minHeight: '52px', maxHeight: '110px' }}
+                    />
+                  </div>
+                )}
+
+                {/* شريط الأدوات السفلي */}
+                {!isRecording && (
+                  <div className="flex items-center justify-between gap-2 pt-0.5">
+                    <div className="flex items-center gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+                      <input ref={fileInputRef} type="file" accept={ACCEPT_ATTR} onChange={handleAttachment} className="hidden" />
+                      <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleAttachment} className="hidden" />
+
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="h-8.5 px-2.5 rounded-xl border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-primary flex items-center gap-1.5 text-xs font-semibold transition-colors shrink-0"
+                        title="إرفاق صورة أو مستند"
+                      >
+                        <Icon name="PaperClipIcon" size={15} />
+                        <span className="hidden sm:inline">مرفق</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => cameraInputRef.current?.click()}
+                        className="h-8.5 px-2.5 rounded-xl border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-primary flex items-center gap-1.5 text-xs font-semibold transition-colors shrink-0"
+                        title="التقاط صورة بالكاميرا"
+                      >
+                        <Icon name="CameraIcon" size={15} />
+                        <span className="hidden sm:inline">كاميرا</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowLangPicker(true)}
+                        className="h-8.5 px-2.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center gap-1.5 hover:bg-blue-500/20 transition-colors shrink-0"
+                        title="تغيير لغة الترجمة الفورية"
+                      >
+                        <span className="text-sm">🌐</span>
+                        <span>{liveTranslationLang.toUpperCase()}</span>
+                        <Icon name="ChevronDownIcon" size={11} className="opacity-70" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={startRecording}
+                        className="h-8.5 px-2.5 rounded-xl border border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-primary text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0"
+                        title="تسجيل رسالة صوتية"
+                      >
+                        <Icon name="MicrophoneIcon" size={15} />
+                        <span className="hidden sm:inline">صوتي</span>
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleSend}
+                      disabled={(!inputText.trim() && !pendingAttachment) || sending}
+                      className="h-8.5 px-4.5 bg-primary text-primary-foreground rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm hover:opacity-90 active:scale-95 disabled:opacity-40 transition-all shrink-0"
+                    >
+                      <span>{isAr ? 'إرسال' : 'Send'}</span>
+                      <Icon name="PaperAirplaneIcon" size={14} className={isRTL ? 'rotate-180' : ''} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── عارض الصور المكبرة بالحجم الكامل ── */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-[300] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-fade-in"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="absolute top-4 left-4 right-4 flex items-center justify-between text-white z-10" onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-bold truncate max-w-[70%]">{lightboxImage.title || 'عرض الصورة'}</p>
+            <div className="flex items-center gap-3">
+              <a
+                href={lightboxImage.url}
+                target="_blank"
+                rel="noreferrer"
+                download
+                className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors text-xs font-bold flex items-center gap-1"
+                title="فتح الرابط الأصلي / تنزيل"
+              >
+                <span>تحميل</span>
+                <span>↗</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setLightboxImage(null)}
+                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-lg font-bold transition-colors"
+                title="إغلاق"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <div className="max-w-4xl max-h-[85vh] w-full flex items-center justify-center p-2" onClick={e => e.stopPropagation()}>
+            <img
+              src={lightboxImage.url}
+              alt={lightboxImage.title || 'Preview'}
+              className="max-w-full max-h-[82vh] object-contain rounded-2xl shadow-2xl animate-scale-up"
             />
           </div>
-        )}
-      </main>
-
-      {/* ── Dialog Modals ── */}
-      {showAddModal && (
-        <ProductFormModal
-          isEditing={!!editingProduct}
-          formData={formData}
-          setFormData={setFormData}
-          formError={formError}
-          formLoading={formLoading}
-          onClose={() => setShowAddModal(false)}
-          onSubmit={handleFormSubmit}
-        />
+        </div>
       )}
 
-      {deleteId && (
-        <DeleteProductModal
-          onCancel={() => setDeleteId(null)}
-          onConfirm={() => handleDelete(deleteId)}
-        />
+      {/* ── نافذة اختيار لغة الترجمة ── */}
+      {showLangPicker && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in"
+          onClick={() => setShowLangPicker(false)}
+        >
+          <div
+            className="bg-card border border-border rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-5 shadow-2xl space-y-4 animate-slide-up"
+            onClick={e => e.stopPropagation()}
+            dir={dir}
+          >
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🌐</span>
+                <h3 className="text-sm font-black text-foreground">اختر لغة الترجمة الفورية</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLangPicker(false)}
+                className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              سيتم ترجمة رسائلك المكتوبة تلقائياً وإرفاق النص المترجم للطرف الآخر أثناء الإرسال.
+            </p>
+
+            <div className="grid grid-cols-1 gap-2 pt-1">
+              {LANG_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    setLiveTranslationLang(opt.value);
+                    setShowLangPicker(false);
+                    setLiveTranslation('');
+                  }}
+                  className={`w-full px-4 py-3 rounded-2xl border text-xs font-bold flex items-center justify-between transition-all ${
+                    liveTranslationLang === opt.value
+                      ? 'bg-primary/10 border-primary text-primary shadow-xs'
+                      : 'border-border bg-muted/40 hover:bg-muted text-foreground'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">{opt.flag}</span>
+                    <div className="text-start">
+                      <p className="text-xs font-bold text-foreground">{opt.nativeName}</p>
+                      <p className="text-[10px] text-muted-foreground">{opt.label}</p>
+                    </div>
+                  </div>
+                  {liveTranslationLang === opt.value && (
+                    <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-black">
+                      ✓
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
+
+      {(!activeConvId || sidebarOpen) && <BottomNav />}
     </div>
+  );
+}
+
+export default function LiveMessagingPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <LiveMessagingContent />
+    </Suspense>
   );
 }
