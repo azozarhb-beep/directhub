@@ -141,7 +141,6 @@ export default function SupplierDashboard() {
     try {
       const cleanCode = agentCodeInput.trim().toUpperCase();
 
-      // البحث عن المندوب المعتمد بواسطة كود المندوب المسجل
       const { data: agentData, error: agentErr } = await supabase
         .from('user_profiles')
         .select('id, full_name')
@@ -154,7 +153,6 @@ export default function SupplierDashboard() {
         return;
       }
 
-      // تحديث ملف المورد وربطه بالمندوب
       const { error: updateErr } = await supabase
         .from('user_profiles')
         .update({ assigned_agent_id: agentData.id })
@@ -224,7 +222,7 @@ export default function SupplierDashboard() {
           {companyName && <p className="text-sm text-slate-400 mt-1">{companyName}</p>}
         </div>
 
-        {/* ── بطاقة المندوب الميداني المشرف (تثبيت كود المندوب فقط) ── */}
+        {/* ── بطاقة المندوب الميداني المشرف (كود المندوب فقط) ── */}
         {assignedAgentId ? (
           <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-4 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
             <div className="flex items-center gap-2.5">
@@ -353,9 +351,19 @@ export default function SupplierDashboard() {
           </div>
         </div>
 
-        {/* أقسام وموديولات المورد */}
+        {/* أقسام وموديولات المورد (تم استبعاد كرت التواصل والمراسلات المكرر) */}
         {SUPPLIER_SECTIONS.map((section) => {
-          const modules = SUPPLIER_MODULES.filter((m) => m.section === section.key && m.key !== 'analytics');
+          const modules = SUPPLIER_MODULES.filter(
+            (m) =>
+              m.section === section.key &&
+              m.key !== 'analytics' &&
+              m.key !== 'messages' &&
+              m.key !== 'chat' &&
+              !m.title.includes('التواصل')
+          );
+
+          if (modules.length === 0 && section.key !== 'catalog') return null;
+
           return (
             <section key={section.key} className="mb-8">
               <div className="flex items-baseline gap-2 mb-3">
@@ -365,12 +373,10 @@ export default function SupplierDashboard() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {modules.map((m) => {
                   const badge = badgeFor(m.key);
-                  const destination = (m.key === 'chat' || m.key === 'messages') ? '/messaging' : `/supplier/${m.key}`;
-                  
                   return (
                     <Link
                       key={m.key}
-                      href={destination}
+                      href={`/supplier/${m.key}`}
                       className={`group rounded-2xl border bg-gradient-to-br ${m.accent} p-4 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 transition-all`}
                     >
                       <div className="flex items-start justify-between gap-2">
