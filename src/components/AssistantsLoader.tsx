@@ -1,6 +1,7 @@
 'use client';
 
 import React, { Component, ReactNode, useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 
 // ── Safe dynamic loader that catches ChunkLoadErrors at import time ──────────
 function useSafeComponent(loader: () => Promise<{ default: React.ComponentType }>) {
@@ -102,13 +103,17 @@ function SafeVisitorTracker() {
 }
 
 export default function AssistantsLoader() {
+  const pathname = usePathname();
+  // إخفاء مساعد أمل تلقائياً عند التواجد في صفحات الدردشة والمراسلة
+  const isMessagingPage = pathname?.startsWith('/messaging');
+
   return (
     <>
       <SafeVisitorTracker />
       <SafePushSubscriptionManager />
       <SafePWAInstallBanner />
-      {/* تم الإبقاء على أمل فقط وحذف أيقونة النجمة */}
-      <SafeAmalPartnerAssistant />
+      {/* لا يتم تحميل أيقونة أمل في صفحة الشات لمنع التداخل مع صندوق الكتابة */}
+      {!isMessagingPage && <SafeAmalPartnerAssistant />}
     </>
   );
 }
