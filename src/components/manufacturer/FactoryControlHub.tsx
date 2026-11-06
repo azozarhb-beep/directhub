@@ -55,13 +55,22 @@ function dynamicBadges(def: FactoryModuleDef, c: FactoryModuleCounts): Badge[] {
       out.push({ label: `${c.documents} مستند`, tone: 'info' });
       break;
     case 'messages':
-      out.push({ label: `${c.messages} محادثة`, tone: 'info' });
+      out.push({ label: 'دعم الإدارة 24/7', tone: 'ok' });
+      if (c.messages > 0) out.push({ label: `${c.messages} محادثة`, tone: 'info' });
       if (c.disputes > 0) out.push({ label: `${c.disputes} نزاع`, tone: 'warn' });
       break;
     default:
       break;
   }
   return out;
+}
+
+/** توجيه روابط المحادثة والمراسلات إلى الصندوق الموحد مباشرة */
+function resolveModuleHref(m: FactoryModuleDef): string {
+  if (m.key === 'messages' || m.href?.includes('messages') || m.href === '/chat') {
+    return '/messaging?channel=admin_direct';
+  }
+  return m.href;
 }
 
 interface FactoryControlHubProps {
@@ -85,45 +94,52 @@ export default function FactoryControlHub({ userId }: FactoryControlHubProps) {
   );
 
   return (
-    <div className="space-y-8" dir="rtl">
+    <div className="space-y-6 sm:space-y-8" dir="rtl">
       {FACTORY_SECTIONS.map((section) => {
         const modules = visibleModules.filter((m) => m.section === section.key);
         if (modules.length === 0) return null;
         return (
           <section key={section.key} aria-labelledby={`hub-${section.key}`}>
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-1.5 h-6 rounded-full bg-cyan-500" />
+            <div className="flex items-center gap-2.5 mb-2.5 sm:mb-3">
+              <div className="w-1.5 h-5 sm:h-6 rounded-full bg-cyan-500 shrink-0" />
               <div>
-                <h2 id={`hub-${section.key}`} className="text-base sm:text-lg font-bold text-white leading-tight">
+                <h2 id={`hub-${section.key}`} className="text-sm sm:text-base font-bold text-white leading-tight">
                   {section.title}
                 </h2>
-                <p className="text-[11px] text-slate-500">{section.subtitle}</p>
+                <p className="text-[10px] sm:text-[11px] text-slate-400">{section.subtitle}</p>
               </div>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+
+            {/* شبكة البطاقات المدمجة: عمودين في الهواتف الذكية وثلاثة في الشاشات الأكبر */}
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5">
               {modules.map((m) => {
                 const badges: Badge[] = [
                   ...dynamicBadges(m, counts),
                   ...m.staticBadges.map((label) => ({ label, tone: 'neutral' as const })),
                 ];
+                const destinationHref = resolveModuleHref(m);
+
                 return (
                   <Link
                     key={m.key}
-                    href={m.href}
-                    className={`group relative flex flex-col gap-2 rounded-2xl border bg-gradient-to-br ${m.accent} p-3 sm:p-4 min-h-[140px] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300`}
+                    href={destinationHref}
+                    className={`group relative flex flex-col justify-between rounded-2xl border bg-gradient-to-br ${m.accent} p-3 sm:p-4 min-h-[125px] sm:min-h-[140px] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/40 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300`}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-2xl sm:text-3xl" aria-hidden="true">{m.icon}</span>
-                      <span className="text-slate-500 group-hover:text-cyan-300 transition-colors text-lg" aria-hidden="true">←</span>
+                    <div>
+                      <div className="flex items-start justify-between gap-1.5 mb-1.5">
+                        <span className="text-2xl sm:text-3xl select-none" aria-hidden="true">{m.icon}</span>
+                        <span className="text-slate-400 group-hover:text-cyan-300 group-hover:-translate-x-0.5 transition-all text-base" aria-hidden="true">←</span>
+                      </div>
+                      <h3 className="text-xs sm:text-sm font-bold text-white leading-snug line-clamp-1">{m.title}</h3>
+                      <p className="text-[10px] sm:text-[11px] text-slate-300/80 leading-snug line-clamp-2 mt-0.5">{m.hint}</p>
                     </div>
-                    <h3 className="text-[13px] sm:text-sm font-bold text-white leading-snug">{m.title}</h3>
-                    <p className="text-[11px] text-slate-400 leading-snug">{m.hint}</p>
+
                     {badges.length > 0 && (
-                      <div className="mt-auto flex flex-wrap gap-1 pt-1">
+                      <div className="flex flex-wrap gap-1 pt-2 mt-auto">
                         {badges.map((b) => (
                           <span
                             key={`${m.key}-${b.label}`}
-                            className={`px-2 py-0.5 rounded-full border text-[10px] font-medium ${TONE_CLASS[b.tone]}`}
+                            className={`px-1.5 sm:px-2 py-0.5 rounded-md border text-[9px] sm:text-[10px] font-semibold tracking-tight ${TONE_CLASS[b.tone]}`}
                           >
                             {b.label}
                           </span>
