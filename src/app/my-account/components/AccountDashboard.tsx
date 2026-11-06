@@ -14,7 +14,7 @@ import {
   type PlatformRole,
 } from '@/lib/roomIsolation';
 
-type TabKey = 'overview' | 'orders' | 'messages' | 'products' | 'settings';
+type TabKey = 'overview' | 'orders' | 'products' | 'settings' | 'my-orders';
 
 function checkIsBuyer(profile: UserProfile | null): boolean {
   if (!profile) return true;
@@ -302,7 +302,7 @@ const MyRfqList: React.FC<{ rfqs: AccountRfq[]; dataLoading: boolean }> = ({ rfq
 
 /* ─── My Orders Tab ─── */
 const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: boolean; orderStats: { total: number; pending: number; completed: number; totalSpent: number } }> = ({ orders, rfqs, dataLoading, orderStats }) => {
-  const { t, dir, language } = useLanguage();
+  const { t, dir } = useLanguage();
   const ma = t.myAccount;
   const [activeOrderTab, setActiveOrderTab] = useState<'processing' | 'ready' | 'shipped' | 'completed' | 'history'>('processing');
 
@@ -390,7 +390,6 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
         </Link>
       </div>
 
-      {/* Stats strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: ma.totalOrders, value: orderStats.total, icon: 'ClipboardDocumentListIcon', color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/20' },
@@ -410,7 +409,6 @@ const MyOrdersTab: React.FC<{ orders: Order[]; rfqs: AccountRfq[]; dataLoading: 
         ))}
       </div>
 
-      {/* Status Tabs */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
         <div className="flex overflow-x-auto border-b border-border scrollbar-hide">
           {orderTabs.map((tab) => (
@@ -826,7 +824,6 @@ const AccountDashboard: React.FC = () => {
   const [rfqs, setRfqs] = useState<AccountRfq[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [orderStats, setOrderStats] = useState({ total: 0, pending: 0, completed: 0, totalSpent: 0 });
-  const [unreadMessagesCount, setUnreadMessagesCount] = useState<number>(0);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
 
   const [hasLocalPassword, setHasLocalPassword] = useState(false);
@@ -887,24 +884,6 @@ const AccountDashboard: React.FC = () => {
 
         if (productsRes.data) setProducts(productsRes.data);
         if (rfqsRes.data) setRfqs(rfqsRes.data as AccountRfq[]);
-
-        try {
-          const { count: chatUnread } = await supabase
-            .from('chat_messages')
-            .select('id', { count: 'exact', head: true })
-            .neq('sender_id', user.id)
-            .eq('is_read', false);
-
-          const { data: logConvs } = await supabase
-            .from('logistics_conversations')
-            .select('buyer_unread')
-            .eq('buyer_id', user.id);
-
-          const logUnread = (logConvs || []).reduce((acc: number, c: any) => acc + (c.buyer_unread || 0), 0);
-          setUnreadMessagesCount((chatUnread || 0) + logUnread);
-        } catch {
-          // ignore
-        }
 
         const identities = user.identities ?? [];
         setIsGoogleUser(!!identities.find((id: any) => id.provider === 'google'));
@@ -1019,9 +998,9 @@ const AccountDashboard: React.FC = () => {
 
   const tabs: { key: TabKey; label: string; icon: string; badge?: number }[] = [
     { key: 'overview', label: t.myAccount.tabOverview, icon: 'HomeIcon' },
-    { key: 'orders', label: isBuyer ? (isAr ? 'طلباتي' : 'My Orders') : t.myAccount.tabOrders, icon: 'ShoppingBagIcon', badge: orderStats.pending || undefined },
+    { key: 'orders', label: t.myAccount.tabOrders, icon: 'ShoppingBagIcon', badge: orderStats.pending || undefined },
     ...(isBuyer
-      ? [{ key: 'messages' as TabKey, label: isAr ? 'المراسلات' : 'Messages', icon: 'ChatBubbleLeftRightIcon', badge: unreadMessagesCount || undefined }]
+      ? [{ key: 'my-orders' as TabKey, label: t.myAccount.myOrders, icon: 'ClipboardDocumentListIcon', badge: orderStats.pending || undefined }]
       : [{ key: 'products' as TabKey, label: t.myAccount.tabProducts, icon: 'ArchiveBoxIcon' }]
     ),
     { key: 'settings', label: t.myAccount.tabSettings, icon: 'Cog6ToothIcon' },
@@ -1106,20 +1085,8 @@ const AccountDashboard: React.FC = () => {
               </div>
             </div>
 
+            {/* تم حذف زر "الرسائل والمحادثات" بالكامل من الترويسة */}
             <div className="flex flex-wrap items-center gap-2 shrink-0">
-              <Link
-                href="/messaging"
-                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 transition-opacity shadow-sm relative"
-              >
-                <Icon name="ChatBubbleLeftRightIcon" size={15} />
-                <span>{isAr ? 'الرسائل والمحادثات' : 'Messages'}</span>
-                {unreadMessagesCount > 0 && (
-                  <span className="w-5 h-5 bg-white text-primary text-[10px] font-extrabold rounded-full flex items-center justify-center">
-                    {unreadMessagesCount}
-                  </span>
-                )}
-              </Link>
-
               {!isSupplierAccount && (
                 <button
                   onClick={() => {
@@ -1246,32 +1213,6 @@ const AccountDashboard: React.FC = () => {
             </div>
 
             <div className="lg:col-span-4 flex flex-col gap-4">
-              <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-extrabold text-foreground flex items-center gap-2">
-                    <Icon name="ChatBubbleLeftRightIcon" size={18} className="text-primary" />
-                    <span>{isAr ? 'الدردشة وصندوق الوارد' : 'Unified Inbox'}</span>
-                  </h3>
-                  {unreadMessagesCount > 0 && (
-                    <span className="px-2 py-0.5 bg-primary text-primary-foreground text-[10px] font-extrabold rounded-full">
-                      {unreadMessagesCount} {isAr ? 'جديدة' : 'new'}
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed mb-4">
-                  {isAr
-                    ? 'تواصل مباشرة مع المصانع الصينية والمحلية ومكاتب الشحن والتخليص الجمركي في صندوق موحد.'
-                    : 'Chat directly with factories, shipping offices, and clearance agents.'}
-                </p>
-                <Link
-                  href="/messaging"
-                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-95 transition-opacity"
-                >
-                  <Icon name="ChatBubbleLeftRightIcon" size={15} />
-                  <span>{isAr ? 'فتح صندوق المحادثات الموحد' : 'Open Unified Inbox'}</span>
-                </Link>
-              </div>
-
               <div className="bg-card border border-border rounded-2xl p-5">
                 <h3 className="text-sm font-extrabold text-foreground mb-3 flex items-center gap-2">
                   <span>🏢</span>{t.myAccount.platformInfo}
@@ -1297,33 +1238,65 @@ const AccountDashboard: React.FC = () => {
         )}
 
         {activeTab === 'orders' && (
-          <MyOrdersTab orders={orders} rfqs={rfqs} dataLoading={dataLoading} orderStats={orderStats} />
+          <div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div>
+                <h2 className="text-lg font-extrabold text-foreground">{t.myAccount.allOrders}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">{orderStats.total} {t.myAccount.listings}</p>
+              </div>
+              <Link href="/orders" className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 transition-opacity">
+                <Icon name="ArrowTopRightOnSquareIcon" size={14} />
+                {t.myAccount.fullOrderHistory}
+              </Link>
+            </div>
+
+            {dataLoading ? (
+              <div className="flex flex-col gap-3">{[...Array(5)].map((_, i) => <div key={i} className="bg-card border border-border rounded-2xl p-5 animate-pulse h-24" />)}</div>
+            ) : orders.length === 0 ? (
+              rfqs.length > 0 ? (
+                <MyRfqList rfqs={rfqs} dataLoading={dataLoading} />
+              ) : (
+                <div className="text-center py-20 bg-card border border-border rounded-2xl">
+                  <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <Icon name="ShoppingBagIcon" size={28} className="text-muted-foreground" />
+                  </div>
+                  <h3 className="text-base font-bold text-foreground mb-2">{t.myAccount.noOrders}</h3>
+                  <p className="text-sm text-muted-foreground mb-4">{t.myAccount.noOrdersSub}</p>
+                  <Link href="/search" className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl">{t.myAccount.browseProducts}</Link>
+                </div>
+              )
+            ) : (
+              <div className="flex flex-col gap-3">
+                <MyRfqList rfqs={rfqs} dataLoading={dataLoading} />
+                {orders.map((order) => (
+                  <div key={order.id} className="bg-card border border-border rounded-2xl p-4 md:p-5 hover:shadow-sm transition-shadow">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                      <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                        <Icon name="ShoppingBagIcon" size={22} className="text-blue-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <p className="text-sm font-extrabold text-foreground">{t.myAccount.orderNumber}{order.order_number}</p>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${STATUS_COLORS[order.status] || 'text-muted-foreground bg-muted'}`}>{order.status}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground font-mono">
+                          {formatDateSafe(order.created_at)}
+                        </p>
+                      </div>
+                      <div className="flex sm:flex-col items-center sm:items-end gap-3 shrink-0">
+                        <p className="text-lg font-extrabold text-foreground">{formatPrice(order.total || 0, order.currency)}</p>
+                        <Link href={`/orders/${order.id}`} className="px-3 py-1.5 text-xs font-bold border border-border rounded-lg hover:bg-muted transition-colors text-foreground">{t.myAccount.orderDetails}</Link>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
-        {activeTab === 'messages' && (
-          <div className="bg-card border border-border rounded-2xl p-8 text-center max-w-2xl mx-auto space-y-4">
-            <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto">
-              <Icon name="ChatBubbleLeftRightIcon" size={32} />
-            </div>
-            <h2 className="text-xl font-bold text-foreground">
-              {isAr ? 'صندوق المحادثات والدردشة الموحد' : 'Unified Messaging Center'}
-            </h2>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              {isAr
-                ? 'يمكنك هنا التفاوض على عروض الأسعار والحدود الدنيا للطلب (MOQ)، وتتبع الشحن مع مكاتب التخليص، مع ميزة الترجمة التلقائية الفورية باللغات العربية والإنجليزية والصينية.'
-                : 'Negotiate MOQs, chat with verified factories, and coordinate with logistics partners with live translation.'}
-            </p>
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={() => router.push('/messaging')}
-                className="px-6 py-3 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 shadow-md transition-all inline-flex items-center gap-2"
-              >
-                <Icon name="ChatBubbleLeftRightIcon" size={17} />
-                <span>{isAr ? 'الانتقال إلى صندوق المحادثات' : 'Go to Unified Chat'}</span>
-              </button>
-            </div>
-          </div>
+        {activeTab === 'my-orders' && (
+          <MyOrdersTab orders={orders} rfqs={rfqs} dataLoading={dataLoading} orderStats={orderStats} />
         )}
 
         {activeTab === 'products' && (
