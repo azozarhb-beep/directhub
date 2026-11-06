@@ -157,8 +157,11 @@ function LiveMessagingContent() {
 
   // التسجيل الصوتي
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const recordIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -451,7 +454,7 @@ function LiveMessagingContent() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // الترجمة الفورية
+  // الترجمة الفورية أثناء الكتابة
   useEffect(() => {
     const text = inputText.trim();
     if (!text || text.length < 2) {
@@ -503,36 +506,99 @@ function LiveMessagingContent() {
     });
   };
 
-  const handleToggleRecord = async () => {
-    if (isRecording) {
-      mediaRecorderRef.current?.stop();
-      setIsRecording(false);
-      return;
-    }
+  // ── التسجيل الصوتي المتوافق مع الهواتف الذكية ──
+  const startRecording = async () => {
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('متصفحك لا يدعم الوصول للمايكروفون مباشرة، يرجى التأكد من تشغيل الموقع عبر HTTPS.');
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
       audioChunksRef.current = [];
-      const mr = new MediaRecorder(stream);
+
+      let options: MediaRecorderOptions = {};
+      if (typeof MediaRecorder !== 'undefined') {
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          options = { mimeType: 'audio/webm;codecs=opus' };
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          options = { mimeType: 'audio/webm' };
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          options = { mimeType: 'audio/mp4' };
+        }
+      }
+
+      const mr = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mr;
-      mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
-      mr.onstop = () => {
-        stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const file = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
-        handleSendVoice(file);
+
+      mr.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
       };
-      mr.start();
+
+      mr.onstop = () => {
+        if (audioStreamRef.current) {
+          audioStreamRef.current.getTracks().forEach(t => t.stop());
+          audioStreamRef.current = null;
+        }
+        if (recordIntervalRef.current) {
+          clearInterval(recordIntervalRef.current);
+          recordIntervalRef.current = null;
+        }
+      };
+
+      mr.start(250);
       setIsRecording(true);
-    } catch {
-      setPrivacyWarning('يرجى السماح بالوصول للمايكروفون.');
-      setTimeout(() => setPrivacyWarning(null), 4000);
+      setRecordingSeconds(0);
+
+      recordIntervalRef.current = setInterval(() => {
+        setRecordingSeconds(prev => prev + 1);
+      }, 1000);
+
+    } catch (err: any) {
+      console.error('Microphone error:', err);
+      alert('تعذر فتح المايكروفون. يرجى التأكد من إعطاء إذن الوصول للمايكروفون في إعدادات المتصفح.');
     }
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+    setRecordingSeconds(0);
+    audioChunksRef.current = [];
+  };
+
+  const stopAndSendRecording = () => {
+    if (!mediaRecorderRef.current || !isRecording) return;
+
+    mediaRecorderRef.current.onstop = () => {
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(t => t.stop());
+        audioStreamRef.current = null;
+      }
+      if (recordIntervalRef.current) {
+        clearInterval(recordIntervalRef.current);
+        recordIntervalRef.current = null;
+      }
+
+      const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+      const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
+      const blob = new Blob(audioChunksRef.current, { type: mimeType });
+      const file = new File([blob], `voice-${Date.now()}.${extension}`, { type: mimeType });
+      handleSendVoice(file);
+    };
+
+    mediaRecorderRef.current.stop();
+    setIsRecording(false);
   };
 
   const handleSendVoice = async (file: File) => {
     if (!activeConvId || !user) return;
     try {
-      const path = `chat-media/${user.id}/${Date.now()}.webm`;
+      const ext = file.name.split('.').pop() || 'webm';
+      const path = `chat-media/${user.id}/${Date.now()}.${ext}`;
       await supabase.storage.from('chat-media').upload(path, file);
       const audioUrl = `chat-media/${path}`;
       const payload = {
@@ -541,7 +607,7 @@ function LiveMessagingContent() {
         sender_role: 'user',
         message: '🎙️ رسالة صوتية',
         attachment_url: audioUrl,
-        attachment_type: 'audio/webm',
+        attachment_type: file.type || 'audio/webm',
         is_read: false,
       };
       if (activeConv?.source === 'logistics') {
@@ -674,7 +740,6 @@ function LiveMessagingContent() {
         maxHeight: viewportHeight ? `${viewportHeight}px` : '100dvh',
       }}
     >
-      {/* إخفاء الترويسة العامة في الموبايل عند فتح محادثة نشطة لتوفير المساحة بالكامل فوق الكيبورد */}
       <div className={activeConvId && !sidebarOpen ? 'hidden md:block' : ''}>
         <Header />
       </div>
@@ -918,7 +983,7 @@ function LiveMessagingContent() {
                 ))}
               </div>
 
-              {/* ── صندوق الإدخال (يرتفع تلقائياً فوق الكيبورد في الموبايل) ── */}
+              {/* ── صندوق الإدخال التفاعلي ── */}
               <div className="p-2.5 sm:p-3 border-t border-border bg-card shrink-0 space-y-2 pb-safe">
                 {liveTranslation && (
                   <div className="px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-700 dark:text-blue-300 flex items-center justify-between transition-all">
@@ -949,65 +1014,94 @@ function LiveMessagingContent() {
                   </div>
                 )}
 
-                <div className="w-full">
-                  <textarea
-                    ref={inputRef}
-                    value={inputText}
-                    onFocus={() => {
-                      setTimeout(() => {
-                        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-                      }, 250);
-                    }}
-                    onChange={e => setInputText(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
-                      }
-                    }}
-                    placeholder={
-                      activeConv.category === 'admin'
-                        ? 'اكتب رسالتك للإدارة العامة لدايركت هب...'
-                        : activeConv.category === 'agent'
-                        ? 'اكتب رسالتك وتنسيقك للمندوب الميداني المشرف...'
-                        : 'اكتب رسالتك وتفاصيل طلبك هنا... (تتم الترجمة فورياً)'
-                    }
-                    rows={2}
-                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 resize-none transition-all leading-relaxed"
-                    style={{ minHeight: '52px', maxHeight: '110px' }}
-                  />
-                </div>
+                {/* شريط التسجيل الصوتي المباشر والواضح (يظهر عند بدء التسجيل) */}
+                {isRecording ? (
+                  <div className="flex items-center justify-between bg-red-500/10 border border-red-500/30 rounded-2xl px-4 py-3 animate-pulse">
+                    <div className="flex items-center gap-2.5 text-red-600 dark:text-red-400 font-bold text-xs sm:text-sm">
+                      <span className="w-3 h-3 rounded-full bg-red-600 animate-ping shrink-0" />
+                      <span>جاري تسجيل الصوت ({Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')})...</span>
+                    </div>
 
-                <div className="flex items-center justify-between gap-2 pt-0.5">
-                  <div className="flex items-center gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-                    <input ref={fileInputRef} type="file" accept={ACCEPT_ATTR} onChange={handleAttachment} className="hidden" />
-                    <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleAttachment} className="hidden" />
-
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="h-8.5 px-2.5 rounded-xl border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-primary flex items-center gap-1.5 text-xs font-semibold transition-colors shrink-0"
-                      title="إرفاق صورة أو مستند"
-                    >
-                      <Icon name="PaperClipIcon" size={15} />
-                      <span className="hidden sm:inline">مرفق</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => cameraInputRef.current?.click()}
-                      className="h-8.5 px-2.5 rounded-xl border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-primary flex items-center gap-1.5 text-xs font-semibold transition-colors shrink-0"
-                      title="التقاط صورة بالكاميرا"
-                    >
-                      <Icon name="CameraIcon" size={15} />
-                      <span className="hidden sm:inline">كاميرا</span>
-                    </button>
-
-                    <div className="relative shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
-                        onClick={() => setShowLangPicker(!showLangPicker)}
-                        className="h-8.5 px-2.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center gap-1.5 hover:bg-blue-500/20 transition-colors"
+                        onClick={cancelRecording}
+                        className="px-3 py-1.5 rounded-xl border border-red-200 text-red-600 text-xs font-bold hover:bg-red-50 transition-colors"
+                      >
+                        إلغاء
+                      </button>
+                      <button
+                        type="button"
+                        onClick={stopAndSendRecording}
+                        className="px-3.5 py-1.5 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700 shadow-sm transition-colors"
+                      >
+                        إرسال الصوت 🎙️
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-full">
+                    <textarea
+                      ref={inputRef}
+                      value={inputText}
+                      onFocus={() => {
+                        setTimeout(() => {
+                          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                        }, 250);
+                      }}
+                      onChange={e => setInputText(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSend();
+                        }
+                      }}
+                      placeholder={
+                        activeConv.category === 'admin'
+                          ? 'اكتب رسالتك للإدارة العامة لدايركت هب...'
+                          : activeConv.category === 'agent'
+                          ? 'اكتب رسالتك وتنسيقك للمندوب الميداني المشرف...'
+                          : 'اكتب رسالتك وتفاصيل طلبك هنا... (تتم الترجمة فورياً)'
+                      }
+                      rows={2}
+                      className="w-full px-3 py-2 rounded-xl border border-border bg-background text-foreground text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 resize-none transition-all leading-relaxed"
+                      style={{ minHeight: '52px', maxHeight: '110px' }}
+                    />
+                  </div>
+                )}
+
+                {/* شريط الأدوات السفلي */}
+                {!isRecording && (
+                  <div className="flex items-center justify-between gap-2 pt-0.5">
+                    <div className="flex items-center gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+                      <input ref={fileInputRef} type="file" accept={ACCEPT_ATTR} onChange={handleAttachment} className="hidden" />
+                      <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleAttachment} className="hidden" />
+
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="h-8.5 px-2.5 rounded-xl border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-primary flex items-center gap-1.5 text-xs font-semibold transition-colors shrink-0"
+                        title="إرفاق صورة أو مستند"
+                      >
+                        <Icon name="PaperClipIcon" size={15} />
+                        <span className="hidden sm:inline">مرفق</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => cameraInputRef.current?.click()}
+                        className="h-8.5 px-2.5 rounded-xl border border-border bg-muted/40 hover:bg-muted text-muted-foreground hover:text-primary flex items-center gap-1.5 text-xs font-semibold transition-colors shrink-0"
+                        title="التقاط صورة بالكاميرا"
+                      >
+                        <Icon name="CameraIcon" size={15} />
+                        <span className="hidden sm:inline">كاميرا</span>
+                      </button>
+
+                      {/* زر تغيير اللغة الآمن الذي يفتح نافذة سفلية منبثقة */}
+                      <button
+                        type="button"
+                        onClick={() => setShowLangPicker(true)}
+                        className="h-8.5 px-2.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center gap-1.5 hover:bg-blue-500/20 transition-colors shrink-0"
                         title="تغيير لغة الترجمة الفورية"
                       >
                         <span className="text-sm">🌐</span>
@@ -1015,65 +1109,98 @@ function LiveMessagingContent() {
                         <Icon name="ChevronDownIcon" size={11} className="opacity-70" />
                       </button>
 
-                      {showLangPicker && (
-                        <div className="absolute bottom-full mb-2 right-0 bg-card border border-border rounded-2xl shadow-2xl py-1.5 z-50 min-w-[145px]">
-                          <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground uppercase border-b border-border">
-                            اختر لغة الترجمة
-                          </div>
-                          {LANG_OPTIONS.map(opt => (
-                            <button
-                              key={opt.value}
-                              type="button"
-                              onClick={() => {
-                                setLiveTranslationLang(opt.value);
-                                setShowLangPicker(false);
-                                setLiveTranslation('');
-                              }}
-                              className={`w-full text-start px-3 py-2 text-xs hover:bg-muted flex items-center justify-between transition-colors ${
-                                liveTranslationLang === opt.value ? 'bg-primary/10 text-primary font-bold' : 'text-foreground'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <span className="text-base">{opt.flag}</span>
-                                <span>{opt.nativeName}</span>
-                              </div>
-                              {liveTranslationLang === opt.value && <Icon name="CheckIcon" size={14} className="text-primary" />}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                      {/* زر تشغيل المايكروفون مع تسجيل فوري */}
+                      <button
+                        type="button"
+                        onClick={startRecording}
+                        className="h-8.5 px-2.5 rounded-xl border border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-primary text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0"
+                        title="تسجيل رسالة صوتية"
+                      >
+                        <Icon name="MicrophoneIcon" size={15} />
+                        <span className="hidden sm:inline">صوتي</span>
+                      </button>
                     </div>
 
                     <button
                       type="button"
-                      onClick={handleToggleRecord}
-                      className={`h-8.5 px-2.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0 ${
-                        isRecording
-                          ? 'bg-red-500 text-white border-red-600 animate-pulse'
-                          : 'border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground'
-                      }`}
-                      title={isRecording ? 'إيقاف التسجيل وإرسال' : 'تسجيل رسالة صوتية'}
+                      onClick={handleSend}
+                      disabled={(!inputText.trim() && !pendingAttachment) || sending}
+                      className="h-8.5 px-4.5 bg-primary text-primary-foreground rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm hover:opacity-90 active:scale-95 disabled:opacity-40 transition-all shrink-0"
                     >
-                      <Icon name="MicrophoneIcon" size={15} />
-                      <span className="hidden sm:inline">{isRecording ? 'تسجيل...' : 'صوتي'}</span>
+                      <span>{isAr ? 'إرسال' : 'Send'}</span>
+                      <Icon name="PaperAirplaneIcon" size={14} className={isRTL ? 'rotate-180' : ''} />
                     </button>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={handleSend}
-                    disabled={(!inputText.trim() && !pendingAttachment) || sending}
-                    className="h-8.5 px-4.5 bg-primary text-primary-foreground rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm hover:opacity-90 active:scale-95 disabled:opacity-40 transition-all shrink-0"
-                  >
-                    <span>{isAr ? 'إرسال' : 'Send'}</span>
-                    <Icon name="PaperAirplaneIcon" size={14} className={isRTL ? 'rotate-180' : ''} />
-                  </button>
-                </div>
+                )}
               </div>
             </>
           )}
         </div>
       </div>
+
+      {/* ── نافذة اختيار لغة الترجمة (Bottom Sheet مستقلة وآمنة تماماً من القص) ── */}
+      {showLangPicker && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in"
+          onClick={() => setShowLangPicker(false)}
+        >
+          <div
+            className="bg-card border border-border rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-5 shadow-2xl space-y-4 animate-slide-up"
+            onClick={e => e.stopPropagation()}
+            dir={dir}
+          >
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🌐</span>
+                <h3 className="text-sm font-black text-foreground">اختر لغة الترجمة الفورية</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLangPicker(false)}
+                className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              سيتم ترجمة رسائلك المكتوبة تلقائياً وإرفاق النص المترجم للطرف الآخر أثناء الإرسال.
+            </p>
+
+            <div className="grid grid-cols-1 gap-2 pt-1">
+              {LANG_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    setLiveTranslationLang(opt.value);
+                    setShowLangPicker(false);
+                    setLiveTranslation('');
+                  }}
+                  className={`w-full px-4 py-3 rounded-2xl border text-xs font-bold flex items-center justify-between transition-all ${
+                    liveTranslationLang === opt.value
+                      ? 'bg-primary/10 border-primary text-primary shadow-xs'
+                      : 'border-border bg-muted/40 hover:bg-muted text-foreground'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">{opt.flag}</span>
+                    <div className="text-start">
+                      <p className="text-xs font-bold text-foreground">{opt.nativeName}</p>
+                      <p className="text-[10px] text-muted-foreground">{opt.label}</p>
+                    </div>
+                  </div>
+                  {liveTranslationLang === opt.value && (
+                    <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-black">
+                      ✓
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {(!activeConvId || sidebarOpen) && <BottomNav />}
     </div>
