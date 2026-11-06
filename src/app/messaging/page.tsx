@@ -142,6 +142,13 @@ function LiveMessagingContent() {
   const [pendingAttachment, setPendingAttachment] = useState<{ file: File; previewUrl?: string; type: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
+  // صور البروفايل للمرسل والمستقبل
+  const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
+  const [partnerAvatarUrl, setPartnerAvatarUrl] = useState<string | null>(null);
+
+  // حالة عارض الصور بملء الشاشة
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; title?: string } | null>(null);
+
   // قياس ارتفاع الشاشة لمنع اختفاء الإدخال خلف لوحة المفاتيح
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
 
@@ -176,6 +183,45 @@ function LiveMessagingContent() {
       ? activeConv.manufacturer_id || activeConv.partner_id
       : activeConv.buyer_id
     : null;
+
+  // جلب صور البروفايل الخاصة بالمرسل والمستقبل
+  useEffect(() => {
+    if (!user) return;
+    const fetchAvatars = async () => {
+      // 1. صورة حساب المستخدم الحالي (المرسل)
+      try {
+        const { data: myData } = await supabase
+          .from('user_profiles')
+          .select('avatar_url')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (myData?.avatar_url) setMyAvatarUrl(myData.avatar_url);
+      } catch {
+        // ignore
+      }
+
+      // 2. صورة حساب الشريك المقابل (المستقبل)
+      if (partnerId) {
+        try {
+          const { data: partnerData } = await supabase
+            .from('user_profiles')
+            .select('avatar_url')
+            .eq('id', partnerId)
+            .maybeSingle();
+          if (partnerData?.avatar_url) {
+            setPartnerAvatarUrl(partnerData.avatar_url);
+          } else if (activeConv?.supplier_avatar) {
+            setPartnerAvatarUrl(activeConv.supplier_avatar);
+          } else {
+            setPartnerAvatarUrl(null);
+          }
+        } catch {
+          setPartnerAvatarUrl(null);
+        }
+      }
+    };
+    fetchAvatars();
+  }, [user, partnerId, activeConv, supabase]);
 
   // الاستماع التفاعلي لارتفاع الشاشة عند فتح الكيبورد
   useEffect(() => {
@@ -903,41 +949,48 @@ function LiveMessagingContent() {
                     <Icon name="ArrowRightIcon" size={17} className={isRTL ? '' : 'rotate-180'} />
                   </button>
 
-                  {/* النقر على هوية الشريك يفتح صفحته الكاملة الكبيرة مباشرة */}
+                  {/* صورة المستقبل في الترويسة: قابلة للنقر والتكبير بالحجم الكامل */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (partnerAvatarUrl) {
+                        setLightboxImage({ url: partnerAvatarUrl, title: activeConv.supplier_name || 'صورة المنشأة' });
+                      }
+                    }}
+                    className={`w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold shrink-0 relative overflow-hidden transition-all ${partnerAvatarUrl ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-primary shadow-xs' : 'cursor-default'}`}
+                    title={partnerAvatarUrl ? 'اضغط لتكبير الصورة' : ''}
+                  >
+                    {partnerAvatarUrl ? (
+                      <img src={partnerAvatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{activeConv.supplier_flag || '🏢'}</span>
+                    )}
+                  </button>
+
+                  {/* اسم الشريك وبياناته (يفتح صفحة المنشأة الكاملة بنمط علي بابا) */}
                   {partnerId ? (
                     <Link
                       href={`/store/${partnerId}`}
                       target="_blank"
-                      className="flex items-center gap-2.5 min-w-0 flex-1 group hover:opacity-95 transition-opacity"
-                      title="فتح صفحة المنشأة الكاملة (Alibaba Store Style)"
+                      className="flex-1 min-w-0 text-start group"
+                      title="فتح صفحة المنشأة الكاملة"
                     >
-                      <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold shrink-0 relative group-hover:scale-105 transition-transform">
-                        {activeConv.supplier_flag || '🏢'}
-                      </div>
-
-                      <div className="flex-1 min-w-0 text-start">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <p className="text-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">
-                            {activeConv.supplier_name}
-                          </p>
-                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${THREAD_LABELS[activeConv.thread_type || 'negotiation']?.color}`}>
-                            {isAr ? THREAD_LABELS[activeConv.thread_type || 'negotiation']?.labelAr : THREAD_LABELS[activeConv.thread_type || 'negotiation']?.labelEn}
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {activeConv.product_name}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">
+                          {activeConv.supplier_name}
                         </p>
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${THREAD_LABELS[activeConv.thread_type || 'negotiation']?.color}`}>
+                          {isAr ? THREAD_LABELS[activeConv.thread_type || 'negotiation']?.labelAr : THREAD_LABELS[activeConv.thread_type || 'negotiation']?.labelEn}
+                        </span>
                       </div>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {activeConv.product_name}
+                      </p>
                     </Link>
                   ) : (
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold shrink-0">
-                        {activeConv.supplier_flag || '🏢'}
-                      </div>
-                      <div className="flex-1 min-w-0 text-start">
-                        <p className="text-sm font-bold text-foreground truncate">{activeConv.supplier_name}</p>
-                        <p className="text-xs text-muted-foreground truncate">{activeConv.product_name}</p>
-                      </div>
+                    <div className="flex-1 min-w-0 text-start">
+                      <p className="text-sm font-bold text-foreground truncate">{activeConv.supplier_name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{activeConv.product_name}</p>
                     </div>
                   )}
                 </div>
@@ -957,19 +1010,50 @@ function LiveMessagingContent() {
                 )}
               </div>
 
-              {/* فقاعات الرسائل */}
+              {/* ── فقاعات الرسائل مع صور المرسل والمستقبل القابلة للتكبير ── */}
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-muted/10">
                 {messages.map(msg => {
                   const isOwn = msg.sender_id === user?.id;
                   const parsed = parseBilingualMessage(msg.message);
 
+                  // تحديد صورة واسم صاحب الرسالة
+                  const avatarUrl = isOwn ? myAvatarUrl : partnerAvatarUrl;
+                  const defaultLabel = isOwn ? (user?.email?.charAt(0) || 'أنا') : (activeConv.supplier_flag || '🏢');
+                  const senderTitle = isOwn ? 'صورتي الشخصية' : (activeConv.supplier_name || 'صورة الطرف الآخر');
+
                   return (
-                    <div key={msg.id} className={`flex ${isOwn ? 'justify-start' : 'justify-end'} gap-2`}>
-                      <div className={`max-w-[80%] rounded-2xl p-3 shadow-xs ${
+                    <div key={msg.id} className={`flex items-end ${isOwn ? 'justify-start flex-row-reverse' : 'justify-start'} gap-2`}>
+                      {/* صورة البروفايل بجانب كل رسالة (قابلة للضغط والتكبير) */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (avatarUrl) {
+                            setLightboxImage({ url: avatarUrl, title: senderTitle });
+                          }
+                        }}
+                        className={`w-7 h-7 rounded-full bg-muted border border-border flex items-center justify-center text-xs font-bold shrink-0 overflow-hidden shadow-2xs ${avatarUrl ? 'cursor-pointer hover:opacity-85 hover:scale-105 transition-transform' : 'cursor-default'}`}
+                        title={avatarUrl ? 'اضغط لتكبير الصورة' : ''}
+                      >
+                        {avatarUrl ? (
+                          <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">{defaultLabel}</span>
+                        )}
+                      </button>
+
+                      {/* محتوى الرسالة */}
+                      <div className={`max-w-[78%] rounded-2xl p-3 shadow-xs ${
                         isOwn ? 'bg-primary text-primary-foreground rounded-tr-xs' : 'bg-card border border-border text-foreground rounded-tl-xs'
                       }`}>
                         {msg.attachment_url && (
-                          <div className="mb-2">
+                          <div
+                            className="mb-2 cursor-pointer"
+                            onClick={() => {
+                              if (msg.attachment_type?.startsWith('image/')) {
+                                setLightboxImage({ url: msg.attachment_url!, title: msg.attachment_name || 'صورة مرفقة' });
+                              }
+                            }}
+                          >
                             <ChatAttachmentView url={msg.attachment_url} name={msg.attachment_name || 'ملف مرفق'} type={msg.attachment_type} />
                           </div>
                         )}
@@ -1164,6 +1248,47 @@ function LiveMessagingContent() {
           )}
         </div>
       </div>
+
+      {/* ── عارض الصور المكبرة بالحجم الكامل (Fullscreen Image Lightbox Modal) ── */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-[300] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-fade-in"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="absolute top-4 left-4 right-4 flex items-center justify-between text-white z-10" onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-bold truncate max-w-[70%]">{lightboxImage.title || 'عرض الصورة'}</p>
+            <div className="flex items-center gap-3">
+              <a
+                href={lightboxImage.url}
+                target="_blank"
+                rel="noreferrer"
+                download
+                className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors text-xs font-bold flex items-center gap-1"
+                title="فتح الرابط الأصلي / تنزيل"
+              >
+                <span>تحميل</span>
+                <span>↗</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setLightboxImage(null)}
+                className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-lg font-bold transition-colors"
+                title="إغلاق"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <div className="max-w-4xl max-h-[85vh] w-full flex items-center justify-center p-2" onClick={e => e.stopPropagation()}>
+            <img
+              src={lightboxImage.url}
+              alt={lightboxImage.title || 'Preview'}
+              className="max-w-full max-h-[82vh] object-contain rounded-2xl shadow-2xl animate-scale-up"
+            />
+          </div>
+        </div>
+      )}
 
       {/* ── نافذة اختيار لغة الترجمة ── */}
       {showLangPicker && (
