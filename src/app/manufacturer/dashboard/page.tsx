@@ -62,9 +62,6 @@ import { EMPTY_BANK_ACCOUNT, EMPTY_FORM, EMPTY_PAYMENT_SETTINGS } from './dashbo
 import ProductFormModal from '@/app/manufacturer/dashboard/ProductFormModal';
 import DeleteProductModal from '@/app/manufacturer/dashboard/DeleteProductModal';
 
-/**
- * Route default export for Manufacturer Dashboard & Operation Room
- */
 export default function ManufacturerDashboard({ moduleTab, moduleView }: ManufacturerDashboardProps) {
   const router = useRouter();
   const { user, signOut, loading: authLoading } = useAuth();
@@ -73,7 +70,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   const md = t.manufacturerDashboard;
   const isModuleMode = !!moduleTab;
 
-  // ── Admin Impersonation State ─────────────────────────────────────────────
+  // ── Admin Impersonation State ──
   const [impersonatedFactoryId, setImpersonatedFactoryId] = useState<string | null>(null);
   const [impersonatedFactoryName, setImpersonatedFactoryName] = useState<string | null>(null);
 
@@ -111,7 +108,8 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     router.push('/admin/control-room');
   };
 
-  const [activeTab, setActiveTab] = useState<DashboardTab>(moduleTab ?? 'products');
+  // الحالة الافتراضية تكون 'hub' في الشاشة الرئيسية لمنع نزول المنتجات تحت البطاقات
+  const [activeTab, setActiveTab] = useState<DashboardTab | 'hub'>(moduleTab ?? (isModuleMode ? 'products' : 'hub'));
   const [showDealLinkModal, setShowDealLinkModal] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [fetchLoading, setFetchLoading] = useState(true);
@@ -206,7 +204,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
   const [inventoryFormLoading, setInventoryFormLoading] = useState(false);
   const [inventoryFormError, setInventoryFormError] = useState('');
 
-  // Sales Rep / Enterprise Multi-User state
+  // Sales Rep state
   const [isSalesRep, setIsSalesRep] = useState(false);
   const [salesRepRecord, setSalesRepRecord] = useState<SalesRep | null>(null);
   const [salesRepLoading, setSalesRepLoading] = useState(true);
@@ -404,7 +402,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     try {
       const { data, error } = await supabase
         .from('manufacturer_products')
-        .select('id, name, name_ar, description, description_ar, category, sku, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, is_active, created_at, created_by_role, created_by_id, created_by_name, approval_status, image_url, primary_image_url, images')
+        .select('*')
         .eq('manufacturer_id', user.id)
         .order('created_at', { ascending: false })
         .limit(500);
@@ -428,51 +426,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         .maybeSingle();
       if (error) throw error;
       if (data) {
-        setPaymentSettings({
-          id: data.id,
-          bank_name: data.bank_name || '',
-          bank_account_holder: data.bank_account_holder || '',
-          iban: data.iban || '',
-          swift_code: data.swift_code || '',
-          account_number: data.account_number || '',
-          bank_country: data.bank_country || 'Yemen',
-          bank_city: data.bank_city || '',
-          bank_branch: data.bank_branch || '',
-          bank_currency: data.bank_currency || 'YER',
-          usdt_trc20_address: data.usdt_trc20_address || '',
-          usdt_erc20_address: data.usdt_erc20_address || '',
-          bitcoin_address: data.bitcoin_address || '',
-          ethereum_address: data.ethereum_address || '',
-          other_wallet_label: data.other_wallet_label || '',
-          other_wallet_address: data.other_wallet_address || '',
-          is_verified: data.is_verified || false,
-          verified_at: data.verified_at || null,
-          admin_note: data.admin_note || '',
-          jawali_phone: data.jawali_phone || '',
-          jawali_account_name: data.jawali_account_name || '',
-          jawali_pos_number: data.jawali_pos_number || '',
-          jawali_pos_name: data.jawali_pos_name || '',
-          jeeb_phone: data.jeeb_phone || '',
-          jeeb_account_name: data.jeeb_account_name || '',
-          jeeb_pos_number: data.jeeb_pos_number || '',
-          jeeb_pos_name: data.jeeb_pos_name || '',
-          cash_phone: data.cash_phone || '',
-          cash_account_name: data.cash_account_name || '',
-          cash_pos_number: data.cash_pos_number || '',
-          cash_pos_name: data.cash_pos_name || '',
-          floosk_phone: data.floosk_phone || '',
-          floosk_account_name: data.floosk_account_name || '',
-          floosk_pos_number: data.floosk_pos_number || '',
-          floosk_pos_name: data.floosk_pos_name || '',
-          mobile_money_phone: data.mobile_money_phone || '',
-          mobile_money_account_name: data.mobile_money_account_name || '',
-          mobile_money_pos_number: data.mobile_money_pos_number || '',
-          mobile_money_pos_name: data.mobile_money_pos_name || '',
-          kuraimi_phone: data.kuraimi_phone || '',
-          kuraimi_account_name: data.kuraimi_account_name || '',
-          kuraimi_pos_number: data.kuraimi_pos_number || '',
-          kuraimi_pos_name: data.kuraimi_pos_name || '',
-        });
+        setPaymentSettings(data);
       }
     } catch (err) {
       console.error('Failed to fetch payment settings:', err);
@@ -688,49 +642,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     }
     setPaymentSaving(true);
     try {
-      const payload = {
-        manufacturer_id: user!.id,
-        bank_name: paymentSettings.bank_name.trim(),
-        bank_account_holder: paymentSettings.bank_account_holder.trim(),
-        iban: paymentSettings.iban.trim().toUpperCase(),
-        swift_code: paymentSettings.swift_code.trim().toUpperCase(),
-        account_number: paymentSettings.account_number.trim(),
-        bank_country: paymentSettings.bank_country,
-        bank_city: paymentSettings.bank_city.trim(),
-        bank_branch: paymentSettings.bank_branch.trim(),
-        bank_currency: paymentSettings.bank_currency || 'YER',
-        usdt_trc20_address: paymentSettings.usdt_trc20_address.trim(),
-        usdt_erc20_address: paymentSettings.usdt_erc20_address.trim(),
-        bitcoin_address: paymentSettings.bitcoin_address.trim(),
-        ethereum_address: paymentSettings.ethereum_address.trim(),
-        other_wallet_label: paymentSettings.other_wallet_label.trim(),
-        other_wallet_address: paymentSettings.other_wallet_address.trim(),
-        jawali_phone: paymentSettings.jawali_phone.trim(),
-        jawali_account_name: paymentSettings.jawali_account_name.trim(),
-        jawali_pos_number: paymentSettings.jawali_pos_number.trim(),
-        jawali_pos_name: paymentSettings.jawali_pos_name.trim(),
-        jeeb_phone: paymentSettings.jeeb_phone.trim(),
-        jeeb_account_name: paymentSettings.jeeb_account_name.trim(),
-        jeeb_pos_number: paymentSettings.jeeb_pos_number.trim(),
-        jeeb_pos_name: paymentSettings.jeeb_pos_name.trim(),
-        cash_phone: paymentSettings.cash_phone.trim(),
-        cash_account_name: paymentSettings.cash_account_name.trim(),
-        cash_pos_number: paymentSettings.cash_pos_number.trim(),
-        cash_pos_name: paymentSettings.cash_pos_name.trim(),
-        floosk_phone: paymentSettings.floosk_phone.trim(),
-        floosk_account_name: paymentSettings.floosk_account_name.trim(),
-        floosk_pos_number: paymentSettings.floosk_pos_number.trim(),
-        floosk_pos_name: paymentSettings.floosk_pos_name.trim(),
-        mobile_money_phone: paymentSettings.mobile_money_phone.trim(),
-        mobile_money_account_name: paymentSettings.mobile_money_account_name.trim(),
-        mobile_money_pos_number: paymentSettings.mobile_money_pos_number.trim(),
-        mobile_money_pos_name: paymentSettings.mobile_money_pos_name.trim(),
-        kuraimi_phone: paymentSettings.kuraimi_phone.trim(),
-        kuraimi_account_name: paymentSettings.kuraimi_account_name.trim(),
-        kuraimi_pos_number: paymentSettings.kuraimi_pos_number.trim(),
-        kuraimi_pos_name: paymentSettings.kuraimi_pos_name.trim(),
-      };
-
+      const payload = { ...paymentSettings, manufacturer_id: user!.id };
       if (paymentSettings.id) {
         const { error } = await supabase
           .from('manufacturer_payment_settings')
@@ -851,12 +763,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     setFormError('');
     if (!user || isSalesRep) { setFormError('غير مصرح لك بإدارة المنتجات.'); return; }
     if (!formData.name.trim()) { setFormError('اسم المنتج مطلوب.'); return; }
-    const priceNum = parseFloat(formData.unit_price);
-    const moqNum = parseInt(formData.minimum_order_qty);
-    const stockNum = parseFloat(formData.stock_quantity);
-    if (formData.unit_price.trim() && (!Number.isFinite(priceNum) || priceNum < 0)) { setFormError('سعر الوحدة يجب أن يكون رقماً صحيحاً.'); return; }
-    if (formData.minimum_order_qty.trim() && (!Number.isFinite(moqNum) || moqNum < 1)) { setFormError('الحد الأدنى للطلب يجب أن يكون 1 على الأقل.'); return; }
-    if (formData.stock_quantity.trim() && (!Number.isFinite(stockNum) || stockNum < 0)) { setFormError('كمية المخزون يجب ألا تكون سالبة.'); return; }
     setFormLoading(true);
     try {
       const payload = {
@@ -1014,7 +920,6 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
     outOfStock: products.filter((p) => p.inventory_status === 'out_of_stock').length,
   };
 
-  // Module mode: load requested module data
   useEffect(() => {
     if (!moduleTab || !user || salesRepLoading) return;
     switch (moduleTab) {
@@ -1065,7 +970,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
       router.replace('/manufacturer');
       return;
     }
-    if (SALES_REP_RESTRICTED_TABS.includes(activeTab)) {
+    if (SALES_REP_RESTRICTED_TABS.includes(activeTab as string)) {
       setActiveTab('products');
     }
   }, [salesRepLoading, isSalesRep, moduleTab, activeTab]);
@@ -1086,8 +991,8 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         isModuleMode={isModuleMode}
         isRTL={isRTL}
         moduleTab={moduleTab}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        activeTab={activeTab as DashboardTab}
+        setActiveTab={setActiveTab as any}
         isSalesRep={isSalesRep}
         salesRepRecord={salesRepRecord}
         isSupplierSettings={isSupplierSettings}
@@ -1106,9 +1011,23 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
         md={md}
       />
 
-      {/* ── Main Container: all panels reside cleanly inside ── */}
       <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 pb-24 space-y-6">
-        {!isModuleMode && (
+        {/* زر العودة للغرفة الرئيسية عند فتح أي بطاقة */}
+        {!isModuleMode && activeTab !== 'hub' && (
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <button
+              type="button"
+              onClick={() => setActiveTab('hub')}
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900 border border-slate-700 hover:bg-slate-800 text-cyan-300 text-xs font-bold transition-all shadow-sm active:scale-95"
+            >
+              <span>← العودة لغرفة التحكم الرئيسية</span>
+            </button>
+            <span className="text-xs text-slate-400 font-medium">لوحة تحكم المصنع المحلي</span>
+          </div>
+        )}
+
+        {/* عرض غرفة التحكم بالبطاقات فقط دون أي أقسام ملحقة تحتها */}
+        {!isModuleMode && activeTab === 'hub' && (
           <DashboardHub
             userId={user?.id ?? null}
             companyName={companyName}
@@ -1119,7 +1038,13 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
             escrowOrders={escrowOrders}
             factoryDisputes={factoryDisputes}
             onOpenDealLink={() => setShowDealLinkModal(true)}
-            onSelectTab={setActiveTab}
+            onSelectTab={(tab) => {
+              if (tab === 'products') {
+                router.push('/manufacturer/products');
+              } else {
+                setActiveTab(tab);
+              }
+            }}
             onLoadFinance={fetchFinanceRecords}
             onLoadEscrow={fetchEscrowOrders}
             onLoadAdminConversation={fetchAdminConversation}
@@ -1197,7 +1122,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
           <FactorySettingsPanel userId={user?.id ?? null} onRoleResolved={setIsSupplierSettings} />
         )}
 
-        {/* ── PRODUCTS TAB ── */}
+        {/* ── بطاقة المنتجات للبيع المخصصة: تظهر فقط عند فتحها ── */}
         {activeTab === 'products' && (
           <ProductsPanel
             products={products}
@@ -1436,14 +1361,14 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
           </div>
         )}
 
-        {/* ── INVOICING MODULE (Unlocked & Integrated) ── */}
+        {/* ── INVOICING MODULE ── */}
         {(activeTab === 'invoicing' || moduleTab === 'invoicing') && !isSalesRep && user && (
           <div id="manufacturer-invoicing-anchor" className="bg-card border border-border rounded-2xl p-4 md:p-6 shadow-sm">
             <ManufacturerAdvancedModules userId={user.id} mode="finance" />
           </div>
         )}
 
-        {/* ── PRODUCTION CAPACITY & QC MODULE (Unlocked & Integrated) ── */}
+        {/* ── PRODUCTION CAPACITY & QC MODULE ── */}
         {(activeTab === 'production' || moduleTab === 'production') && !isSalesRep && user && (
           <div className="bg-card border border-border rounded-2xl p-4 md:p-6 shadow-sm">
             <ManufacturerAdvancedModules userId={user.id} mode="production" />
@@ -1472,7 +1397,7 @@ export default function ManufacturerDashboard({ moduleTab, moduleView }: Manufac
           />
         )}
 
-        {/* ── TIERED PRICING MANAGER (International only) ── */}
+        {/* ── TIERED PRICING MANAGER ── */}
         {!isSalesRep && user && !isModuleMode && factoryRegistration?.factory_type === 'international' && (
           <div className="bg-card border border-border rounded-2xl p-4 md:p-6 shadow-sm mt-4">
             <div className="mb-3 flex items-center gap-2">
