@@ -56,7 +56,7 @@ export default function SupplierTopBar() {
     };
   }, [user?.id]);
 
-  // Unread buyer messages on the supplier's chats (chat widget badge)
+  // Unread messages on the unified chat
   useEffect(() => {
     if (!user?.id) {
       setChatUnread(0);
@@ -67,7 +67,7 @@ export default function SupplierTopBar() {
       const { data: convs } = await supabase
         .from('chat_conversations')
         .select('id')
-        .eq('manufacturer_id', user.id);
+        .or(`manufacturer_id.eq.${user.id},buyer_id.eq.${user.id}`);
       const ids = ((convs || []) as { id: string }[]).map((c) => c.id);
       if (ids.length === 0) {
         setChatUnread(0);
@@ -87,7 +87,7 @@ export default function SupplierTopBar() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages' }, () => fetchChatUnread())
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'chat_conversations', filter: `manufacturer_id=eq.${user.id}` },
+        { event: '*', schema: 'public', table: 'chat_conversations' },
         () => fetchChatUnread()
       )
       .subscribe();
@@ -179,7 +179,8 @@ export default function SupplierTopBar() {
             )}
           </Link>
 
-          <Link href="/supplier/messages" prefetch={true} className={ICON_BTN} aria-label="الرسائل" title="الرسائل">
+          {/* التوجيه المباشر إلى الشات الموحد المركزي */}
+          <Link href="/messaging" prefetch={true} className={ICON_BTN} aria-label="الرسائل" title="الرسائل">
             <Icon name="ChatBubbleLeftRightIcon" size={20} />
             {mounted && chatUnread > 0 && (
               <span className="absolute top-1 right-1 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-1">
