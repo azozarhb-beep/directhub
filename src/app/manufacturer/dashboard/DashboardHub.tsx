@@ -53,7 +53,7 @@ export default function DashboardHub({
   t,
   md,
 }: DashboardHubProps) {
-  // تم حذف بطاقة مراسلة الإدارة نهائياً من القائمة
+  // تم استبعاد بطاقة مراسلة الإدارة نهائياً
   const hubCards: HubCard[] = [
     { key: 'products', label: t.manufacturerDashboard.productsAndInventory, icon: '🛍️', accent: 'from-teal-600/30 to-teal-900/20 border-teal-500/30', hint: 'منتجات المصنع المعروضة للبيع', show: true },
     { key: 'inventory', label: md.tabInventory, icon: '📦', accent: 'from-cyan-600/30 to-cyan-900/20 border-cyan-500/30', hint: 'المواد الخام ومخزون الإنتاج', show: true },
@@ -83,7 +83,6 @@ export default function DashboardHub({
     if (key === 'products') onSelectTab('products');
     else if (key === 'finance') { onSelectTab('finance'); onLoadFinance(); }
     else if (key === 'escrow_orders') { onSelectTab('escrow_orders'); onLoadEscrow(); }
-    else if (key === 'admin_messaging') { onSelectTab('admin_messaging'); onLoadAdminConversation(); }
     else if (key === 'archive') { onSelectTab('archive'); onLoadArchive(); }
     else if (key === 'all_sales') onSelectTab('all_sales');
     else if (key === 'contracts') onSelectTab('contracts');
@@ -91,12 +90,12 @@ export default function DashboardHub({
 
   return (
     <>
-      {/* رأس الصفحة مع الهوية والأزرار السريعة */}
-      <div className="rounded-3xl bg-gradient-to-l from-cyan-900/40 via-slate-900 to-slate-900 border border-cyan-500/20 p-4 sm:p-6 mb-6 sm:mb-8 flex flex-wrap items-start justify-between gap-4">
+      {/* رأس لوحة التحكم */}
+      <div className="rounded-3xl bg-gradient-to-l from-cyan-900/40 via-slate-900 to-slate-900 border border-cyan-500/20 p-5 sm:p-6 mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs text-cyan-300 font-bold mb-1">Local Factory Room</p>
           <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">{t.manufacturerDashboard.title}</h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1 font-medium">
+          <p className="text-sm text-slate-400 mt-1 font-medium">
             {companyName ? `${companyName} — ` : ''}{isSalesRep ? md.salesRepLimited : t.manufacturerDashboard.subtitle}
           </p>
         </div>
@@ -211,7 +210,7 @@ export default function DashboardHub({
         </div>
       )}
 
-      {/* شبكة البطاقات المدمجة: عمودين في الهواتف وثلاثة في الشاشات الكبيرة */}
+      {/* عرض البطاقات بالنظام الأصلي الكامل (صف كامل لكل بطاقة على الهاتف) */}
       <div>
         {hubSections.map((section) => {
           const cards = section.keys
@@ -219,29 +218,27 @@ export default function DashboardHub({
             .filter((c): c is HubCard => !!c && c.show);
           if (cards.length === 0) return null;
           return (
-            <section key={section.title} className="mb-6 sm:mb-8">
-              <div className="flex items-baseline gap-2 mb-2.5 sm:mb-3">
-                <h2 className="text-sm sm:text-base font-black text-white">{section.title}</h2>
-                <span className="text-[10px] sm:text-[11px] text-slate-500">{section.subtitle}</span>
+            <section key={section.title} className="mb-8">
+              <div className="flex items-baseline gap-2 mb-3">
+                <h2 className="text-base font-black text-white">{section.title}</h2>
+                <span className="text-[11px] text-slate-500">{section.subtitle}</span>
               </div>
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {cards.map((tab) => {
                   const routed = MODULE_ROUTES[tab.key as DashboardTab];
-                  const cardClass = `group relative text-start rounded-2xl border bg-gradient-to-br ${tab.accent} p-3 sm:p-4 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/40 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 min-h-[110px] sm:min-h-[130px] flex flex-col justify-between`;
+                  const cardClass = `group relative text-start rounded-2xl border bg-gradient-to-br ${tab.accent} p-4 sm:p-5 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400`;
                   const cardInner = (
                     <>
-                      <div className="flex items-start justify-between gap-1.5">
-                        <span className="text-xl sm:text-2xl" aria-hidden="true">{tab.icon}</span>
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-2xl sm:text-3xl" aria-hidden="true">{tab.icon}</span>
                         {tab.badge !== undefined && tab.badge !== 0 && (
-                          <span className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full text-white ${tab.key === 'disputes' ? 'bg-red-500 animate-pulse' : 'bg-white/10'}`}>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full text-white ${tab.key === 'disputes' ? 'bg-red-500 animate-pulse' : 'bg-white/10'}`}>
                             {tab.badge}
                           </span>
                         )}
                       </div>
-                      <div className="mt-2">
-                        <h3 className="text-xs sm:text-sm font-black text-white line-clamp-1">{tab.label}</h3>
-                        <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 leading-snug line-clamp-2">{tab.hint}</p>
-                      </div>
+                      <h3 className="text-sm sm:text-base font-black text-white mt-3">{tab.label}</h3>
+                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">{tab.hint}</p>
                     </>
                   );
                   if (routed) {
