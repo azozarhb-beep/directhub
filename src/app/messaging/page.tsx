@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback, Suspense } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
@@ -126,7 +126,7 @@ function LiveMessagingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const { language, dir, isRTL } = useLanguage();
   const isAr = language === 'ar';
 
@@ -146,7 +146,7 @@ function LiveMessagingContent() {
   const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
   const [partnerAvatarUrl, setPartnerAvatarUrl] = useState<string | null>(null);
 
-  // حالة عارض الصور بملء الشاشة
+  // عارض الصور بملء الشاشة
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title?: string } | null>(null);
 
   // قياس ارتفاع الشاشة لمنع اختفاء الإدخال خلف لوحة المفاتيح
@@ -184,11 +184,10 @@ function LiveMessagingContent() {
       : activeConv.buyer_id
     : null;
 
-  // جلب صور البروفايل الخاصة بالمرسل والمستقبل
+  // جلب صور البروفايل للطرفين
   useEffect(() => {
     if (!user) return;
     const fetchAvatars = async () => {
-      // 1. صورة حساب المستخدم الحالي (المرسل)
       try {
         const { data: myData } = await supabase
           .from('user_profiles')
@@ -200,7 +199,6 @@ function LiveMessagingContent() {
         // ignore
       }
 
-      // 2. صورة حساب الشريك المقابل (المستقبل)
       if (partnerId) {
         try {
           const { data: partnerData } = await supabase
@@ -223,7 +221,7 @@ function LiveMessagingContent() {
     fetchAvatars();
   }, [user, partnerId, activeConv, supabase]);
 
-  // الاستماع التفاعلي لارتفاع الشاشة عند فتح الكيبورد
+  // الاستماع التفاعلي لارتفاع الشاشة
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const updateViewport = () => {
@@ -309,7 +307,7 @@ function LiveMessagingContent() {
     }
   }, [user, creatingAdminChat, conversations, supabase]);
 
-  // جلب المحادثات
+  // جلب المحادثات بدون حلقة تكرار (Stable Fetch)
   const fetchConversations = useCallback(async () => {
     if (!user) return;
     setLoadingConvs(true);
@@ -393,38 +391,28 @@ function LiveMessagingContent() {
         thread_type: 'logistics',
       }));
 
-      let merged = [...mappedChatConvs, ...shippingConvs].sort(
+      const merged = [...mappedChatConvs, ...shippingConvs].sort(
         (a, b) => new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
       );
 
       setConversations(merged);
 
-      if (channelParam === 'admin_direct') {
-        const adm = merged.find(c => c.category === 'admin');
-        if (adm) {
-          setActiveConvId(adm.id);
-          if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
-        } else {
-          startAdminConversation();
-        }
-      } else {
-        const explicitId = searchParams?.get('conversationId') || searchParams?.get('id') || searchParams?.get('conv');
-        if (explicitId && merged.some(c => c.id === explicitId)) {
-          setActiveConvId(explicitId);
-          if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
-        } else if (merged.length > 0 && !activeConvId) {
-          setActiveConvId(merged[0].id);
-        }
+      const explicitId = searchParams?.get('conversationId') || searchParams?.get('id') || searchParams?.get('conv');
+      if (explicitId && merged.some(c => c.id === explicitId)) {
+        setActiveConvId(explicitId);
+        if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
       }
     } catch (err) {
       console.error(err);
     } finally {
       setLoadingConvs(false);
     }
-  }, [user, supabase, searchParams, activeConvId, startAdminConversation]);
+  }, [user, supabase, searchParams]);
 
   useEffect(() => {
-    if (user && !authLoading) fetchConversations();
+    if (user && !authLoading) {
+      fetchConversations();
+    }
   }, [user, authLoading, fetchConversations]);
 
   // جلب الرسائل
@@ -798,7 +786,7 @@ function LiveMessagingContent() {
       </div>
 
       <div className="flex-1 flex overflow-hidden min-w-0">
-        {/* ══ القائمة الجانبية ═══════════════════════════════════════════════ */}
+        {/* ══ القائمة الجانبية (قائمة المحادثات) ══════════════════════════════ */}
         <div className={`${sidebarOpen ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-[350px] lg:w-[390px] md:shrink-0 bg-card border-l border-border overflow-hidden`}>
           <div className="p-3 border-b border-border bg-card space-y-2">
             <div className="flex items-center justify-between">
@@ -847,7 +835,7 @@ function LiveMessagingContent() {
           <div className="flex-1 overflow-y-auto">
             {loadingConvs ? (
               <div className="flex items-center justify-center py-16">
-                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
             ) : filteredConvs.length === 0 ? (
               <div className="text-center py-16 px-4 space-y-3">
@@ -881,7 +869,9 @@ function LiveMessagingContent() {
                     key={conv.id}
                     onClick={() => {
                       setActiveConvId(conv.id);
-                      if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
+                      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                        setSidebarOpen(false);
+                      }
                     }}
                     className={`w-full text-right px-3 py-3 border-b border-border/60 transition-colors flex items-start gap-2.5 relative ${
                       isActive ? 'bg-primary/5 border-r-[3px] border-r-primary' : 'hover:bg-muted/40'
@@ -922,18 +912,8 @@ function LiveMessagingContent() {
               <p className="text-xs text-muted-foreground max-w-sm">
                 {filterType === 'admin'
                   ? (isAr ? 'تواصل مباشرة مع إدارة دايركت هب لتوثيق المستودعات، مطابقة التراخيص، والضمانات المالية.' : 'Direct support for verification, licensing, and financial guarantees.')
-                  : (isAr ? 'حدد مصنعاً أو مندوباً من القائمة الجانبية لإدارة المفاوضات والشحنات.' : 'Select a partner from the sidebar to start chatting.')}
+                  : (isAr ? 'حدد محادثة من القائمة لعرض التفاصيل والتفاوض.' : 'Select a partner from the sidebar to start chatting.')}
               </p>
-              {filterType === 'admin' && (
-                <button
-                  type="button"
-                  onClick={startAdminConversation}
-                  disabled={creatingAdminChat}
-                  className="px-5 py-2.5 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 disabled:opacity-50"
-                >
-                  {creatingAdminChat ? (isAr ? 'جاري فتح المحادثة...' : 'Connecting...') : (isAr ? 'بدء محادثة الإدارة الآن 🛡️' : 'Start Admin Chat')}
-                </button>
-              )}
             </div>
           ) : (
             <>
@@ -1016,7 +996,6 @@ function LiveMessagingContent() {
                   const isOwn = msg.sender_id === user?.id;
                   const parsed = parseBilingualMessage(msg.message);
 
-                  // تحديد صورة واسم صاحب الرسالة
                   const avatarUrl = isOwn ? myAvatarUrl : partnerAvatarUrl;
                   const defaultLabel = isOwn ? (user?.email?.charAt(0) || 'أنا') : (activeConv.supplier_flag || '🏢');
                   const senderTitle = isOwn ? 'صورتي الشخصية' : (activeConv.supplier_name || 'صورة الطرف الآخر');
@@ -1249,7 +1228,7 @@ function LiveMessagingContent() {
         </div>
       </div>
 
-      {/* ── عارض الصور المكبرة بالحجم الكامل (Fullscreen Image Lightbox Modal) ── */}
+      {/* ── عارض الصور المكبرة بالحجم الكامل ── */}
       {lightboxImage && (
         <div
           className="fixed inset-0 z-[300] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-fade-in"
