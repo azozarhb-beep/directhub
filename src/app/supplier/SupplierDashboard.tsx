@@ -132,27 +132,24 @@ export default function SupplierDashboard() {
     };
   }, [supabase, user?.id]);
 
-  // دالة تثبيت كود أو رابط إحالة المندوب
+  // دالة تثبيت كود المندوب المشرف
   const handleBindAgent = async () => {
     if (!agentCodeInput.trim() || !user?.id) return;
     setBindingLoading(true);
     setBindingMsg(null);
 
     try {
-      let cleanCode = agentCodeInput.trim();
-      if (cleanCode.includes('ref=')) {
-        cleanCode = cleanCode.split('ref=')[1].split('&')[0];
-      }
+      const cleanCode = agentCodeInput.trim().toUpperCase();
 
-      // البحث عن المندوب بواسطة كود الإحالة أو رقم الهاتف أو المعرف
+      // البحث عن المندوب المعتمد بواسطة كود المندوب المسجل
       const { data: agentData, error: agentErr } = await supabase
         .from('user_profiles')
         .select('id, full_name')
-        .or(`phone.eq.${cleanCode},id.eq.${cleanCode}`)
+        .or(`referral_code.eq.${cleanCode},id.eq.${cleanCode}`)
         .maybeSingle();
 
       if (agentErr || !agentData) {
-        setBindingMsg({ text: 'كود الإحالة غير صحيح أو غير مسجل كمندوب معتمد.', success: false });
+        setBindingMsg({ text: 'كود المندوب غير صحيح أو غير مسجل في النظام.', success: false });
         setBindingLoading(false);
         return;
       }
@@ -227,7 +224,7 @@ export default function SupplierDashboard() {
           {companyName && <p className="text-sm text-slate-400 mt-1">{companyName}</p>}
         </div>
 
-        {/* ── بطاقة المندوب الميداني المشرف (تثبيت كود الإحالة أو عرض المعتمد) ── */}
+        {/* ── بطاقة المندوب الميداني المشرف (تثبيت كود المندوب فقط) ── */}
         {assignedAgentId ? (
           <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-4 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
             <div className="flex items-center gap-2.5">
@@ -248,11 +245,11 @@ export default function SupplierDashboard() {
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5 text-blue-400 font-bold text-xs">
-                  <span>🔗</span>
-                  <span>هل سجلت عبر مندوب ميداني؟ ثبت كود إحالته هنا</span>
+                  <span>🏷️</span>
+                  <span>هل سجلت عبر مندوب ميداني؟ أدخل كود المندوب</span>
                 </div>
                 <p className="text-xs text-slate-400 leading-relaxed max-w-2xl">
-                  أدخل كود أو رقم المندوب الذي نسق معك لربطه بحسابك وتسهيل زيارة المستودع وفحص البضاعة، أو انتظر تعيين الإدارة لمندوب منطقتك.
+                  أدخل كود المندوب المشرف عليك لربطه بحسابك وتسهيل إجراءات فحص وتوثيق المستودع والمنتجات، أو انتظر تعيين الإدارة لمندوب منطقتك.
                 </p>
               </div>
 
@@ -260,9 +257,9 @@ export default function SupplierDashboard() {
                 <input
                   type="text"
                   value={agentCodeInput}
-                  onChange={(e) => setAgentCodeInput(e.target.value)}
-                  placeholder="كود المندوب أو رقمه"
-                  className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs placeholder:text-slate-500 focus:outline-none focus:border-blue-400 w-44 font-mono"
+                  onChange={(e) => setAgentCodeInput(e.target.value.trim().toUpperCase())}
+                  placeholder="كود المندوب"
+                  className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs placeholder:text-slate-500 focus:outline-none focus:border-blue-400 w-36 font-mono text-center tracking-wider font-bold"
                   dir="ltr"
                 />
                 <button
@@ -271,7 +268,7 @@ export default function SupplierDashboard() {
                   disabled={bindingLoading || !agentCodeInput.trim()}
                   className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all disabled:opacity-50 whitespace-nowrap active:scale-95"
                 >
-                  {bindingLoading ? 'جاري الربط...' : 'تثبيت'}
+                  {bindingLoading ? 'جاري التحقق...' : 'تثبيت الكود'}
                 </button>
               </div>
             </div>
