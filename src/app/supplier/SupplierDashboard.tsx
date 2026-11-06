@@ -29,7 +29,6 @@ export default function SupplierDashboard() {
   const [counts, setCounts] = useState<Counts>({ inventory: 0, products: 0, orders: 0 });
   const [perf, setPerf] = useState<PerfCounters>({ views: 0, sold: 0, conversion: 0 });
   const [companyName, setCompanyName] = useState('');
-  const [unreadMessages, setUnreadMessages] = useState(0);
 
   // حالة المندوب الميداني المشرف
   const [assignedAgentId, setAssignedAgentId] = useState<string | null>(null);
@@ -74,18 +73,6 @@ export default function SupplierDashboard() {
         if (!cancelled && agentProf?.full_name) {
           setAssignedAgentName(agentProf.full_name);
         }
-      }
-
-      // جلب عدد الرسائل غير المقروءة
-      try {
-        const { count: unreadCount } = await supabase
-          .from('chat_messages')
-          .select('id', { count: 'exact', head: true })
-          .neq('sender_id', user.id)
-          .eq('is_read', false);
-        if (!cancelled && unreadCount) setUnreadMessages(unreadCount);
-      } catch {
-        // ignore
       }
 
       let prodRows: Array<PerfProductInput> = [];
@@ -198,18 +185,6 @@ export default function SupplierDashboard() {
             <p className="text-xs text-cyan-300 font-bold">Supplier Room</p>
             <div className="flex items-center gap-2">
               <Link
-                href="/messaging"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/20 border border-cyan-500/40 text-cyan-200 text-xs font-bold hover:bg-cyan-500/30 transition-colors whitespace-nowrap"
-              >
-                <span>💬</span>
-                <span>صندوق المراسلات</span>
-                {unreadMessages > 0 && (
-                  <span className="w-4 h-4 rounded-full bg-cyan-400 text-slate-950 text-[10px] font-black flex items-center justify-center">
-                    {unreadMessages}
-                  </span>
-                )}
-              </Link>
-              <Link
                 href="/"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-200 text-xs hover:bg-slate-700 transition-colors whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
               >
@@ -222,7 +197,7 @@ export default function SupplierDashboard() {
           {companyName && <p className="text-sm text-slate-400 mt-1">{companyName}</p>}
         </div>
 
-        {/* ── بطاقة المندوب الميداني المشرف (كود المندوب فقط) ── */}
+        {/* ── بطاقة المندوب الميداني المشرف (تثبيت كود المندوب فقط) ── */}
         {assignedAgentId ? (
           <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-4 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
             <div className="flex items-center gap-2.5">
@@ -278,7 +253,7 @@ export default function SupplierDashboard() {
           </div>
         )}
 
-        {/* ── شريط قنوات التنسيق والعمليات المباشرة (الربط بالشات الموحد) ── */}
+        {/* ── شريط قنوات التنسيق والعمليات المباشرة ── */}
         <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-4 sm:p-5 mb-8 shadow-xl backdrop-blur">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
