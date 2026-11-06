@@ -62,6 +62,10 @@ export default function SupplierProducts({ userId }: SupplierProductsProps) {
   const [quickEdit, setQuickEdit] = useState<ProductRow | null>(null);
   const [dealFor, setDealFor] = useState<ProductRow | null>(null);
 
+  // بيانات المندوب المشرف لتحديد مصدر الإدخال
+  const [assignedAgentId, setAssignedAgentId] = useState<string | null>(null);
+  const [assignedAgentName, setAssignedAgentName] = useState<string | null>(null);
+
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState<'all' | StockState>('all');
@@ -74,26 +78,79 @@ export default function SupplierProducts({ userId }: SupplierProductsProps) {
 
   const load = useCallback(async () => {
     setError('');
-    let { data, error: err } = await supabase
+
+    // جلب بيانات المندوب المشرف المربوط بحساب المورد
+    try {
+      const { data: prof } = await supabase
+        .from('user_profiles')
+        .select('assigned_agent_id')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (prof?.assigned_agent_id) {
+        setAssignedAgentId(prof.assigned_agent_id);
+        const { data: agentProf } = await supabase
+          .from('user_profiles')
+          .select('full_name')
+          .eq('id', prof.assigned_agent_id)
+          .maybeSingle();
+        if (agentProf?.full_name) {
+          setAssignedAgentName(agentProf.full_name);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // جلب المنتجات مع محاولة قراءة حقول هوية المنشئ بأمان
+    let data: any = null;
+    let err: any = null;
+
+    const res1 = await supabase
       .from('supplier_products')
-      .select(PRODUCT_SELECT_WITH_VIEWS)
+      .select(`${PRODUCT_SELECT_WITH_VIEWS}, created_by, agent_id`)
       .eq('supplier_id', userId)
       .order('created_at', { ascending: false });
-    if (err) {
-      const retry = await supabase
+
+    if (!res1.error) {
+      data = res1.data;
+    } else {
+      const res2 = await supabase
         .from('supplier_products')
-        .select(PRODUCT_SELECT)
+        .select(`${PRODUCT_SELECT_WITH_VIEWS}, created_by`)
         .eq('supplier_id', userId)
         .order('created_at', { ascending: false });
-      data = retry.data as typeof data;
-      err = retry.error;
+
+      if (!res2.error) {
+        data = res2.data;
+      } else {
+        const res3 = await supabase
+          .from('supplier_products')
+          .select(PRODUCT_SELECT_WITH_VIEWS)
+          .eq('supplier_id', userId)
+          .order('created_at', { ascending: false });
+
+        if (!res3.error) {
+          data = res3.data;
+        } else {
+          const res4 = await supabase
+            .from('supplier_products')
+            .select(PRODUCT_SELECT)
+            .eq('supplier_id', userId)
+            .order('created_at', { ascending: false });
+          data = res4.data;
+          err = res4.error;
+        }
+      }
     }
+
     if (err) {
       setError(err.message);
       setRows([]);
     } else {
       setRows((data as unknown as ProductRow[]) ?? []);
     }
+
     const { data: ord } = await supabase
       .from('orders')
       .select('status, escrow_status, created_at, items')
@@ -107,6 +164,18 @@ export default function SupplierProducts({ userId }: SupplierProductsProps) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // دالة فحص ما إذا كان المنتج مرفوعاً من قبل المندوب الميداني
+  const isAddedByAgent = useCallback(
+    (p: any): boolean => {
+      if (p.agent_id || p.added_by_agent || p.created_by_agent_id) return true;
+      if (p.source === 'agent' || p.source === 'field_agent') return true;
+      if (p.created_by && p.created_by !== userId) return true;
+      if (typeof p.notes === 'string' && (p.notes.includes('[مندوب]') || p.notes.includes('المندوب'))) return true;
+      return false;
+    },
+    [userId]
+  );
 
   const categories = useMemo(
     () => buildArabicCategoryOptions(SUPPLIER_PRODUCT_CATEGORIES, rows.map((r) => r.category)),
@@ -202,13 +271,15 @@ export default function SupplierProducts({ userId }: SupplierProductsProps) {
     }
     const header = [
       'الاسم بالعربية', 'Name', 'SKU', 'التصنيف', 'الوحدة', 'العملة', 'سعر الجملة', 'سعر التجزئة',
-      'الحد الأدنى للطلب', 'المخزون', 'حد الأمان', 'حالة المخزون', 'رقم الرف', 'شروط التسليم', 'الحالة',
+      'الحد الأدنى للطلب', 'المخزون', 'حد الأمان', 'حالة المخزون', 'مصدر الإدخال', 'رقم الرف', 'شروط التسليم', 'الحالة',
     ];
     const lines = list.map((p) =>
       [
         p.name_ar, p.name, p.sku, p.category, supplierUnitLabel(p.unit), p.currency, p.wholesale_price,
         p.retail_price, p.min_order_qty, p.stock_quantity, p.low_stock_threshold ?? 0,
-        STOCK_LABEL[stockState(p)], p.shelf_location, deliveryTermsLabel(p.delivery_terms),
+        STOCK_LABEL[stockState(p)],
+        isAddedByAgent(p) ? (assignedAgentName ? `المندوب (${assignedAgentName})` : 'المندوب الميداني') : 'المورّد شخصياً',
+        p.shelf_location, deliveryTermsLabel(p.delivery_terms),
         STATUS_LABEL[p.status] || p.status,
       ].map(csvCell).join(',')
     );
@@ -322,6 +393,8 @@ export default function SupplierProducts({ userId }: SupplierProductsProps) {
             const thr = Number(p.low_stock_threshold ?? 0);
             const perf = perfMap.get(p.id);
             const revs = perf ? revenueEntries(perf.revenue) : [];
+            const byAgent = isAddedByAgent(p);
+
             return (
               <div key={p.id} className={`${CARD} p-3 sm:p-4 flex flex-col lg:flex-row lg:items-center gap-3`}>
                 <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -347,9 +420,25 @@ export default function SupplierProducts({ userId }: SupplierProductsProps) {
                     <p className="text-[11px] text-slate-500 mt-0.5">
                       {[p.sku ? `SKU: ${p.sku}` : '', p.category, supplierUnitLabel(p.unit)].filter(Boolean).join(' • ')}
                     </p>
-                    <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full ${STATUS_CLS[p.status] || STATUS_CLS.draft}`}>
-                      {STATUS_LABEL[p.status] || p.status}
-                    </span>
+                    
+                    {/* شارات الحالة ومصدر الإدخال الداخلي للمورد فقط */}
+                    <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                      <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full ${STATUS_CLS[p.status] || STATUS_CLS.draft}`}>
+                        {STATUS_LABEL[p.status] || p.status}
+                      </span>
+
+                      {byAgent ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                          <span aria-hidden="true">👷‍♂️</span>
+                          <span>{assignedAgentName ? `بواسطة المندوب: ${assignedAgentName}` : 'إدخال المندوب الميداني'}</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                          <span aria-hidden="true">🏢</span>
+                          <span>إدخال شخصي (المورّد)</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
