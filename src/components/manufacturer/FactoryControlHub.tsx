@@ -12,7 +12,7 @@ import { useFactoryHubCounts, type FactoryModuleCounts } from '@/components/manu
 import { useSalesRepAccess } from '@/components/manufacturer/useSalesRepAccess';
 
 /** Modules a sales-rep sub-account may see on the hub. Everything else is removed. */
-const SALES_REP_ALLOWED_MODULES: FactoryModuleKey[] = ['products', 'inventory', 'rfq', 'orders', 'logistics', 'messages'];
+const SALES_REP_ALLOWED_MODULES: FactoryModuleKey[] = ['products', 'inventory', 'rfq', 'orders', 'logistics'];
 
 interface Badge {
   label: string;
@@ -54,23 +54,10 @@ function dynamicBadges(def: FactoryModuleDef, c: FactoryModuleCounts): Badge[] {
     case 'documents':
       out.push({ label: `${c.documents} مستند`, tone: 'info' });
       break;
-    case 'messages':
-      out.push({ label: 'دعم الإدارة 24/7', tone: 'ok' });
-      if (c.messages > 0) out.push({ label: `${c.messages} محادثة`, tone: 'info' });
-      if (c.disputes > 0) out.push({ label: `${c.disputes} نزاع`, tone: 'warn' });
-      break;
     default:
       break;
   }
   return out;
-}
-
-/** توجيه روابط المحادثة والمراسلات إلى الصندوق الموحد مباشرة */
-function resolveModuleHref(m: FactoryModuleDef): string {
-  if (m.key === 'messages' || m.href?.includes('messages') || m.href === '/chat') {
-    return '/messaging?channel=admin_direct';
-  }
-  return m.href;
 }
 
 interface FactoryControlHubProps {
@@ -89,8 +76,12 @@ export default function FactoryControlHub({ userId }: FactoryControlHubProps) {
     );
   }
 
+  // استبعاد بطاقة مراسلة الإدارة وأي بطاقة مراسلات بشكل قطعي
   const visibleModules = FACTORY_MODULES.filter(
-    (m) => !isSalesRep || SALES_REP_ALLOWED_MODULES.includes(m.key)
+    (m) =>
+      m.key !== 'messages' &&
+      !m.title.includes('مراسلة') &&
+      (!isSalesRep || SALES_REP_ALLOWED_MODULES.includes(m.key))
   );
 
   return (
@@ -110,19 +101,18 @@ export default function FactoryControlHub({ userId }: FactoryControlHubProps) {
               </div>
             </div>
 
-            {/* شبكة البطاقات المدمجة: عمودين في الهواتف الذكية وثلاثة في الشاشات الأكبر */}
+            {/* شبكة البطاقات المدمجة: عمودين في الهواتف وثلاثة في الشاشات الأكبر */}
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5">
               {modules.map((m) => {
                 const badges: Badge[] = [
                   ...dynamicBadges(m, counts),
                   ...m.staticBadges.map((label) => ({ label, tone: 'neutral' as const })),
                 ];
-                const destinationHref = resolveModuleHref(m);
 
                 return (
                   <Link
                     key={m.key}
-                    href={destinationHref}
+                    href={m.href}
                     className={`group relative flex flex-col justify-between rounded-2xl border bg-gradient-to-br ${m.accent} p-3 sm:p-4 min-h-[125px] sm:min-h-[140px] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/40 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300`}
                   >
                     <div>
