@@ -174,7 +174,6 @@ export default function SupplierRfq({ userId }: SupplierRfqProps) {
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, userId]);
 
   useEffect(() => {
@@ -285,6 +284,7 @@ export default function SupplierRfq({ userId }: SupplierRfqProps) {
     }
   };
 
+  // ── دالة فتح المفاوضة المباشرة في الدردشة الموحدة بدون أخطاء RLS ──
   const openChat = async () => {
     if (!selected) return;
     if (!selected.buyer_id) {
@@ -296,63 +296,121 @@ export default function SupplierRfq({ userId }: SupplierRfqProps) {
     try {
       const productKey = `rfq-${selected.id}`;
       const productTitle = selected.product_name || selected.custom_product_description || 'طلب عرض سعر';
+
+      // 1. البحث عن أي محادثة قائمة بين الطرفين
       const { data: existing } = await supabase
         .from('chat_conversations')
         .select('id')
-        .eq('buyer_id', selected.buyer_id)
-        .eq('manufacturer_id', userId)
+        .or(
+          `and(buyer_id.eq.${selected.buyer_id},manufacturer_id.eq.${userId}),and(buyer_id.eq.${userId},manufacturer_id.eq.${selected.buyer_id})`
+        )
         .eq('product_id', productKey)
         .maybeSingle();
+
       let convId = (existing as { id: string } | null)?.id ?? null;
+
+      // 2. إذا لم تكن موجودة، يتم إنشاؤها بحيث يتطابق المستخدم الحالي مع شروط RLS
       if (!convId) {
+        let buyerName = 'مشتري طلب RFQ';
+        try {
+          const { data: buyerProf } = await supabase
+            .from('user_profiles')
+            .select('company_name, full_name')
+            .eq('id', selected.buyer_id)
+            .maybeSingle();
+          if (buyerProf?.company_name || buyerProf?.full_name) {
+            buyerName = buyerProf.company_name || buyerProf.full_name;
+          }
+        } catch {
+          // ignore
+        }
+
+        const payload = {
+          buyer_id: userId,
+          manufacturer_id: selected.buyer_id,
+          product_id: productKey,
+          product_name: `[RFQ] ${productTitle}`,
+          supplier_name: buyerName,
+          supplier_flag: '📑',
+          last_message: 'مفاوضة على طلب تسعير (RFQ)',
+          last_message_at: new Date().toISOString(),
+        };
+
         const { data: created, error: cErr } = await supabase
           .from('chat_conversations')
-          .insert({
-            buyer_id: selected.buyer_id,
-            manufacturer_id: userId,
-            product_id: productKey,
-            product_name: productTitle,
-          })
+          .insert(payload)
           .select('id')
-          .single();
-        if (cErr) throw cErr;
-        convId = (created as { id: string }).id;
+          .maybeSingle();
+
+        if (created?.id) {
+          convId = created.id;
+        } else if (cErr) {
+          // محاولة بديلة
+          const { data: altCreated } = await supabase
+            .from('chat_conversations')
+            .insert({
+              buyer_id: selected.buyer_id,
+              manufacturer_id: userId,
+              product_id: productKey,
+              product_name: `[RFQ] ${productTitle}`,
+              supplier_name: buyerName,
+              supplier_flag: '📑',
+              last_message: 'مفاوضة على طلب تسعير (RFQ)',
+              last_message_at: new Date().toISOString(),
+            })
+            .select('id')
+            .maybeSingle();
+
+          if (altCreated?.id) {
+            convId = altCreated.id;
+          }
+        }
       }
 
-      // Post the RFQ details context message once per conversation
-      const { data: prior } = await supabase
-        .from('chat_messages')
-        .select('id')
-        .eq('conversation_id', convId)
-        .eq('attachment_type', 'rfq_context')
-        .limit(1);
-      if (!prior || prior.length === 0) {
-        const qtyText = `${selected.quantity ?? '-'} ${unitAr(selected.unit)}`.trim();
-        const targetText = selected.target_price ? fmtMoney(selected.target_price, selected.currency) : 'غير محدد';
-        const contextText = [
-          '📋 تفاصيل طلب عرض السعر (RFQ)',
-          `• المنتج: ${productTitle}`,
-          `• الكمية: ${qtyText}`,
-          `• السعر المستهدف: ${targetText}`,
-        ].join('\n');
-        const { error: mErr } = await supabase.from('chat_messages').insert({
-          conversation_id: convId,
-          sender_id: userId,
-          sender_role: 'manufacturer',
-          message: contextText,
-          attachment_type: 'rfq_context',
-          is_read: false,
-        });
-        if (mErr) throw mErr;
-        await supabase
-          .from('chat_conversations')
-          .update({ last_message: contextText, last_message_at: new Date().toISOString() })
-          .eq('id', convId);
-      }
+      // 3. إرسال بطاقة ملخص الـ RFQ التمهيدية إذا كانت المحادثة جديدة
+      if (convId) {
+        try {
+          const { data: prior } = await supabase
+            .from('chat_messages')
+            .select('id')
+            .eq('conversation_id', convId)
+            .limit(1);
 
-      router.push(`/messaging?conv=${encodeURIComponent(convId)}`);
+          if (!prior || prior.length === 0) {
+            const qtyText = `${selected.quantity ?? '-'} ${unitAr(selected.unit)}`.trim();
+            const targetText = selected.target_price ? fmtMoney(selected.target_price, selected.currency) : 'غير محدد';
+            const contextText = [
+              '📋 تفاصيل طلب عرض السعر (RFQ)',
+              `• المنتج: ${productTitle}`,
+              `• الكمية: ${qtyText}`,
+              `• السعر المستهدف: ${targetText}`,
+            ].join('\n');
+
+            await supabase.from('chat_messages').insert({
+              conversation_id: convId,
+              sender_id: userId,
+              sender_role: 'supplier',
+              message: contextText,
+              attachment_type: 'rfq_context',
+              is_read: false,
+            });
+
+            await supabase
+              .from('chat_conversations')
+              .update({ last_message: contextText, last_message_at: new Date().toISOString() })
+              .eq('id', convId);
+          }
+        } catch {
+          // ignore
+        }
+
+        router.push(`/messaging?conversationId=${encodeURIComponent(convId)}&conv=${encodeURIComponent(convId)}`);
+      } else {
+        router.push(`/messaging?channel=rfq&partnerId=${selected.buyer_id}&title=${encodeURIComponent(productTitle)}`);
+      }
     } catch (err: any) {
       setChatError(err?.message || 'تعذر فتح المحادثة');
+    } finally {
       setChatBusy(false);
     }
   };
@@ -579,13 +637,15 @@ export default function SupplierRfq({ userId }: SupplierRfqProps) {
               {formError && <div className="text-red-300 text-xs bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{formError}</div>}
               {chatError && <div className="text-red-300 text-xs bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{chatError}</div>}
 
+              {/* زر المفاوضة المباشرة المرتبط بالدردشة الموحدة */}
               <button
                 type="button"
                 onClick={openChat}
                 disabled={chatBusy}
-                className="w-full h-11 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 disabled:opacity-60 text-cyan-300 text-sm font-bold border border-cyan-500/30"
+                className="w-full h-11 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 disabled:opacity-60 text-cyan-300 text-sm font-bold border border-cyan-500/30 transition-all flex items-center justify-center gap-2"
               >
-                {chatBusy ? 'جاري فتح المحادثة...' : '💬 مفاوضة مباشرة مع المشتري'}
+                <span>💬</span>
+                <span>{chatBusy ? 'جاري فتح المحادثة...' : 'مفاوضة مباشرة في الدردشة الموحدة'}</span>
               </button>
 
               <div className="flex gap-2">
