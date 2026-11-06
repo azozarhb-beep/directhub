@@ -51,23 +51,6 @@ interface Message {
   audio_duration?: number;
 }
 
-interface PartnerProfileData {
-  id: string;
-  full_name?: string | null;
-  company_name?: string | null;
-  country?: string | null;
-  city?: string | null;
-  avatar_url?: string | null;
-  is_verified?: boolean | null;
-  role?: string | null;
-  account_role?: string | null;
-  account_type?: string | null;
-  phone?: string | null;
-  created_at?: string | null;
-  products_count?: number;
-  has_store?: boolean;
-}
-
 type SupportedLang = 'ar' | 'en' | 'zh' | 'tr';
 
 const LANG_OPTIONS: { value: SupportedLang; label: string; flag: string; nativeName: string }[] = [
@@ -128,16 +111,6 @@ function formatTime(iso: string, isAr: boolean) {
   } catch { return ''; }
 }
 
-function formatJoinDate(dateStr: string | null | undefined): string {
-  if (!dateStr) return 'عضو معتمد';
-  try {
-    const d = new Date(dateStr);
-    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}`;
-  } catch {
-    return 'عضو معتمد';
-  }
-}
-
 function parseBilingualMessage(raw: string) {
   try {
     const data = JSON.parse(raw);
@@ -169,11 +142,6 @@ function LiveMessagingContent() {
   const [pendingAttachment, setPendingAttachment] = useState<{ file: File; previewUrl?: string; type: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // نافذة بطاقة المنشأة للشريك (Partner Profile Modal)
-  const [partnerModalOpen, setPartnerModalOpen] = useState(false);
-  const [partnerLoading, setPartnerLoading] = useState(false);
-  const [partnerProfile, setPartnerProfile] = useState<PartnerProfileData | null>(null);
-
   // قياس ارتفاع الشاشة لمنع اختفاء الإدخال خلف لوحة المفاتيح
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
 
@@ -202,17 +170,12 @@ function LiveMessagingContent() {
 
   const activeConv = conversations.find(c => c.id === activeConvId) || null;
 
-  // استخراج هوية الشريك المقابل في المحادثة بدقة
-  const getPartnerId = useCallback(
-    (conv: Conversation | null): string | null => {
-      if (!conv || !user) return null;
-      if (conv.source === 'logistics' && conv.partner_id) return conv.partner_id;
-      if (conv.buyer_id === user.id) return conv.manufacturer_id || conv.partner_id || null;
-      if (conv.manufacturer_id === user.id) return conv.buyer_id || null;
-      return conv.manufacturer_id || conv.buyer_id || null;
-    },
-    [user]
-  );
+  // معرف الشريك المقابل في المحادثة
+  const partnerId = activeConv
+    ? activeConv.buyer_id === user?.id
+      ? activeConv.manufacturer_id || activeConv.partner_id
+      : activeConv.buyer_id
+    : null;
 
   // الاستماع التفاعلي لارتفاع الشاشة عند فتح الكيبورد
   useEffect(() => {
@@ -236,80 +199,6 @@ function LiveMessagingContent() {
     if (authLoading) return;
     if (!user) router.push('/login');
   }, [user, authLoading, router]);
-
-  // دالة جلب وعرض بيانات وبطاقة المنشأة للشريك المقابل
-  const handleOpenPartnerProfile = async () => {
-    if (!activeConv) return;
-    const partnerId = getPartnerId(activeConv);
-    if (!partnerId) {
-      alert('معرف المنشأة غير متاح في هذه المحادثة.');
-      return;
-    }
-
-    setPartnerModalOpen(true);
-    setPartnerLoading(true);
-    setPartnerProfile(null);
-
-    try {
-      const { data: prof } = await supabase
-        .from('user_profiles')
-        .select('id, full_name, company_name, country, city, avatar_url, is_verified, role, account_role, account_type, phone, created_at')
-        .eq('id', partnerId)
-        .maybeSingle();
-
-      let productsCount = 0;
-      try {
-        const [suppRes, mfgRes] = await Promise.all([
-          supabase.from('supplier_products').select('id', { count: 'exact', head: true }).eq('supplier_id', partnerId),
-          supabase.from('manufacturer_products').select('id', { count: 'exact', head: true }).eq('manufacturer_id', partnerId),
-        ]);
-        productsCount = (suppRes.count || 0) + (mfgRes.count || 0);
-      } catch {
-        // ignore
-      }
-
-      if (prof) {
-        setPartnerProfile({
-          ...prof,
-          products_count: productsCount,
-          has_store: productsCount > 0,
-        });
-
-        // تحديث اسم الترويسة إذا كان افتراضياً
-        const realName = prof.company_name?.trim() || prof.full_name?.trim();
-        if (realName && (activeConv.supplier_name === 'مشتري طلب RFQ' || !activeConv.supplier_name)) {
-          setConversations(prev =>
-            prev.map(c => (c.id === activeConv.id ? { ...c, supplier_name: realName } : c))
-          );
-        }
-      } else {
-        setPartnerProfile({
-          id: partnerId,
-          full_name: activeConv.supplier_name || 'جهة تجارية معتمدة',
-          company_name: activeConv.supplier_name || 'منشأة تجارية معتمدة',
-          city: activeConv.supplier_country || 'اليمن',
-          is_verified: true,
-          products_count: productsCount,
-          has_store: productsCount > 0,
-        });
-      }
-    } catch (err) {
-      console.error('Error fetching partner profile:', err);
-    } finally {
-      setPartnerLoading(false);
-    }
-  };
-
-  const getPartnerRoleLabel = (prof: PartnerProfileData | null) => {
-    if (!prof) return 'منشأة تجارية معتمدة';
-    const role = (prof.account_role || prof.role || prof.account_type || '').toLowerCase();
-    if (role.includes('admin')) return 'إدارة المنصة الرسمية 🛡️';
-    if (role.includes('agent')) return 'مندوب ميداني معتمد 👷';
-    if (role.includes('supplier')) return 'مورّد ووكيل تجاري معتمد 🏢';
-    if (role.includes('manufacturer') || role.includes('factory')) return 'مصنع محلي معتمد 🏭';
-    if (role.includes('logistics')) return 'مكتب شحن وتخليص جمركي 🚢';
-    return 'مشتري ومنشأة تجارية معتمدة 💼';
-  };
 
   // دالة إنشاء/فتح محادثة الإدارة
   const startAdminConversation = useCallback(async () => {
@@ -1014,43 +903,58 @@ function LiveMessagingContent() {
                     <Icon name="ArrowRightIcon" size={17} className={isRTL ? '' : 'rotate-180'} />
                   </button>
 
-                  {/* النقر على هوية الشريك يفتح بطاقته التجارية المباشرة */}
-                  <div
-                    onClick={handleOpenPartnerProfile}
-                    className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer group hover:opacity-95 transition-opacity"
-                    title="اضغط لمعاينة بطاقة وتفاصيل المنشأة"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold shrink-0 relative group-hover:scale-105 transition-transform">
-                      {activeConv.supplier_flag || '🏢'}
-                    </div>
-
-                    <div className="flex-1 min-w-0 text-start">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className="text-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">
-                          {activeConv.supplier_name}
-                        </p>
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${THREAD_LABELS[activeConv.thread_type || 'negotiation']?.color}`}>
-                          {isAr ? THREAD_LABELS[activeConv.thread_type || 'negotiation']?.labelAr : THREAD_LABELS[activeConv.thread_type || 'negotiation']?.labelEn}
-                        </span>
+                  {/* النقر على هوية الشريك يفتح صفحته الكاملة الكبيرة مباشرة */}
+                  {partnerId ? (
+                    <Link
+                      href={`/store/${partnerId}`}
+                      target="_blank"
+                      className="flex items-center gap-2.5 min-w-0 flex-1 group hover:opacity-95 transition-opacity"
+                      title="فتح صفحة المنشأة الكاملة (Alibaba Store Style)"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold shrink-0 relative group-hover:scale-105 transition-transform">
+                        {activeConv.supplier_flag || '🏢'}
                       </div>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {activeConv.product_name}
-                      </p>
+
+                      <div className="flex-1 min-w-0 text-start">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">
+                            {activeConv.supplier_name}
+                          </p>
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${THREAD_LABELS[activeConv.thread_type || 'negotiation']?.color}`}>
+                            {isAr ? THREAD_LABELS[activeConv.thread_type || 'negotiation']?.labelAr : THREAD_LABELS[activeConv.thread_type || 'negotiation']?.labelEn}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {activeConv.product_name}
+                        </p>
+                      </div>
+                    </Link>
+                  ) : (
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold shrink-0">
+                        {activeConv.supplier_flag || '🏢'}
+                      </div>
+                      <div className="flex-1 min-w-0 text-start">
+                        <p className="text-sm font-bold text-foreground truncate">{activeConv.supplier_name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{activeConv.product_name}</p>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
-                {/* زر بطاقة وتفاصيل المنشأة للشريك بدلاً من الرابط المكسور */}
-                <button
-                  type="button"
-                  onClick={handleOpenPartnerProfile}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 rounded-xl text-xs font-bold transition-all shrink-0 active:scale-95 shadow-2xs"
-                  title="عرض تفاصيل وهوية المنشأة"
-                >
-                  <Icon name="BuildingOffice2Icon" size={15} />
-                  <span className="hidden sm:inline">{isAr ? 'بيانات المنشأة' : 'Partner Profile'}</span>
-                  <span className="sm:hidden">{isAr ? 'المنشأة' : 'Profile'}</span>
-                </button>
+                {/* زر فتح الصفحة الكبيرة للمنشأة في علامة تبويب كاملة ومستقلة */}
+                {partnerId && (
+                  <Link
+                    href={`/store/${partnerId}`}
+                    target="_blank"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-xs font-bold transition-all shrink-0 shadow-sm active:scale-95"
+                    title="فتح صفحة المنشأة الكاملة"
+                  >
+                    <Icon name="BuildingOffice2Icon" size={15} />
+                    <span className="hidden sm:inline">صفحة المنشأة الكاملة</span>
+                    <span className="sm:hidden">المنشأة ↗</span>
+                  </Link>
+                )}
               </div>
 
               {/* فقاعات الرسائل */}
@@ -1260,130 +1164,6 @@ function LiveMessagingContent() {
           )}
         </div>
       </div>
-
-      {/* ── نافذة بطاقة المنشأة للشريك (Partner Business Profile Modal) ── */}
-      {partnerModalOpen && (
-        <div
-          className="fixed inset-0 z-[250] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
-          onClick={() => setPartnerModalOpen(false)}
-        >
-          <div
-            className="bg-card border border-border rounded-3xl w-full max-w-md p-5 sm:p-6 shadow-2xl space-y-4 animate-slide-up"
-            onClick={e => e.stopPropagation()}
-            dir={dir}
-          >
-            <div className="flex items-center justify-between border-b border-border pb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">🏢</span>
-                <h3 className="text-sm font-black text-foreground">البطاقة التجارية للمنشأة</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPartnerModalOpen(false)}
-                className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
-              >
-                ✕
-              </button>
-            </div>
-
-            {partnerLoading ? (
-              <div className="flex flex-col items-center justify-center py-10 space-y-2">
-                <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
-                <p className="text-xs text-muted-foreground">جاري استرجاع بيانات المنشأة...</p>
-              </div>
-            ) : partnerProfile ? (
-              <div className="space-y-4">
-                {/* رأس البروفايل */}
-                <div className="flex items-center gap-3.5 p-3.5 bg-muted/40 rounded-2xl border border-border">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/30 flex items-center justify-center text-primary font-black text-xl shrink-0">
-                    {partnerProfile.avatar_url ? (
-                      <img src={partnerProfile.avatar_url} alt="Logo" className="w-full h-full object-cover rounded-2xl" />
-                    ) : (
-                      <span>{(partnerProfile.company_name || partnerProfile.full_name || 'DH').charAt(0).toUpperCase()}</span>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0 text-start">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <p className="text-sm font-black text-foreground truncate">
-                        {partnerProfile.company_name || partnerProfile.full_name}
-                      </p>
-                      {partnerProfile.is_verified && (
-                        <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-[9px] font-black px-1.5 py-0.5 rounded-full">
-                          موثق ✓
-                        </span>
-                      )}
-                    </div>
-                    {partnerProfile.full_name && partnerProfile.company_name && (
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">
-                        المسؤول: {partnerProfile.full_name}
-                      </p>
-                    )}
-                    <span className="inline-block mt-1 text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-lg border border-primary/20">
-                      {getPartnerRoleLabel(partnerProfile)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* تفاصيل المنشأة والاعتماد */}
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-3 bg-muted/30 rounded-xl border border-border/80">
-                    <p className="text-[10px] text-muted-foreground font-semibold">الموقع والمدينة</p>
-                    <p className="font-bold text-foreground mt-0.5">
-                      📍 {partnerProfile.city || 'غير محدد'}{partnerProfile.country ? ` — ${partnerProfile.country}` : ''}
-                    </p>
-                  </div>
-                  <div className="p-3 bg-muted/30 rounded-xl border border-border/80">
-                    <p className="text-[10px] text-muted-foreground font-semibold">تاريخ الانضمام</p>
-                    <p className="font-bold text-foreground mt-0.5">
-                      🗓️ {formatJoinDate(partnerProfile.created_at)}
-                    </p>
-                  </div>
-                </div>
-
-                {/* حالة المتجر والكتالوج */}
-                {partnerProfile.has_store && partnerProfile.products_count ? (
-                  <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-start space-y-2">
-                    <div className="flex items-center justify-between text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                      <span>🏪 المنتجات المعروضة للبيع بالجملة</span>
-                      <span className="bg-emerald-500/20 px-2 py-0.5 rounded-full text-[10px]">
-                        {partnerProfile.products_count} منتج
-                      </span>
-                    </div>
-                    <Link
-                      href={`/storefront/${partnerProfile.id}`}
-                      target="_blank"
-                      className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
-                    >
-                      <span>استعراض كتالوج ومنتجات المصنع</span>
-                      <Icon name="ArrowTopRightOnSquareIcon" size={13} />
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-2xl text-start">
-                    <p className="text-xs font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
-                      <span>🛡️</span>
-                      <span>جهة تجارية معتمدة (صفقات وتوريد مباشر)</span>
-                    </p>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed mt-1">
-                      حساب موثق ومؤهل لإبرام الصفقات وعقود التوريد وإصدار طلبات الأسعار والضمان المالي عبر دايركت هب.
-                    </p>
-                  </div>
-                )}
-
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setPartnerModalOpen(false)}
-                    className="w-full py-2.5 bg-muted hover:bg-muted/80 text-foreground font-bold text-xs rounded-xl transition-colors"
-                  >
-                    إغلاق والعودة للمحادثة
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      )}
 
       {/* ── نافذة اختيار لغة الترجمة ── */}
       {showLangPicker && (
