@@ -75,6 +75,7 @@ interface Product {
   is_active: boolean;
   image_url: string | null;
   created_at: string;
+  currency?: string | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -856,10 +857,11 @@ const AccountDashboard: React.FC = () => {
     const fetchData = async () => {
       setDataLoading(true);
       try {
-        const [profileRes, ordersRes, productsRes, rfqsRes] = await Promise.all([
+        const [profileRes, ordersRes, mfgProductsRes, suppProductsRes, rfqsRes] = await Promise.all([
           supabase.from('user_profiles').select('*').eq('id', user.id).single(),
           supabase.from('orders').select('id, order_number, status, total, currency, created_at, items').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
           supabase.from('manufacturer_products').select('id, name, name_ar, unit_price, minimum_order_qty, unit, inventory_status, is_active, image_url, created_at').eq('manufacturer_id', user.id).order('created_at', { ascending: false }),
+          supabase.from('supplier_products').select('id, name, name_ar, sku, unit, currency, wholesale_price, stock_quantity, image_url').eq('supplier_id', user.id),
           supabase.from('rfq_requests').select('id, product_name, quantity, unit, target_price, currency, destination_country, status, created_at').eq('buyer_id', user.id).order('created_at', { ascending: false }).limit(20),
         ]);
 
@@ -882,7 +884,27 @@ const AccountDashboard: React.FC = () => {
           setOrderStats({ total, pending, completed, totalSpent });
         }
 
-        if (productsRes.data) setProducts(productsRes.data);
+        // جلب منتجات المورّد تلقائياً من جدول supplier_products
+        if (suppProductsRes?.data && suppProductsRes.data.length > 0) {
+          setProducts(
+            suppProductsRes.data.map((sp: any) => ({
+              id: sp.id,
+              name: sp.name || sp.name_ar || 'منتج تجاري',
+              name_ar: sp.name_ar || sp.name || 'منتج تجاري',
+              unit_price: sp.wholesale_price || 0,
+              minimum_order_qty: sp.stock_quantity || 1,
+              unit: sp.unit || 'قطعة',
+              inventory_status: (sp.stock_quantity ?? 1) > 0 ? 'in_stock' : 'out_of_stock',
+              is_active: true,
+              image_url: sp.image_url,
+              created_at: new Date().toISOString(),
+              currency: sp.currency || 'ر.ي',
+            }))
+          );
+        } else if (mfgProductsRes?.data && mfgProductsRes.data.length > 0) {
+          setProducts(mfgProductsRes.data);
+        }
+
         if (rfqsRes.data) setRfqs(rfqsRes.data as AccountRfq[]);
 
         const identities = user.identities ?? [];
@@ -935,7 +957,7 @@ const AccountDashboard: React.FC = () => {
   const isProfileIncomplete = !dataLoading && profile !== null && (
     !profile.full_name?.trim() || !profile.company_name?.trim() || !profile.country?.trim() || !profile.city?.trim() || !profile.phone?.trim()
   );
-  const isSupplierAccount = (profile?.account_role || '').toLowerCase().trim() === 'commercial_supplier';
+  const isSupplierAccount = (profile?.account_role || profile?.role || '').toLowerCase().trim().includes('supplier');
   const isBuyer = checkIsBuyer(profile);
 
   const handleToggleNotif = async (key: keyof typeof notifPrefs) => {
@@ -987,7 +1009,11 @@ const AccountDashboard: React.FC = () => {
     if (!confirmed) return;
     setDeletingProductId(productId);
     try {
-      await supabase.from('manufacturer_products').delete().eq('id', productId);
+      if (isSupplierAccount) {
+        await supabase.from('supplier_products').delete().eq('id', productId);
+      } else {
+        await supabase.from('manufacturer_products').delete().eq('id', productId);
+      }
       setProducts((prev) => prev.filter((p) => p.id !== productId));
     } catch {
       alert(isAr ? 'فشل حذف المنتج.' : 'Failed to delete product.');
@@ -1001,7 +1027,7 @@ const AccountDashboard: React.FC = () => {
     { key: 'orders', label: t.myAccount.tabOrders, icon: 'ShoppingBagIcon', badge: orderStats.pending || undefined },
     ...(isBuyer
       ? [{ key: 'my-orders' as TabKey, label: t.myAccount.myOrders, icon: 'ClipboardDocumentListIcon', badge: orderStats.pending || undefined }]
-      : [{ key: 'products' as TabKey, label: t.myAccount.tabProducts, icon: 'ArchiveBoxIcon' }]
+      : [{ key: 'products' as TabKey, label: isSupplierAccount ? (isAr ? 'منتجاتي' : 'Products') : t.myAccount.tabProducts, icon: 'ArchiveBoxIcon' }]
     ),
     { key: 'settings', label: t.myAccount.tabSettings, icon: 'Cog6ToothIcon' },
   ];
@@ -1085,7 +1111,6 @@ const AccountDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* تم حذف زر "الرسائل والمحادثات" بالكامل من الترويسة */}
             <div className="flex flex-wrap items-center gap-2 shrink-0">
               {!isSupplierAccount && (
                 <button
@@ -1299,23 +1324,30 @@ const AccountDashboard: React.FC = () => {
           <MyOrdersTab orders={orders} rfqs={rfqs} dataLoading={dataLoading} orderStats={orderStats} />
         )}
 
+        {/* ── تبويب منتجاتي المحدّث للمورد ── */}
         {activeTab === 'products' && (
           <div>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <div>
-                <h2 className="text-lg font-extrabold text-foreground">{t.myAccount.myProducts}</h2>
+                <h2 className="text-lg font-extrabold text-foreground">{isSupplierAccount ? (isAr ? 'منتجاتي المحلية' : 'My Local Products') : t.myAccount.myProducts}</h2>
                 <p className="text-xs text-muted-foreground mt-0.5">{products.length} {t.myAccount.listings}</p>
               </div>
-              <button onClick={() => router.push('/my-account/add-product')} className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity">
+              <button 
+                onClick={() => router.push(isSupplierAccount ? '/supplier/products' : '/my-account/add-product')} 
+                className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity"
+              >
                 <Icon name="PlusIcon" size={16} />
-                {t.myAccount.addNewProduct}
+                {isSupplierAccount ? (isAr ? 'إدارة وإضافة منتج جديد' : 'Manage & Add Products') : t.myAccount.addNewProduct}
               </button>
             </div>
 
             {dataLoading ? (
               <div className="flex flex-col gap-4">{[...Array(3)].map((_, i) => <div key={i} className="bg-card border border-border rounded-2xl p-5 animate-pulse h-24" />)}</div>
             ) : products.length === 0 ? (
-              <div onClick={() => router.push('/my-account/add-product')} className="border-2 border-dashed border-border rounded-2xl p-12 text-center hover:border-primary/40 transition-colors cursor-pointer group">
+              <div 
+                onClick={() => router.push(isSupplierAccount ? '/supplier/products' : '/my-account/add-product')} 
+                className="border-2 border-dashed border-border rounded-2xl p-12 text-center hover:border-primary/40 transition-colors cursor-pointer group"
+              >
                 <div className="w-14 h-14 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:bg-primary/10 transition-colors">
                   <Icon name="PlusIcon" size={28} className="text-muted-foreground group-hover:text-primary transition-colors" />
                 </div>
@@ -1348,11 +1380,11 @@ const AccountDashboard: React.FC = () => {
                         <div className="flex flex-wrap gap-4 mt-2 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1 font-semibold text-foreground">
                             <Icon name="BanknotesIcon" size={12} className="text-primary" />
-                            {formatPrice(product.unit_price, 'ر.ي')}/{product.unit}
+                            {formatPrice(product.unit_price, product.currency || 'ر.ي')}/{product.unit}
                           </span>
                           <span className="flex items-center gap-1">
                             <Icon name="CubeIcon" size={12} className="text-primary" />
-                            {t.myAccount.moq}: {formatNumber(product.minimum_order_qty)} {product.unit}
+                            {isSupplierAccount ? 'المخزون المتوفر' : t.myAccount.moq}: {formatNumber(product.minimum_order_qty)} {product.unit}
                           </span>
                           <span className={`flex items-center gap-1 font-semibold capitalize ${product.inventory_status === 'in_stock' ? 'text-green-600' : 'text-red-600'}`}>
                             <Icon name="CheckCircleIcon" size={12} />
@@ -1361,8 +1393,18 @@ const AccountDashboard: React.FC = () => {
                         </div>
                       </div>
                       <div className="flex gap-2 shrink-0">
-                        <Link href={`/product/${product.id}`} className="px-3 py-1.5 text-xs font-bold border border-border rounded-lg hover:bg-muted transition-colors text-foreground">{t.myAccount.view}</Link>
-                        <Link href={`/my-account/edit-product/${product.id}`} className="px-3 py-1.5 text-xs font-bold border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors text-blue-700">{t.myAccount.edit}</Link>
+                        <Link 
+                          href={isSupplierAccount ? '/supplier/products' : `/product/${product.id}`} 
+                          className="px-3 py-1.5 text-xs font-bold border border-border rounded-lg hover:bg-muted transition-colors text-foreground"
+                        >
+                          {t.myAccount.view}
+                        </Link>
+                        <Link 
+                          href={isSupplierAccount ? '/supplier/products' : `/my-account/edit-product/${product.id}`} 
+                          className="px-3 py-1.5 text-xs font-bold border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors text-blue-700"
+                        >
+                          {t.myAccount.edit}
+                        </Link>
                         <button
                           onClick={() => handleDeleteProduct(product.id, product.name)}
                           disabled={deletingProductId === product.id}
