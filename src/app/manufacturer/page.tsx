@@ -183,8 +183,9 @@ export default function ManufacturerHubPage() {
               <span className="hidden sm:inline">{backToStoreText}</span>
             </Link>
 
+            {/* أيقونة المراسلات الموحدة */}
             <Link
-              href="/chat"
+              href="/messaging"
               className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
               title={language === 'zh' ? '直接沟通' : language === 'tr' ? 'Sohbet' : language === 'en' ? 'Chat' : 'المراسلات'}
             >
