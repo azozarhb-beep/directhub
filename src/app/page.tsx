@@ -150,7 +150,7 @@ function ServiceModeTabs() {
   const t = SERVICE_TEXTS[langKey];
 
   return (
-    <section className="max-w-7xl mx-auto px-4 md:px-6 pt-8 pb-2" dir={dir}>
+    <section className="max-w-7xl mx-auto px-4 md:px-6 pt-6 pb-2" dir={dir}>
       <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3 text-center">
         {t.sectionTitle}
       </p>
@@ -159,31 +159,31 @@ function ServiceModeTabs() {
         {/* B2B Tab */}
         <Link
           href="/rfq/create"
-          className="group relative flex flex-col gap-3 rounded-2xl border-2 border-[#D4AF37] bg-gradient-to-br from-[#0B1F4B] via-[#14336B] to-[#2B4A7A] hover:from-[#0E2A66] hover:via-[#1B4287] hover:to-[#365C94] transition-all duration-200 p-5 shadow-[0_0_22px_rgba(212,175,55,0.35)] hover:shadow-[0_0_34px_rgba(212,175,55,0.6)] hover:-translate-y-0.5 text-start"
+          className="group relative flex flex-col gap-3 rounded-2xl border-2 border-[#D4AF37] bg-gradient-to-br from-[#0B1F4B] via-[#14336B] to-[#2B4A7A] hover:from-[#0E2A66] hover:via-[#1B4287] hover:to-[#365C94] transition-all duration-200 p-4 sm:p-5 shadow-[0_0_22px_rgba(212,175,55,0.35)] hover:shadow-[0_0_34px_rgba(212,175,55,0.6)] hover:-translate-y-0.5 text-start"
         >
           <span className="absolute top-3 end-3 text-[10px] font-bold uppercase tracking-wider bg-[#D4AF37] text-[#0B1F4B] border border-[#F3D675] rounded-full px-2.5 py-0.5 shadow-sm">
             {t.b2bBadge}
           </span>
 
-          <div className="w-11 h-11 rounded-xl bg-[#D4AF37] flex items-center justify-center text-[#0B1F4B] shadow-md group-hover:scale-105 transition-transform">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+          <div className="w-10 h-10 rounded-xl bg-[#D4AF37] flex items-center justify-center text-[#0B1F4B] shadow-md group-hover:scale-105 transition-transform">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
             </svg>
           </div>
 
           <div>
-            <h3 className="text-lg font-extrabold text-white leading-tight">
+            <h3 className="text-base sm:text-lg font-extrabold text-white leading-tight">
               {t.b2bTitle}
             </h3>
-            <p className="text-sm font-medium text-white/90 mt-0.5">
+            <p className="text-xs sm:text-sm font-medium text-white/90 mt-0.5">
               {t.b2bSubtitle}
             </p>
-            <p className="text-xs text-white/85 mt-1.5 leading-relaxed">
+            <p className="text-xs text-white/85 mt-1 leading-relaxed">
               {t.b2bDesc}
             </p>
           </div>
 
-          <div className="mt-auto inline-flex items-center gap-1.5 self-start rounded-full bg-[#D4AF37] group-hover:bg-[#F3D675] text-[#0B1F4B] text-xs font-bold px-4 py-2 shadow-md transition-colors">
+          <div className="mt-auto inline-flex items-center gap-1.5 self-start rounded-full bg-[#D4AF37] group-hover:bg-[#F3D675] text-[#0B1F4B] text-xs font-bold px-3.5 py-1.5 shadow-md transition-colors">
             {t.b2bAction}
             <svg xmlns="http://www.w3.org/2000/svg" className={`w-3.5 h-3.5 transition-transform ${isRTL ? 'rotate-180 group-hover:-translate-x-0.5' : 'group-hover:translate-x-0.5'}`} fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
@@ -194,31 +194,31 @@ function ServiceModeTabs() {
         {/* B2C Tab */}
         <Link
           href="/search"
-          className="group relative flex flex-col gap-3 rounded-2xl border-2 border-[#6EE7B7] bg-gradient-to-br from-[#064E3B] via-[#047857] to-[#10B981] hover:from-[#065F46] hover:via-[#059669] hover:to-[#34D399] transition-all duration-200 p-5 shadow-[0_0_22px_rgba(16,185,129,0.4)] hover:shadow-[0_0_34px_rgba(16,185,129,0.65)] hover:-translate-y-0.5 text-start"
+          className="group relative flex flex-col gap-3 rounded-2xl border-2 border-[#6EE7B7] bg-gradient-to-br from-[#064E3B] via-[#047857] to-[#10B981] hover:from-[#065F46] hover:via-[#059669] hover:to-[#34D399] transition-all duration-200 p-4 sm:p-5 shadow-[0_0_22px_rgba(16,185,129,0.4)] hover:shadow-[0_0_34px_rgba(16,185,129,0.65)] hover:-translate-y-0.5 text-start"
         >
           <span className="absolute top-3 end-3 text-[10px] font-bold uppercase tracking-wider bg-white text-[#047857] border border-[#6EE7B7] rounded-full px-2.5 py-0.5 shadow-sm">
             {t.b2cBadge}
           </span>
 
-          <div className="w-11 h-11 rounded-xl bg-white flex items-center justify-center text-[#047857] shadow-md group-hover:scale-105 transition-transform">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+          <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-[#047857] shadow-md group-hover:scale-105 transition-transform">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
             </svg>
           </div>
 
           <div>
-            <h3 className="text-lg font-extrabold text-white leading-tight">
+            <h3 className="text-base sm:text-lg font-extrabold text-white leading-tight">
               {t.b2cTitle}
             </h3>
-            <p className="text-sm font-medium text-white/90 mt-0.5">
+            <p className="text-xs sm:text-sm font-medium text-white/90 mt-0.5">
               {t.b2cSubtitle}
             </p>
-            <p className="text-xs text-white/85 mt-1.5 leading-relaxed">
+            <p className="text-xs text-white/85 mt-1 leading-relaxed">
               {t.b2cDesc}
             </p>
           </div>
 
-          <div className="mt-auto inline-flex items-center gap-1.5 self-start rounded-full bg-white group-hover:bg-[#ECFDF5] text-[#047857] text-xs font-bold px-4 py-2 shadow-md transition-colors">
+          <div className="mt-auto inline-flex items-center gap-1.5 self-start rounded-full bg-white group-hover:bg-[#ECFDF5] text-[#047857] text-xs font-bold px-3.5 py-1.5 shadow-md transition-colors">
             {t.b2cAction}
             <svg xmlns="http://www.w3.org/2000/svg" className={`w-3.5 h-3.5 transition-transform ${isRTL ? 'rotate-180 group-hover:-translate-x-0.5' : 'group-hover:translate-x-0.5'}`} fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
@@ -230,7 +230,7 @@ function ServiceModeTabs() {
   );
 }
 
-// ── قسم وسياسات الضمان التجاري مع نافذة تفاعلية منبثقة ──────────────────────────
+// ── شريط الضمان التجاري الأنيق والمدمج (Compact Trust Bar) ─────────────────────
 
 interface PolicyDetails {
   id: string;
@@ -239,6 +239,8 @@ interface PolicyDetails {
   badge: string;
   icon: string;
   badgeColor: string;
+  shortLabel: string;
+  shortTag: string;
   points: { title: string; text: string }[];
 }
 
@@ -253,6 +255,8 @@ function TrustAndPolicySection() {
       title: isAr ? 'منظومة حماية المشتري المعتمدة' : 'Verified Buyer Protection',
       subtitle: isAr ? 'أموالك مجمدة في حساب ضمان حتى استلام وفحص البضاعة' : 'Escrow protection until delivery & verification',
       badge: isAr ? 'ضمان مالي 100%' : '100% Escrow',
+      shortLabel: isAr ? 'حماية المشتري' : 'Buyer Protection',
+      shortTag: isAr ? 'حساب ضمان 100%' : '100% Escrow',
       icon: 'ShieldCheckIcon',
       badgeColor: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
       points: [
@@ -281,6 +285,8 @@ function TrustAndPolicySection() {
       title: isAr ? 'سياسة حماية المصانع والموردين' : 'Manufacturer & Supplier Protection',
       subtitle: isAr ? 'ضمان مستحقات الإنتاج وتوثيق التعاقد المالي' : 'Secured production payout & verified contracts',
       badge: isAr ? 'عقود موثقة' : 'Verified Contracts',
+      shortLabel: isAr ? 'ضمان المصانع' : 'Factory Security',
+      shortTag: isAr ? 'عقود موثقة' : 'Verified Contracts',
       icon: 'BuildingOffice2Icon',
       badgeColor: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
       points: [
@@ -309,6 +315,8 @@ function TrustAndPolicySection() {
       title: isAr ? 'مركز فض النزاعات والتحكيم التجاري' : 'Trade Dispute Resolution Center',
       subtitle: isAr ? 'لجنة تحكيم مستقلة وقرارات ملزمة خلال 48 ساعة' : 'Independent arbitration & binding decisions in 48h',
       badge: isAr ? 'تحكيم إلزامي' : 'Binding Mediation',
+      shortLabel: isAr ? 'فض النزاعات' : 'Dispute Center',
+      shortTag: isAr ? 'تحكيم ملزم 48h' : 'Binding in 48h',
       icon: 'ScaleIcon',
       badgeColor: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
       points: [
@@ -335,73 +343,44 @@ function TrustAndPolicySection() {
   ];
 
   return (
-    <section className="max-w-7xl mx-auto px-4 md:px-6 py-6" dir={dir}>
-      <div className="bg-gradient-to-b from-card via-card to-muted/20 border border-border rounded-3xl p-5 md:p-7 shadow-sm">
-        {/* رأس القسم */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6 pb-4 border-b border-border/60">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400 flex items-center justify-center font-bold">
-              <Icon name="ShieldCheckIcon" size={20} />
-            </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-black text-foreground">
-                {isAr ? 'منظومة الأمان والضمان التجاري (Trade Assurance)' : 'Trade Assurance & Bilateral Security'}
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                {isAr ? 'اضغط على أي بند لقراءة الضمانات القانونية والمالية المطبقة' : 'Click any section to review full legal & financial terms'}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setActiveModal(policies[2])}
-            className="text-xs font-bold text-orange-600 dark:text-orange-400 hover:underline flex items-center gap-1 self-start sm:self-auto cursor-pointer"
-          >
-            {isAr ? 'كيف يعمل التحكيم وفض النزاعات؟' : 'How does arbitration work?'}
-            <Icon name="ArrowRightIcon" size={12} className={isRTL ? 'rotate-180' : ''} />
-          </button>
+    <section className="max-w-7xl mx-auto px-4 md:px-6 py-2.5" dir={dir}>
+      {/* الشريط الأفقي المدمج والأنيق بارتفاع صغير جداً */}
+      <div className="bg-card/90 border border-border/80 rounded-2xl p-1.5 sm:p-2 shadow-2xs flex items-center justify-between gap-1.5 sm:gap-3">
+        <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-orange-500/10 text-orange-600 dark:text-orange-400 rounded-xl border border-orange-500/20 shrink-0">
+          <Icon name="ShieldCheckIcon" size={16} />
+          <span className="text-xs font-black tracking-tight">Trade Assurance</span>
         </div>
 
-        {/* كروت الحماية الثلاثية - تفتح نافذة تفاصيل السياسة بضغطة زر */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-1 sm:gap-2 flex-1">
           {policies.map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setActiveModal(item)}
-              className="group relative flex flex-col justify-between p-4 sm:p-5 rounded-2xl bg-background border border-border/70 hover:border-orange-500/50 hover:shadow-md transition-all duration-200 text-start cursor-pointer w-full"
+              className="group flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2.5 px-2 py-1.5 sm:py-2 rounded-xl bg-muted/40 hover:bg-orange-500/10 hover:border-orange-500/30 border border-transparent transition-all cursor-pointer text-start"
+              title="اضغط لعرض بنود الحماية"
             >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${item.badgeColor}`}>
-                    {item.badge}
-                  </span>
-                  <div className="w-9 h-9 rounded-xl bg-muted/60 flex items-center justify-center text-foreground group-hover:scale-110 group-hover:bg-orange-500 group-hover:text-white transition-all">
-                    <Icon name={item.icon as any} size={18} />
-                  </div>
-                </div>
-
-                <h3 className="text-sm sm:text-base font-extrabold text-foreground mb-1 group-hover:text-orange-500 transition-colors">
-                  {item.title}
-                </h3>
-                <p className="text-[11px] font-semibold text-muted-foreground mb-2">
-                  {item.subtitle}
-                </p>
-                <p className="text-xs text-muted-foreground/90 leading-relaxed">
-                  {item.points[0].text}
-                </p>
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <Icon name={item.icon as any} size={15} />
               </div>
 
-              <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between text-[11px] font-bold text-orange-600 dark:text-orange-400 group-hover:text-orange-500 transition-colors">
-                <span>{isAr ? 'عرض البنود والشروط كاملة' : 'View Full Policy Terms'}</span>
-                <Icon name="ArrowRightIcon" size={12} className={`transition-transform ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : 'group-hover:translate-x-1'}`} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1">
+                  <p className="text-[11px] sm:text-xs font-black text-foreground truncate group-hover:text-orange-600 transition-colors">
+                    {item.shortLabel}
+                  </p>
+                  <Icon name="InformationCircleIcon" size={11} className="text-muted-foreground opacity-60 hidden sm:inline shrink-0" />
+                </div>
+                <p className="text-[9px] sm:text-[10px] text-muted-foreground truncate font-medium">
+                  {item.shortTag}
+                </p>
               </div>
             </button>
           ))}
         </div>
       </div>
 
-      {/* نافذة السياسة المنبثقة الذكية (Modal) */}
+      {/* نافذة السياسة المنبثقة الذكية (تفتح عند الضغط على أي بند من الشريط) */}
       {activeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="relative w-full max-w-lg bg-card border border-border rounded-3xl p-6 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col text-start" dir={dir}>
@@ -501,7 +480,7 @@ export default function HomePage() {
         {/* بوابات الخدمة B2B / B2C */}
         <ServiceModeTabs />
 
-        {/* قسم الضمان التجاري وحماية الصفقات التفاعلي */}
+        {/* شريط الضمان التجاري الأنيق والمدمج بدلاً من الكروت الضخمة */}
         <TrustAndPolicySection />
 
         {/* شبكة التصنيفات الرئيسية للمصانع */}
@@ -525,7 +504,7 @@ export default function HomePage() {
         </Suspense>
       </main>
 
-      {/* شريط الفوتر الموحد والمختصر */}
+      {/* شريط الفوتر الموحد */}
       <footer className="bg-slate-950 text-slate-400 border-t border-slate-800/80 py-8 font-sans">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 pb-6 border-b border-slate-800/60">
