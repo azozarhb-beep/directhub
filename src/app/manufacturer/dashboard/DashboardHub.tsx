@@ -53,6 +53,7 @@ export default function DashboardHub({
   t,
   md,
 }: DashboardHubProps) {
+  // تم حذف بطاقة مراسلة الإدارة نهائياً من القائمة
   const hubCards: HubCard[] = [
     { key: 'products', label: t.manufacturerDashboard.productsAndInventory, icon: '🛍️', accent: 'from-teal-600/30 to-teal-900/20 border-teal-500/30', hint: 'منتجات المصنع المعروضة للبيع', show: true },
     { key: 'inventory', label: md.tabInventory, icon: '📦', accent: 'from-cyan-600/30 to-cyan-900/20 border-cyan-500/30', hint: 'المواد الخام ومخزون الإنتاج', show: true },
@@ -68,7 +69,6 @@ export default function DashboardHub({
     { key: 'analytics', label: t.manufacturerDashboard.analytics, icon: '📊', accent: 'from-violet-600/30 to-violet-900/20 border-violet-500/30', hint: 'مؤشرات الأداء والمبيعات', show: true },
     { key: 'factory_settings', label: 'إعدادات وتوثيق المصنع', icon: '🛡️', accent: 'from-sky-600/30 to-sky-900/20 border-sky-500/30', hint: 'السجل التجاري والترخيص الصناعي', show: !isSalesRep },
     { key: 'disputes', label: t.manufacturerDashboard.disputesAndComplaints, icon: '⚖️', accent: 'from-red-600/30 to-red-900/20 border-red-500/30', hint: 'متابعة الشكاوى والنزاعات', show: true, badge: factoryDisputes.filter((o: any) => ['open', 'factory_reviewing'].includes(o.dispute_status)).length || undefined },
-    { key: 'admin_messaging', label: t.manufacturerDashboard.adminMessaging, icon: '💬', accent: 'from-rose-600/30 to-rose-900/20 border-rose-500/30', hint: 'مراسلة إدارة المنصة', show: true },
     { key: 'archive', label: md.tabArchive, icon: '🗂️', accent: 'from-zinc-600/30 to-zinc-900/20 border-zinc-500/30', hint: 'السجلات والعمليات المؤرشفة', show: true },
   ];
 
@@ -76,7 +76,7 @@ export default function DashboardHub({
     { title: 'المنتجات والتوريدات', subtitle: 'Products & Supply', keys: ['products', 'inventory', 'all_sales', 'contracts'] },
     { title: 'الطلبات والعمليات', subtitle: 'Orders & Operations', keys: ['factory_orders', 'seller_fulfillment', 'production', 'sales_team'] },
     { title: 'المالية والضمان والحسابات', subtitle: 'Financials & Escrow', keys: ['financial_hub', 'escrow_orders', 'invoicing'] },
-    { title: 'التحليلات والتوثيق والمراسلات', subtitle: 'Analytics & Compliance', keys: ['analytics', 'factory_settings', 'disputes', 'admin_messaging', 'archive'] },
+    { title: 'التحليلات والتوثيق', subtitle: 'Analytics & Compliance', keys: ['analytics', 'factory_settings', 'disputes', 'archive'] },
   ];
 
   const handleCardClick = (key: string) => {
@@ -91,12 +91,12 @@ export default function DashboardHub({
 
   return (
     <>
-      {/* Page title */}
-      <div className="rounded-3xl bg-gradient-to-l from-cyan-900/40 via-slate-900 to-slate-900 border border-cyan-500/20 p-6 mb-8 flex flex-wrap items-start justify-between gap-4">
+      {/* رأس الصفحة مع الهوية والأزرار السريعة */}
+      <div className="rounded-3xl bg-gradient-to-l from-cyan-900/40 via-slate-900 to-slate-900 border border-cyan-500/20 p-4 sm:p-6 mb-6 sm:mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs text-cyan-300 font-bold mb-1">Local Factory Room</p>
           <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">{t.manufacturerDashboard.title}</h1>
-          <p className="text-sm text-slate-400 mt-1 font-medium">
+          <p className="text-xs sm:text-sm text-slate-400 mt-1 font-medium">
             {companyName ? `${companyName} — ` : ''}{isSalesRep ? md.salesRepLimited : t.manufacturerDashboard.subtitle}
           </p>
         </div>
@@ -200,7 +200,7 @@ export default function DashboardHub({
         </div>
       </div>
 
-      {/* Sales Rep Permission Banner */}
+      {/* تنبيه صلاحيات المندوب */}
       {isSalesRep && (
         <div className="mb-5 flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
           <Icon name="ShieldCheckIcon" size={18} className="text-blue-600 shrink-0 mt-0.5" />
@@ -211,7 +211,7 @@ export default function DashboardHub({
         </div>
       )}
 
-      {/* Hub cards */}
+      {/* شبكة البطاقات المدمجة: عمودين في الهواتف وثلاثة في الشاشات الكبيرة */}
       <div>
         {hubSections.map((section) => {
           const cards = section.keys
@@ -219,27 +219,29 @@ export default function DashboardHub({
             .filter((c): c is HubCard => !!c && c.show);
           if (cards.length === 0) return null;
           return (
-            <section key={section.title} className="mb-8">
-              <div className="flex items-baseline gap-2 mb-3">
-                <h2 className="text-base font-black text-white">{section.title}</h2>
-                <span className="text-[11px] text-slate-500">{section.subtitle}</span>
+            <section key={section.title} className="mb-6 sm:mb-8">
+              <div className="flex items-baseline gap-2 mb-2.5 sm:mb-3">
+                <h2 className="text-sm sm:text-base font-black text-white">{section.title}</h2>
+                <span className="text-[10px] sm:text-[11px] text-slate-500">{section.subtitle}</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5">
                 {cards.map((tab) => {
                   const routed = MODULE_ROUTES[tab.key as DashboardTab];
-                  const cardClass = `group relative text-start rounded-2xl border bg-gradient-to-br ${tab.accent} p-4 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400`;
+                  const cardClass = `group relative text-start rounded-2xl border bg-gradient-to-br ${tab.accent} p-3 sm:p-4 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/40 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 min-h-[110px] sm:min-h-[130px] flex flex-col justify-between`;
                   const cardInner = (
                     <>
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="text-2xl" aria-hidden="true">{tab.icon}</span>
+                      <div className="flex items-start justify-between gap-1.5">
+                        <span className="text-xl sm:text-2xl" aria-hidden="true">{tab.icon}</span>
                         {tab.badge !== undefined && tab.badge !== 0 && (
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full text-white ${tab.key === 'disputes' ? 'bg-red-500 animate-pulse' : 'bg-white/10'}`}>
+                          <span className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full text-white ${tab.key === 'disputes' ? 'bg-red-500 animate-pulse' : 'bg-white/10'}`}>
                             {tab.badge}
                           </span>
                         )}
                       </div>
-                      <h3 className="text-sm font-black text-white mt-3">{tab.label}</h3>
-                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">{tab.hint}</p>
+                      <div className="mt-2">
+                        <h3 className="text-xs sm:text-sm font-black text-white line-clamp-1">{tab.label}</h3>
+                        <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 leading-snug line-clamp-2">{tab.hint}</p>
+                      </div>
                     </>
                   );
                   if (routed) {
