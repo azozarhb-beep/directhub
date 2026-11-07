@@ -79,6 +79,7 @@ function FactoryStoreContent() {
   const supabase = createClient();
 
   const urlTitle = searchParams?.get('title') || searchParams?.get('name') || '';
+  const convIdFromUrl = searchParams?.get('convId') || searchParams?.get('conv') || '';
 
   const [profile, setProfile] = useState<EntityProfile>({
     id: factoryId,
@@ -151,7 +152,7 @@ function FactoryStoreContent() {
 
         supabase
           .from('chat_conversations')
-          .select('supplier_name')
+          .select('id, supplier_name')
           .or(`buyer_id.eq.${factoryId},manufacturer_id.eq.${factoryId}`)
           .limit(1)
           .maybeSingle()
@@ -259,6 +260,17 @@ function FactoryStoreContent() {
     });
   };
 
+  // العودة المباشرة للمحادثة نفسها
+  const handleBackToChat = () => {
+    if (convIdFromUrl) {
+      router.push(`/messaging?conv=${convIdFromUrl}`);
+    } else if (factoryId || profile?.user_id) {
+      router.push(`/messaging?partnerId=${factoryId || profile?.user_id}`);
+    } else {
+      router.back();
+    }
+  };
+
   const filteredProducts = products.filter(p => {
     const matchSearch = !searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase()) || (p.name_ar && p.name_ar.includes(searchQuery));
     const matchCat = filterCategory === 'all' || p.category === filterCategory;
@@ -275,28 +287,27 @@ function FactoryStoreContent() {
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <Link href="/"><AppLogo className="h-8 w-auto" /></Link>
           <div className="flex items-center gap-2">
-            <Link
-              href="/messaging"
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs sm:text-sm font-bold text-slate-200 border border-slate-700 transition-colors"
+            <button
+              type="button"
+              onClick={handleBackToChat}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs sm:text-sm font-bold text-slate-200 border border-slate-700 transition-colors cursor-pointer active:scale-95"
             >
               <span>💬</span>
               <span>العودة للمحادثة</span>
-            </Link>
+            </button>
           </div>
         </div>
       </header>
 
-      {/* ── بانر المنشأة (يعمل فوراً بدون شاشة معلقة) ── */}
+      {/* ── بانر المنشأة ── */}
       <div className="bg-gradient-to-b from-slate-900 to-slate-950 border-b border-slate-800">
         <div className="max-w-7xl mx-auto px-4 py-8 sm:py-12">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="flex items-start sm:items-center gap-4 sm:gap-6">
-              {/* شعار المنشأة */}
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-br from-cyan-500/20 to-blue-600/10 border-2 border-cyan-500/30 flex items-center justify-center text-3xl sm:text-4xl font-black text-cyan-400 shadow-xl shrink-0">
                 {profile.company_name.charAt(0).toUpperCase()}
               </div>
 
-              {/* بيانات الشركة */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="text-xl sm:text-3xl font-black text-white tracking-tight">
@@ -321,19 +332,18 @@ function FactoryStoreContent() {
               </div>
             </div>
 
-            {/* زر بدء التواصل */}
             <div className="flex items-center gap-3">
-              <Link
-                href={`/messaging?partnerId=${profile.user_id}&title=${encodeURIComponent(profile.company_name)}`}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-sm shadow-lg shadow-cyan-500/20 active:scale-95 transition-all"
+              <button
+                type="button"
+                onClick={handleBackToChat}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-sm shadow-lg shadow-cyan-500/20 active:scale-95 transition-all cursor-pointer"
               >
                 <span>💬</span>
                 <span>بدء تفاوض وتواصل مباشر</span>
-              </Link>
+              </button>
             </div>
           </div>
 
-          {/* التبويبات */}
           <div className="flex gap-2 border-t border-slate-800/80 mt-8 pt-4 overflow-x-auto">
             <button
               onClick={() => setActiveTab('overview')}
@@ -423,17 +433,17 @@ function FactoryStoreContent() {
                   المنشأة مؤهلة ومصرح لها بإصدار واستقبال طلبات عروض الأسعار الرسمية (RFQ)، التفاوض المباشر حول الكميات والأسعار، وسداد مستحقات الصفقات عبر الحسابات البنكية المحمية.
                 </p>
                 <div className="flex items-center gap-3 pt-2">
-                  <Link
-                    href={`/messaging?partnerId=${profile.user_id}&title=${encodeURIComponent(profile.company_name)}`}
-                    className="px-5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-all"
+                  <button
+                    type="button"
+                    onClick={handleBackToChat}
+                    className="px-5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-all cursor-pointer"
                   >
                     💬 طلب عرض سعر أو تفاوض خاص
-                  </Link>
+                  </button>
                 </div>
               </div>
             </div>
 
-            {/* الشريط الجانبي */}
             <div className="space-y-6">
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
                 <h3 className="text-sm font-bold text-white border-b border-slate-800 pb-3 flex items-center gap-2">
