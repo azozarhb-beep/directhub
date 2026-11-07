@@ -132,44 +132,32 @@ const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnTyp
 
   let title = '';
   let description = '';
-  let destination = profile?.dashboard_path || getHomeRoomForRole(workspaceRole);
+  let destination = '/manufacturer';
 
-  if (accountRole === 'commercial_supplier') {
+  if (accountRole === 'commercial_supplier' || workspaceRole === 'supplier') {
     title = 'غرفة تحكم المورّد التجاري';
     description = 'إدارة منتجاتك ومخزونك وطلبات الجملة والتجزئة';
     destination = '/supplier';
-  } else if (accountRole === 'local_manufacturer') {
+  } else if (accountRole === 'local_manufacturer' || workspaceRole === 'manufacturer') {
     title = 'غرفة تحكم المصنع المحلي';
     description = 'إدارة خطوط الإنتاج والقدرة التشغيلية والمنتجات';
-    destination = '/manufacturer/dashboard';
+    destination = '/manufacturer';
   } else if (accountRole === 'international_manufacturer') {
     title = 'غرفة تحكم المصنع الدولي';
     description = 'إدارة منتجاتك وعروضك للأسواق الدولية';
-    destination = '/manufacturer/international-dashboard';
-  } else if (accountRole === 'logistics_partner') {
+    destination = '/manufacturer';
+  } else if (accountRole === 'logistics_partner' || workspaceRole === 'logistics') {
     title = 'غرفة تحكم المندوب اللوجستي';
     description = 'إدارة الشحنات والتوصيلات وتتبع الطلبات';
     destination = '/logistics/dashboard';
-  } else if (accountRole === 'field_agent' && (workspaceRole === 'agent' || workspaceRole === 'admin')) {
+  } else if (accountRole === 'field_agent' || (canSeeAgentRoom && workspaceRole === 'agent')) {
     title = 'غرفة تحكم المندوب الميداني';
     description = 'إدارة مهامك الميدانية وتسجيل المصانع والعمولات';
-    destination = '/agent/dashboard';
-  } else if (workspaceRole === 'manufacturer') {
-    title = 'مساحة عمل المصنّع';
-    description = 'إدارة منتجاتك وطلباتك وملف المصنع';
-    destination = getHomeRoomForRole(workspaceRole);
-  } else if (workspaceRole === 'logistics') {
-    title = 'غرفة تحكم اللوجستيات';
-    description = 'إدارة الشحنات والتوصيلات';
-    destination = '/logistics/dashboard';
-  } else if (canSeeAgentRoom && workspaceRole === 'agent') {
-    title = 'غرفة تحكم المندوب الميداني';
-    description = 'إدارة مهامك الميدانية والعمولات';
     destination = '/agent/dashboard';
   } else {
     title = 'مساحة العمل';
     description = 'الوصول إلى لوحة التحكم الخاصة بك';
-    destination = getHomeRoomForRole(workspaceRole);
+    destination = '/manufacturer';
   }
 
   return (
@@ -183,7 +171,7 @@ const WorkspaceBanner: React.FC<{ profile: UserProfile | null; router: ReturnTyp
       </div>
       <button
         onClick={() => router.push(destination)}
-        className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 transition-opacity shrink-0"
+        className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 transition-opacity shrink-0 cursor-pointer active:scale-95"
       >
         الذهاب إلى مساحة العمل
       </button>
@@ -884,7 +872,6 @@ const AccountDashboard: React.FC = () => {
           setOrderStats({ total, pending, completed, totalSpent });
         }
 
-        // جلب منتجات المورّد تلقائياً من جدول supplier_products
         if (suppProductsRes?.data && suppProductsRes.data.length > 0) {
           setProducts(
             suppProductsRes.data.map((sp: any) => ({
@@ -1063,11 +1050,11 @@ const AccountDashboard: React.FC = () => {
             <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
               <button
                 onClick={() => (isSupplierAccount ? router.push('/supplier/settings') : setActiveTab('settings'))}
-                className="px-4 py-2 bg-white text-orange-600 text-xs font-extrabold rounded-xl hover:bg-orange-50 transition-colors whitespace-nowrap"
+                className="px-4 py-2 bg-white text-orange-600 text-xs font-extrabold rounded-xl hover:bg-orange-50 transition-colors whitespace-nowrap cursor-pointer"
               >
                 {t.myAccount.completeNow}
               </button>
-              <button onClick={() => setBannerDismissed(true)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 transition-colors" aria-label="Dismiss">
+              <button onClick={() => setBannerDismissed(true)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 transition-colors cursor-pointer" aria-label="Dismiss">
                 <Icon name="XMarkIcon" size={14} className="text-white" />
               </button>
             </div>
@@ -1122,7 +1109,7 @@ const AccountDashboard: React.FC = () => {
                       router.push('/my-account/edit-profile');
                     }
                   }}
-                  className="px-4 py-2 border border-primary-foreground/20 text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary-foreground/10 transition-colors"
+                  className="px-4 py-2 border border-primary-foreground/20 text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary-foreground/10 transition-colors cursor-pointer"
                 >
                   {t.myAccount.editProfile}
                 </button>
@@ -1159,7 +1146,7 @@ const AccountDashboard: React.FC = () => {
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`relative flex flex-col items-center gap-1.5 px-2 py-3 rounded-2xl font-bold text-xs transition-all ${
+                className={`relative flex flex-col items-center gap-1.5 px-2 py-3 rounded-2xl font-bold text-xs transition-all cursor-pointer ${
                   activeTab === tab.key
                     ? 'bg-primary text-primary-foreground shadow-md'
                     : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -1197,7 +1184,7 @@ const AccountDashboard: React.FC = () => {
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-extrabold text-foreground">{t.myAccount.recentOrders}</h2>
-                  <button onClick={() => setActiveTab('orders')} className="text-xs font-bold text-primary hover:opacity-70 flex items-center gap-1 transition-opacity">
+                  <button onClick={() => setActiveTab('orders')} className="text-xs font-bold text-primary hover:opacity-70 flex items-center gap-1 transition-opacity cursor-pointer">
                     {t.myAccount.viewAll} <Icon name={isRTL ? 'ArrowLeftIcon' : 'ArrowRightIcon'} size={12} />
                   </button>
                 </div>
@@ -1269,7 +1256,7 @@ const AccountDashboard: React.FC = () => {
                 <h2 className="text-lg font-extrabold text-foreground">{t.myAccount.allOrders}</h2>
                 <p className="text-xs text-muted-foreground mt-0.5">{orderStats.total} {t.myAccount.listings}</p>
               </div>
-              <Link href="/orders" className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 transition-opacity">
+              <Link href="/orders" className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:opacity-90 transition-opacity self-start sm:self-auto">
                 <Icon name="ArrowTopRightOnSquareIcon" size={14} />
                 {t.myAccount.fullOrderHistory}
               </Link>
@@ -1334,7 +1321,7 @@ const AccountDashboard: React.FC = () => {
               </div>
               <button 
                 onClick={() => router.push(isSupplierAccount ? '/supplier/products' : '/my-account/add-product')} 
-                className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity"
+                className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground text-sm font-bold rounded-xl hover:opacity-90 transition-opacity cursor-pointer"
               >
                 <Icon name="PlusIcon" size={16} />
                 {isSupplierAccount ? (isAr ? 'إدارة وإضافة منتج جديد' : 'Manage & Add Products') : t.myAccount.addNewProduct}
@@ -1408,7 +1395,7 @@ const AccountDashboard: React.FC = () => {
                         <button
                           onClick={() => handleDeleteProduct(product.id, product.name)}
                           disabled={deletingProductId === product.id}
-                          className="px-3 py-1.5 text-xs font-bold border border-red-300 rounded-lg hover:bg-red-50 transition-colors text-red-600 disabled:opacity-50"
+                          className="px-3 py-1.5 text-xs font-bold border border-red-300 rounded-lg hover:bg-red-50 transition-colors text-red-600 disabled:opacity-50 cursor-pointer"
                         >
                           {deletingProductId === product.id ? '...' : t.myAccount.delete}
                         </button>
@@ -1452,7 +1439,7 @@ const AccountDashboard: React.FC = () => {
 
                 <button
                   onClick={() => router.push('/my-account/edit-profile')}
-                  className="w-full flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground text-sm font-extrabold rounded-xl hover:opacity-90 transition-opacity shadow-md shadow-primary/20"
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground text-sm font-extrabold rounded-xl hover:opacity-90 transition-opacity shadow-md shadow-primary/20 cursor-pointer"
                 >
                   <Icon name="PencilSquareIcon" size={16} />
                   {t.myAccount.editBuyerProfile}
@@ -1518,7 +1505,7 @@ const AccountDashboard: React.FC = () => {
                   {t.myAccount.security}
                 </h3>
                 <div>
-                  <button onClick={() => setShowPasswordForm((v) => !v)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-muted transition-colors text-left w-full">
+                  <button onClick={() => setShowPasswordForm((v) => !v)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-muted transition-colors text-left w-full cursor-pointer">
                     <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
                       <Icon name="KeyIcon" size={14} className="text-indigo-600" />
                     </div>
@@ -1546,10 +1533,10 @@ const AccountDashboard: React.FC = () => {
                         <input type="password" value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm((p) => ({ ...p, confirmPassword: e.target.value }))} placeholder="••••••••" className="w-full px-3 py-2 border border-border rounded-lg text-sm text-foreground bg-background focus:outline-none focus:border-primary" />
                       </div>
                       <div className="flex gap-2 pt-1">
-                        <button onClick={handleSavePassword} disabled={passwordSaving || !passwordForm.newPassword || !passwordForm.confirmPassword} className="flex-1 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:opacity-90 disabled:opacity-50">
+                        <button onClick={handleSavePassword} disabled={passwordSaving || !passwordForm.newPassword || !passwordForm.confirmPassword} className="flex-1 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:opacity-90 disabled:opacity-50 cursor-pointer">
                           {passwordSaving ? 'جاري الحفظ...' : (hasLocalPassword ? t.myAccount.changePassword : t.myAccount.createPassword)}
                         </button>
-                        <button onClick={() => setShowPasswordForm(false)} className="px-3 py-2 border border-border text-xs font-bold rounded-lg hover:bg-muted text-foreground">
+                        <button onClick={() => setShowPasswordForm(false)} className="px-3 py-2 border border-border text-xs font-bold rounded-lg hover:bg-muted text-foreground cursor-pointer">
                           {t.myAccount.cancel}
                         </button>
                       </div>
@@ -1564,7 +1551,7 @@ const AccountDashboard: React.FC = () => {
                     await supabase.auth.signOut();
                     router.push('/login');
                   }}
-                  className="flex items-center gap-3 p-2 rounded-xl hover:bg-red-50 transition-colors text-left w-full"
+                  className="flex items-center gap-3 p-2 rounded-xl hover:bg-red-50 transition-colors text-left w-full cursor-pointer"
                 >
                   <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
                     <Icon name="ArrowRightOnRectangleIcon" size={14} className="text-red-600" />
