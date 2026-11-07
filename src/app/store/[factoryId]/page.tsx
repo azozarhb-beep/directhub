@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+export const dynamic = 'force-dynamic';
+
+import React, { useState, useEffect, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -66,20 +68,18 @@ function getRoleTitle(role?: string, accountRole?: string): { title: string; bad
   return { title: 'منشأة تجارية ومشتري جملة معتمد (B2B Buyer)', badgeCls: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
 }
 
-export default function FactoryStorePage() {
+function FactoryStoreContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
   const { t, dir, language } = useLanguage();
   const { user } = useAuth();
   const { addItem } = useCart();
-  const factoryId = (params?.factoryId || params?.id) as string;
+  const factoryId = (params?.id || params?.factoryId) as string;
   const supabase = createClient();
 
-  // اسم أولي فوري إن وُجد في الرابط لفتح الصفحة بدون أي تأخير
   const urlTitle = searchParams?.get('title') || searchParams?.get('name') || '';
 
-  // حالة فورية تمنع ظهور أي شاشة سوداء دوارة
   const [profile, setProfile] = useState<EntityProfile>({
     id: factoryId,
     company_name: urlTitle || 'منشأة تجارية معتمدة',
@@ -110,7 +110,6 @@ export default function FactoryStorePage() {
     fetchEntityDataFast();
   }, [factoryId]);
 
-  // استعلام متوازي وسريع جداً في دورة اتصال واحدة
   const fetchEntityDataFast = async () => {
     setDataFetching(true);
     try {
@@ -202,7 +201,6 @@ export default function FactoryStorePage() {
         active_rfqs_count: rfqsCount,
       });
 
-      // دمج المنتجات
       const mfgItems = mfgRes.status === 'fulfilled' && mfgRes.value.data ? mfgRes.value.data.map((p: any) => ({
         ...p,
         price: null,
@@ -582,5 +580,17 @@ export default function FactoryStorePage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function FactoryStorePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <FactoryStoreContent />
+    </Suspense>
   );
 }
