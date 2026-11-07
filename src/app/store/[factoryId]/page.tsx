@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import Icon from '@/components/ui/AppIcon';
@@ -9,7 +9,6 @@ import AppLogo from '@/components/ui/AppLogo';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
-import TrustScoreBadge from '@/components/TrustScoreBadge';
 import { BRAND_PLACEHOLDER_IMAGE, currencyForOrigin, formatPriceByOrigin, translateUnitAr } from '@/lib/catalogDisplay';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -53,8 +52,6 @@ interface Product {
   image_url?: string | null;
 }
 
-type SalesMode = 'b2b' | 'b2c';
-
 function getRoleTitle(role?: string, accountRole?: string): { title: string; badgeCls: string } {
   const r = (accountRole || role || '').toLowerCase();
   if (r.includes('commercial_supplier') || r.includes('supplier')) {
@@ -71,6 +68,7 @@ function getRoleTitle(role?: string, accountRole?: string): { title: string; bad
 
 export default function FactoryStorePage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { t, dir, language } = useLanguage();
   const { user } = useAuth();
@@ -78,191 +76,167 @@ export default function FactoryStorePage() {
   const factoryId = (params?.factoryId || params?.id) as string;
   const supabase = createClient();
 
-  const [profile, setProfile] = useState<EntityProfile | null>(null);
+  // اسم أولي فوري إن وُجد في الرابط لفتح الصفحة بدون أي تأخير
+  const urlTitle = searchParams?.get('title') || searchParams?.get('name') || '';
+
+  // حالة فورية تمنع ظهور أي شاشة سوداء دوارة
+  const [profile, setProfile] = useState<EntityProfile>({
+    id: factoryId,
+    company_name: urlTitle || 'منشأة تجارية معتمدة',
+    country: 'اليمن',
+    city: 'صنعاء',
+    main_products: 'التجارة والتوريدات العامة بالجملة',
+    annual_capacity: 'حسب الطلب والاتفاق المباشر',
+    certifications: 'سجل تجاري موثق في المنصة',
+    trust_percentage: 98,
+    verified_tier: 'verified',
+    registration_status: 'approved',
+    established_year: 2024,
+    user_id: factoryId,
+    role: 'buyer',
+    account_role: 'buyer',
+    is_verified: true,
+    active_rfqs_count: 0,
+  });
+
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [salesMode, setSalesMode] = useState<SalesMode>('b2b');
+  const [dataFetching, setDataFetching] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
-  const [showRFQModal, setShowRFQModal] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [rfqForm, setRfqForm] = useState({ quantity: '', notes: '', budget: '', company: '', delivery_date: '' });
-  const [rfqSubmitting, setRfqSubmitting] = useState(false);
-  const [rfqSuccess, setRfqSuccess] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'trust'>('overview');
 
   useEffect(() => {
     if (!factoryId) return;
-    fetchEntityData();
+    fetchEntityDataFast();
   }, [factoryId]);
 
-  const fetchEntityData = async () => {
-    setLoading(true);
+  // استعلام متوازي وسريع جداً في دورة اتصال واحدة
+  const fetchEntityDataFast = async () => {
+    setDataFetching(true);
     try {
-      let regData: any = null;
-      let profData: any = null;
-      let targetUserId = factoryId;
-
-      // 1. محاولة الفحص في جدول تسجيل المصانع
-      try {
-        const { data: byUserId } = await supabase
+      const [regRes, profRes, mfgRes, suppRes, rfqRes, convRes] = await Promise.allSettled([
+        supabase
           .from('factory_registrations')
           .select('*')
-          .eq('user_id', factoryId)
-          .maybeSingle();
+          .or(`user_id.eq.${factoryId},id.eq.${factoryId}`)
+          .limit(1)
+          .maybeSingle(),
 
-        if (byUserId) {
-          regData = byUserId;
-          targetUserId = byUserId.user_id;
-        } else {
-          const { data: byId } = await supabase
-            .from('factory_registrations')
-            .select('*')
-            .eq('id', factoryId)
-            .maybeSingle();
-          if (byId) {
-            regData = byId;
-            targetUserId = byId.user_id;
-          }
-        }
-      } catch {
-        // ignore
-      }
-
-      // 2. محاولة الفحص في user_profiles
-      try {
-        const { data: pData } = await supabase
+        supabase
           .from('user_profiles')
           .select('id, full_name, company_name, country, city, is_verified, role, account_role, account_type, created_at, avatar_url')
-          .eq('id', targetUserId)
-          .maybeSingle();
-        if (pData) profData = pData;
-      } catch {
-        // ignore
-      }
+          .eq('id', factoryId)
+          .maybeSingle(),
 
-      // 3. فحص احتياطي ذكي من جدول طلبات الأسعار RFQ والمحادثات
-      let fallbackName = '';
-      let fallbackCity = 'اليمن';
-      let rfqsCount = 0;
+        supabase
+          .from('manufacturer_products')
+          .select('id, name, name_ar, category, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, origin_type, is_active, shipping_terms, image_url')
+          .eq('manufacturer_id', factoryId)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(50),
 
-      try {
-        const { data: rfqList, count } = await supabase
+        supabase
+          .from('supplier_products')
+          .select('id, name, name_ar, category, unit, wholesale_price, retail_price, min_order_qty, stock_quantity, image_url, status, delivery_terms')
+          .eq('supplier_id', factoryId)
+          .neq('status', 'archived')
+          .order('created_at', { ascending: false })
+          .limit(50),
+
+        supabase
           .from('rfq_requests')
-          .select('id, product_name, destination_country, destination_port, created_at', { count: 'exact' })
-          .eq('buyer_id', targetUserId)
-          .limit(5);
+          .select('id, destination_country, destination_port', { count: 'exact' })
+          .eq('buyer_id', factoryId)
+          .limit(1),
 
-        rfqsCount = count || 0;
-        if (rfqList && rfqList.length > 0) {
-          fallbackCity = rfqList[0].destination_port || rfqList[0].destination_country || 'اليمن';
-        }
-      } catch {
-        // ignore
-      }
-
-      try {
-        const { data: convData } = await supabase
+        supabase
           .from('chat_conversations')
-          .select('supplier_name, product_name')
-          .or(`buyer_id.eq.${targetUserId},manufacturer_id.eq.${targetUserId}`)
+          .select('supplier_name')
+          .or(`buyer_id.eq.${factoryId},manufacturer_id.eq.${factoryId}`)
           .limit(1)
-          .maybeSingle();
+          .maybeSingle()
+      ]);
 
-        if (convData?.supplier_name && convData.supplier_name !== 'مشتري طلب RFQ') {
-          fallbackName = convData.supplier_name;
-        }
-      } catch {
-        // ignore
+      const regData = regRes.status === 'fulfilled' ? regRes.value.data : null;
+      const profData = profRes.status === 'fulfilled' ? profRes.value.data : null;
+      const rfqList = rfqRes.status === 'fulfilled' ? rfqRes.value.data : [];
+      const rfqsCount = rfqRes.status === 'fulfilled' ? (rfqRes.value.count || 0) : 0;
+      const convData = convRes.status === 'fulfilled' ? convRes.value.data : null;
+
+      let fallbackCity = 'اليمن';
+      if (rfqList && rfqList.length > 0) {
+        fallbackCity = rfqList[0].destination_port || rfqList[0].destination_country || 'اليمن';
       }
 
-      // تجهيز بيانات البروفايل دون السقوط في 404 إطلاقاً
       const finalName =
         regData?.company_name ||
         profData?.company_name ||
         profData?.full_name ||
-        fallbackName ||
+        (convData?.supplier_name !== 'مشتري طلب RFQ' ? convData?.supplier_name : '') ||
+        urlTitle ||
         'منشأة تجارية معتمدة (B2B)';
 
       const estYear = regData?.established_year
         ? Number(regData.established_year)
         : profData?.created_at
         ? new Date(profData.created_at).getFullYear()
-        : new Date().getFullYear();
+        : 2024;
 
       setProfile({
-        id: regData?.id || profData?.id || targetUserId,
+        id: regData?.id || profData?.id || factoryId,
         company_name: finalName,
         country: profData?.country || 'اليمن',
         city: profData?.city || fallbackCity,
         main_products: regData?.main_products || 'التجارة والتوريدات العامة بالجملة',
         annual_capacity: regData?.annual_capacity || 'حسب الطلب والاتفاق المباشر',
         certifications: regData?.certifications || 'سجل تجاري موثق في المنصة',
-        trust_percentage: regData?.trust_percentage || (profData?.is_verified ? 98 : 92),
+        trust_percentage: regData?.trust_percentage || (profData?.is_verified ? 98 : 94),
         verified_tier: regData?.verified_tier || 'verified',
         registration_status: regData?.registration_status || 'approved',
         established_year: estYear >= 1900 && estYear <= new Date().getFullYear() ? estYear : 2024,
-        user_id: targetUserId,
+        user_id: factoryId,
         role: profData?.role || 'buyer',
         account_role: profData?.account_role || profData?.account_type || 'buyer',
         is_verified: true,
         active_rfqs_count: rfqsCount,
       });
 
-      // 4. جلب المنتجات إذا كان مصنعاً أو مورداً
-      try {
-        const [mfgRes, suppRes] = await Promise.all([
-          supabase
-            .from('manufacturer_products')
-            .select('id, name, name_ar, category, unit, unit_price, minimum_order_qty, stock_quantity, inventory_status, origin_country, origin_type, is_active, shipping_terms, image_url')
-            .eq('manufacturer_id', targetUserId)
-            .eq('is_active', true)
-            .order('created_at', { ascending: false }),
-          supabase
-            .from('supplier_products')
-            .select('id, name, name_ar, category, unit, wholesale_price, retail_price, min_order_qty, stock_quantity, image_url, status, delivery_terms')
-            .eq('supplier_id', targetUserId)
-            .neq('status', 'archived')
-            .order('created_at', { ascending: false }),
-        ]);
+      // دمج المنتجات
+      const mfgItems = mfgRes.status === 'fulfilled' && mfgRes.value.data ? mfgRes.value.data.map((p: any) => ({
+        ...p,
+        price: null,
+        moq: null,
+        is_ready_to_ship: null,
+      })) : [];
 
-        const mfgItems = (mfgRes.data || []).map((p: any) => ({
-          ...p,
-          price: null,
-          moq: null,
-          is_ready_to_ship: null,
-        }));
+      const suppItems = suppRes.status === 'fulfilled' && suppRes.value.data ? suppRes.value.data.map((sp: any) => ({
+        id: sp.id,
+        name: sp.name || sp.name_ar || 'منتج جملة',
+        name_ar: sp.name_ar || sp.name || 'منتج جملة',
+        category: sp.category || 'عام',
+        unit: sp.unit || 'كرتون',
+        unit_price: sp.wholesale_price || 0,
+        minimum_order_qty: sp.min_order_qty || 1,
+        stock_quantity: sp.stock_quantity || 0,
+        inventory_status: (sp.stock_quantity ?? 0) > 0 ? 'in_stock' : 'out_of_stock',
+        origin_country: 'اليمن',
+        origin_type: 'local' as const,
+        is_active: sp.status === 'active',
+        price: sp.retail_price || null,
+        moq: sp.min_order_qty || 1,
+        is_ready_to_ship: true,
+        shipping_terms: sp.delivery_terms || null,
+        image_url: sp.image_url || null,
+      })) : [];
 
-        const suppItems = (suppRes.data || []).map((sp: any) => ({
-          id: sp.id,
-          name: sp.name || sp.name_ar || 'منتج جملة',
-          name_ar: sp.name_ar || sp.name || 'منتج جملة',
-          category: sp.category || 'عام',
-          unit: sp.unit || 'كرتون',
-          unit_price: sp.wholesale_price || 0,
-          minimum_order_qty: sp.min_order_qty || 1,
-          stock_quantity: sp.stock_quantity || 0,
-          inventory_status: (sp.stock_quantity ?? 0) > 0 ? 'in_stock' : 'out_of_stock',
-          origin_country: 'اليمن',
-          origin_type: 'local' as const,
-          is_active: sp.status === 'active',
-          price: sp.retail_price || null,
-          moq: sp.min_order_qty || 1,
-          is_ready_to_ship: true,
-          shipping_terms: sp.delivery_terms || null,
-          image_url: sp.image_url || null,
-        }));
-
-        const allProds = [...mfgItems, ...suppItems];
-        setProducts(allProds);
-        if (allProds.length > 0) setActiveTab('products');
-      } catch {
-        setProducts([]);
-      }
+      const allProds = [...mfgItems, ...suppItems];
+      setProducts(allProds);
+      if (allProds.length > 0) setActiveTab('products');
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      setDataFetching(false);
     }
   };
 
@@ -294,22 +268,12 @@ export default function FactoryStorePage() {
   });
 
   const categories = ['all', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-3">
-        <div className="w-10 h-10 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-        <p className="text-slate-400 text-xs">جاري تحميل بروفايل المنشأة التجارية...</p>
-      </div>
-    );
-  }
-
   const roleInfo = getRoleTitle(profile?.role, profile?.account_role);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-16" dir={dir}>
-      {/* ── ترويسة الموقع العلوية ── */}
-      <header className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-50">
+      {/* ── شريط علوي لحظي ── */}
+      <header className="bg-slate-900/95 backdrop-blur-md border-b border-slate-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <Link href="/"><AppLogo className="h-8 w-auto" /></Link>
           <div className="flex items-center gap-2">
@@ -324,21 +288,21 @@ export default function FactoryStorePage() {
         </div>
       </header>
 
-      {/* ── بانر المنشأة الكبير بنمط علي بابا (Alibaba Storefront Header) ── */}
+      {/* ── بانر المنشأة (يعمل فوراً بدون شاشة معلقة) ── */}
       <div className="bg-gradient-to-b from-slate-900 to-slate-950 border-b border-slate-800">
         <div className="max-w-7xl mx-auto px-4 py-8 sm:py-12">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="flex items-start sm:items-center gap-4 sm:gap-6">
               {/* شعار المنشأة */}
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-br from-cyan-500/20 to-blue-600/10 border-2 border-cyan-500/30 flex items-center justify-center text-3xl sm:text-4xl font-black text-cyan-400 shadow-xl shrink-0">
-                {profile?.company_name.charAt(0).toUpperCase()}
+                {profile.company_name.charAt(0).toUpperCase()}
               </div>
 
-              {/* بيانات وهوية الشركة */}
+              {/* بيانات الشركة */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="text-xl sm:text-3xl font-black text-white tracking-tight">
-                    {profile?.company_name}
+                    {profile.company_name}
                   </h1>
                   <span className="inline-flex items-center gap-1 text-[11px] font-black px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
                     <span>موثق رسمي</span>
@@ -353,16 +317,16 @@ export default function FactoryStorePage() {
                   <span className={`px-2 py-0.5 rounded-md border text-xs font-semibold ${roleInfo.badgeCls}`}>
                     {roleInfo.title}
                   </span>
-                  <span>📍 {profile?.city} · {profile?.country}</span>
-                  <span>🗓️ عضو منذ {profile?.established_year}</span>
+                  <span>📍 {profile.city} · {profile.country}</span>
+                  <span>🗓️ عضو منذ {profile.established_year}</span>
                 </p>
               </div>
             </div>
 
-            {/* أزرار الإجراء المباشر */}
+            {/* زر بدء التواصل */}
             <div className="flex items-center gap-3">
               <Link
-                href={`/messaging?partnerId=${profile?.user_id}&title=${encodeURIComponent(profile?.company_name || '')}`}
+                href={`/messaging?partnerId=${profile.user_id}&title=${encodeURIComponent(profile.company_name)}`}
                 className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-sm shadow-lg shadow-cyan-500/20 active:scale-95 transition-all"
               >
                 <span>💬</span>
@@ -371,7 +335,7 @@ export default function FactoryStorePage() {
             </div>
           </div>
 
-          {/* التبويبات بنمط علي بابا (Overview / Products / Verification) */}
+          {/* التبويبات */}
           <div className="flex gap-2 border-t border-slate-800/80 mt-8 pt-4 overflow-x-auto">
             <button
               onClick={() => setActiveTab('overview')}
@@ -414,11 +378,10 @@ export default function FactoryStorePage() {
         </div>
       </div>
 
-      {/* ── محتوى الصفحة الرئيسي ── */}
+      {/* ── المحتوى ── */}
       <main className="max-w-7xl mx-auto px-4 py-8">
         {activeTab === 'overview' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* بطاقات البيانات الأساسية */}
             <div className="lg:col-span-2 space-y-6">
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6">
                 <h2 className="text-base font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
@@ -433,17 +396,17 @@ export default function FactoryStorePage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                   <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4">
                     <p className="text-xs text-slate-500 mb-1">مجال النشاط الرئيسي</p>
-                    <p className="text-sm font-bold text-white">{profile?.main_products}</p>
+                    <p className="text-sm font-bold text-white">{profile.main_products}</p>
                   </div>
 
                   <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4">
                     <p className="text-xs text-slate-500 mb-1">القدرة الاستيعابية والتوريد</p>
-                    <p className="text-sm font-bold text-white">{profile?.annual_capacity}</p>
+                    <p className="text-sm font-bold text-white">{profile.annual_capacity}</p>
                   </div>
 
                   <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4">
                     <p className="text-xs text-slate-500 mb-1">المدينة والمقر الرئيسي</p>
-                    <p className="text-sm font-bold text-white">📍 {profile?.city} · {profile?.country}</p>
+                    <p className="text-sm font-bold text-white">📍 {profile.city} · {profile.country}</p>
                   </div>
 
                   <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4">
@@ -453,7 +416,6 @@ export default function FactoryStorePage() {
                 </div>
               </div>
 
-              {/* بطاقة الصفقات وطلبات التوريد */}
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
                   <Icon name="DocumentTextIcon" size={18} className="text-cyan-400" />
@@ -464,7 +426,7 @@ export default function FactoryStorePage() {
                 </p>
                 <div className="flex items-center gap-3 pt-2">
                   <Link
-                    href={`/messaging?partnerId=${profile?.user_id}&title=${encodeURIComponent(profile?.company_name || '')}`}
+                    href={`/messaging?partnerId=${profile.user_id}&title=${encodeURIComponent(profile.company_name)}`}
                     className="px-5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-all"
                   >
                     💬 طلب عرض سعر أو تفاوض خاص
@@ -473,7 +435,7 @@ export default function FactoryStorePage() {
               </div>
             </div>
 
-            {/* الشريط الجانبي: مقاييس الثقة والأمان */}
+            {/* الشريط الجانبي */}
             <div className="space-y-6">
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
                 <h3 className="text-sm font-bold text-white border-b border-slate-800 pb-3 flex items-center gap-2">
@@ -482,7 +444,7 @@ export default function FactoryStorePage() {
                 </h3>
 
                 <div className="text-center py-4 bg-slate-950/70 rounded-2xl border border-slate-800">
-                  <p className="text-4xl font-black text-emerald-400">{profile?.trust_percentage}%</p>
+                  <p className="text-4xl font-black text-emerald-400">{profile.trust_percentage}%</p>
                   <p className="text-xs text-slate-400 mt-1">نسبة الالتزام بالصفقات والتسليم</p>
                 </div>
 
@@ -507,7 +469,6 @@ export default function FactoryStorePage() {
 
         {activeTab === 'products' && (
           <div className="space-y-6">
-            {/* فلاتر الكتالوج */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
               <input
                 type="search"
@@ -534,7 +495,6 @@ export default function FactoryStorePage() {
               </div>
             </div>
 
-            {/* شبكة المنتجات */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filteredProducts.map(product => (
                 <div
