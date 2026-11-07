@@ -121,6 +121,17 @@ function parseBilingualMessage(raw: string) {
   return { isBilingual: false, original: raw, translated: '', lang: '' };
 }
 
+function generateSafeUUID() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 function LiveMessagingContent() {
   const router = useRouter();
@@ -150,7 +161,7 @@ function LiveMessagingContent() {
   // عارض الصور بملء الشاشة
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title?: string } | null>(null);
 
-  // قياس دقيق لارتفاع الشاشة لمنع القفز عند ظهور الكيبورد
+  // قياس دقيق لارتفاع الشاشة
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
 
   type FilterType = 'all' | 'admin' | 'agent' | 'factory' | 'logistics' | 'rfq';
@@ -184,7 +195,7 @@ function LiveMessagingContent() {
       : activeConv.buyer_id
     : null;
 
-  // دالة تمرير داخلية محصورة في صندوق الرسائل فقط لمنع سحب صفحة الويب للأعلى
+  // تمرير محصور داخل قائمة الرسائل فقط
   const scrollToBottom = useCallback((smooth = true) => {
     if (messagesContainerRef.current) {
       messagesContainerRef.current.scrollTo({
@@ -231,7 +242,7 @@ function LiveMessagingContent() {
     fetchAvatars();
   }, [user, partnerId, activeConv, supabase]);
 
-  // إدارة الارتفاع وتثبيت موضع الصفحة لمنع قفزة الشاشة
+  // تثبيت موضع الصفحة ومنع ارتفاع الشاشة العشوائي
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -474,7 +485,7 @@ function LiveMessagingContent() {
     fetchMsgs();
   }, [activeConvId, activeConv?.source, user?.id, supabase]);
 
-  // اشتراك Realtime لمنع الرسائل المكررة
+  // اشتراك Realtime مع حماية صارمة تمنع تكرار الرسالة نهائياً
   useEffect(() => {
     if (!activeConvId || !user || !activeConv) return;
     const table = activeConv.source === 'logistics' ? 'logistics_messages' : 'chat_messages';
@@ -496,7 +507,25 @@ function LiveMessagingContent() {
           created_at: row.created_at,
         };
 
-        setMessages(prev => (prev.some(m => m.id === msg.id) ? prev : [...prev, msg]));
+        setMessages(prev => {
+          // 1. إذا كانت الرسالة موجودة مسبقاً بنفس الـ ID
+          if (prev.some(m => m.id === msg.id)) return prev;
+
+          // 2. إذا كانت رسالة لنفس المرسل ولها نفس النص في آخر 10 ثوانٍ (استبدال النسخة المؤقتة فورا ومنع التكرار)
+          const dupIndex = prev.findIndex(m =>
+            m.sender_id === msg.sender_id &&
+            m.message === msg.message &&
+            Math.abs(new Date(m.created_at).getTime() - new Date(msg.created_at).getTime()) < 10000
+          );
+
+          if (dupIndex !== -1) {
+            const next = [...prev];
+            next[dupIndex] = msg;
+            return next;
+          }
+
+          return [...prev, msg];
+        });
       })
       .subscribe();
 
@@ -673,7 +702,7 @@ function LiveMessagingContent() {
     }
   };
 
-  // إرسال الرسالة مع منع التكرار
+  // إرسال الرسالة مع معرف موحد يمنع التكرار بنسبة 100%
   const handleSend = async () => {
     if (isSendingRef.current || sending || !activeConvId || !user || !activeConv) return;
     if (!inputText.trim() && !pendingAttachment) return;
@@ -700,9 +729,26 @@ function LiveMessagingContent() {
       : textToSend;
 
     const fileToUpload = pendingAttachment;
+    const targetMessageId = generateSafeUUID(); // معرف موحد وثابت
+
     setInputText('');
     setLiveTranslation('');
     setPendingAttachment(null);
+
+    // إضافة الرسالة المتفائلة بنفس المعرف الرسمي
+    const optMsg: Message = {
+      id: targetMessageId,
+      conversation_id: activeConvId,
+      sender_id: user.id,
+      sender_role: 'user',
+      message: messageBody,
+      created_at: new Date().toISOString(),
+      is_read: false,
+      attachment_url: fileToUpload?.previewUrl,
+      attachment_type: fileToUpload?.type,
+      attachment_name: fileToUpload?.file.name,
+    };
+    setMessages(prev => (prev.some(m => m.id === targetMessageId) ? prev : [...prev, optMsg]));
 
     try {
       let attachmentUrl = undefined;
@@ -717,29 +763,14 @@ function LiveMessagingContent() {
       }
 
       if (activeConv.source === 'logistics') {
-        const { data: inserted } = await supabase.from('logistics_messages').insert({
+        await supabase.from('logistics_messages').insert({
+          id: targetMessageId,
           conversation_id: activeConvId,
           sender_id: user.id,
           sender_role: 'user',
           content: messageBody,
           attachment_url: attachmentUrl,
-        }).select().single();
-
-        if (inserted) {
-          const formatted: Message = {
-            id: inserted.id,
-            conversation_id: inserted.conversation_id,
-            sender_id: inserted.sender_id,
-            sender_role: inserted.sender_role || 'buyer',
-            message: inserted.content || inserted.message || '',
-            attachment_url: inserted.attachment_url,
-            attachment_type: inserted.attachment_type,
-            attachment_name: inserted.attachment_name,
-            is_read: true,
-            created_at: inserted.created_at,
-          };
-          setMessages(prev => (prev.some(m => m.id === formatted.id) ? prev : [...prev, formatted]));
-        }
+        });
 
         await supabase.from('logistics_conversations').update({
           last_message: textToSend || 'مرفق جديد',
@@ -747,7 +778,8 @@ function LiveMessagingContent() {
           partner_unread: 1,
         }).eq('id', activeConvId);
       } else {
-        const { data: inserted } = await supabase.from('chat_messages').insert({
+        await supabase.from('chat_messages').insert({
+          id: targetMessageId,
           conversation_id: activeConvId,
           sender_id: user.id,
           sender_role: 'user',
@@ -756,11 +788,7 @@ function LiveMessagingContent() {
           attachment_url: attachmentUrl,
           attachment_type: fileToUpload?.type,
           attachment_name: fileToUpload?.file.name,
-        }).select().single();
-
-        if (inserted) {
-          setMessages(prev => (prev.some(m => m.id === inserted.id) ? prev : [...prev, inserted]));
-        }
+        });
 
         await supabase.from('chat_conversations').update({
           last_message: textToSend || 'مرفق جديد',
