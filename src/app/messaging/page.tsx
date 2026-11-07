@@ -137,6 +137,7 @@ function LiveMessagingContent() {
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [sending, setSending] = useState(false);
+  const isSendingRef = useRef(false);
   const [creatingAdminChat, setCreatingAdminChat] = useState(false);
   const [privacyWarning, setPrivacyWarning] = useState<string | null>(null);
   const [pendingAttachment, setPendingAttachment] = useState<{ file: File; previewUrl?: string; type: string } | null>(null);
@@ -149,7 +150,7 @@ function LiveMessagingContent() {
   // عارض الصور بملء الشاشة
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title?: string } | null>(null);
 
-  // قياس ارتفاع الشاشة لمنع اختفاء الإدخال خلف لوحة المفاتيح
+  // قياس دقيق لارتفاع الشاشة لمنع القفز عند ظهور الكيبورد
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
 
   type FilterType = 'all' | 'admin' | 'agent' | 'factory' | 'logistics' | 'rfq';
@@ -170,19 +171,28 @@ function LiveMessagingContent() {
   const recordIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const activeConv = conversations.find(c => c.id === activeConvId) || null;
 
-  // معرف الشريك المقابل في المحادثة
   const partnerId = activeConv
     ? activeConv.buyer_id === user?.id
       ? activeConv.manufacturer_id || activeConv.partner_id
       : activeConv.buyer_id
     : null;
+
+  // دالة تمرير داخلية محصورة في صندوق الرسائل فقط لمنع سحب صفحة الويب للأعلى
+  const scrollToBottom = useCallback((smooth = true) => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto',
+      });
+    }
+  }, []);
 
   // جلب صور البروفايل للطرفين
   useEffect(() => {
@@ -221,21 +231,22 @@ function LiveMessagingContent() {
     fetchAvatars();
   }, [user, partnerId, activeConv, supabase]);
 
-  // الاستماع التفاعلي لارتفاع الشاشة
+  // إدارة الارتفاع وتثبيت موضع الصفحة لمنع قفزة الشاشة
   useEffect(() => {
     if (typeof window === 'undefined') return;
+
     const updateViewport = () => {
       if (window.visualViewport) {
         setViewportHeight(window.visualViewport.height);
+        window.scrollTo(0, 0);
       }
     };
+
     window.visualViewport?.addEventListener('resize', updateViewport);
-    window.visualViewport?.addEventListener('scroll', updateViewport);
     updateViewport();
 
     return () => {
       window.visualViewport?.removeEventListener('resize', updateViewport);
-      window.visualViewport?.removeEventListener('scroll', updateViewport);
     };
   }, []);
 
@@ -307,7 +318,7 @@ function LiveMessagingContent() {
     }
   }, [user, creatingAdminChat, conversations, supabase]);
 
-  // جلب المحادثات بدون حلقة تكرار (Stable Fetch)
+  // جلب المحادثات
   const fetchConversations = useCallback(async () => {
     if (!user) return;
     setLoadingConvs(true);
@@ -461,9 +472,9 @@ function LiveMessagingContent() {
       }
     };
     fetchMsgs();
-  }, [activeConvId, activeConv, user, supabase]);
+  }, [activeConvId, activeConv?.source, user?.id, supabase]);
 
-  // اشتراك Realtime
+  // اشتراك Realtime لمنع الرسائل المكررة
   useEffect(() => {
     if (!activeConvId || !user || !activeConv) return;
     const table = activeConv.source === 'logistics' ? 'logistics_messages' : 'chat_messages';
@@ -484,16 +495,17 @@ function LiveMessagingContent() {
           is_read: true,
           created_at: row.created_at,
         };
-        setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
+
+        setMessages(prev => (prev.some(m => m.id === msg.id) ? prev : [...prev, msg]));
       })
       .subscribe();
 
     return () => { supabase.removeChannel(ch); };
-  }, [activeConvId, activeConv, user, supabase]);
+  }, [activeConvId, activeConv?.source, user?.id, supabase]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    scrollToBottom(true);
+  }, [messages, scrollToBottom]);
 
   // الترجمة الفورية أثناء الكتابة
   useEffect(() => {
@@ -547,7 +559,7 @@ function LiveMessagingContent() {
     });
   };
 
-  // التسجيل الصوتي المتوافق مع الهواتف الذكية
+  // التسجيل الصوتي
   const startRecording = async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -661,21 +673,23 @@ function LiveMessagingContent() {
     }
   };
 
+  // إرسال الرسالة مع منع التكرار
   const handleSend = async () => {
+    if (isSendingRef.current || sending || !activeConvId || !user || !activeConv) return;
     if (!inputText.trim() && !pendingAttachment) return;
-    if (sending || !activeConvId || !user || !activeConv) return;
 
-    const shield = sanitizeChatMessage(inputText.trim());
+    const textToSend = inputText.trim();
+    const shield = sanitizeChatMessage(textToSend);
     if (shield.blocked) {
       setPrivacyWarning(shield.reason || 'تم حجب الرسالة لحماية البيانات.');
       setTimeout(() => setPrivacyWarning(null), 5000);
       return;
     }
 
+    isSendingRef.current = true;
     setSending(true);
-    const textToSend = inputText.trim();
-    const hasLiveTrans = !!liveTranslation && liveTranslation.trim() !== textToSend;
 
+    const hasLiveTrans = !!liveTranslation && liveTranslation.trim() !== textToSend;
     const messageBody = hasLiveTrans
       ? JSON.stringify({
           type: 'bilingual',
@@ -685,60 +699,69 @@ function LiveMessagingContent() {
         })
       : textToSend;
 
-    let attachmentUrl = undefined;
-    if (pendingAttachment) {
-      const ext = extensionForType(pendingAttachment.type);
-      const filePath = `chat-attachments/${user.id}/${Date.now()}.${ext}`;
-      await supabase.storage.from('chat-media').upload(
-        filePath,
-        fileWithResolvedType(pendingAttachment.file, pendingAttachment.type)
-      );
-      attachmentUrl = `chat-media/${filePath}`;
-    }
-
-    const optimisticId = `opt-${Date.now()}`;
-    const optMsg: Message = {
-      id: optimisticId,
-      conversation_id: activeConvId,
-      sender_id: user.id,
-      sender_role: 'user',
-      message: messageBody,
-      created_at: new Date().toISOString(),
-      is_read: false,
-      attachment_url: pendingAttachment?.previewUrl || attachmentUrl,
-      attachment_type: pendingAttachment?.type,
-      attachment_name: pendingAttachment?.file.name,
-    };
-    setMessages(prev => [...prev, optMsg]);
+    const fileToUpload = pendingAttachment;
     setInputText('');
     setLiveTranslation('');
     setPendingAttachment(null);
 
     try {
+      let attachmentUrl = undefined;
+      if (fileToUpload) {
+        const ext = extensionForType(fileToUpload.type);
+        const filePath = `chat-attachments/${user.id}/${Date.now()}.${ext}`;
+        await supabase.storage.from('chat-media').upload(
+          filePath,
+          fileWithResolvedType(fileToUpload.file, fileToUpload.type)
+        );
+        attachmentUrl = `chat-media/${filePath}`;
+      }
+
       if (activeConv.source === 'logistics') {
-        await supabase.from('logistics_messages').insert({
+        const { data: inserted } = await supabase.from('logistics_messages').insert({
           conversation_id: activeConvId,
           sender_id: user.id,
           sender_role: 'user',
           content: messageBody,
           attachment_url: attachmentUrl,
-        });
+        }).select().single();
+
+        if (inserted) {
+          const formatted: Message = {
+            id: inserted.id,
+            conversation_id: inserted.conversation_id,
+            sender_id: inserted.sender_id,
+            sender_role: inserted.sender_role || 'buyer',
+            message: inserted.content || inserted.message || '',
+            attachment_url: inserted.attachment_url,
+            attachment_type: inserted.attachment_type,
+            attachment_name: inserted.attachment_name,
+            is_read: true,
+            created_at: inserted.created_at,
+          };
+          setMessages(prev => (prev.some(m => m.id === formatted.id) ? prev : [...prev, formatted]));
+        }
+
         await supabase.from('logistics_conversations').update({
           last_message: textToSend || 'مرفق جديد',
           last_message_at: new Date().toISOString(),
           partner_unread: 1,
         }).eq('id', activeConvId);
       } else {
-        await supabase.from('chat_messages').insert({
+        const { data: inserted } = await supabase.from('chat_messages').insert({
           conversation_id: activeConvId,
           sender_id: user.id,
           sender_role: 'user',
           message: messageBody,
           is_read: false,
           attachment_url: attachmentUrl,
-          attachment_type: pendingAttachment?.type,
-          attachment_name: pendingAttachment?.file.name,
-        });
+          attachment_type: fileToUpload?.type,
+          attachment_name: fileToUpload?.file.name,
+        }).select().single();
+
+        if (inserted) {
+          setMessages(prev => (prev.some(m => m.id === inserted.id) ? prev : [...prev, inserted]));
+        }
+
         await supabase.from('chat_conversations').update({
           last_message: textToSend || 'مرفق جديد',
           last_message_at: new Date().toISOString(),
@@ -747,7 +770,9 @@ function LiveMessagingContent() {
     } catch (e) {
       console.error(e);
     } finally {
+      isSendingRef.current = false;
       setSending(false);
+      setTimeout(() => scrollToBottom(true), 50);
     }
   };
 
@@ -929,7 +954,6 @@ function LiveMessagingContent() {
                     <Icon name="ArrowRightIcon" size={17} className={isRTL ? '' : 'rotate-180'} />
                   </button>
 
-                  {/* صورة المستقبل في الترويسة: قابلة للنقر والتكبير بالحجم الكامل */}
                   <button
                     type="button"
                     onClick={() => {
@@ -947,7 +971,6 @@ function LiveMessagingContent() {
                     )}
                   </button>
 
-                  {/* اسم الشريك وبياناته (يفتح صفحة المنشأة الكاملة بنمط علي بابا) */}
                   {partnerId ? (
                     <Link
                       href={`/store/${partnerId}`}
@@ -975,7 +998,6 @@ function LiveMessagingContent() {
                   )}
                 </div>
 
-                {/* زر فتح الصفحة الكبيرة للمنشأة في علامة تبويب كاملة ومستقلة */}
                 {partnerId && (
                   <Link
                     href={`/store/${partnerId}`}
@@ -990,8 +1012,11 @@ function LiveMessagingContent() {
                 )}
               </div>
 
-              {/* ── فقاعات الرسائل مع صور المرسل والمستقبل القابلة للتكبير ── */}
-              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-muted/10">
+              {/* ── فقاعات الرسائل مع شريط تمرير داخلي مستقر ── */}
+              <div 
+                ref={messagesContainerRef}
+                className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-muted/10 overscroll-contain"
+              >
                 {messages.map(msg => {
                   const isOwn = msg.sender_id === user?.id;
                   const parsed = parseBilingualMessage(msg.message);
@@ -1002,7 +1027,6 @@ function LiveMessagingContent() {
 
                   return (
                     <div key={msg.id} className={`flex items-end ${isOwn ? 'justify-start flex-row-reverse' : 'justify-start'} gap-2`}>
-                      {/* صورة البروفايل بجانب كل رسالة (قابلة للضغط والتكبير) */}
                       <button
                         type="button"
                         onClick={() => {
@@ -1020,7 +1044,6 @@ function LiveMessagingContent() {
                         )}
                       </button>
 
-                      {/* محتوى الرسالة */}
                       <div className={`max-w-[78%] rounded-2xl p-3 shadow-xs ${
                         isOwn ? 'bg-primary text-primary-foreground rounded-tr-xs' : 'bg-card border border-border text-foreground rounded-tl-xs'
                       }`}>
@@ -1056,7 +1079,6 @@ function LiveMessagingContent() {
                     </div>
                   );
                 })}
-                <div ref={messagesEndRef} />
               </div>
 
               {/* شريط الردود السريعة */}
@@ -1075,7 +1097,7 @@ function LiveMessagingContent() {
                 ))}
               </div>
 
-              {/* ── صندوق الإدخال التفاعلي ── */}
+              {/* ── صندوق الإدخال التفاعلي الثابت ── */}
               <div className="p-2.5 sm:p-3 border-t border-border bg-card shrink-0 space-y-2 pb-safe">
                 {liveTranslation && (
                   <div className="px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-700 dark:text-blue-300 flex items-center justify-between transition-all">
@@ -1106,7 +1128,6 @@ function LiveMessagingContent() {
                   </div>
                 )}
 
-                {/* شريط التسجيل الصوتي المباشر والواضح */}
                 {isRecording ? (
                   <div className="flex items-center justify-between bg-red-500/10 border border-red-500/30 rounded-2xl px-4 py-3 animate-pulse">
                     <div className="flex items-center gap-2.5 text-red-600 dark:text-red-400 font-bold text-xs sm:text-sm">
@@ -1137,9 +1158,11 @@ function LiveMessagingContent() {
                       ref={inputRef}
                       value={inputText}
                       onFocus={() => {
+                        window.scrollTo(0, 0);
                         setTimeout(() => {
-                          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-                        }, 250);
+                          window.scrollTo(0, 0);
+                          scrollToBottom(true);
+                        }, 120);
                       }}
                       onChange={e => setInputText(e.target.value)}
                       onKeyDown={e => {
