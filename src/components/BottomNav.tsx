@@ -42,12 +42,11 @@ const isHorizontallyScrollable = (el: HTMLElement | null): boolean => {
   return false;
 };
 
-// Gesture tuning: low thresholds so even a light, quick finger flick navigates.
-const SWIPE_TRIGGER_DISTANCE = 28; // px of horizontal travel needed to commit (live, on move)
-const SWIPE_FLICK_DISTANCE = 16; // px needed when the flick is fast (on release)
-const SWIPE_FLICK_VELOCITY = 0.35; // px/ms
-const SWIPE_AXIS_RATIO = 1.15; // horizontal must beat vertical by this factor
-const SWIPE_LOCK_MS = 260; // short debounce between consecutive swipes
+const SWIPE_TRIGGER_DISTANCE = 28;
+const SWIPE_FLICK_DISTANCE = 16;
+const SWIPE_FLICK_VELOCITY = 0.35;
+const SWIPE_AXIS_RATIO = 1.15;
+const SWIPE_LOCK_MS = 260;
 
 const BottomNav: React.FC = () => {
   const pathname = usePathname();
@@ -72,7 +71,8 @@ const BottomNav: React.FC = () => {
     setMounted(true);
   }, []);
 
-  // Reset the navigation lock + play a quick enter animation after a swipe-driven route change
+  const isMessagingPage = pathname === '/messaging' || pathname?.startsWith('/messaging');
+
   useEffect(() => {
     navigatingRef.current = false;
     if (typeof window === 'undefined') return;
@@ -91,7 +91,6 @@ const BottomNav: React.FC = () => {
     );
   }, [pathname, isRTL]);
 
-  // Prefetch neighbouring tabs so a swipe navigates instantly
   useEffect(() => {
     const idx = getSwipeIndex(pathname);
     if (idx < 0) return;
@@ -109,7 +108,7 @@ const BottomNav: React.FC = () => {
       try {
         sessionStorage.setItem('dh_swipe_dir', direction);
       } catch {
-        /* ignore storage errors */
+        /* ignore */
       }
       if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
         try {
@@ -126,13 +125,11 @@ const BottomNav: React.FC = () => {
     [pathname, router]
   );
 
-  // Global swipe detection (mobile only; the bottom bar itself is md:hidden)
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (getSwipeIndex(pathname) < 0) return;
 
     const commit = (dx: number) => {
-      // LTR: swipe left -> next view. RTL: swipe right -> next view.
       const goesNext = isRTL ? dx > 0 : dx < 0;
       goToSwipeView(goesNext ? 'next' : 'prev');
     };
@@ -149,7 +146,6 @@ const BottomNav: React.FC = () => {
         !!target?.closest?.('nav') ||
         isHorizontallyScrollable(target);
       const vh = window.innerHeight;
-      // Only react to gestures that begin in the middle band of the screen
       const inMiddle = touch.clientY > vh * 0.12 && touch.clientY < vh * 0.88;
       touchRef.current = {
         x: touch.clientX,
@@ -161,7 +157,6 @@ const BottomNav: React.FC = () => {
       };
     };
 
-    // Fire as soon as the gesture is clearly horizontal — no need to lift the finger
     const onTouchMove = (e: TouchEvent) => {
       const start = touchRef.current;
       if (!start || !start.valid || start.fired || start.scrolling) return;
@@ -172,7 +167,6 @@ const BottomNav: React.FC = () => {
       const absX = Math.abs(dx);
       const absY = Math.abs(dy);
 
-      // Clearly a vertical scroll -> stop tracking so scrolling stays native
       if (absY > 14 && absY > absX * 1.3) {
         start.scrolling = true;
         return;
@@ -184,7 +178,6 @@ const BottomNav: React.FC = () => {
       }
     };
 
-    // Light, fast flicks that didn't reach the live threshold still count on release
     const onTouchEnd = (e: TouchEvent) => {
       const start = touchRef.current;
       touchRef.current = null;
@@ -207,15 +200,10 @@ const BottomNav: React.FC = () => {
         return;
       }
 
-      // Vertical swipe: only deliberate, fast, mostly-vertical flicks
       if (absY >= 140 && absY > absX * 2.5 && elapsed < 280) {
-        // Swipe up -> next view (only when already at page bottom),
-        // swipe down -> previous view (only when already at page top).
-        // This never competes with normal scrolling.
         const doc = document.documentElement;
         const atTop = window.scrollY <= 0;
-        const atBottom =
-          window.scrollY + window.innerHeight >= doc.scrollHeight - 2;
+        const atBottom = window.scrollY + window.innerHeight >= doc.scrollHeight - 2;
         if (dy < 0 && atBottom) goToSwipeView('next');
         else if (dy > 0 && atTop) goToSwipeView('prev');
       }
@@ -237,15 +225,12 @@ const BottomNav: React.FC = () => {
     };
   }, [pathname, isRTL, goToSwipeView]);
 
-  // Hide bottom nav when mobile keyboard is open
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const handleResize = () => {
-      // On mobile, when keyboard opens the viewport height shrinks significantly
       const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
       const windowHeight = window.screen.height;
-      // If viewport is less than 75% of screen height, keyboard is likely open
       setKeyboardVisible(viewportHeight < windowHeight * 0.75);
     };
 
@@ -258,44 +243,76 @@ const BottomNav: React.FC = () => {
     }
   }, []);
 
+  // جلب وتصفير الرسائل غير المقروءة بدقة
   useEffect(() => {
     if (!user) { setUnreadMessages(0); return; }
     const supabase = createClient();
 
     const fetchUnread = async () => {
+      // إذا كان المستخدم داخل صفحة الرسائل، يتم تصفير العداد فوراً
+      if (isMessagingPage) {
+        setUnreadMessages(0);
+      }
+
       try {
         let total = 0;
 
-        // Count unread from chat_messages (buyer/manufacturer conversations)
         const { data: convData, error: convErr } = await supabase
           .from('chat_conversations')
           .select('id')
           .or(`buyer_id.eq.${user.id},manufacturer_id.eq.${user.id}`);
+
         if (!convErr && convData && convData.length > 0) {
           const convIds = convData.map((c: { id: string }) => c.id);
+
+          // إذا كان المستخدم داخل صفحة الرسائل، نقوم بتصفير كل الرسائل العالقة في قاعدة البيانات
+          if (isMessagingPage) {
+            await supabase
+              .from('chat_messages')
+              .update({ is_read: true })
+              .eq('is_read', false)
+              .neq('sender_id', user.id)
+              .in('conversation_id', convIds);
+            setUnreadMessages(0);
+            return;
+          }
+
           const { count: chatCount } = await supabase
             .from('chat_messages')
             .select('*', { count: 'exact', head: true })
             .eq('is_read', false)
             .neq('sender_id', user.id)
             .in('conversation_id', convIds);
+
           total += chatCount || 0;
         }
 
-        // Count unread from logistics_conversations (logistics partner)
         const { data: logisticsConvData } = await supabase
           .from('logistics_conversations')
-          .select('partner_unread')
-          .eq('partner_id', user.id);
+          .select('partner_unread, buyer_unread, buyer_id, partner_id')
+          .or(`buyer_id.eq.${user.id},partner_id.eq.${user.id}`);
+
         if (logisticsConvData && logisticsConvData.length > 0) {
-          const logisticsUnread = logisticsConvData.reduce(
-            (sum: number, c: { partner_unread: number }) => sum + (c.partner_unread || 0),
-            0
-          );
-          total += logisticsUnread;
+          if (isMessagingPage) {
+            await supabase
+              .from('logistics_conversations')
+              .update({ partner_unread: 0, buyer_unread: 0 })
+              .or(`buyer_id.eq.${user.id},partner_id.eq.${user.id}`);
+          } else {
+            const logisticsUnread = logisticsConvData.reduce(
+              (sum: number, c: any) => {
+                const count = c.buyer_id === user.id ? (c.buyer_unread || 0) : (c.partner_unread || 0);
+                return sum + count;
+              },
+              0
+            );
+            total += logisticsUnread;
+          }
         }
 
-        setUnreadMessages(total);
+        if (!isMessagingPage) {
+          setUnreadMessages(total);
+        }
       } catch {
         setUnreadMessages(0);
       }
@@ -311,7 +328,7 @@ const BottomNav: React.FC = () => {
         table: 'chat_messages',
       }, (payload) => {
         const msg = payload.new as { sender_id: string; is_read: boolean };
-        if (msg.sender_id !== user.id && !msg.is_read) {
+        if (msg.sender_id !== user.id && !msg.is_read && !isMessagingPage) {
           setUnreadMessages(prev => prev + 1);
         }
       })
@@ -326,7 +343,7 @@ const BottomNav: React.FC = () => {
         table: 'logistics_messages',
       }, (payload) => {
         const msg = payload.new as { sender_id: string; is_read: boolean };
-        if (msg.sender_id !== user.id && !msg.is_read) {
+        if (msg.sender_id !== user.id && !msg.is_read && !isMessagingPage) {
           setUnreadMessages(prev => prev + 1);
         }
       })
@@ -338,7 +355,7 @@ const BottomNav: React.FC = () => {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [user]);
+  }, [user, isMessagingPage]);
 
   const navItems = [
     {
@@ -363,7 +380,8 @@ const BottomNav: React.FC = () => {
       labelKey: 'messages' as const,
       href: '/messaging',
       icon: 'ChatBubbleLeftRightIcon' as const,
-      badge: mounted ? unreadMessages : 0,
+      // الشارة صفر دائماً إذا كنت داخل صفحة الرسائل، أو تعتمد على القراءة الحقيقية فقط
+      badge: mounted && !isMessagingPage ? unreadMessages : 0,
     },
     {
       labelKey: 'account' as const,
@@ -385,19 +403,14 @@ const BottomNav: React.FC = () => {
     return navTranslations[labelKey] || labelKey;
   };
 
-  // The logistics partner back-office is a B2B workspace: no public buyer bottom bar.
   if (pathname === '/logistics' || pathname?.startsWith('/logistics/')) {
     return null;
   }
 
-  // The field agent workspace has its own navigation: never show the consumer bottom bar.
   if (pathname === '/agent' || pathname?.startsWith('/agent/')) {
     return null;
   }
 
-  // z-[45] sits above in-page content and the `bottom-16 z-40` action bars, but
-  // below `z-50` modal overlays — otherwise the nav paints over modal footers
-  // and hides their Save / Publish buttons.
   return (
     <nav
       className={`fixed bottom-0 left-0 right-0 z-[45] bg-card/95 backdrop-blur-xl border-t border-border md:hidden transition-transform duration-200 ${mounted && keyboardVisible ? 'translate-y-full' : 'translate-y-0'}`}
@@ -412,7 +425,6 @@ const BottomNav: React.FC = () => {
             pathname === item.href ||
             (item.href !== '/' && pathname.startsWith(item.href))
           );
-          const label = t.nav[item.labelKey as keyof typeof t.nav] || item.labelKey;
           const badgeCount = mounted ? item.badge : 0;
 
           return (
